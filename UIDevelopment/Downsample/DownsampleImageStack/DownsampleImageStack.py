@@ -237,7 +237,7 @@ class DownsampleImageStackLogic(ScriptedLoadableModuleLogic):
     spacing = np.array(sitkImage.GetSpacing())
     size = np.array(sitkImage.GetSize(), dtype=np.int)
     
-    newSpacing = [spacing[0]*factorX, spacing[1]*factorY, spacing[2]*factorX]
+    newSpacing = [spacing[0]*factorX, spacing[1]*factorY, spacing[2]*factorZ]
     newSize = size*(spacing/newSpacing)
     # set image dimensions in integers
     newSize = np.ceil(newSize).astype(np.int) 
