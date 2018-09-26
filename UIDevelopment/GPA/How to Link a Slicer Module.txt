@@ -1,0 +1,9 @@
+How to Link a Slicer Module.
+
+Edit -> Application Settings -> Modules (on the left hand toolbar of the window that pops up)
+
+-> Expand the window of the 'Additional module paths' box by clickin gthe arrow
+
+-> Add -> Select folder containing path (most of the time Z:\ryan\slicer_modules)
+
+restart Slicer

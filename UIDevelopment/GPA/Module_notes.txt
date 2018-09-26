@@ -1,0 +1,17 @@
+1. There is redunent code to be eleimnate in nearly all modules.  Should take a few days and restucture them at some point.
+
+2. EDMA module draws all the signicant LM pairs.  May want to limit number drawn
+
+3. For Export images, update button styling.  Also need to readress cropping, as it depends on display size. 
+
+4. Update look of BMP toolbox.
+
+5. For BPM toolbox, improve path to dropbox.  fails on computers without correct enviromental variable. 
+
+6. For Yapp add labels to PC scores
+
+Large improvemtns to be made.
+	1. Restucture all moduels using a more thought out object oriented design.  Format in the "slicer" approtiare way with Module_logic functions.
+	2. Consolidate and import import functions into a robust libary and update modules.
+	3. Write a slicer node module for editing and updating nodes.
+	4. Write a GUI library, with functions for the standard folder and file selectors, along with sliders, and displays. 
