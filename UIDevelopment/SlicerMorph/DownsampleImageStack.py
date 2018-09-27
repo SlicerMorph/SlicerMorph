@@ -62,8 +62,23 @@ class DownsampleImageStackWidget(ScriptedLoadableModuleWidget):
     self.inputDirectory.directory = qt.QDir.homePath()
     parametersFormLayout.addRow("Input Directory:", self.inputDirectory)
     
-    #self.inputFiles = ctk.ctkFileDialog()
-    #parametersFormLayout.addRow("Input Files:", self.inputFiles)
+    # Allow option to exclude image from file read as a collapsible button
+    excludeCollapsibleButton = ctk.ctkCollapsibleButton()
+    excludeCollapsibleButton.text = "Exclude files"
+    excludeCollapsibleButton.collapsed = True
+    excludeCollapsibleButton.collapsedHeight = 0
+    #excludeCollapsibleButton.enabled = False
+    parametersFormLayout.addRow(excludeCollapsibleButton)
+    
+    # Layout within the  collapsible button
+    excludeFormLayout = qt.QFormLayout(excludeCollapsibleButton)
+    
+    # File dialog to select a file to exclude  
+    self.inputFileType = ctk.ctkFileDialog()
+    #self.inputFileType.setDirectory = qt.QDir.homePath()
+    self.inputFileType.setToolTip( "Option to select a file to exclude from import. Only needed when file is an image." )
+    excludeFormLayout.addRow("File Exclusion:", self.inputFileType)
+    
     #
     # output volume selector
     #
