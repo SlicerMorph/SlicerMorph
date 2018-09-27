@@ -269,7 +269,7 @@ class DownsampleImageStackLogic(ScriptedLoadableModuleLogic):
       for filename in files:
         # check the extension
         (base, ext) = os.path.splitext(filename)
-        if ext in ('.tif', '.bmp', '.jpg', 'png', 'tiff', '.jpeg'):
+        if ext in ('.tif', '.bmp', '.jpg', '.png', 'tiff', '.jpeg'):
           countFiles += 1
           filePath = os.path.join(inputDirectory, filename)
           properties = {'singleFile': True} 
