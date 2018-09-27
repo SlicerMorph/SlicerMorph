@@ -86,7 +86,7 @@ class DownsampleImageStackWidget(ScriptedLoadableModuleWidget):
     self.resampleFactorWidget.coordinates = '1,1,1'
     self.resampleFactorWidget.minimum = 1
     self.resampleFactorWidget.singleStep = 1
-    self.resampleFactorWidget.setToolTip("Select Downsample factor in the XYZ directions")
+    self.resampleFactorWidget.setToolTip("Select Downsample factor in the XYZ directions. 1 1 1 keeps the original sizes")
     parametersFormLayout.addRow("Downsample factor:", self.resampleFactorWidget)
     
     #
@@ -98,7 +98,7 @@ class DownsampleImageStackWidget(ScriptedLoadableModuleWidget):
     self.spacingWidget.singleStep = .0001
     self.spacingWidget.decimals = 5
     self.spacingWidget.setToolTip("Spacing in the XYZ directions")
-    parametersFormLayout.addRow("Spacing:", self.spacingWidget)
+    parametersFormLayout.addRow("Original Voxel Spacing (mm):", self.spacingWidget)
     
     #
     # check box to trigger taking screen shots for later use in tutorials
@@ -150,7 +150,7 @@ class DownsampleImageStackWidget(ScriptedLoadableModuleWidget):
       float(spacingX),
       float(spacingY),
       float(spacingZ),
-      enableScreenshotsFlag)
+  enableScreenshotsFlag)
 
 #
 # DownsampleImageStackLogic
