@@ -20,20 +20,20 @@ class SegmentPadSave(ScriptedLoadableModule):
   """
 
   def __init__(self, parent):
-    ScriptedLoadableModule.__init__(self, parent)
+        ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "SegmentPadSave" # TODO make this more human readable by adding spaces
     self.parent.categories = ["SlicerMorph"]
     self.parent.dependencies = []
-    self.parent.contributors = ["Sara Rolfe (UW), Murat Maga (SCRI)"] # replace with "Firstname Lastname (Organization)"
+    self.parent.contributors = ["Murat Maga (UW), Sara Rolfe (UW)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """
-This is an example of scripted loadable module bundled in an extension.
-It performs a simple thresholding on the input volume and optionally captures a screenshot.
+This module loads a sample segmentation of the MRIHead sample volume. The segmentation is used to mask the image and each segment is cropped and saved seperately. 
 """
     self.parent.helpText += self.getDefaultModuleDocumentationLink()
     self.parent.acknowledgementText = """
-This file was originally developed by Jean-Christophe Fillion-Robin, Kitware Inc.
-and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR013218-12S1.
-""" # replace with organization, grant and thanks.
+This module was developed by Sara Rolfe and Murat Maga, through a NSF ABI Development grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 
+3D Morphology From Digital Biological Collections" (Award Numbers: 1759883 (Murat Maga), 1759637 (Adam Summers), 1759839 (Douglas Boyer)).
+https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false 
+"""# replace with organization, grant and thanks.
 
 #
 # SegmentPadSaveWidget
