@@ -1,17 +1,22 @@
 #This is a sample script that will read a raw landmark file, skip header, and import fiducials into Slicer
+import os
+
+# set landmark filename and length of header
+landmarkFilePath = "D:/SlicerWorkspace/SampleData/Ggg2F1400landmarks.pts"
+header = 2  #number of lines in the header
+landmarkFileName = os.path.basename(landmarkFilePath)
+(landmarkFileBase, ext) = os.path.splitext(landmarkFileName)
+
 
 # Create a markups node for imported points
 fiducialNode = slicer.vtkMRMLMarkupsFiducialNode()
-fiducialNode.SetName("importedLandmarks")
 slicer.mrmlScene.AddNode(fiducialNode)
 fiducialNode.CreateDefaultDisplayNodes()
+fiducialNode.SetName(landmarkFileBase)
 
-# set landmark filename and length of header
-landmarkFileName = "D:/SlicerWorkspace/SampleData/Ggg2F1400landmarks.pts"
-header = 2  #number of lines in the header
 
 # read landmarks
-landmarkFile = open(landmarkFileName, "r")
+landmarkFile = open(landmarkFilePath, "r")
 lines = landmarkFile.readlines()
 landmarkFile.close()
 
