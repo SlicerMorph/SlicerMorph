@@ -20,7 +20,7 @@ class SegmentPadSave(ScriptedLoadableModule):
   """
 
   def __init__(self, parent):
-        ScriptedLoadableModule.__init__(self, parent)
+    ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "SegmentPadSave" # TODO make this more human readable by adding spaces
     self.parent.categories = ["SlicerMorph"]
     self.parent.dependencies = []

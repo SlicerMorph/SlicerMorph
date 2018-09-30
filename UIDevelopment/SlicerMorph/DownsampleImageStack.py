@@ -59,26 +59,14 @@ class DownsampleImageStackWidget(ScriptedLoadableModuleWidget):
     #
     # input directory selector
     #
-    self.inputDirectory = ctk.ctkDirectoryButton()
-    self.inputDirectory.directory = qt.QDir.homePath()
-    parametersFormLayout.addRow("Input Directory:", self.inputDirectory)
+    #self.inputDirectory = ctk.ctkDirectoryButton()
+    #self.inputDirectory.directory = qt.QDir.homePath()
+    #parametersFormLayout.addRow("Input Directory:", self.inputDirectory)
     
-    # Allow option to exclude image from file read as a collapsible button
-    excludeCollapsibleButton = ctk.ctkCollapsibleButton()
-    excludeCollapsibleButton.text = "Exclude files"
-    excludeCollapsibleButton.collapsed = True
-    excludeCollapsibleButton.collapsedHeight = 0
-    #excludeCollapsibleButton.enabled = False
-    parametersFormLayout.addRow(excludeCollapsibleButton)
-    
-    # Layout within the  collapsible button
-    excludeFormLayout = qt.QFormLayout(excludeCollapsibleButton)
-    
-    # File dialog to select a file to exclude  
-    self.inputFileType = ctk.ctkFileDialog()
-    #self.inputFileType.setDirectory = qt.QDir.homePath()
-    self.inputFileType.setToolTip( "Option to select a file to exclude from import. Only needed when file is an image." )
-    excludeFormLayout.addRow("File Exclusion:", self.inputFileType)
+    # File dialog to select a file template for series
+    self.inputFileTemplate = ctk.ctkPathLineEdit()
+    self.inputFileTemplate.setToolTip( "Select one file in the image series to import." )
+    parametersFormLayout.addRow("Select file from image series:", self.inputFileTemplate)
     
     #
     # output volume selector
@@ -159,7 +147,7 @@ class DownsampleImageStackWidget(ScriptedLoadableModuleWidget):
     spacingY = self.spacingWidget.coordinates.split(',')[1]
     spacingZ = self.spacingWidget.coordinates.split(',')[2]
     logic.run(
-      self.inputDirectory.directory, 
+      self.inputFileTemplate.currentPath,
       self.outputSelector.currentNode(), 
       int(shrinkFactorX),
       int(shrinkFactorY),
@@ -207,6 +195,14 @@ class DownsampleImageStackLogic(ScriptedLoadableModuleLogic):
       return False
     if inputVolumeNode.GetID()==outputVolumeNode.GetID():
       logging.debug('isValidInputOutputData failed: input and output volume is the same. Create a new volume for output to avoid this error.')
+      return False
+    return True
+  
+  def isValidImageFileType(self, extension):
+    """Checks for extensions from valid image types
+    """
+    if not extension in ('.tif', '.bmp', '.jpg', '.png', 'tiff', '.jpeg'):
+      logging.debug('isValidImageFileType failed: not a supported image type')
       return False
     return True
 
@@ -269,7 +265,7 @@ class DownsampleImageStackLogic(ScriptedLoadableModuleLogic):
     
     return(resizedImage)
     
-  def run(self, inputDirectory, outputVolume, shrinkFactorX, shrinkFactorY, shrinkFactorZ, spacingX, spacingY, spacingZ, enableScreenshots=0):
+  def run(self, inputFileTemplate, outputVolume, shrinkFactorX, shrinkFactorY, shrinkFactorZ, spacingX, spacingY, spacingZ, enableScreenshots=0):
     """
     Run the actual algorithm
     """
@@ -281,50 +277,55 @@ class DownsampleImageStackLogic(ScriptedLoadableModuleLogic):
     # set up filter to append downsampled slices
     appendFilter = sitk.TileImageFilter()
 
-    # walk directory of images
-    for root, dirs, files in os.walk(inputDirectory):  
-      for filename in files:
-        # check the extension
-        (base, ext) = os.path.splitext(filename)
-        if ext in ('.tif', '.bmp', '.jpg', '.png', 'tiff', '.jpeg'):
-          countFiles += 1
-          filePath = os.path.join(inputDirectory, filename)
-          properties = {'singleFile': True} 
-          # read single slice
-          [success, tempVolumeNode] = slicer.util.loadVolume(filePath, properties, returnNode=True)
-          spacing = [(spacingX), (spacingY), (spacingZ)]
-          tempVolumeNode.SetSpacing(spacing)
-          # if needed, convert to scalar using luminance (0.30*R + 0.59*G + 0.11*B + 0.0*A)
-          if ext not in ('.tif', 'tiff'):
-            extractVTK = vtk.vtkImageExtractComponents()
-            extractVTK.SetInputConnection(tempVolumeNode.GetImageDataConnection())
-            extractVTK.SetComponents(0, 1, 2)
-            luminance = vtk.vtkImageLuminance()
-            luminance.SetInputConnection(extractVTK.GetOutputPort())
-            luminance.Update()
-            tempVolumeNode.SetImageDataConnection(luminance.GetOutputPort())
-          # import to sitk
-          tempImage = sitkUtils.PullVolumeFromSlicer(tempVolumeNode)
-          # downsample slice
-          shrunkImage = self.resample_sitk(tempImage, shrinkFactorX, shrinkFactorY, shrinkFactorZ)
-          listImages.append(shrunkImage)
-          slicer.mrmlScene.RemoveNode(tempVolumeNode)
+    #parse imput template
+    (inputDirectory,templateFile) = os.path.split(inputFileTemplate)
+    (templateBase, templateExt) = os.path.splitext(templateFile)
+    if self.isValidImageFileType(templateExt): #check that selected file is a supported image type
+    
+       # walk directory of images
+      for root, dirs, files in os.walk(inputDirectory):
+        for filename in files:
+          # check the extension
+          (base, ext) = os.path.splitext(filename)
+          if (ext == templateExt):
+            countFiles += 1
+            filePath = os.path.join(inputDirectory, filename)
+            properties = {'singleFile': True}
+            # read single slice
+            [success, tempVolumeNode] = slicer.util.loadVolume(filePath, properties, returnNode=True)
+            spacing = [(spacingX), (spacingY), (spacingZ)]
+            tempVolumeNode.SetSpacing(spacing)
+            # if needed, convert to scalar using luminance (0.30*R + 0.59*G + 0.11*B + 0.0*A)
+            if ext not in ('.tif', 'tiff'):
+              extractVTK = vtk.vtkImageExtractComponents()
+              extractVTK.SetInputConnection(tempVolumeNode.GetImageDataConnection())
+              extractVTK.SetComponents(0, 1, 2)
+              luminance = vtk.vtkImageLuminance()
+              luminance.SetInputConnection(extractVTK.GetOutputPort())
+              luminance.Update()
+              tempVolumeNode.SetImageDataConnection(luminance.GetOutputPort())
+            # import to sitk
+            tempImage = sitkUtils.PullVolumeFromSlicer(tempVolumeNode)
+            # downsample slice
+            shrunkImage = self.resample_sitk(tempImage, shrinkFactorX, shrinkFactorY, shrinkFactorZ)
+            listImages.append(shrunkImage)
+            slicer.mrmlScene.RemoveNode(tempVolumeNode)
        
 
-    # stack images into 3d volume
-    tileFilter = sitk.TileImageFilter()
-    # specify layout in number of tiles per dimension, 0 for unrestricted
-    layout = [1,1,0]
-    tileFilter.SetLayout(layout)
-    volumeImage = tileFilter.Execute(listImages)    
-    sitkUtils.PushVolumeToSlicer(volumeImage,outputVolume)
+      # stack images into 3d volume
+      tileFilter = sitk.TileImageFilter()
+      # specify layout in number of tiles per dimension, 0 for unrestricted
+      layout = [1,1,0]
+      tileFilter.SetLayout(layout)
+      volumeImage = tileFilter.Execute(listImages)
+      sitkUtils.PushVolumeToSlicer(volumeImage,outputVolume)
+    else:
 
+      # Capture screenshot
+      if enableScreenshots:
+        self.takeScreenshot('DownsampleImageStackTest-Start','MyScreenshot',-1)
 
-    # Capture screenshot
-    if enableScreenshots:
-      self.takeScreenshot('DownsampleImageStackTest-Start','MyScreenshot',-1)
-
-    logging.info('Processing completed')
+      logging.info('Processing completed')
 
     return True
 
