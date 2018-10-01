@@ -290,7 +290,7 @@ class DownsampleImageStackLogic(ScriptedLoadableModuleLogic):
           # check the extension and series name
           (base, ext) = os.path.splitext(filename)
           seriesName = base.rstrip(string.digits)
-          if ((ext == templateExt) && (seriesName == templateSeriesName)):
+          if ((ext == templateExt) & (seriesName == templateSeriesName)):
             countFiles += 1
             filePath = os.path.join(inputDirectory, filename)
             properties = {'singleFile': True}
