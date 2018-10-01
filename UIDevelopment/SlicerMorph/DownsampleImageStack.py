@@ -6,6 +6,7 @@ import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
 import logging
 import numpy as np
+import string
 #
 # DownsampleImageStack
 #
@@ -280,14 +281,16 @@ class DownsampleImageStackLogic(ScriptedLoadableModuleLogic):
     #parse imput template
     (inputDirectory,templateFile) = os.path.split(inputFileTemplate)
     (templateBase, templateExt) = os.path.splitext(templateFile)
+    templateSeriesName = templateBase.rstrip(string.digits) #get series name
     if self.isValidImageFileType(templateExt): #check that selected file is a supported image type
     
        # walk directory of images
       for root, dirs, files in os.walk(inputDirectory):
         for filename in files:
-          # check the extension
+          # check the extension and series name
           (base, ext) = os.path.splitext(filename)
-          if (ext == templateExt):
+          seriesName = base.rstrip(string.digits)
+          if ((ext == templateExt) && (seriesName == templateSeriesName)):
             countFiles += 1
             filePath = os.path.join(inputDirectory, filename)
             properties = {'singleFile': True}
