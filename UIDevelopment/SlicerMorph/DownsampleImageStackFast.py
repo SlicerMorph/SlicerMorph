@@ -279,55 +279,39 @@ class DownsampleImageStackFastLogic(ScriptedLoadableModuleLogic):
     resampleOption = (shrinkFactorX != 1) & (shrinkFactorY != 1) & (shrinkFactorZ != 1)
     
     # set up filter to append downsampled slices
-    appendFilter = sitk.TileImageFilter()
+    #appendFilter = sitk.TileImageFilter()
 
     #parse imput template
     (inputDirectory,templateFile) = os.path.split(inputFileTemplate)
     (templateBase, templateExt) = os.path.splitext(templateFile)
     templateSeriesName = templateBase.rstrip(string.digits) #get series name
     if self.isValidImageFileType(templateExt): #check that selected file is a supported image type
-    
-       # walk directory of images
-      for root, dirs, files in os.walk(inputDirectory):
-        for filename in files:
-          # check the extension and series name
-          (base, ext) = os.path.splitext(filename)
-          seriesName = base.rstrip(string.digits)
-          if ((ext == templateExt) & (seriesName == templateSeriesName)):
-            countFiles += 1
-            filePath = os.path.join(inputDirectory, filename)
-            properties = {'singleFile': True}
-            # read single slice
-            [success, tempVolumeNode] = slicer.util.loadVolume(filePath, properties, returnNode=True)
-            # if needed, convert to scalar using luminance (0.30*R + 0.59*G + 0.11*B + 0.0*A)
-            if ext not in ('.tif', 'tiff'):
-              extractVTK = vtk.vtkImageExtractComponents()
-              extractVTK.SetInputConnection(tempVolumeNode.GetImageDataConnection())
-              extractVTK.SetComponents(0, 1, 2)
-              luminance = vtk.vtkImageLuminance()
-              luminance.SetInputConnection(extractVTK.GetOutputPort())
-              luminance.Update()
-              tempVolumeNode.SetImageDataConnection(luminance.GetOutputPort())# import to sitk for image tile
-            # import into SITK
-            tempImage = sitkUtils.PullVolumeFromSlicer(tempVolumeNode)
-            # append image to list
-            listImages.append(tempImage)
-            slicer.mrmlScene.RemoveNode(tempVolumeNode)
-        #stack images into 3d volume
-        tileFilter = sitk.TileImageFilter()
-        # specify layout in number of tiles per dimension, 0 for unrestricted
-        layout = [1,1,0]
-        tileFilter.SetLayout(layout)
-        volumeImage = tileFilter.Execute(listImages)
+      [success, tempVolumeNode] = slicer.util.loadVolume(inputFileTemplate, returnNode=True)
+      if(success):
+        logging.info('Image loaded')
+        #set volume spacing
+        spacing = [spacingX, spacingX, spacingX]
+        tempVolumeNode.SetSpacing(spacing)
+        # if vector image, convert to scalar using luminance (0.30*R + 0.59*G + 0.11*B + 0.0*A)
+        if templateExt not in ('.tif', 'tiff'):
+          extractVTK = vtk.vtkImageExtractComponents()
+          extractVTK.SetInputConnection(tempVolumeNode.GetImageDataConnection())
+          extractVTK.SetComponents(0, 1, 2)
+          luminance = vtk.vtkImageLuminance()
+          luminance.SetInputConnection(extractVTK.GetOutputPort())
+          luminance.Update()
+          tempVolumeNode.SetImageDataConnection(luminance.GetOutputPort())# import to sitk for image tile
+        # import into SITK
+        tempImage = sitkUtils.PullVolumeFromSlicer(tempVolumeNode)
+        slicer.mrmlScene.RemoveNode(tempVolumeNode)
         if(resampleOption):
-          volumeImage = self.resample_sitk(volumeImage, shrinkFactorX, shrinkFactorY, shrinkFactorZ)
+          tempImage = self.resample_sitk(tempImage, shrinkFactorX, shrinkFactorY, shrinkFactorZ)
         # export from sitk
-        sitkUtils.PushVolumeToSlicer(volumeImage,outputVolume)
-      # Capture screenshot
-      if enableScreenshots:
-        self.takeScreenshot('DownsampleImageStackFastTest-Start','MyScreenshot',-1)
-
-      logging.info('Processing completed')
+        sitkUtils.PushVolumeToSlicer(tempImage,outputVolume)
+      # Capture screenshot      
+    if enableScreenshots:
+      self.takeScreenshot('DownsampleImageStackFastTest-Start','MyScreenshot',-1)
+    logging.info('Processing completed')
 
     return True
 
