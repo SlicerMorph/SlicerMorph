@@ -275,6 +275,9 @@ class DownsampleImageStackLogic(ScriptedLoadableModuleLogic):
     countFiles = 0
     listImages =[]
     
+    # check if resampling needed for  , false if requested shrink factors in (X,Y) are (1,1)
+    resampleSliceOption = (shrinkFactorX != 1) & (shrinkFactorY != 1)
+    
     # set up filter to append downsampled slices
     appendFilter = sitk.TileImageFilter()
 
@@ -310,8 +313,11 @@ class DownsampleImageStackLogic(ScriptedLoadableModuleLogic):
             # import to sitk
             tempImage = sitkUtils.PullVolumeFromSlicer(tempVolumeNode)
             # downsample slice
-            shrunkImage = self.resample_sitk(tempImage, shrinkFactorX, shrinkFactorY, shrinkFactorZ)
-            listImages.append(shrunkImage)
+            if(resampleSliceOption):
+              shrunkImage = self.resample_sitk(tempImage, shrinkFactorX, shrinkFactorY, 1)
+              listImages.append(shrunkImage)
+            else:
+              listImages.append(tempImage)
             slicer.mrmlScene.RemoveNode(tempVolumeNode)
        
 
@@ -321,6 +327,8 @@ class DownsampleImageStackLogic(ScriptedLoadableModuleLogic):
       layout = [1,1,0]
       tileFilter.SetLayout(layout)
       volumeImage = tileFilter.Execute(listImages)
+      if(shrinkFactorZ != 1):
+        volumeImage = self.resample_sitk(volumeImage, 1, 1, shrinkFactorZ)
       sitkUtils.PushVolumeToSlicer(volumeImage,outputVolume)
     else:
 
