@@ -8,17 +8,17 @@ import logging
 import numpy as np
 import string
 #
-# DownsampleImageStack
+# DownsampleImageStackFast
 #
 
-class DownsampleImageStack(ScriptedLoadableModule):
+class DownsampleImageStackFast(ScriptedLoadableModule):
   """Uses ScriptedLoadableModule base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
 
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
-    self.parent.title = "DownsampleImageStack" # TODO make this more human readable by adding spaces
+    self.parent.title = "DownsampleImageStackFast" # TODO make this more human readable by adding spaces
     self.parent.categories = ["SlicerMorph"]
     self.parent.dependencies = []
     self.parent.contributors = ["Murat Maga (UW), Sara Rolfe (UW)"] # replace with "Firstname Lastname (Organization)"
@@ -34,10 +34,10 @@ https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
 """ # replace with organization, grant and thanks.
 
 #
-# DownsampleImageStackWidget
+# DownsampleImageStackFastWidget
 #
 
-class DownsampleImageStackWidget(ScriptedLoadableModuleWidget):
+class DownsampleImageStackFastWidget(ScriptedLoadableModuleWidget):
   """Uses ScriptedLoadableModuleWidget base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
@@ -139,7 +139,7 @@ class DownsampleImageStackWidget(ScriptedLoadableModuleWidget):
     self.applyButton.enabled = self.outputSelector.currentNode()
 
   def onApplyButton(self):
-    logic = DownsampleImageStackLogic()
+    logic = DownsampleImageStackFastLogic()
     enableScreenshotsFlag = self.enableScreenshotsFlagCheckBox.checked
     shrinkFactorX = int(self.resampleFactorWidget.coordinates.split(',')[0])
     shrinkFactorY = int(self.resampleFactorWidget.coordinates.split(',')[1])
@@ -159,10 +159,10 @@ class DownsampleImageStackWidget(ScriptedLoadableModuleWidget):
   enableScreenshotsFlag)
 
 #
-# DownsampleImageStackLogic
+# DownsampleImageStackFastLogic
 #
 
-class DownsampleImageStackLogic(ScriptedLoadableModuleLogic):
+class DownsampleImageStackFastLogic(ScriptedLoadableModuleLogic):
   """This class should implement all the actual
   computation done by your module.  The interface
   should be such that other python code can import
@@ -299,44 +299,40 @@ class DownsampleImageStackLogic(ScriptedLoadableModuleLogic):
             properties = {'singleFile': True}
             # read single slice
             [success, tempVolumeNode] = slicer.util.loadVolume(filePath, properties, returnNode=True)
-            # set spacing
-            spacing = [(spacingX), (spacingY), (spacingZ)]
-            tempVolumeNode.SetSpacing(spacing)
-            # import to sitk for image tile
+            # if needed, convert to scalar using luminance (0.30*R + 0.59*G + 0.11*B + 0.0*A)
+            if ext not in ('.tif', 'tiff'):
+              extractVTK = vtk.vtkImageExtractComponents()
+              extractVTK.SetInputConnection(tempVolumeNode.GetImageDataConnection())
+              extractVTK.SetComponents(0, 1, 2)
+              luminance = vtk.vtkImageLuminance()
+              luminance.SetInputConnection(extractVTK.GetOutputPort())
+              luminance.Update()
+              tempVolumeNode.SetImageDataConnection(luminance.GetOutputPort())# import to sitk for image tile
+            # import into SITK
             tempImage = sitkUtils.PullVolumeFromSlicer(tempVolumeNode)
+            # append image to list
             listImages.append(tempImage)
-        slicer.mrmlScene.RemoveNode(tempVolumeNode)
+            slicer.mrmlScene.RemoveNode(tempVolumeNode)
         #stack images into 3d volume
-       tileFilter = sitk.TileImageFilter()
-       # specify layout in number of tiles per dimension, 0 for unrestricted
-       layout = [1,1,0]
-       tileFilter.SetLayout(layout)
-       volumeImage = tileFilter.Execute(listImages)
-       if(resampleOption):
-         volumeImage = self.resample_sitk(volumeImage, 1, 1, shrinkFactorZ)
-       # export from sitk
-       sitkUtils.PushVolumeToSlicer(volumeImage,outputVolume)
-       # if needed, convert to scalar using luminance (0.30*R + 0.59*G + 0.11*B + 0.0*A)
-       if ext not in ('.tif', 'tiff'):
-        extractVTK = vtk.vtkImageExtractComponents()
-        extractVTK.SetInputConnection(tempVolumeNode.GetImageDataConnection())
-        extractVTK.SetComponents(0, 1, 2)
-        luminance = vtk.vtkImageLuminance()
-        luminance.SetInputConnection(extractVTK.GetOutputPort())
-        luminance.Update()
-        tempVolumeNode.SetImageDataConnection(luminance.GetOutputPort())
-            
-
+        tileFilter = sitk.TileImageFilter()
+        # specify layout in number of tiles per dimension, 0 for unrestricted
+        layout = [1,1,0]
+        tileFilter.SetLayout(layout)
+        volumeImage = tileFilter.Execute(listImages)
+        if(resampleOption):
+          volumeImage = self.resample_sitk(volumeImage, shrinkFactorX, shrinkFactorY, shrinkFactorZ)
+        # export from sitk
+        sitkUtils.PushVolumeToSlicer(volumeImage,outputVolume)
       # Capture screenshot
       if enableScreenshots:
-        self.takeScreenshot('DownsampleImageStackTest-Start','MyScreenshot',-1)
+        self.takeScreenshot('DownsampleImageStackFastTest-Start','MyScreenshot',-1)
 
       logging.info('Processing completed')
 
     return True
 
 
-class DownsampleImageStackTest(ScriptedLoadableModuleTest):
+class DownsampleImageStackFastTest(ScriptedLoadableModuleTest):
   """
   This is the test case for your scripted module.
   Uses ScriptedLoadableModuleTest base class, available at:
@@ -352,9 +348,9 @@ class DownsampleImageStackTest(ScriptedLoadableModuleTest):
     """Run as few or as many tests as needed here.
     """
     self.setUp()
-    self.test_DownsampleImageStack1()
+    self.test_DownsampleImageStackFast1()
 
-  def test_DownsampleImageStack1(self):
+  def test_DownsampleImageStackFast1(self):
     """ Ideally you should have several levels of tests.  At the lowest level
     tests should exercise the functionality of the logic with different inputs
     (both valid and invalid).  At higher levels your tests should emulate the
@@ -386,6 +382,6 @@ class DownsampleImageStackTest(ScriptedLoadableModuleTest):
     self.delayDisplay('Finished with download and loading')
 
     volumeNode = slicer.util.getNode(pattern="FA")
-    logic = DownsampleImageStackLogic()
+    logic = DownsampleImageStackFastLogic()
     self.assertIsNotNone( logic.hasImageData(volumeNode) )
     self.delayDisplay('Test passed!')

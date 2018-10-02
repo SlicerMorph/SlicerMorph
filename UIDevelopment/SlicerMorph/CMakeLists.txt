@@ -20,7 +20,9 @@ include(${Slicer_USE_FILE})
 #-----------------------------------------------------------------------------
 # Extension modules
 add_subdirectory(DownsampleImageStack)
+add_subdirectory(DownsampleImageStackFast)
 add_subdirectory(SegmentPadSave)
+add_subdirectory(ReadLandmarkFile)
 ## NEXT_MODULE
 
 #-----------------------------------------------------------------------------
