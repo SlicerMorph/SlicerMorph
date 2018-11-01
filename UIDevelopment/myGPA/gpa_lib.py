@@ -113,7 +113,7 @@ def meanShape(monsters):
 
 def alignToOne(monsters):
     i,j,k=monsters.shape
-    #scale and center the frist monster
+    #scale and center the first monster
     monsters[:,:,0]=centerShape(monsters[:,:,0])
     monsters[:,:,0]=scaleShape(monsters[:,:,0])
     

@@ -165,7 +165,7 @@ class LMData:
     header=np.array(['Sample_name','proc_dist','centeroid'])
     i1,j=tmp.shape
     coodrsL=(j-3)/3.0
-    l=np.zeros(3*coodrsL)
+    l=np.zeros(int(3*coodrsL))
 
     l=list(l)
 
@@ -175,7 +175,7 @@ class LMData:
       l[3*x+1]="y"+str(loc)
       l[3*x+2]="z"+str(loc)
     l=np.array(l)
-    header=np.column_stack((header.reshape(1,3),l.reshape(1,3*coodrsL)))
+    header=np.column_stack((header.reshape(1,3),l.reshape(1,int(3*coodrsL))))
     tmp1=np.vstack((header,tmp))
     np.savetxt(outputFolder+os.sep+"OutputData.csv", tmp1, fmt="%s" , delimiter=",")
 
@@ -201,7 +201,216 @@ class LMData:
     tmp[:,1]=self.vec[i:2*i,pc]
     tmp[:,2]=self.vec[2*i:3*i,pc]
     return LM+tmp*scaleFactor/3.0
-        
+
+class Monsters:
+  def __init__(self,volumeSelector,LMSelector, spacing):
+    print spacing
+    volumeLogic=slicer.vtkSlicerVolumesLogic()
+    self.sourceVolume=volumeSelector.currentNode()
+    self.sourceTransID=self.sourceVolume.GetTransformNodeID()
+
+    self.tranformedVolume=slicer.util.getFirstNodeByName('Transformed_Volume')
+    if self.tranformedVolume is None:
+      self.tranformedVolume=slicer.vtkMRMLScalarVolumeNode()
+      self.tranformedVolume.SetName("Transformed_Volume")
+      colornode2=slicer.vtkMRMLColorTableNode()
+      colornode2.SetTypeToGrey()
+      slicer.mrmlScene.AddNode(colornode2)
+      transDispNode=slicer.vtkMRMLScalarVolumeDisplayNode()
+      slicer.mrmlScene.AddNode(transDispNode)
+      transDispNode.SetAndObserveColorNodeID(colornode2.GetID())
+      slicer.mrmlScene.AddNode(self.tranformedVolume)
+      self.tranformedVolume.SetAndObserveDisplayNodeID(transDispNode.GetID())
+      self.tranformedVolume.SetAndObserveTransformNodeID(self.sourceTransID)
+
+    self.resampledSourceVolume=slicer.util.getFirstNodeByName('Resampled_Source')
+    if self.resampledSourceVolume is None:
+      self.resampledSourceVolume=slicer.vtkMRMLScalarVolumeNode()
+      self.resampledSourceVolume.SetName("Resampled_Source")
+      slicer.mrmlScene.AddNode(self.resampledSourceVolume)
+      resampledDispNode=slicer.vtkMRMLScalarVolumeDisplayNode()
+      slicer.mrmlScene.AddNode(resampledDispNode)
+      colornode=slicer.vtkMRMLColorTableNode()
+      colornode.SetTypeToGrey()
+      slicer.mrmlScene.AddNode(colornode)
+      resampledDispNode.SetAndObserveColorNodeID(colornode.GetID())
+      self.resampledSourceVolume.SetAndObserveDisplayNodeID(resampledDispNode.GetID())
+      if spacing[0] != 1:
+        self.resampleVolume(self.sourceVolume, self.resampledSourceVolume, spacing)
+      if spacing[0] ==1:
+        self.resampledSourceVolume.SetAndObserveImageData(self.sourceVolume.GetImageData())
+      self.resampledSourceVolume.SetAndObserveTransformNodeID(self.sourceTransID)
+      self.resampledSourceVolume.SetOrigin(self.sourceVolume.GetOrigin())
+
+    self.transformNode=slicer.util.getFirstNodeByName("TPS_transform")
+    if self.transformNode is None:
+      self.transformNode=slicer.vtkMRMLTransformNode()
+      self.transformNode.SetName("TPS_transform")
+      slicer.mrmlScene.AddNode(self.transformNode)
+
+    self.tpsNode=0
+    self.targetVolume=0
+    self.tps=0
+    self.sourceLMNode=LMSelector.currentNode()
+    self.sourceLMnumpy=self.convertFudicialToNP(self.sourceLMNode)
+
+  def warpVolumes(self, targetLMShift, sourceLM,tpsNode):
+    target=sourceLM+targetLMShift
+    targetLMVTK=self.convertNumpyToVTK(target)
+    sourceLMVTK=self.convertNumpyToVTK(sourceLM)
+    self.tps=self.createTPS(sourceLMVTK,targetLMVTK)
+    self.tps.Update()
+    self.resliceThroughTransform(  self.resampledSourceVolume,self.sourceVolume , self.tps ,  self.tranformedVolume)
+
+  def returnLMNP(self):
+    sourceLMNP=self.convertFudicialToNP(self.sourceLMNode)
+    return sourceLMNP
+
+  def matchVolumeProp(self):
+    self.tranformedVolume.SetSpacing(self.sourceVolume.GetSpacing())
+    return
+
+  def resampleVolume(self, inputVolume, outputVolume, spacing):
+    inputIJKToRASMatrix = vtk.vtkMatrix4x4()
+    inputVolume.GetIJKToRASMatrix(inputIJKToRASMatrix)
+    resliceTransform = vtk.vtkTransform()
+    resliceTransform.Identity()
+ 
+    extent=inputVolume.GetImageData().GetWholeExtent()
+    extent=list(extent)
+    extent[1]=extent[1]/spacing[0]
+    extent[3]=extent[3]/spacing[1]
+    extent[5]=extent[5]/spacing[2]
+ 
+    reslice = vtk.vtkImageReslice()
+    reslice.SetInput(inputVolume.GetImageData())
+    reslice.SetResliceTransform(resliceTransform)
+    reslice.SetInterpolationModeToNearestNeighbor()
+    reslice.AutoCropOutputOff()
+    reslice.SetOutputExtent(extent)
+    reslice.SetOutputSpacing(spacing)
+    reslice.Update()
+    
+    outputIJKToRASMatrix = vtk.vtkMatrix4x4()
+    inputVolume.GetIJKToRASMatrix(outputIJKToRASMatrix)
+ 
+    changeInformation = vtk.vtkImageChangeInformation()
+    changeInformation.SetInput(reslice.GetOutput())
+    changeInformation.SetOutputOrigin(inputVolume.GetOrigin())
+    changeInformation.SetOutputSpacing(spacing)
+    changeInformation.Update()
+    outputVolume.SetAndObserveImageData(changeInformation.GetOutput())
+    outputVolume.SetIJKToRASMatrix(outputIJKToRASMatrix)
+ 
+    inputSpacing=inputVolume.GetSpacing()
+    outputVolume.SetSpacing(inputSpacing)
+    transID=inputVolume.GetTransformNodeID()
+    outputVolume.SetAndObserveTransformNodeID(transID)
+    outputVolume.Modified()
+ 
+    return
+
+  def resliceThroughTransform(self, sourceNode,refNode, transform, targetNode):
+    """
+    Fills the targetNode's vtkImageData with the source after
+    applying the transform. Uses spacing from referenceNode. Ignores any vtkMRMLTransforms.
+    sourceNode, referenceNode, targetNode: vtkMRMLScalarVolumeNodes
+    transform: vtkAbstractTransform
+    """
+    # get the transform from RAS back to source pixel space
+    sourceRASToIJK = vtk.vtkMatrix4x4()
+    sourceNode.GetRASToIJKMatrix(sourceRASToIJK)
+
+    # get the transform from target image space to RAS
+    referenceIJKToRAS = vtk.vtkMatrix4x4()
+    sourceNode.GetIJKToRASMatrix(referenceIJKToRAS)
+
+    # this is the ijkToRAS concatenated with the passed in (abstract)transform
+    resliceTransform = vtk.vtkGeneralTransform()
+    resliceTransform.Concatenate(sourceRASToIJK)
+    resliceTransform.Concatenate(transform)
+    resliceTransform.Concatenate(referenceIJKToRAS)
+
+    # use the matrix to extract the volume and convert it to an array
+    reslice = vtk.vtkImageReslice()
+    reslice.SetInterpolationModeToLinear()
+    reslice.InterpolateOn()
+    reslice.SetResliceTransform(resliceTransform)
+    if vtk.VTK_MAJOR_VERSION <= 5:
+      reslice.SetInput( sourceNode.GetImageData() )
+    else:
+      reslice.SetInputConnection( sourceNode.GetImageDataConnection() )
+
+    dimensions = refNode.GetImageData().GetDimensions()
+    reslice.SetOutputExtent(0, dimensions[0]-1, 0, dimensions[1]-1, 0, dimensions[2]-1)
+    reslice.SetOutputOrigin((0,0,0))
+    reslice.SetOutputSpacing(1,1,1)
+
+    reslice.UpdateWholeExtent()
+    targetNode.SetAndObserveImageData(reslice.GetOutput())
+    return
+
+  def createTPS(self, sourceLM, targetLM):
+    """Perform the thin plate transform using the vtkThinPlateSplineTransform class"""
+    thinPlateTransform = vtk.vtkThinPlateSplineTransform()
+    thinPlateTransform.SetBasisToR() # for 3D transform
+
+    thinPlateTransform.SetSourceLandmarks(sourceLM)
+    thinPlateTransform.SetTargetLandmarks(targetLM)
+    thinPlateTransform.Update()
+    self.transformNode.SetAndObserveTransformToParent(thinPlateTransform)
+
+    return thinPlateTransform
+
+  def convertFudicialToVTKPoint(self, fnode):
+    import numpy as np
+    numberOfLM=fnode.GetNumberOfFiducials()
+    x=y=z=0
+    loc=[x,y,z]
+    lmData=np.zeros((numberOfLM,3))
+    # 
+    for i in range(numberOfLM):
+      fnode.GetNthFiducialPosition(i,loc)
+      lmData[i,:]=np.asarray(loc)
+    points=vtk.vtkPoints()
+    for i in range(numberOfLM):
+      points.InsertNextPoint(lmData[i,0], lmData[i,1], lmData[i,2]) 
+    return points
+
+  def convertFudicialToNP(self, fnode):
+    import numpy as np
+    numberOfLM=fnode.GetNumberOfFiducials()
+    x=y=z=0
+    loc=[x,y,z]
+    lmData=np.zeros((numberOfLM,3))
+    # 
+    for i in range(numberOfLM):
+      fnode.GetNthFiducialPosition(i,loc)
+      lmData[i,:]=np.asarray(loc)
+    return lmData
+
+  def convertNumpyToVTK(self, A):
+    x,y=A.shape
+    points=vtk.vtkPoints()
+    for i in range(x):
+      points.InsertNextPoint(A[i,0], A[i,1], A[i,2])
+    return points
+
+  def convertNumpyToVTKmatrix44(self, A):
+    x,y=A.shape
+    mat=vtk.vtkMatrix4x4()
+    for i in range(x):
+      for j in range(y):
+        mat.SetElement(i,j,A[i,j])
+    return mat
+
+  def convertVTK44toNumpy(self, A):
+    a=np.ones((4,4))
+    for i in range(4):
+      for j in range(4):
+        a[i,j]=A.GetElement(i,j)
+    return a
+    
 class GPAWidget(ScriptedLoadableModuleWidget):
   """Uses ScriptedLoadableModuleWidget base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
@@ -234,32 +443,71 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     resampleAmount=self.resampleBox.value
     spacing=[resampleAmount,resampleAmount,resampleAmount]
     self.volumes=Monsters(self.grayscaleSelector,  self.FudSelect, spacing)
-    fud=self.logic.convertFudicialToNP(self.volumes.sourceLMNode) 
-    self.sampleSizeScaleFactor=(self.logic.dist2(fud)).max()
+    logic = GPALogic()
+    fud=logic.convertFudicialToNP(self.volumes.sourceLMNode) 
+    self.sampleSizeScaleFactor = logic.dist2(fud).max()
     self.transformedRenderingNode=None
     self.sourceRenderingNode=None
   
+  def updateList(self):
+    i,j,k=self.LM.lm.shape
+    self.PCList=[]
+    self.slider1.populateComboBox(self.PCList)
+    self.slider2.populateComboBox(self.PCList)
+    self.slider3.populateComboBox(self.PCList)
+    self.slider4.populateComboBox(self.PCList)
+    self.slider5.populateComboBox(self.PCList)
+    self.PCList.append('None')
+    self.LM.val=np.real(self.LM.val)
+    percentVar=self.LM.val/self.LM.val.sum()
+    #percentVar=np.real(percentVar)
+    self.vectorOne.clear()
+    self.vectorTwo.clear()
+    self.vectorThree.clear()
+    self.XcomboBox.clear()
+    self.YcomboBox.clear()
+
+    self.vectorOne.addItem('None')
+    self.vectorTwo.addItem('None')
+    self.vectorThree.addItem('None')
+    for x in range(10):
+      tmp="{:.1f}".format(percentVar[x]*100) 
+      string='PC '+str(x+1)+': '+str(tmp)+"%" +" var"
+      self.PCList.append(string)
+      self.XcomboBox.addItem(string)
+      self.YcomboBox.addItem(string)
+      self.vectorOne.addItem(string)
+      self.vectorTwo.addItem(string)
+      self.vectorThree.addItem(string)
+    self.slider1.populateComboBox(self.PCList)
+    self.slider2.populateComboBox(self.PCList)
+    self.slider3.populateComboBox(self.PCList)
+    self.slider4.populateComboBox(self.PCList)
+    self.slider5.populateComboBox(self.PCList)
   def onLoad(self):
+  
     logic = GPALogic()
     #logic.run(self.inputSelector.currentNode(), self.outputSelector.currentNode(), imageThreshold, enableScreenshotsFlag)
     self.LM=LMData()
-    lmToExclue=self.excludeLMText.text
-    if len(lmToExclue) != 0:
-      tmp=lmToExclue.split(",")
+    lmToExclude=self.excludeLMText.text
+    if len(lmToExclude) != 0:
+      tmp=lmToExclude.split(",")
       print len(tmp)
       tmp=[np.int(x) for x in tmp]
       lmNP=np.asarray(tmp)
     else:
       tmp=[]
-    self.LM.lmRaw, files= self.logic.mergeMatchs(self.LM_dir_name, tmp)
+    self.LM.lmRaw, files= logic.mergeMatchs(self.LM_dir_name, tmp)
     print self.LM.lmRaw.shape
     self.LM.doGpa()
     self.LM.calcEigen()
     self.updateList()
     self.LM.writeOutData(self.outputFolder, files)
-    print files
+    #print files
     filename=self.LM.closestSample(files)
     self.volumeRecText.setText(filename)
+    print("Closest to mean:")
+    print(filename)
     
   def plot(self):
     try:
@@ -271,7 +519,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       data=gpa_lib.plotTanProj(self.LM.lm,xValue,yValue)
 
       # plot it
-      self.logic.makeScatterPlot(data,'PC Plot',"PC"+str(xValue+1),"PC"+str(yValue+1))
+      logic.makeScatterPlot(data,'PC Plot',"PC"+str(xValue+1),"PC"+str(yValue+1))
 
     except AttributeError:
       qt.QMessageBox.critical(
@@ -284,7 +532,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     pb3=self.vectorThree.currentIndex
 
     pcList=[pb1,pb2,pb3]
-    self.logic.lollipopGraph(self.LM, self.volumes, pcList, self.sampleSizeScaleFactor)    
+    logic = GPALogic()
+    logic.lollipopGraph(self.LM, self.volumes, pcList, self.sampleSizeScaleFactor)    
   def reset(self):
     # delete the two data objects
 
@@ -642,16 +891,16 @@ class GPALogic(ScriptedLoadableModuleLogic):
     # initial data array
     dirs, files=self.walk_dir(topDir)
     matchList, noMatch=self.createMatchList(topDir, "fcsv")
-    landmarks=self.initDataArray(dirs,files[0],len(noMatch))
+    landmarks=self.initDataArray(dirs,files[0],len(matchList))
     matchedfiles=[]
-    for i in range(len(noMatch)):
-      tmp1=self.importLandMarks(noMatch[i]+".fcsv")
+    for i in range(len(matchList)):
+      tmp1=self.importLandMarks(matchList[i]+".fcsv")
       landmarks[:,:,i]=tmp1
-      matchedfiles.append(os.path.basename(noMatch[i][0]))
+      matchedfiles.append(os.path.basename(matchList[i][0]))
     j=len(lmToRemove)
     for i in range(j):
       landmarks=np.delete(landmarks,(np.int(lmToRemove[i])-1),axis=0)
-    return landmarks, noMatch
+    return landmarks, matchList
    
   def createMatchList(self, topDir,suffix):
     l=[]
@@ -677,7 +926,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
      if items not in matches:
        noMatchs.append(items)
 
-    return matchList, noMatchs
+    return matches, noMatchs
   def importLandMarks(self, filePath):
     """Imports the landmarks from a .fcsv file. Does not import sample if a  landmark is -1000
     Adjusts the resolution is log(nhrd) file is found returns kXd array of landmark data. k=# of landmarks d=dimension
