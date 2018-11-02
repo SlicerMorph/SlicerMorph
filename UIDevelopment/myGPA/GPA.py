@@ -653,10 +653,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.resampleBox.setValue(1)
     self.resampleBox.setToolTip("The warped volume created will be a resample version of the original violume.  Increase for faster performance")
 
-
     volumeLayout.addWidget(self.resampleBox,4,2)
     
-
     selectorButton = qt.QPushButton("Select")
     selectorButton.checkable = True
     selectorButton.setStyleSheet(self.StyleSheet)
@@ -896,11 +894,11 @@ class GPALogic(ScriptedLoadableModuleLogic):
     for i in range(len(matchList)):
       tmp1=self.importLandMarks(matchList[i]+".fcsv")
       landmarks[:,:,i]=tmp1
-      matchedfiles.append(os.path.basename(matchList[i][0]))
+      matchedfiles.append(os.path.basename(matchList[i]))
     j=len(lmToRemove)
     for i in range(j):
-      landmarks=np.delete(landmarks,(np.int(lmToRemove[i])-1),axis=0)
-    return landmarks, matchList
+      landmarks=np.delete(landmarks,(np.int(lmToRemove[i])-1),axis=0)    
+    return landmarks, matchedfiles
    
   def createMatchList(self, topDir,suffix):
     l=[]
