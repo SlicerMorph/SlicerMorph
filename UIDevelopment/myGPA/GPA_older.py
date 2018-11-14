@@ -208,8 +208,7 @@ class Monsters:
     volumeLogic=slicer.vtkSlicerVolumesLogic()
     self.sourceVolume=volumeSelector.currentNode()
     self.sourceTransID=self.sourceVolume.GetTransformNodeID()
-    
-    
+
     self.tranformedVolume=slicer.util.getFirstNodeByName('Transformed_Volume')
     if self.tranformedVolume is None:
       self.tranformedVolume=slicer.vtkMRMLScalarVolumeNode()
@@ -255,14 +254,6 @@ class Monsters:
     self.sourceLMNode=LMSelector.currentNode()
     self.sourceLMnumpy=self.convertFudicialToNP(self.sourceLMNode)
 
-  def warpMesh(self, targetLMShift, sourceLM,tpsNode):
-    target=sourceLM+targetLMShift
-    targetLMVTK=self.convertNumpyToVTK(target)
-    sourceLMVTK=self.convertNumpyToVTK(sourceLM)
-    self.tps=self.createTPS(sourceLMVTK,targetLMVTK)
-    self.tps.Update()
-    self.resliceThroughTransform(  self.resampledSourceVolume,self.sourceVolume , self.tps ,  self.tranformedVolume)
-    
   def warpVolumes(self, targetLMShift, sourceLM,tpsNode):
     target=sourceLM+targetLMShift
     targetLMVTK=self.convertNumpyToVTK(target)
@@ -708,6 +699,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     self.layout.addWidget(vis)
 
+        
     #Apply Button 
     applyButton = qt.QPushButton("Apply")
     applyButton.checkable = True
