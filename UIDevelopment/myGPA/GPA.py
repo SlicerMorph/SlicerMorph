@@ -202,215 +202,215 @@ class LMData:
     tmp[:,2]=self.vec[2*i:3*i,pc]
     return LM+tmp*scaleFactor/3.0
 
-class Monsters:
-  def __init__(self,volumeSelector,LMSelector, spacing):
-    print spacing
-    volumeLogic=slicer.vtkSlicerVolumesLogic()
-    self.sourceVolume=volumeSelector.currentNode()
-    self.sourceTransID=self.sourceVolume.GetTransformNodeID()
+#class Monsters:
+#  def __init__(self,volumeSelector,LMSelector, spacing):
+#    print spacing
+#    volumeLogic=slicer.vtkSlicerVolumesLogic()
+#    self.sourceVolume=volumeSelector.currentNode()
+#    self.sourceTransID=self.sourceVolume.GetTransformNodeID()
+#
+#    self.tranformedVolume=slicer.util.getFirstNodeByName('Transformed_Volume')
+#    if self.tranformedVolume is None:
+#      self.tranformedVolume=slicer.vtkMRMLScalarVolumeNode()
+#      self.tranformedVolume.SetName("Transformed_Volume")
+#      colornode2=slicer.vtkMRMLColorTableNode()
+#      colornode2.SetTypeToGrey()
+#      slicer.mrmlScene.AddNode(colornode2)
+#      transDispNode=slicer.vtkMRMLScalarVolumeDisplayNode()
+#      slicer.mrmlScene.AddNode(transDispNode)
+#      transDispNode.SetAndObserveColorNodeID(colornode2.GetID())
+#      slicer.mrmlScene.AddNode(self.tranformedVolume)
+#      self.tranformedVolume.SetAndObserveDisplayNodeID(transDispNode.GetID())
+#      self.tranformedVolume.SetAndObserveTransformNodeID(self.sourceTransID)
+#
+#    self.resampledSourceVolume=slicer.util.getFirstNodeByName('Resampled_Source')
+#    if self.resampledSourceVolume is None:
+#      self.resampledSourceVolume=slicer.vtkMRMLScalarVolumeNode()
+#      self.resampledSourceVolume.SetName("Resampled_Source")
+#      slicer.mrmlScene.AddNode(self.resampledSourceVolume)
+#      resampledDispNode=slicer.vtkMRMLScalarVolumeDisplayNode()
+#      slicer.mrmlScene.AddNode(resampledDispNode)
+#      colornode=slicer.vtkMRMLColorTableNode()
+#      colornode.SetTypeToGrey()
+#      slicer.mrmlScene.AddNode(colornode)
+#      resampledDispNode.SetAndObserveColorNodeID(colornode.GetID())
+#      self.resampledSourceVolume.SetAndObserveDisplayNodeID(resampledDispNode.GetID())
+#      if spacing[0] != 1:
+#        self.resampleVolume(self.sourceVolume, self.resampledSourceVolume, spacing)
+#      if spacing[0] ==1:
+#        self.resampledSourceVolume.SetAndObserveImageData(self.sourceVolume.GetImageData())
+#      self.resampledSourceVolume.SetAndObserveTransformNodeID(self.sourceTransID)
+#      self.resampledSourceVolume.SetOrigin(self.sourceVolume.GetOrigin())
+#
+#    self.transformNode=slicer.util.getFirstNodeByName("TPS_transform")
+#    if self.transformNode is None:
+#      self.transformNode=slicer.vtkMRMLTransformNode()
+#      self.transformNode.SetName("TPS_transform")
+#      slicer.mrmlScene.AddNode(self.transformNode)
+#
+#    self.tpsNode=0
+#    self.targetVolume=0
+#    self.tps=0
+#    self.sourceLMNode=LMSelector.currentNode()
+#    self.sourceLMnumpy=self.convertFudicialToNP(self.sourceLMNode)
+#
+#  def warpVolumes(self, targetLMShift, sourceLM,tpsNode):
+#    target=sourceLM+targetLMShift
+#    targetLMVTK=self.convertNumpyToVTK(target)
+#    sourceLMVTK=self.convertNumpyToVTK(sourceLM)
+#    self.tps=self.createTPS(sourceLMVTK,targetLMVTK)
+#    self.tps.Update()
+#    self.resliceThroughTransform(  self.resampledSourceVolume,self.sourceVolume , self.tps ,  self.tranformedVolume)
+#
+#  def returnLMNP(self):
+#    sourceLMNP=self.convertFudicialToNP(self.sourceLMNode)
+#    return sourceLMNP
+#
+#  def matchVolumeProp(self):
+#    self.tranformedVolume.SetSpacing(self.sourceVolume.GetSpacing())
+#    return
+#
+#  def resampleVolume(self, inputVolume, outputVolume, spacing):
+#    inputIJKToRASMatrix = vtk.vtkMatrix4x4()
+#    inputVolume.GetIJKToRASMatrix(inputIJKToRASMatrix)
+#    resliceTransform = vtk.vtkTransform()
+#    resliceTransform.Identity()
+# 
+#    extent=inputVolume.GetImageData().GetWholeExtent()
+#    extent=list(extent)
+#    extent[1]=extent[1]/spacing[0]
+#    extent[3]=extent[3]/spacing[1]
+#    extent[5]=extent[5]/spacing[2]
+# 
+#    reslice = vtk.vtkImageReslice()
+#    reslice.SetInput(inputVolume.GetImageData())
+#    reslice.SetResliceTransform(resliceTransform)
+#    reslice.SetInterpolationModeToNearestNeighbor()
+#    reslice.AutoCropOutputOff()
+#    reslice.SetOutputExtent(extent)
+#    reslice.SetOutputSpacing(spacing)
+#    reslice.Update()
+#    
+#    outputIJKToRASMatrix = vtk.vtkMatrix4x4()
+#    inputVolume.GetIJKToRASMatrix(outputIJKToRASMatrix)
+# 
+#    changeInformation = vtk.vtkImageChangeInformation()
+#    changeInformation.SetInput(reslice.GetOutput())
+#    changeInformation.SetOutputOrigin(inputVolume.GetOrigin())
+#    changeInformation.SetOutputSpacing(spacing)
+#    changeInformation.Update()
+#    outputVolume.SetAndObserveImageData(changeInformation.GetOutput())
+#    outputVolume.SetIJKToRASMatrix(outputIJKToRASMatrix)
+# 
+#    inputSpacing=inputVolume.GetSpacing()
+#    outputVolume.SetSpacing(inputSpacing)
+#    transID=inputVolume.GetTransformNodeID()
+#    outputVolume.SetAndObserveTransformNodeID(transID)
+#    outputVolume.Modified()
+# 
+#    return
+#
+#  def resliceThroughTransform(self, sourceNode,refNode, transform, targetNode):
+#    """
+#    Fills the targetNode's vtkImageData with the source after
+#    applying the transform. Uses spacing from referenceNode. Ignores any vtkMRMLTransforms.
+#    sourceNode, referenceNode, targetNode: vtkMRMLScalarVolumeNodes
+#    transform: vtkAbstractTransform
+#    """
+#    # get the transform from RAS back to source pixel space
+#    sourceRASToIJK = vtk.vtkMatrix4x4()
+#    sourceNode.GetRASToIJKMatrix(sourceRASToIJK)
+#
+#    # get the transform from target image space to RAS
+#    referenceIJKToRAS = vtk.vtkMatrix4x4()
+#    sourceNode.GetIJKToRASMatrix(referenceIJKToRAS)
+#
+#    # this is the ijkToRAS concatenated with the passed in (abstract)transform
+#    resliceTransform = vtk.vtkGeneralTransform()
+#    resliceTransform.Concatenate(sourceRASToIJK)
+#    resliceTransform.Concatenate(transform)
+#    resliceTransform.Concatenate(referenceIJKToRAS)
+#
+#    # use the matrix to extract the volume and convert it to an array
+#    reslice = vtk.vtkImageReslice()
+#    reslice.SetInterpolationModeToLinear()
+#    reslice.InterpolateOn()
+#    reslice.SetResliceTransform(resliceTransform)
+#    if vtk.VTK_MAJOR_VERSION <= 5:
+#      reslice.SetInput( sourceNode.GetImageData() )
+#    else:
+#      reslice.SetInputConnection( sourceNode.GetImageDataConnection() )
+#
+#    dimensions = refNode.GetImageData().GetDimensions()
+#    reslice.SetOutputExtent(0, dimensions[0]-1, 0, dimensions[1]-1, 0, dimensions[2]-1)
+#    reslice.SetOutputOrigin((0,0,0))
+#    reslice.SetOutputSpacing(1,1,1)
+#
+#    reslice.UpdateWholeExtent()
+#    targetNode.SetAndObserveImageData(reslice.GetOutput())
+#    return
+#
+#  def createTPS(self, sourceLM, targetLM):
+#    """Perform the thin plate transform using the vtkThinPlateSplineTransform class"""
+#    thinPlateTransform = vtk.vtkThinPlateSplineTransform()
+#    thinPlateTransform.SetBasisToR() # for 3D transform
+#
+#    thinPlateTransform.SetSourceLandmarks(sourceLM)
+#    thinPlateTransform.SetTargetLandmarks(targetLM)
+#    thinPlateTransform.Update()
+#    self.transformNode.SetAndObserveTransformToParent(thinPlateTransform)
+#
+#    return thinPlateTransform
+#
+#  def convertFudicialToVTKPoint(self, fnode):
+#    import numpy as np
+#    numberOfLM=fnode.GetNumberOfFiducials()
+#    x=y=z=0
+#    loc=[x,y,z]
+#    lmData=np.zeros((numberOfLM,3))
+#    # 
+#    for i in range(numberOfLM):
+#      fnode.GetNthFiducialPosition(i,loc)
+#      lmData[i,:]=np.asarray(loc)
+#    points=vtk.vtkPoints()
+#    for i in range(numberOfLM):
+#      points.InsertNextPoint(lmData[i,0], lmData[i,1], lmData[i,2]) 
+#    return points
+#
+#  def convertFudicialToNP(self, fnode):
+#    import numpy as np
+#    numberOfLM=fnode.GetNumberOfFiducials()
+#    x=y=z=0
+#    loc=[x,y,z]
+#    lmData=np.zeros((numberOfLM,3))
+#    # 
+#    for i in range(numberOfLM):
+#      fnode.GetNthFiducialPosition(i,loc)
+#      lmData[i,:]=np.asarray(loc)
+#    return lmData
+#
+#  def convertNumpyToVTK(self, A):
+#    x,y=A.shape
+#    points=vtk.vtkPoints()
+#    for i in range(x):
+#      points.InsertNextPoint(A[i,0], A[i,1], A[i,2])
+#    return points
+#
+#  def convertNumpyToVTKmatrix44(self, A):
+#    x,y=A.shape
+#    mat=vtk.vtkMatrix4x4()
+#    for i in range(x):
+#      for j in range(y):
+#        mat.SetElement(i,j,A[i,j])
+#    return mat
+#
+#  def convertVTK44toNumpy(self, A):
+#    a=np.ones((4,4))
+#    for i in range(4):
+#      for j in range(4):
+#        a[i,j]=A.GetElement(i,j)
+#    return a
 
-    self.tranformedVolume=slicer.util.getFirstNodeByName('Transformed_Volume')
-    if self.tranformedVolume is None:
-      self.tranformedVolume=slicer.vtkMRMLScalarVolumeNode()
-      self.tranformedVolume.SetName("Transformed_Volume")
-      colornode2=slicer.vtkMRMLColorTableNode()
-      colornode2.SetTypeToGrey()
-      slicer.mrmlScene.AddNode(colornode2)
-      transDispNode=slicer.vtkMRMLScalarVolumeDisplayNode()
-      slicer.mrmlScene.AddNode(transDispNode)
-      transDispNode.SetAndObserveColorNodeID(colornode2.GetID())
-      slicer.mrmlScene.AddNode(self.tranformedVolume)
-      self.tranformedVolume.SetAndObserveDisplayNodeID(transDispNode.GetID())
-      self.tranformedVolume.SetAndObserveTransformNodeID(self.sourceTransID)
-
-    self.resampledSourceVolume=slicer.util.getFirstNodeByName('Resampled_Source')
-    if self.resampledSourceVolume is None:
-      self.resampledSourceVolume=slicer.vtkMRMLScalarVolumeNode()
-      self.resampledSourceVolume.SetName("Resampled_Source")
-      slicer.mrmlScene.AddNode(self.resampledSourceVolume)
-      resampledDispNode=slicer.vtkMRMLScalarVolumeDisplayNode()
-      slicer.mrmlScene.AddNode(resampledDispNode)
-      colornode=slicer.vtkMRMLColorTableNode()
-      colornode.SetTypeToGrey()
-      slicer.mrmlScene.AddNode(colornode)
-      resampledDispNode.SetAndObserveColorNodeID(colornode.GetID())
-      self.resampledSourceVolume.SetAndObserveDisplayNodeID(resampledDispNode.GetID())
-      if spacing[0] != 1:
-        self.resampleVolume(self.sourceVolume, self.resampledSourceVolume, spacing)
-      if spacing[0] ==1:
-        self.resampledSourceVolume.SetAndObserveImageData(self.sourceVolume.GetImageData())
-      self.resampledSourceVolume.SetAndObserveTransformNodeID(self.sourceTransID)
-      self.resampledSourceVolume.SetOrigin(self.sourceVolume.GetOrigin())
-
-    self.transformNode=slicer.util.getFirstNodeByName("TPS_transform")
-    if self.transformNode is None:
-      self.transformNode=slicer.vtkMRMLTransformNode()
-      self.transformNode.SetName("TPS_transform")
-      slicer.mrmlScene.AddNode(self.transformNode)
-
-    self.tpsNode=0
-    self.targetVolume=0
-    self.tps=0
-    self.sourceLMNode=LMSelector.currentNode()
-    self.sourceLMnumpy=self.convertFudicialToNP(self.sourceLMNode)
-
-  def warpVolumes(self, targetLMShift, sourceLM,tpsNode):
-    target=sourceLM+targetLMShift
-    targetLMVTK=self.convertNumpyToVTK(target)
-    sourceLMVTK=self.convertNumpyToVTK(sourceLM)
-    self.tps=self.createTPS(sourceLMVTK,targetLMVTK)
-    self.tps.Update()
-    self.resliceThroughTransform(  self.resampledSourceVolume,self.sourceVolume , self.tps ,  self.tranformedVolume)
-
-  def returnLMNP(self):
-    sourceLMNP=self.convertFudicialToNP(self.sourceLMNode)
-    return sourceLMNP
-
-  def matchVolumeProp(self):
-    self.tranformedVolume.SetSpacing(self.sourceVolume.GetSpacing())
-    return
-
-  def resampleVolume(self, inputVolume, outputVolume, spacing):
-    inputIJKToRASMatrix = vtk.vtkMatrix4x4()
-    inputVolume.GetIJKToRASMatrix(inputIJKToRASMatrix)
-    resliceTransform = vtk.vtkTransform()
-    resliceTransform.Identity()
- 
-    extent=inputVolume.GetImageData().GetWholeExtent()
-    extent=list(extent)
-    extent[1]=extent[1]/spacing[0]
-    extent[3]=extent[3]/spacing[1]
-    extent[5]=extent[5]/spacing[2]
- 
-    reslice = vtk.vtkImageReslice()
-    reslice.SetInput(inputVolume.GetImageData())
-    reslice.SetResliceTransform(resliceTransform)
-    reslice.SetInterpolationModeToNearestNeighbor()
-    reslice.AutoCropOutputOff()
-    reslice.SetOutputExtent(extent)
-    reslice.SetOutputSpacing(spacing)
-    reslice.Update()
-    
-    outputIJKToRASMatrix = vtk.vtkMatrix4x4()
-    inputVolume.GetIJKToRASMatrix(outputIJKToRASMatrix)
- 
-    changeInformation = vtk.vtkImageChangeInformation()
-    changeInformation.SetInput(reslice.GetOutput())
-    changeInformation.SetOutputOrigin(inputVolume.GetOrigin())
-    changeInformation.SetOutputSpacing(spacing)
-    changeInformation.Update()
-    outputVolume.SetAndObserveImageData(changeInformation.GetOutput())
-    outputVolume.SetIJKToRASMatrix(outputIJKToRASMatrix)
- 
-    inputSpacing=inputVolume.GetSpacing()
-    outputVolume.SetSpacing(inputSpacing)
-    transID=inputVolume.GetTransformNodeID()
-    outputVolume.SetAndObserveTransformNodeID(transID)
-    outputVolume.Modified()
- 
-    return
-
-  def resliceThroughTransform(self, sourceNode,refNode, transform, targetNode):
-    """
-    Fills the targetNode's vtkImageData with the source after
-    applying the transform. Uses spacing from referenceNode. Ignores any vtkMRMLTransforms.
-    sourceNode, referenceNode, targetNode: vtkMRMLScalarVolumeNodes
-    transform: vtkAbstractTransform
-    """
-    # get the transform from RAS back to source pixel space
-    sourceRASToIJK = vtk.vtkMatrix4x4()
-    sourceNode.GetRASToIJKMatrix(sourceRASToIJK)
-
-    # get the transform from target image space to RAS
-    referenceIJKToRAS = vtk.vtkMatrix4x4()
-    sourceNode.GetIJKToRASMatrix(referenceIJKToRAS)
-
-    # this is the ijkToRAS concatenated with the passed in (abstract)transform
-    resliceTransform = vtk.vtkGeneralTransform()
-    resliceTransform.Concatenate(sourceRASToIJK)
-    resliceTransform.Concatenate(transform)
-    resliceTransform.Concatenate(referenceIJKToRAS)
-
-    # use the matrix to extract the volume and convert it to an array
-    reslice = vtk.vtkImageReslice()
-    reslice.SetInterpolationModeToLinear()
-    reslice.InterpolateOn()
-    reslice.SetResliceTransform(resliceTransform)
-    if vtk.VTK_MAJOR_VERSION <= 5:
-      reslice.SetInput( sourceNode.GetImageData() )
-    else:
-      reslice.SetInputConnection( sourceNode.GetImageDataConnection() )
-
-    dimensions = refNode.GetImageData().GetDimensions()
-    reslice.SetOutputExtent(0, dimensions[0]-1, 0, dimensions[1]-1, 0, dimensions[2]-1)
-    reslice.SetOutputOrigin((0,0,0))
-    reslice.SetOutputSpacing(1,1,1)
-
-    reslice.UpdateWholeExtent()
-    targetNode.SetAndObserveImageData(reslice.GetOutput())
-    return
-
-  def createTPS(self, sourceLM, targetLM):
-    """Perform the thin plate transform using the vtkThinPlateSplineTransform class"""
-    thinPlateTransform = vtk.vtkThinPlateSplineTransform()
-    thinPlateTransform.SetBasisToR() # for 3D transform
-
-    thinPlateTransform.SetSourceLandmarks(sourceLM)
-    thinPlateTransform.SetTargetLandmarks(targetLM)
-    thinPlateTransform.Update()
-    self.transformNode.SetAndObserveTransformToParent(thinPlateTransform)
-
-    return thinPlateTransform
-
-  def convertFudicialToVTKPoint(self, fnode):
-    import numpy as np
-    numberOfLM=fnode.GetNumberOfFiducials()
-    x=y=z=0
-    loc=[x,y,z]
-    lmData=np.zeros((numberOfLM,3))
-    # 
-    for i in range(numberOfLM):
-      fnode.GetNthFiducialPosition(i,loc)
-      lmData[i,:]=np.asarray(loc)
-    points=vtk.vtkPoints()
-    for i in range(numberOfLM):
-      points.InsertNextPoint(lmData[i,0], lmData[i,1], lmData[i,2]) 
-    return points
-
-  def convertFudicialToNP(self, fnode):
-    import numpy as np
-    numberOfLM=fnode.GetNumberOfFiducials()
-    x=y=z=0
-    loc=[x,y,z]
-    lmData=np.zeros((numberOfLM,3))
-    # 
-    for i in range(numberOfLM):
-      fnode.GetNthFiducialPosition(i,loc)
-      lmData[i,:]=np.asarray(loc)
-    return lmData
-
-  def convertNumpyToVTK(self, A):
-    x,y=A.shape
-    points=vtk.vtkPoints()
-    for i in range(x):
-      points.InsertNextPoint(A[i,0], A[i,1], A[i,2])
-    return points
-
-  def convertNumpyToVTKmatrix44(self, A):
-    x,y=A.shape
-    mat=vtk.vtkMatrix4x4()
-    for i in range(x):
-      for j in range(y):
-        mat.SetElement(i,j,A[i,j])
-    return mat
-
-  def convertVTK44toNumpy(self, A):
-    a=np.ones((4,4))
-    for i in range(4):
-      for j in range(4):
-        a[i,j]=A.GetElement(i,j)
-    return a
-    
 class GPAWidget(ScriptedLoadableModuleWidget):
   """Uses ScriptedLoadableModuleWidget base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
