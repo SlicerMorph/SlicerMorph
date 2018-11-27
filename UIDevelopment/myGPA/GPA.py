@@ -291,6 +291,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     print(filename)
     
   def plot(self):
+    logic = GPALogic()
     try:
       # get values from boxs
       xValue=self.XcomboBox.currentIndex
@@ -298,6 +299,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
       # get data to plot
       data=gpa_lib.plotTanProj(self.LM.lm,xValue,yValue)
+      print(data)
 
       # plot it
       logic.makeScatterPlot(data,'PC Plot',"PC"+str(xValue+1),"PC"+str(yValue+1))
