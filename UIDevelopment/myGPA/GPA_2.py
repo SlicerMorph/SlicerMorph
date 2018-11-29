@@ -3,8 +3,6 @@ import unittest
 import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
 import logging
-import math
-
 
 import re
 import csv
@@ -204,6 +202,224 @@ class LMData:
     tmp[:,2]=self.vec[2*i:3*i,pc]
     return LM+tmp*scaleFactor/3.0
 
+class Monsters:
+  def __init__(self,volumeSelector,LMSelector, spacing):
+    print spacing
+    volumeLogic=slicer.vtkSlicerVolumesLogic()
+    self.sourceVolume=volumeSelector.currentNode()
+    self.sourceTransID=self.sourceVolume.GetTransformNodeID()
+    
+    
+    self.tranformedVolume=slicer.util.getFirstNodeByName('Transformed_Volume')
+    if self.tranformedVolume is None:
+      self.tranformedVolume=slicer.vtkMRMLScalarVolumeNode()
+      self.tranformedVolume.SetName("Transformed_Volume")
+      colornode2=slicer.vtkMRMLColorTableNode()
+      colornode2.SetTypeToGrey()
+      slicer.mrmlScene.AddNode(colornode2)
+      transDispNode=slicer.vtkMRMLScalarVolumeDisplayNode()
+      slicer.mrmlScene.AddNode(transDispNode)
+      transDispNode.SetAndObserveColorNodeID(colornode2.GetID())
+      slicer.mrmlScene.AddNode(self.tranformedVolume)
+      self.tranformedVolume.SetAndObserveDisplayNodeID(transDispNode.GetID())
+      self.tranformedVolume.SetAndObserveTransformNodeID(self.sourceTransID)
+
+    self.resampledSourceVolume=slicer.util.getFirstNodeByName('Resampled_Source')
+    if self.resampledSourceVolume is None:
+      self.resampledSourceVolume=slicer.vtkMRMLScalarVolumeNode()
+      self.resampledSourceVolume.SetName("Resampled_Source")
+      slicer.mrmlScene.AddNode(self.resampledSourceVolume)
+      resampledDispNode=slicer.vtkMRMLScalarVolumeDisplayNode()
+      slicer.mrmlScene.AddNode(resampledDispNode)
+      colornode=slicer.vtkMRMLColorTableNode()
+      colornode.SetTypeToGrey()
+      slicer.mrmlScene.AddNode(colornode)
+      resampledDispNode.SetAndObserveColorNodeID(colornode.GetID())
+      self.resampledSourceVolume.SetAndObserveDisplayNodeID(resampledDispNode.GetID())
+      if spacing[0] != 1:
+        self.resampleVolume(self.sourceVolume, self.resampledSourceVolume, spacing)
+      if spacing[0] ==1:
+        self.resampledSourceVolume.SetAndObserveImageData(self.sourceVolume.GetImageData())
+      self.resampledSourceVolume.SetAndObserveTransformNodeID(self.sourceTransID)
+      self.resampledSourceVolume.SetOrigin(self.sourceVolume.GetOrigin())
+
+    self.transformNode=slicer.util.getFirstNodeByName("TPS_transform")
+    if self.transformNode is None:
+      self.transformNode=slicer.vtkMRMLTransformNode()
+      self.transformNode.SetName("TPS_transform")
+      slicer.mrmlScene.AddNode(self.transformNode)
+
+    self.tpsNode=0
+    self.targetVolume=0
+    self.tps=0
+    self.sourceLMNode=LMSelector.currentNode()
+    self.sourceLMnumpy=self.convertFudicialToNP(self.sourceLMNode)
+
+  def warpMesh(self, targetLMShift, sourceLM,tpsNode):
+    target=sourceLM+targetLMShift
+    targetLMVTK=self.convertNumpyToVTK(target)
+    sourceLMVTK=self.convertNumpyToVTK(sourceLM)
+    self.tps=self.createTPS(sourceLMVTK,targetLMVTK)
+    self.tps.Update()
+    self.resliceThroughTransform(  self.resampledSourceVolume,self.sourceVolume , self.tps ,  self.tranformedVolume)
+    
+  def warpVolumes(self, targetLMShift, sourceLM,tpsNode):
+    target=sourceLM+targetLMShift
+    targetLMVTK=self.convertNumpyToVTK(target)
+    sourceLMVTK=self.convertNumpyToVTK(sourceLM)
+    self.tps=self.createTPS(sourceLMVTK,targetLMVTK)
+    self.tps.Update()
+    self.resliceThroughTransform(  self.resampledSourceVolume,self.sourceVolume , self.tps ,  self.tranformedVolume)
+
+  def returnLMNP(self):
+    sourceLMNP=self.convertFudicialToNP(self.sourceLMNode)
+    return sourceLMNP
+
+  def matchVolumeProp(self):
+    self.tranformedVolume.SetSpacing(self.sourceVolume.GetSpacing())
+    return
+
+  def resampleVolume(self, inputVolume, outputVolume, spacing):
+    inputIJKToRASMatrix = vtk.vtkMatrix4x4()
+    inputVolume.GetIJKToRASMatrix(inputIJKToRASMatrix)
+    resliceTransform = vtk.vtkTransform()
+    resliceTransform.Identity()
+ 
+    extent=inputVolume.GetImageData().GetWholeExtent()
+    extent=list(extent)
+    extent[1]=extent[1]/spacing[0]
+    extent[3]=extent[3]/spacing[1]
+    extent[5]=extent[5]/spacing[2]
+ 
+    reslice = vtk.vtkImageReslice()
+    reslice.SetInput(inputVolume.GetImageData())
+    reslice.SetResliceTransform(resliceTransform)
+    reslice.SetInterpolationModeToNearestNeighbor()
+    reslice.AutoCropOutputOff()
+    reslice.SetOutputExtent(extent)
+    reslice.SetOutputSpacing(spacing)
+    reslice.Update()
+    
+    outputIJKToRASMatrix = vtk.vtkMatrix4x4()
+    inputVolume.GetIJKToRASMatrix(outputIJKToRASMatrix)
+ 
+    changeInformation = vtk.vtkImageChangeInformation()
+    changeInformation.SetInput(reslice.GetOutput())
+    changeInformation.SetOutputOrigin(inputVolume.GetOrigin())
+    changeInformation.SetOutputSpacing(spacing)
+    changeInformation.Update()
+    outputVolume.SetAndObserveImageData(changeInformation.GetOutput())
+    outputVolume.SetIJKToRASMatrix(outputIJKToRASMatrix)
+ 
+    inputSpacing=inputVolume.GetSpacing()
+    outputVolume.SetSpacing(inputSpacing)
+    transID=inputVolume.GetTransformNodeID()
+    outputVolume.SetAndObserveTransformNodeID(transID)
+    outputVolume.Modified()
+ 
+    return
+
+  def resliceThroughTransform(self, sourceNode,refNode, transform, targetNode):
+    """
+    Fills the targetNode's vtkImageData with the source after
+    applying the transform. Uses spacing from referenceNode. Ignores any vtkMRMLTransforms.
+    sourceNode, referenceNode, targetNode: vtkMRMLScalarVolumeNodes
+    transform: vtkAbstractTransform
+    """
+    # get the transform from RAS back to source pixel space
+    sourceRASToIJK = vtk.vtkMatrix4x4()
+    sourceNode.GetRASToIJKMatrix(sourceRASToIJK)
+
+    # get the transform from target image space to RAS
+    referenceIJKToRAS = vtk.vtkMatrix4x4()
+    sourceNode.GetIJKToRASMatrix(referenceIJKToRAS)
+
+    # this is the ijkToRAS concatenated with the passed in (abstract)transform
+    resliceTransform = vtk.vtkGeneralTransform()
+    resliceTransform.Concatenate(sourceRASToIJK)
+    resliceTransform.Concatenate(transform)
+    resliceTransform.Concatenate(referenceIJKToRAS)
+
+    # use the matrix to extract the volume and convert it to an array
+    reslice = vtk.vtkImageReslice()
+    reslice.SetInterpolationModeToLinear()
+    reslice.InterpolateOn()
+    reslice.SetResliceTransform(resliceTransform)
+    if vtk.VTK_MAJOR_VERSION <= 5:
+      reslice.SetInput( sourceNode.GetImageData() )
+    else:
+      reslice.SetInputConnection( sourceNode.GetImageDataConnection() )
+
+    dimensions = refNode.GetImageData().GetDimensions()
+    reslice.SetOutputExtent(0, dimensions[0]-1, 0, dimensions[1]-1, 0, dimensions[2]-1)
+    reslice.SetOutputOrigin((0,0,0))
+    reslice.SetOutputSpacing(1,1,1)
+
+    reslice.UpdateWholeExtent()
+    targetNode.SetAndObserveImageData(reslice.GetOutput())
+    return
+
+  def createTPS(self, sourceLM, targetLM):
+    """Perform the thin plate transform using the vtkThinPlateSplineTransform class"""
+    thinPlateTransform = vtk.vtkThinPlateSplineTransform()
+    thinPlateTransform.SetBasisToR() # for 3D transform
+
+    thinPlateTransform.SetSourceLandmarks(sourceLM)
+    thinPlateTransform.SetTargetLandmarks(targetLM)
+    thinPlateTransform.Update()
+    self.transformNode.SetAndObserveTransformToParent(thinPlateTransform)
+
+    return thinPlateTransform
+
+  def convertFudicialToVTKPoint(self, fnode):
+    import numpy as np
+    numberOfLM=fnode.GetNumberOfFiducials()
+    x=y=z=0
+    loc=[x,y,z]
+    lmData=np.zeros((numberOfLM,3))
+    # 
+    for i in range(numberOfLM):
+      fnode.GetNthFiducialPosition(i,loc)
+      lmData[i,:]=np.asarray(loc)
+    points=vtk.vtkPoints()
+    for i in range(numberOfLM):
+      points.InsertNextPoint(lmData[i,0], lmData[i,1], lmData[i,2]) 
+    return points
+
+  def convertFudicialToNP(self, fnode):
+    import numpy as np
+    numberOfLM=fnode.GetNumberOfFiducials()
+    x=y=z=0
+    loc=[x,y,z]
+    lmData=np.zeros((numberOfLM,3))
+    # 
+    for i in range(numberOfLM):
+      fnode.GetNthFiducialPosition(i,loc)
+      lmData[i,:]=np.asarray(loc)
+    return lmData
+
+  def convertNumpyToVTK(self, A):
+    x,y=A.shape
+    points=vtk.vtkPoints()
+    for i in range(x):
+      points.InsertNextPoint(A[i,0], A[i,1], A[i,2])
+    return points
+
+  def convertNumpyToVTKmatrix44(self, A):
+    x,y=A.shape
+    mat=vtk.vtkMatrix4x4()
+    for i in range(x):
+      for j in range(y):
+        mat.SetElement(i,j,A[i,j])
+    return mat
+
+  def convertVTK44toNumpy(self, A):
+    a=np.ones((4,4))
+    for i in range(4):
+      for j in range(4):
+        a[i,j]=A.GetElement(i,j)
+    return a
+    
 class GPAWidget(ScriptedLoadableModuleWidget):
   """Uses ScriptedLoadableModuleWidget base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
@@ -232,6 +448,16 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.outputFolder=qt.QFileDialog().getExistingDirectory()
     self.outText.setText(self.outputFolder)
 
+  def SelectVolumes(self):
+    resampleAmount=self.resampleBox.value
+    spacing=[resampleAmount,resampleAmount,resampleAmount]
+    self.volumes=Monsters(self.grayscaleSelector,  self.FudSelect, spacing)
+    logic = GPALogic()
+    fud=logic.convertFudicialToNP(self.volumes.sourceLMNode) 
+    self.sampleSizeScaleFactor = logic.dist2(fud).max()
+    self.transformedRenderingNode=None
+    self.sourceRenderingNode=None
+  
   def updateList(self):
     i,j,k=self.LM.lm.shape
     self.PCList=[]
@@ -293,7 +519,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     print(filename)
     
   def plot(self):
-    logic = GPALogic()
     try:
       # get values from boxs
       xValue=self.XcomboBox.currentIndex
@@ -301,7 +526,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
       # get data to plot
       data=gpa_lib.plotTanProj(self.LM.lm,xValue,yValue)
-      #print(data)
 
       # plot it
       logic.makeScatterPlot(data,'PC Plot',"PC"+str(xValue+1),"PC"+str(yValue+1))
@@ -318,7 +542,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     pcList=[pb1,pb2,pb3]
     logic = GPALogic()
-    logic.lollipopGraph(self.LM, self.sourceLMNode, pcList, self.sampleSizeScaleFactor)    
+    logic.lollipopGraph(self.LM, self.volumes, pcList, self.sampleSizeScaleFactor)    
   def reset(self):
     # delete the two data objects
 
@@ -395,19 +619,19 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     volumeLayout.addWidget(VolumeRecLabel,1,1)
 
 
-    self.grayscaleSelectorLabel = qt.QLabel("Model Node: ")
-    self.grayscaleSelectorLabel.setToolTip( "Select the model node for display")
+    self.grayscaleSelectorLabel = qt.QLabel("Volume Node: ")
+    self.grayscaleSelectorLabel.setToolTip( "Select the grayscale volume (background grayscale scalar volume node) for statistics calculations")
     volumeLayout.addWidget(self.grayscaleSelectorLabel,2,1)
 
     self.grayscaleSelector = slicer.qMRMLNodeComboBox()
-    self.grayscaleSelector.nodeTypes = ( ("vtkMRMLModelNode"), "" )
-    #self.grayscaleSelector.addAttribute( "vtkMRMLModelNode", "LabelMap", 0 )
+    self.grayscaleSelector.nodeTypes = ( ("vtkMRMLScalarVolumeNode"), "" )
+    self.grayscaleSelector.addAttribute( "vtkMRMLScalarVolumeNode", "LabelMap", 0 )
     self.grayscaleSelector.selectNodeUponCreation = False
     self.grayscaleSelector.addEnabled = False
     self.grayscaleSelector.removeEnabled = False
     self.grayscaleSelector.noneEnabled = True
     self.grayscaleSelector.showHidden = False
-    #self.grayscaleSelector.showChildNodeTypes = False
+    self.grayscaleSelector.showChildNodeTypes = False
     self.grayscaleSelector.setMRMLScene( slicer.mrmlScene )
     volumeLayout.addWidget(self.grayscaleSelector,2,2,1,3)
 
@@ -427,12 +651,24 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     volumeLayout.addWidget(self.FudSelectLabel,3,1)
     volumeLayout.addWidget(self.FudSelect,3,2,1,3)
 
+    resampleLabel=qt.QLabel()
+    resampleLabel.setText('Resample Volume')
+    resampleLabel.setToolTip("The warped volume created will be a resample version of the original violume.  Increase for faster performance")
+    volumeLayout.addWidget(resampleLabel,4,1)
+
+    self.resampleBox=qt.QSpinBox()
+    self.resampleBox.setRange(1,10)
+    self.resampleBox.setSingleStep(1)
+    self.resampleBox.setValue(1)
+    self.resampleBox.setToolTip("The warped volume created will be a resample version of the original violume.  Increase for faster performance")
+
+    volumeLayout.addWidget(self.resampleBox,4,2)
     
     selectorButton = qt.QPushButton("Select")
     selectorButton.checkable = True
     selectorButton.setStyleSheet(self.StyleSheet)
     volumeLayout.addWidget(selectorButton,5,1,1,3)
-    selectorButton.connect('clicked(bool)', self.onSelect)
+    selectorButton.connect('clicked(bool)', self.SelectVolumes)
 
     self.layout.addWidget(volumeButton)
 
@@ -472,7 +708,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     self.layout.addWidget(vis)
 
-        
     #Apply Button 
     applyButton = qt.QPushButton("Apply")
     applyButton.checkable = True
@@ -480,7 +715,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.layout.addWidget(applyButton)
     applyButton.toolTip = "Push to start the program. Make sure you have filled in all the data."
     applyFrame=qt.QFrame(self.parent)
-    applyButton.connect('clicked(bool)', self.onApply)
     visLayout.addWidget(applyButton,8,1,1,2)
 
     #PC plot section
@@ -550,19 +784,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     pass
 
   def onSelect(self):
-    self.modelNode=self.grayscaleSelector.currentNode()
-    self.modelDisplayNode = self.modelNode.GetDisplayNode()
-    logic = GPALogic()
-    self.sourceLMNode=self.FudSelect.currentNode()
-    self.sourceLMnumpy=logic.convertFudicialToNP(self.sourceLMNode)
-    self.sampleSizeScaleFactor = logic.dist2(self.sourceLMnumpy).max()
+    self.applyButton.enabled = self.inputSelector.currentNode() and self.outputSelector.currentNode()
 
-    self.transformNode=slicer.vtkMRMLTransformNode()
-    self.transformNode.SetName("TPSTransformNode")
-    slicer.mrmlScene.AddNode(self.transformNode)
-    print("completed selections")
-
-  def onApply(self):
+  def onApplyButton(self):
     pc1=self.slider1.boxValue()
     pc2=self.slider2.boxValue()
     pc3=self.slider3.boxValue()
@@ -589,25 +813,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
        scaleFactors[j]=0.0
       j=j+1
 
-    logic = GPALogic()
-    #get target landmarks
     self.LM.ExpandAlongPCs(pcSelected,scaleFactors, self.sampleSizeScaleFactor)
-    sourceLMNP=logic.convertFudicialToNP(self.sourceLMNode)
-    target=sourceLMNP+self.LM.shift
-    targetLMVTK=logic.convertNumpyToVTK(target)
-    sourceLMVTK=logic.convertNumpyToVTK(sourceLMNP)
-    
-    #Set up TPS
-    VTKTPS = vtk.vtkThinPlateSplineTransform()
-    VTKTPS.SetSourceLandmarks( sourceLMVTK )
-    VTKTPS.SetTargetLandmarks( targetLMVTK )
-    VTKTPS.SetBasisToR()  # for 3D transform
-
-    #Connect transform to model
-    self.transformNode.SetAndObserveTransformToParent( VTKTPS )
-    self.modelNode.SetAndObserveTransformNodeID(self.transformNode.GetID())
-
-
+    self.volumes.warpVolumes(self.LM.shift, self.volumes.returnLMNP(),self.volumes.tpsNode )
+    self.volumes.matchVolumeProp()
 #
 # GPALogic
 #
@@ -840,50 +1048,6 @@ class GPALogic(ScriptedLoadableModuleLogic):
 
   #plotting functions
   def makeScatterPlot(self, data,title,xAxis,yAxis):
-    numPoints = len(data)
-    print(data.shape)
-    
-    tableNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode")
-    table = tableNode.GetTable()
-
-    arrX = vtk.vtkFloatArray()
-    arrX.SetName(xAxis)
-    table.AddColumn(arrX)
-
-    arrY1 = vtk.vtkFloatArray()
-    arrY1.SetName(yAxis)
-    table.AddColumn(arrY1)
-    
-    table.SetNumberOfRows(numPoints)
-    for i in range(numPoints):
-      print(data[i,0])    
-      table.SetValue(i, 0, data[i,0])
-      table.SetValue(i, 1, data[i,1])
-      
-    plotSeriesNode1 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", "Scatter Plot")
-    plotSeriesNode1.SetAndObserveTableNodeID(tableNode.GetID())
-    plotSeriesNode1.SetXColumnName(xAxis)
-    plotSeriesNode1.SetYColumnName(yAxis)
-    plotSeriesNode1.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeScatter)
-    plotSeriesNode1.SetLineStyle(slicer.vtkMRMLPlotSeriesNode.LineStyleNone)
-    plotSeriesNode1.SetMarkerStyle(slicer.vtkMRMLPlotSeriesNode.MarkerStyleSquare)
-    plotSeriesNode1.SetUniqueColor()
-     
-    plotChartNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotChartNode")
-    plotChartNode.AddAndObservePlotSeriesNodeID(plotSeriesNode1.GetID())
-    plotChartNode.SetTitle('A simple scatter plot ')
-    plotChartNode.SetXAxisTitle(xAxis)
-    plotChartNode.SetYAxisTitle(yAxis)
-     
-    layoutManager = slicer.app.layoutManager()
-    layoutWithPlot = slicer.modules.plots.logic().GetLayoutWithPlot(layoutManager.layout)
-    layoutManager.setLayout(layoutWithPlot)
-
-    plotWidget = layoutManager.plotWidget(0)
-    plotViewNode = plotWidget.mrmlPlotViewNode()
-    plotViewNode.SetPlotChartNodeID(plotChartNode.GetID())
-      
-  def makeScatterPlotOld(self, data,title,xAxis,yAxis):
     lns = slicer.mrmlScene.GetNodesByClass('vtkMRMLLayoutNode')
     lns.InitTraversal()
     ln = lns.GetNextItemAsObject()
@@ -939,26 +1103,18 @@ class GPALogic(ScriptedLoadableModuleLogic):
     rulerNode.SetLocked(1)
     slicer.app.processEvents()
 
-  def lollipopGraph(self, LMObj,LMNode, pcList, scaleFactor):
-    LM = self.convertFudicialToNP(LMNode)
+  def lollipopGraph(self, LMObj,MonsterObj,pcList, scaleFactor):
+    LM=MonsterObj.sourceLMnumpy
     ind=1
     for pc in pcList:
       if pc is not 0:
         pc=pc-1
-        endpoints=self.calcEndpoints(LMObj,LM,pc,scaleFactor)
+        endpoints=LMObj.calcEndpoints(LM,pc,scaleFactor, MonsterObj)
         i,j=LM.shape
         for x in range(i):
           self.addruler(LM[x,:],endpoints[x,:],ind)
       ind=ind+1
-      
-  def calcEndpoints(self,LMObj,LM,pc, scaleFactor):
-    i,j=LM.shape
-    tmp=np.zeros((i,j))
-    tmp[:,0]=LMObj.vec[0:i,pc]
-    tmp[:,1]=LMObj.vec[i:2*i,pc]
-    tmp[:,2]=LMObj.vec[2*i:3*i,pc]
-    return LM+tmp*scaleFactor/3.0
-    
+
   def convertFudicialToVTKPoint(self, fnode):
     import numpy as np
     numberOfLM=fnode.GetNumberOfFiducials()
