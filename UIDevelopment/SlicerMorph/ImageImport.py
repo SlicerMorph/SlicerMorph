@@ -23,13 +23,11 @@ class ImageImport(ScriptedLoadableModule):
     self.parent.dependencies = []
     self.parent.contributors = ["Murat Maga (UW), Sara Rolfe (UW)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """
-This module imports an image sequence into Slicer as a 3D volume. Accepted formats are TIF, PNG, JPG and BMP. For DICOMS, use the DICOM module.
-User can optionally perform downsampling of the volume at the time of import. For specific use cases and options, 
-"""
-    self.parent.helpText += self.getDefaultModuleDocumentationLink()
-    self.parent.acknowledgementText = """
+This module imports an image sequence from Bruker Skyscan microCT's Slicer as a 3D volume with correct image spacing. Accepted formats are TIF, PNG, JPG and BMP. 
+User needs to be point out to the *_Rec.log file found in the reconstruction folder. 
+
 This module was developed by Sara Rolfe and Murat Maga, through a NSF ABI Development grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 
-3D Morphology From Digital Biological Collections" (Award Numbers: 1759883 (Murat Maga), 1759637 (Adam Summers), 1759839 (Douglas Boyer)).
+3D Morphology From Digital Biological Collections" (Award Numbers: 1759883).
 https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false 
 """ # replace with organization, grant and thanks.
 
