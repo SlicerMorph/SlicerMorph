@@ -23,7 +23,7 @@ class ImageImport(ScriptedLoadableModule):
     self.parent.dependencies = []
     self.parent.contributors = ["Murat Maga (UW), Sara Rolfe (UW)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """
-This module imports an image sequence from Bruker Skyscan microCT's Slicer as a 3D volume with correct image spacing. Accepted formats are TIF, PNG, JPG and BMP. 
+This module imports an image sequence from Bruker Skyscan microCT's into Slicer as a scalar 3D volume with correct image spacing. Accepted formats are TIF, PNG, JPG and BMP. 
 User needs to be point out to the *_Rec.log file found in the reconstruction folder. 
 
 This module was developed by Sara Rolfe and Murat Maga, through a NSF ABI Development grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 
