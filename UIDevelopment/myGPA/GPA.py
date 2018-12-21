@@ -11,7 +11,7 @@ import csv
 import glob
 import fnmatch
 import gpa_lib
-import load_landmarks
+#import load_landmarks
 import vtk_lib
 import  numpy as np
 
@@ -939,7 +939,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
     rulerNode.SetLocked(1)
     slicer.app.processEvents()
 
-  def lollipopGraph(self, LMObj,LMNode, pcList, scaleFactor):
+  def lollipopGraphOld(self, LMObj,LMNode, pcList, scaleFactor):
     LM = self.convertFudicialToNP(LMNode)
     ind=1
     for pc in pcList:
@@ -950,7 +950,54 @@ class GPALogic(ScriptedLoadableModuleLogic):
         for x in range(i):
           self.addruler(LM[x,:],endpoints[x,:],ind)
       ind=ind+1
-      
+  def lollipopGraph(self, LMObj,LMNode, pcList, scaleFactor):
+    LM = self.convertFudicialToNP(LMNode)
+    ind=1
+    for pc in pcList:
+      if pc is not 0:
+        pc=pc-1
+        endpoints=self.calcEndpoints(LMObj,LM,pc,scaleFactor)
+        i,j=LM.shape
+        
+        # declare arrays for polydata
+        points = vtk.vtkPoints() 
+        points.SetNumberOfPoints(i*2)
+        lines = vtk.vtkCellArray()
+        magnitude = vtk.vtkFloatArray()
+        magnitude.SetName("Magnitude");
+        magnitude.SetNumberOfComponents(1);
+        magnitude.SetNumberOfValues(i);
+        
+        for x in range(i): #populate vtkPoints and vtkLines
+          points.SetPoint(x,LM[x,:])
+          points.SetPoint(x+i,endpoints[x,:])
+          line = vtk.vtkLine()
+          line.GetPointIds().SetId(0,x)
+          line.GetPointIds().SetId(1,x+i)
+          lines.InsertNextCell(line)
+          magnitude.InsertValue(x,abs(LM[x,0]-endpoints[x,0]) + abs(LM[x,1]-endpoints[x,1]) + abs(LM[x,2]-endpoints[x,2]))
+      ind=ind+1
+    polydata=vtk.vtkPolyData()
+    polydata.SetPoints(points)
+    polydata.SetLines(lines)
+    polydata.GetCellData().AddArray(magnitude)
+
+    tubeFilter = vtk.vtkTubeFilter()
+    tubeFilter.SetInputData(polydata)
+    tubeFilter.SetRadius(0.7)
+    tubeFilter.SetNumberOfSides(20)
+    tubeFilter.CappingOn()
+    tubeFilter.Update()
+    modelNode = slicer.vtkMRMLModelNode()
+    slicer.mrmlScene.AddNode(modelNode)
+    modelDisplayNode = slicer.vtkMRMLModelDisplayNode()
+    modelDisplayNode.SetActiveScalarName('Magnitude')
+    modelDisplayNode.SetAndObserveColorNodeID('vtkMRMLColorTableNodeFileColdToHotRainbow.txt')
+    modelDisplayNode.SetScalarVisibility(True)
+    slicer.mrmlScene.AddNode(modelDisplayNode)
+    modelNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
+    modelNode.SetAndObservePolyData(tubeFilter.GetOutput())
+    
   def calcEndpoints(self,LMObj,LM,pc, scaleFactor):
     i,j=LM.shape
     tmp=np.zeros((i,j))
