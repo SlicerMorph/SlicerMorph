@@ -10,9 +10,8 @@ import re
 import csv
 import glob
 import fnmatch
-import gpa_lib
-#import load_landmarks
-import vtk_lib
+import support.gpa_lib as gpa_lib
+import support.vtk_lib as vtk_lib
 import  numpy as np
 
 #
