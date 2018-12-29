@@ -3,15 +3,14 @@ import unittest
 import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
 import logging
-import math
-
 
 import re
 import csv
 import glob
 import fnmatch
-import support.gpa_lib as gpa_lib
-import support.vtk_lib as vtk_lib
+import gpa_lib
+import load_landmarks
+import vtk_lib
 import  numpy as np
 
 #
@@ -166,7 +165,7 @@ class LMData:
     header=np.array(['Sample_name','proc_dist','centeroid'])
     i1,j=tmp.shape
     coodrsL=(j-3)/3.0
-    l=np.zeros(int(3*coodrsL))
+    l=np.zeros(3*coodrsL)
 
     l=list(l)
 
@@ -176,7 +175,7 @@ class LMData:
       l[3*x+1]="y"+str(loc)
       l[3*x+2]="z"+str(loc)
     l=np.array(l)
-    header=np.column_stack((header.reshape(1,3),l.reshape(1,int(3*coodrsL))))
+    header=np.column_stack((header.reshape(1,3),l.reshape(1,3*coodrsL)))
     tmp1=np.vstack((header,tmp))
     np.savetxt(outputFolder+os.sep+"OutputData.csv", tmp1, fmt="%s" , delimiter=",")
 
@@ -202,7 +201,7 @@ class LMData:
     tmp[:,1]=self.vec[i:2*i,pc]
     tmp[:,2]=self.vec[2*i:3*i,pc]
     return LM+tmp*scaleFactor/3.0
-
+        
 class GPAWidget(ScriptedLoadableModuleWidget):
   """Uses ScriptedLoadableModuleWidget base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
@@ -231,68 +230,38 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.outputFolder=qt.QFileDialog().getExistingDirectory()
     self.outText.setText(self.outputFolder)
 
-  def updateList(self):
-    i,j,k=self.LM.lm.shape
-    self.PCList=[]
-    self.slider1.populateComboBox(self.PCList)
-    self.slider2.populateComboBox(self.PCList)
-    self.slider3.populateComboBox(self.PCList)
-    self.slider4.populateComboBox(self.PCList)
-    self.slider5.populateComboBox(self.PCList)
-    self.PCList.append('None')
-    self.LM.val=np.real(self.LM.val)
-    percentVar=self.LM.val/self.LM.val.sum()
-    #percentVar=np.real(percentVar)
-    self.vectorOne.clear()
-    self.vectorTwo.clear()
-    self.vectorThree.clear()
-    self.XcomboBox.clear()
-    self.YcomboBox.clear()
-
-    self.vectorOne.addItem('None')
-    self.vectorTwo.addItem('None')
-    self.vectorThree.addItem('None')
-    for x in range(10):
-      tmp="{:.1f}".format(percentVar[x]*100) 
-      string='PC '+str(x+1)+': '+str(tmp)+"%" +" var"
-      self.PCList.append(string)
-      self.XcomboBox.addItem(string)
-      self.YcomboBox.addItem(string)
-      self.vectorOne.addItem(string)
-      self.vectorTwo.addItem(string)
-      self.vectorThree.addItem(string)
-    self.slider1.populateComboBox(self.PCList)
-    self.slider2.populateComboBox(self.PCList)
-    self.slider3.populateComboBox(self.PCList)
-    self.slider4.populateComboBox(self.PCList)
-    self.slider5.populateComboBox(self.PCList)
-  def onLoad(self):
+  def SelectVolumes(self):
+    resampleAmount=self.resampleBox.value
+    spacing=[resampleAmount,resampleAmount,resampleAmount]
+    self.volumes=Monsters(self.grayscaleSelector,  self.FudSelect, spacing)
+    fud=self.logic.convertFudicialToNP(self.volumes.sourceLMNode) 
+    self.sampleSizeScaleFactor=(self.logic.dist2(fud)).max()
+    self.transformedRenderingNode=None
+    self.sourceRenderingNode=None
   
+  def onLoad(self):
     logic = GPALogic()
     #logic.run(self.inputSelector.currentNode(), self.outputSelector.currentNode(), imageThreshold, enableScreenshotsFlag)
     self.LM=LMData()
-    lmToExclude=self.excludeLMText.text
-    if len(lmToExclude) != 0:
-      tmp=lmToExclude.split(",")
+    lmToExclue=self.excludeLMText.text
+    if len(lmToExclue) != 0:
+      tmp=lmToExclue.split(",")
       print len(tmp)
       tmp=[np.int(x) for x in tmp]
       lmNP=np.asarray(tmp)
     else:
       tmp=[]
-    self.LM.lmRaw, files= logic.mergeMatchs(self.LM_dir_name, tmp)
+    self.LM.lmRaw, files= self.logic.mergeMatchs(self.LM_dir_name, tmp)
     print self.LM.lmRaw.shape
     self.LM.doGpa()
     self.LM.calcEigen()
     self.updateList()
     self.LM.writeOutData(self.outputFolder, files)
-    #print files
+    print files
     filename=self.LM.closestSample(files)
     self.volumeRecText.setText(filename)
-    print("Closest to mean:")
-    print(filename)
     
   def plot(self):
-    logic = GPALogic()
     try:
       # get values from boxs
       xValue=self.XcomboBox.currentIndex
@@ -300,10 +269,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
       # get data to plot
       data=gpa_lib.plotTanProj(self.LM.lm,xValue,yValue)
-      #print(data)
 
       # plot it
-      logic.makeScatterPlot(data,'PC Plot',"PC"+str(xValue+1),"PC"+str(yValue+1))
+      self.logic.makeScatterPlot(data,'PC Plot',"PC"+str(xValue+1),"PC"+str(yValue+1))
 
     except AttributeError:
       qt.QMessageBox.critical(
@@ -316,8 +284,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     pb3=self.vectorThree.currentIndex
 
     pcList=[pb1,pb2,pb3]
-    logic = GPALogic()
-    logic.lollipopGraph(self.LM, self.sourceLMNode, pcList, self.sampleSizeScaleFactor)    
+    self.logic.lollipopGraph(self.LM, self.volumes, pcList, self.sampleSizeScaleFactor)    
   def reset(self):
     # delete the two data objects
 
@@ -394,19 +361,19 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     volumeLayout.addWidget(VolumeRecLabel,1,1)
 
 
-    self.grayscaleSelectorLabel = qt.QLabel("Model Node: ")
-    self.grayscaleSelectorLabel.setToolTip( "Select the model node for display")
+    self.grayscaleSelectorLabel = qt.QLabel("Volume Node: ")
+    self.grayscaleSelectorLabel.setToolTip( "Select the grayscale volume (background grayscale scalar volume node) for statistics calculations")
     volumeLayout.addWidget(self.grayscaleSelectorLabel,2,1)
 
     self.grayscaleSelector = slicer.qMRMLNodeComboBox()
-    self.grayscaleSelector.nodeTypes = ( ("vtkMRMLModelNode"), "" )
-    #self.grayscaleSelector.addAttribute( "vtkMRMLModelNode", "LabelMap", 0 )
+    self.grayscaleSelector.nodeTypes = ( ("vtkMRMLScalarVolumeNode"), "" )
+    self.grayscaleSelector.addAttribute( "vtkMRMLScalarVolumeNode", "LabelMap", 0 )
     self.grayscaleSelector.selectNodeUponCreation = False
     self.grayscaleSelector.addEnabled = False
     self.grayscaleSelector.removeEnabled = False
     self.grayscaleSelector.noneEnabled = True
     self.grayscaleSelector.showHidden = False
-    #self.grayscaleSelector.showChildNodeTypes = False
+    self.grayscaleSelector.showChildNodeTypes = False
     self.grayscaleSelector.setMRMLScene( slicer.mrmlScene )
     volumeLayout.addWidget(self.grayscaleSelector,2,2,1,3)
 
@@ -426,12 +393,26 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     volumeLayout.addWidget(self.FudSelectLabel,3,1)
     volumeLayout.addWidget(self.FudSelect,3,2,1,3)
 
+    resampleLabel=qt.QLabel()
+    resampleLabel.setText('Resample Volume')
+    resampleLabel.setToolTip("The warped volume created will be a resample version of the original violume.  Increase for faster performance")
+    volumeLayout.addWidget(resampleLabel,4,1)
+
+    self.resampleBox=qt.QSpinBox()
+    self.resampleBox.setRange(1,10)
+    self.resampleBox.setSingleStep(1)
+    self.resampleBox.setValue(1)
+    self.resampleBox.setToolTip("The warped volume created will be a resample version of the original violume.  Increase for faster performance")
+
+
+    volumeLayout.addWidget(self.resampleBox,4,2)
     
+
     selectorButton = qt.QPushButton("Select")
     selectorButton.checkable = True
     selectorButton.setStyleSheet(self.StyleSheet)
     volumeLayout.addWidget(selectorButton,5,1,1,3)
-    selectorButton.connect('clicked(bool)', self.onSelect)
+    selectorButton.connect('clicked(bool)', self.SelectVolumes)
 
     self.layout.addWidget(volumeButton)
 
@@ -479,7 +460,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.layout.addWidget(applyButton)
     applyButton.toolTip = "Push to start the program. Make sure you have filled in all the data."
     applyFrame=qt.QFrame(self.parent)
-    applyButton.connect('clicked(bool)', self.onApply)
     visLayout.addWidget(applyButton,8,1,1,2)
 
     #PC plot section
@@ -549,19 +529,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     pass
 
   def onSelect(self):
-    self.modelNode=self.grayscaleSelector.currentNode()
-    self.modelDisplayNode = self.modelNode.GetDisplayNode()
-    logic = GPALogic()
-    self.sourceLMNode=self.FudSelect.currentNode()
-    self.sourceLMnumpy=logic.convertFudicialToNP(self.sourceLMNode)
-    self.sampleSizeScaleFactor = logic.dist2(self.sourceLMnumpy).max()
+    self.applyButton.enabled = self.inputSelector.currentNode() and self.outputSelector.currentNode()
 
-    self.transformNode=slicer.vtkMRMLTransformNode()
-    self.transformNode.SetName("TPSTransformNode")
-    slicer.mrmlScene.AddNode(self.transformNode)
-    print("completed selections")
-
-  def onApply(self):
+  def onApplyButton(self):
     pc1=self.slider1.boxValue()
     pc2=self.slider2.boxValue()
     pc3=self.slider3.boxValue()
@@ -588,25 +558,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
        scaleFactors[j]=0.0
       j=j+1
 
-    logic = GPALogic()
-    #get target landmarks
     self.LM.ExpandAlongPCs(pcSelected,scaleFactors, self.sampleSizeScaleFactor)
-    sourceLMNP=logic.convertFudicialToNP(self.sourceLMNode)
-    target=sourceLMNP+self.LM.shift
-    targetLMVTK=logic.convertNumpyToVTK(target)
-    sourceLMVTK=logic.convertNumpyToVTK(sourceLMNP)
-    
-    #Set up TPS
-    VTKTPS = vtk.vtkThinPlateSplineTransform()
-    VTKTPS.SetSourceLandmarks( sourceLMVTK )
-    VTKTPS.SetTargetLandmarks( targetLMVTK )
-    VTKTPS.SetBasisToR()  # for 3D transform
-
-    #Connect transform to model
-    self.transformNode.SetAndObserveTransformToParent( VTKTPS )
-    self.modelNode.SetAndObserveTransformNodeID(self.transformNode.GetID())
-
-
+    self.volumes.warpVolumes(self.LM.shift, self.volumes.returnLMNP(),self.volumes.tpsNode )
+    self.volumes.matchVolumeProp()
 #
 # GPALogic
 #
@@ -688,16 +642,16 @@ class GPALogic(ScriptedLoadableModuleLogic):
     # initial data array
     dirs, files=self.walk_dir(topDir)
     matchList, noMatch=self.createMatchList(topDir, "fcsv")
-    landmarks=self.initDataArray(dirs,files[0],len(matchList))
+    landmarks=self.initDataArray(dirs,files[0],len(noMatch))
     matchedfiles=[]
-    for i in range(len(matchList)):
-      tmp1=self.importLandMarks(matchList[i]+".fcsv")
+    for i in range(len(noMatch)):
+      tmp1=self.importLandMarks(noMatch[i]+".fcsv")
       landmarks[:,:,i]=tmp1
-      matchedfiles.append(os.path.basename(matchList[i]))
+      matchedfiles.append(os.path.basename(noMatch[i][0]))
     j=len(lmToRemove)
     for i in range(j):
-      landmarks=np.delete(landmarks,(np.int(lmToRemove[i])-1),axis=0)    
-    return landmarks, matchedfiles
+      landmarks=np.delete(landmarks,(np.int(lmToRemove[i])-1),axis=0)
+    return landmarks, noMatch
    
   def createMatchList(self, topDir,suffix):
     l=[]
@@ -723,7 +677,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
      if items not in matches:
        noMatchs.append(items)
 
-    return matches, noMatchs
+    return matchList, noMatchs
   def importLandMarks(self, filePath):
     """Imports the landmarks from a .fcsv file. Does not import sample if a  landmark is -1000
     Adjusts the resolution is log(nhrd) file is found returns kXd array of landmark data. k=# of landmarks d=dimension
@@ -839,50 +793,6 @@ class GPALogic(ScriptedLoadableModuleLogic):
 
   #plotting functions
   def makeScatterPlot(self, data,title,xAxis,yAxis):
-    numPoints = len(data)
-    print(data.shape)
-    
-    tableNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode")
-    table = tableNode.GetTable()
-
-    arrX = vtk.vtkFloatArray()
-    arrX.SetName(xAxis)
-    table.AddColumn(arrX)
-
-    arrY1 = vtk.vtkFloatArray()
-    arrY1.SetName(yAxis)
-    table.AddColumn(arrY1)
-    
-    table.SetNumberOfRows(numPoints)
-    for i in range(numPoints):
-      print(data[i,0])    
-      table.SetValue(i, 0, data[i,0])
-      table.SetValue(i, 1, data[i,1])
-      
-    plotSeriesNode1 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", "Scatter Plot")
-    plotSeriesNode1.SetAndObserveTableNodeID(tableNode.GetID())
-    plotSeriesNode1.SetXColumnName(xAxis)
-    plotSeriesNode1.SetYColumnName(yAxis)
-    plotSeriesNode1.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeScatter)
-    plotSeriesNode1.SetLineStyle(slicer.vtkMRMLPlotSeriesNode.LineStyleNone)
-    plotSeriesNode1.SetMarkerStyle(slicer.vtkMRMLPlotSeriesNode.MarkerStyleSquare)
-    plotSeriesNode1.SetUniqueColor()
-     
-    plotChartNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotChartNode")
-    plotChartNode.AddAndObservePlotSeriesNodeID(plotSeriesNode1.GetID())
-    plotChartNode.SetTitle('A simple scatter plot ')
-    plotChartNode.SetXAxisTitle(xAxis)
-    plotChartNode.SetYAxisTitle(yAxis)
-     
-    layoutManager = slicer.app.layoutManager()
-    layoutWithPlot = slicer.modules.plots.logic().GetLayoutWithPlot(layoutManager.layout)
-    layoutManager.setLayout(layoutWithPlot)
-
-    plotWidget = layoutManager.plotWidget(0)
-    plotViewNode = plotWidget.mrmlPlotViewNode()
-    plotViewNode.SetPlotChartNodeID(plotChartNode.GetID())
-      
-  def makeScatterPlotOld(self, data,title,xAxis,yAxis):
     lns = slicer.mrmlScene.GetNodesByClass('vtkMRMLLayoutNode')
     lns.InitTraversal()
     ln = lns.GetNextItemAsObject()
@@ -938,73 +848,18 @@ class GPALogic(ScriptedLoadableModuleLogic):
     rulerNode.SetLocked(1)
     slicer.app.processEvents()
 
-  def lollipopGraphOld(self, LMObj,LMNode, pcList, scaleFactor):
-    LM = self.convertFudicialToNP(LMNode)
+  def lollipopGraph(self, LMObj,MonsterObj,pcList, scaleFactor):
+    LM=MonsterObj.sourceLMnumpy
     ind=1
     for pc in pcList:
       if pc is not 0:
         pc=pc-1
-        endpoints=self.calcEndpoints(LMObj,LM,pc,scaleFactor)
+        endpoints=LMObj.calcEndpoints(LM,pc,scaleFactor, MonsterObj)
         i,j=LM.shape
         for x in range(i):
           self.addruler(LM[x,:],endpoints[x,:],ind)
       ind=ind+1
-  def lollipopGraph(self, LMObj,LMNode, pcList, scaleFactor):
-    LM = self.convertFudicialToNP(LMNode)
-    ind=1
-    for pc in pcList:
-      if pc is not 0:
-        pc=pc-1
-        endpoints=self.calcEndpoints(LMObj,LM,pc,scaleFactor)
-        i,j=LM.shape
-        
-        # declare arrays for polydata
-        points = vtk.vtkPoints() 
-        points.SetNumberOfPoints(i*2)
-        lines = vtk.vtkCellArray()
-        magnitude = vtk.vtkFloatArray()
-        magnitude.SetName("Magnitude");
-        magnitude.SetNumberOfComponents(1);
-        magnitude.SetNumberOfValues(i);
-        
-        for x in range(i): #populate vtkPoints and vtkLines
-          points.SetPoint(x,LM[x,:])
-          points.SetPoint(x+i,endpoints[x,:])
-          line = vtk.vtkLine()
-          line.GetPointIds().SetId(0,x)
-          line.GetPointIds().SetId(1,x+i)
-          lines.InsertNextCell(line)
-          magnitude.InsertValue(x,abs(LM[x,0]-endpoints[x,0]) + abs(LM[x,1]-endpoints[x,1]) + abs(LM[x,2]-endpoints[x,2]))
-      ind=ind+1
-    polydata=vtk.vtkPolyData()
-    polydata.SetPoints(points)
-    polydata.SetLines(lines)
-    polydata.GetCellData().AddArray(magnitude)
 
-    tubeFilter = vtk.vtkTubeFilter()
-    tubeFilter.SetInputData(polydata)
-    tubeFilter.SetRadius(0.7)
-    tubeFilter.SetNumberOfSides(20)
-    tubeFilter.CappingOn()
-    tubeFilter.Update()
-    modelNode = slicer.vtkMRMLModelNode()
-    slicer.mrmlScene.AddNode(modelNode)
-    modelDisplayNode = slicer.vtkMRMLModelDisplayNode()
-    modelDisplayNode.SetActiveScalarName('Magnitude')
-    modelDisplayNode.SetAndObserveColorNodeID('vtkMRMLColorTableNodeFileColdToHotRainbow.txt')
-    modelDisplayNode.SetScalarVisibility(True)
-    slicer.mrmlScene.AddNode(modelDisplayNode)
-    modelNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
-    modelNode.SetAndObservePolyData(tubeFilter.GetOutput())
-    
-  def calcEndpoints(self,LMObj,LM,pc, scaleFactor):
-    i,j=LM.shape
-    tmp=np.zeros((i,j))
-    tmp[:,0]=LMObj.vec[0:i,pc]
-    tmp[:,1]=LMObj.vec[i:2*i,pc]
-    tmp[:,2]=LMObj.vec[2*i:3*i,pc]
-    return LM+tmp*scaleFactor/3.0
-    
   def convertFudicialToVTKPoint(self, fnode):
     import numpy as np
     numberOfLM=fnode.GetNumberOfFiducials()
