@@ -120,9 +120,7 @@ class LMData:
       tmp=abs(self.lmRaw[:,:,subject]-self.mShape)
       varianceMat=varianceMat+tmp
     varianceMat = varianceMat/k
-    print(varianceMat)
-    
-    
+    return varianceMat
     
   def doGpa(self):
     i,j,k=self.lmRaw.shape
@@ -279,8 +277,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.slider3.populateComboBox(self.PCList)
     self.slider4.populateComboBox(self.PCList)
     self.slider5.populateComboBox(self.PCList)
+
   def onLoad(self):
-  
     logic = GPALogic()
     #logic.run(self.inputSelector.currentNode(), self.outputSelector.currentNode(), imageThreshold, enableScreenshotsFlag)
     self.LM=LMData()
@@ -555,6 +553,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     self.EllipseType=qt.QRadioButton()
     ellipseTypeLabel=qt.QLabel("Ellipse type")
+    self.EllipseType.setChecked(True)
     distributionLayout.addWidget(ellipseTypeLabel,2,1)
     distributionLayout.addWidget(self.EllipseType,2,2,1,2)
     self.SphereType=qt.QRadioButton()
@@ -645,7 +644,57 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.modelNode.SetAndObserveTransformNodeID(self.transformNode.GetID())
   
   def onPlotDistribution(self):
-    self.LM.calcLMVariation()
+    varianceMat = self.LM.calcLMVariation()
+    i,j,k=self.LM.lmRaw.shape
+    pt=[0,0,0]
+    #set up vtk point array for each landmark point
+    points = vtk.vtkPoints()
+    points.SetNumberOfPoints(i)
+    scales = vtk.vtkDoubleArray()
+    scales.SetName("Scales")
+
+    #set up tensor array to scale ellipses
+    tensors = vtk.vtkDoubleArray()
+    tensors.SetNumberOfTuples(i)
+    tensors.SetNumberOfComponents(9)
+    tensors.SetName("Tensors")
+
+    print('SCALE FACTOR: ')
+    print(self.sampleSizeScaleFactor)
+    for landmark in range(0,i):
+      pt=self.sourceLMnumpy[landmark,:]
+      points.SetPoint(landmark,pt)
+      scales.InsertNextValue(10*self.sampleSizeScaleFactor*(varianceMat[landmark,0]+varianceMat[landmark,1]+varianceMat[landmark,2])/3)
+      tensors.InsertTuple9(landmark,10*self.sampleSizeScaleFactor*varianceMat[landmark,0],0,0,0,10*self.sampleSizeScaleFactor*varianceMat[landmark,1],0,0,0,10*self.sampleSizeScaleFactor*varianceMat[landmark,2])
+
+    polydata=vtk.vtkPolyData()
+    polydata.SetPoints(points)
+    polydata.GetPointData().SetScalars(scales)
+    polydata.GetPointData().SetTensors(tensors)
+
+    sphereSource = vtk.vtkSphereSource()
+    sphereSource.SetThetaResolution(64)
+    sphereSource.SetPhiResolution(64)
+
+    if self.EllipseType.isChecked():
+      glyph = vtk.vtkTensorGlyph()
+      glyph.ExtractEigenvaluesOff()
+    else:
+      glyph = vtk.vtkGlyph3D()
+    glyph.SetSourceConnection(sphereSource.GetOutputPort())
+    glyph.SetInputData(polydata)
+    
+    glyph.Update()
+
+    modelNode = slicer.vtkMRMLModelNode()
+    slicer.mrmlScene.AddNode(modelNode)
+    modelDisplayNode = slicer.vtkMRMLModelDisplayNode()
+    modelDisplayNode.SetScalarVisibility(True)
+    modelDisplayNode.SetActiveScalarName('Scales')
+    modelDisplayNode.SetAndObserveColorNodeID('vtkMRMLColorTableNodeFileColdToHotRainbow.txt')
+    slicer.mrmlScene.AddNode(modelDisplayNode)
+    modelNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
+    modelNode.SetAndObservePolyData(glyph.GetOutput())
 
 
 #
