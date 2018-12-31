@@ -117,9 +117,9 @@ class LMData:
     i,j,k=self.lmRaw.shape
     varianceMat=np.zeros((i,j))
     for subject in range(k):
-      tmp=abs(self.lmRaw[:,:,subject]-self.mShape)
+      tmp=pow((self.lmRaw[:,:,subject]-self.mShape),2)
       varianceMat=varianceMat+tmp
-    varianceMat = varianceMat/k
+    varianceMat = np.sqrt(varianceMat/(k-1))
     return varianceMat
     
   def doGpa(self):
@@ -664,8 +664,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     for landmark in range(0,i):
       pt=self.sourceLMnumpy[landmark,:]
       points.SetPoint(landmark,pt)
-      scales.InsertNextValue(10*self.sampleSizeScaleFactor*(varianceMat[landmark,0]+varianceMat[landmark,1]+varianceMat[landmark,2])/3)
-      tensors.InsertTuple9(landmark,10*self.sampleSizeScaleFactor*varianceMat[landmark,0],0,0,0,10*self.sampleSizeScaleFactor*varianceMat[landmark,1],0,0,0,10*self.sampleSizeScaleFactor*varianceMat[landmark,2])
+      scales.InsertNextValue(self.sampleSizeScaleFactor*(varianceMat[landmark,0]+varianceMat[landmark,1]+varianceMat[landmark,2])/3)
+      tensors.InsertTuple9(landmark,self.sampleSizeScaleFactor*varianceMat[landmark,0],0,0,0,self.sampleSizeScaleFactor*varianceMat[landmark,1],0,0,0,self.sampleSizeScaleFactor*varianceMat[landmark,2])
 
     polydata=vtk.vtkPolyData()
     polydata.SetPoints(points)
