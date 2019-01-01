@@ -105,6 +105,7 @@ class LMData:
   def __init__(self):
     self.lm=0
     self.lmRaw=0
+    self.lmOrig=0
     self.val=0
     self.vec=0
     self.alignCoords=0
@@ -290,8 +291,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       lmNP=np.asarray(tmp)
     else:
       tmp=[]
-    self.LM.lmRaw, files= logic.mergeMatchs(self.LM_dir_name, tmp)
-    print self.LM.lmRaw.shape
+    self.LM.lmOrig, files = logic.mergeMatchs(self.LM_dir_name, tmp)
+    self.LM.lmRaw, files = logic.mergeMatchs(self.LM_dir_name, tmp)
     self.LM.doGpa()
     self.LM.calcEigen()
     self.updateList()
@@ -314,7 +315,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       #print(data)
 
       # plot it
-      logic.makeScatterPlot(data,'PC Plot',"PC"+str(xValue+1),"PC"+str(yValue+1))
+      logic.makeScatterPlot(data,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1))
 
     except AttributeError:
       qt.QMessageBox.critical(
@@ -371,17 +372,17 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.StyleSheet="font: 12px;  min-height: 20 px ; background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #f6f7fa, stop: 1 #dadbde); border: 1px solid; border-radius: 4px; "
        
     inbutton=ctk.ctkCollapsibleButton()
-    inbutton.text="Inputs"
+    inbutton.text="Setup Analysis"
     inputLayout= qt.QGridLayout(inbutton)
 
-    self.LMText, volumeInLabel, self.LMbutton=self.textIn('Landmark Folder','', 'No Spaces!')
+    self.LMText, volumeInLabel, self.LMbutton=self.textIn('Landmark Folder')
     inputLayout.addWidget(self.LMText,1,2)
     inputLayout.addWidget(volumeInLabel,1,1)
     inputLayout.addWidget(self.LMbutton,1,3)
     self.layout.addWidget(inbutton)
     self.LMbutton.connect('clicked(bool)', self.selectLandmarkFile)
 
-    self.outText, outLabel, self.outbutton=self.textIn('Output Folder','', 'No Spaces!')
+    self.outText, outLabel, self.outbutton=self.textIn('Output folder prefix')
     inputLayout.addWidget(self.outText,2,2)
     inputLayout.addWidget(outLabel,2,1)
     inputLayout.addWidget(self.outbutton,2,3)
@@ -397,15 +398,15 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     # node selector tab
     volumeButton=ctk.ctkCollapsibleButton()
-    volumeButton.text="Node Selector"
+    volumeButton.text="Setup 3D Visualization"
     volumeLayout= qt.QGridLayout(volumeButton)
 
-    self.volumeRecText, VolumeRecLabel, voluemrecbutton=self.textIn('Recomended Volume','', 'No Spaces!')
+    self.volumeRecText, VolumeRecLabel, voluemrecbutton=self.textIn('Sample Closest to the mean')
     volumeLayout.addWidget(self.volumeRecText,1,2)
     volumeLayout.addWidget(VolumeRecLabel,1,1)
 
 
-    self.grayscaleSelectorLabel = qt.QLabel("Model Node: ")
+    self.grayscaleSelectorLabel = qt.QLabel("Specify Reference Model for 3D Vis.")
     self.grayscaleSelectorLabel.setToolTip( "Select the model node for display")
     volumeLayout.addWidget(self.grayscaleSelectorLabel,2,1)
 
@@ -447,7 +448,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.layout.addWidget(volumeButton)
 
     #Apply Button 
-    loadButton = qt.QPushButton("Load")
+    loadButton = qt.QPushButton("Execute GPA + PCA")
     loadButton.checkable = True
     loadButton.setStyleSheet(self.StyleSheet)
     inputLayout.addWidget(loadButton,5,1,1,3)
@@ -456,7 +457,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     
     # adjust PC sectore
     vis=ctk.ctkCollapsibleButton()
-    vis.text='Visualization Parameters'
+    vis.text='PCA Visualization Parameters'
     visLayout= qt.QGridLayout(vis)
 
     self.PCList=[]
@@ -495,7 +496,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     #PC plot section
     plotFrame=ctk.ctkCollapsibleButton()
-    plotFrame.text="PC Plot Options"
+    plotFrame.text="PCA Scatter Plot Options"
     plotLayout= qt.QGridLayout(plotFrame)
     self.layout.addWidget(plotFrame)
 
@@ -642,8 +643,57 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     #Connect transform to model
     self.transformNode.SetAndObserveTransformToParent( VTKTPS )
     self.modelNode.SetAndObserveTransformNodeID(self.transformNode.GetID())
-  
+    
   def onPlotDistribution(self):
+    if self.CloudType.isChecked():
+      self.plotDistributionCloud()
+    else: 
+      self.plotDistributionGlyph()
+      
+  def plotDistributionCloud(self):
+    i,j,k=self.LM.lmRaw.shape
+    pt=[0,0,0]
+    #set up vtk point array for each landmark point
+    points = vtk.vtkPoints()
+    points.SetNumberOfPoints(i*k)
+    indexes = vtk.vtkDoubleArray()
+    indexes.SetName('LM Index')
+    pointCounter = 0
+   
+    for subject in range(0,k):
+      for landmark in range(0,i):
+        pt=self.LM.lmOrig[landmark,:,subject]
+        points.SetPoint(pointCounter,pt)
+        indexes.InsertNextValue(landmark)
+        pointCounter+=1
+    
+    #add points to polydata
+    polydata=vtk.vtkPolyData()
+    polydata.SetPoints(points)
+    polydata.GetPointData().SetScalars(indexes)
+    
+    #set up glyph for visualizing point cloud
+    sphereSource = vtk.vtkSphereSource()
+    glyph = vtk.vtkGlyph3D()
+    glyph.SetSourceConnection(sphereSource.GetOutputPort())
+    glyph.SetInputData(polydata)   
+    glyph.ScalingOff()    
+    glyph.Update()
+  
+    #display
+    modelNode = slicer.vtkMRMLModelNode()
+    modelNode.SetName('Landmark Variance')
+    slicer.mrmlScene.AddNode(modelNode)
+    modelDisplayNode = slicer.vtkMRMLModelDisplayNode()
+    
+    modelDisplayNode.SetScalarVisibility(True)
+    modelDisplayNode.SetActiveScalarName('LM Index')
+    modelDisplayNode.SetAndObserveColorNodeID('vtkMRMLColorTableNodeFileColdToHotRainbow.txt')
+    slicer.mrmlScene.AddNode(modelDisplayNode)
+    modelNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
+    modelNode.SetAndObservePolyData(glyph.GetOutput())
+    
+  def plotDistributionGlyph(self):
     varianceMat = self.LM.calcLMVariation()
     i,j,k=self.LM.lmRaw.shape
     pt=[0,0,0]
@@ -659,9 +709,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     tensors.SetNumberOfComponents(9)
     tensors.SetName("Tensors")
 
-    print('SCALE FACTOR: ')
-    print(self.sampleSizeScaleFactor)
-    for landmark in range(0,i):
+    for landmark in range(i):
       pt=self.sourceLMnumpy[landmark,:]
       points.SetPoint(landmark,pt)
       scales.InsertNextValue(self.sampleSizeScaleFactor*(varianceMat[landmark,0]+varianceMat[landmark,1]+varianceMat[landmark,2])/3)
@@ -683,10 +731,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       glyph = vtk.vtkGlyph3D()
     glyph.SetSourceConnection(sphereSource.GetOutputPort())
     glyph.SetInputData(polydata)
-    
     glyph.Update()
 
     modelNode = slicer.vtkMRMLModelNode()
+    modelNode.SetName('Landmark Variance')
     slicer.mrmlScene.AddNode(modelNode)
     modelDisplayNode = slicer.vtkMRMLModelDisplayNode()
     modelDisplayNode.SetScalarVisibility(True)
