@@ -375,14 +375,14 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     inbutton.text="Setup Analysis"
     inputLayout= qt.QGridLayout(inbutton)
 
-    self.LMText, volumeInLabel, self.LMbutton=self.textIn('Landmark Folder')
+    self.LMText, volumeInLabel, self.LMbutton=self.textIn('Landmark Folder','', '')
     inputLayout.addWidget(self.LMText,1,2)
     inputLayout.addWidget(volumeInLabel,1,1)
     inputLayout.addWidget(self.LMbutton,1,3)
     self.layout.addWidget(inbutton)
     self.LMbutton.connect('clicked(bool)', self.selectLandmarkFile)
 
-    self.outText, outLabel, self.outbutton=self.textIn('Output folder prefix')
+    self.outText, outLabel, self.outbutton=self.textIn('Output folder prefix','', '')
     inputLayout.addWidget(self.outText,2,2)
     inputLayout.addWidget(outLabel,2,1)
     inputLayout.addWidget(self.outbutton,2,3)
@@ -393,7 +393,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     inputLayout.addWidget(self.excludeLMLabel,3,1)
 
     self.excludeLMText=qt.QLineEdit()
-    self.excludeLMText.setToolTip("No spaces. Seperate numbers by commas.  Exsampe:  51,52")
+    self.excludeLMText.setToolTip("No spaces. Seperate numbers by commas.  Example:  51,52")
     inputLayout.addWidget(self.excludeLMText,3,2,1,2)
 
     # node selector tab
@@ -401,7 +401,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     volumeButton.text="Setup 3D Visualization"
     volumeLayout= qt.QGridLayout(volumeButton)
 
-    self.volumeRecText, VolumeRecLabel, voluemrecbutton=self.textIn('Sample Closest to the mean')
+    self.volumeRecText, VolumeRecLabel, voluemrecbutton=self.textIn('Sample Closest to the mean','', '')
     volumeLayout.addWidget(self.volumeRecText,1,2)
     volumeLayout.addWidget(VolumeRecLabel,1,1)
 
