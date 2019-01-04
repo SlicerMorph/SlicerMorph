@@ -114,21 +114,24 @@ class LMData:
     self.shift=0
     self.centriodSize=0
 
-  def calcLMVariation(self):
+  def calcLMVariation(self, SampleScaleFactor):
     i,j,k=self.lmRaw.shape
     varianceMat=np.zeros((i,j))
     for subject in range(k):
       tmp=pow((self.lmRaw[:,:,subject]-self.mShape),2)
       varianceMat=varianceMat+tmp
-    varianceMat = np.sqrt(varianceMat/(k-1))
+    varianceMat = SampleScaleFactor*np.sqrt(varianceMat/(k-1))
     return varianceMat
     
-  def doGpa(self):
+  def doGpa(self,skipScalingCheckBox):
     i,j,k=self.lmRaw.shape
     self.centriodSize=np.zeros(k)
     for i in range(k):
       self.centriodSize[i]=np.linalg.norm(self.lmRaw[:,:,i]-self.lmRaw[:,:,i].mean(axis=0))
-    self.lm, self.mShape=gpa_lib.doGPA(self.lmRaw)
+    if skipScalingCheckBox:
+      self.lm, self.mShape=gpa_lib.doGPANoScale(self.lmRaw)
+    else:
+      self.lm, self.mShape=gpa_lib.doGPA(self.lmRaw)
 
   def calcEigen(self):
     twoDim=gpa_lib.makeTwoDim(self.lm)
@@ -293,16 +296,31 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       tmp=[]
     self.LM.lmOrig, files = logic.mergeMatchs(self.LM_dir_name, tmp)
     self.LM.lmRaw, files = logic.mergeMatchs(self.LM_dir_name, tmp)
-    self.LM.doGpa()
+    self.LM.doGpa(self.skipScalingCheckBox.checked)
     self.LM.calcEigen()
     self.updateList()
     self.LM.writeOutData(self.outputFolder, files)
     #print files
     filename=self.LM.closestSample(files)
     self.volumeRecText.setText(filename)
+    #self.populateDistanceTable(files)
     print("Closest to mean:")
     print(filename)
     
+  def populateDistanceTable(self, files):
+    tableNode = slicer.vtkMRMLTableNode()
+    col=tableNode.AddColumn()
+    col.SetName('File Name')
+    col=tableNode.AddColumn()
+    col.SetName('Procrustes Distance')
+    rowCounter=0;
+    for file in files:
+      tableNode.AddEmptyRow()
+      tableNode.SetCellText(rowCounter,0,'some value')
+      tableNode.SetCellText(rowCounter,1,'some value')
+      rowCounter+=1
+    slicer.mrmlScene.AddNode(tableNode)
+  
   def plot(self):
     logic = GPALogic()
     try:
@@ -395,7 +413,13 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.excludeLMText=qt.QLineEdit()
     self.excludeLMText.setToolTip("No spaces. Seperate numbers by commas.  Example:  51,52")
     inputLayout.addWidget(self.excludeLMText,3,2,1,2)
-
+    
+    self.skipScalingCheckBox = qt.QCheckBox()
+    self.skipScalingCheckBox.setText("Skip Scaling during GPA")
+    self.skipScalingCheckBox.checked = 0
+    self.skipScalingCheckBox.setToolTip("If checked, GPA will skip scaling.")
+    inputLayout.addWidget(self.skipScalingCheckBox, 4,2)
+    
     # node selector tab
     volumeButton=ctk.ctkCollapsibleButton()
     volumeButton.text="Setup 3D Visualization"
@@ -566,11 +590,22 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     distributionLayout.addWidget(cloudTypeLabel,4,1)
     distributionLayout.addWidget(self.CloudType,4,2,1,2)
     
+    self.scaleSlider = ctk.ctkSliderWidget()
+    self.scaleSlider.singleStep = 1
+    self.scaleSlider.minimum = 1
+    self.scaleSlider.maximum = 10
+    self.scaleSlider.value = 1
+    self.scaleSlider.setToolTip("Set scale for variance visualization")
+    sliderLabel=qt.QLabel("Scale Glyphs")
+    distributionLayout.addWidget(sliderLabel,5,1)
+    distributionLayout.addWidget(self.scaleSlider,5,2,1,2)
+    
+    
     plotDistributionButton = qt.QPushButton("Plot LM Distribution")
     plotDistributionButton.checkable = True
     plotDistributionButton.setStyleSheet(self.StyleSheet)
     plotDistributionButton.toolTip = "Visualize distribution of landmarks from all subjects"
-    distributionLayout.addWidget(plotDistributionButton,5,1,1,4)
+    distributionLayout.addWidget(plotDistributionButton,6,1,1,4)
     plotDistributionButton.connect('clicked(bool)', self.onPlotDistribution)
     
     resetButton = qt.QPushButton("Reset Scene")
@@ -593,6 +628,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.sourceLMNode=self.FudSelect.currentNode()
     self.sourceLMnumpy=logic.convertFudicialToNP(self.sourceLMNode)
     self.sampleSizeScaleFactor = logic.dist2(self.sourceLMnumpy).max()
+    print(logic.dist2(self.sourceLMnumpy))
+    print("Scale Factor: ", self.sampleSizeScaleFactor)
 
     self.transformNode=slicer.vtkMRMLTransformNode()
     self.transformNode.SetName("TPSTransformNode")
@@ -648,7 +685,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     if self.CloudType.isChecked():
       self.plotDistributionCloud()
     else: 
-      self.plotDistributionGlyph()
+      self.plotDistributionGlyph(self.scaleSlider.value)
       
   def plotDistributionCloud(self):
     i,j,k=self.LM.lmRaw.shape
@@ -693,8 +730,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     modelNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
     modelNode.SetAndObservePolyData(glyph.GetOutput())
     
-  def plotDistributionGlyph(self):
-    varianceMat = self.LM.calcLMVariation()
+  def plotDistributionGlyph(self, sliderScale):
+    varianceMat = self.LM.calcLMVariation(self.sampleSizeScaleFactor)
     i,j,k=self.LM.lmRaw.shape
     pt=[0,0,0]
     #set up vtk point array for each landmark point
@@ -712,8 +749,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     for landmark in range(i):
       pt=self.sourceLMnumpy[landmark,:]
       points.SetPoint(landmark,pt)
-      scales.InsertNextValue(self.sampleSizeScaleFactor*(varianceMat[landmark,0]+varianceMat[landmark,1]+varianceMat[landmark,2])/3)
-      tensors.InsertTuple9(landmark,self.sampleSizeScaleFactor*varianceMat[landmark,0],0,0,0,self.sampleSizeScaleFactor*varianceMat[landmark,1],0,0,0,self.sampleSizeScaleFactor*varianceMat[landmark,2])
+      scales.InsertNextValue(sliderScale*(varianceMat[landmark,0]+varianceMat[landmark,1]+varianceMat[landmark,2])/3)
+      tensors.InsertTuple9(landmark,sliderScale*varianceMat[landmark,0],0,0,0,sliderScale*varianceMat[landmark,1],0,0,0,sliderScale*varianceMat[landmark,2])
 
     polydata=vtk.vtkPolyData()
     polydata.SetPoints(points)
