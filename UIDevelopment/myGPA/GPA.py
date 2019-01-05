@@ -300,25 +300,36 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.LM.calcEigen()
     self.updateList()
     self.LM.writeOutData(self.outputFolder, files)
-    #print files
+    
     filename=self.LM.closestSample(files)
     self.volumeRecText.setText(filename)
-    #self.populateDistanceTable(files)
+    self.populateDistanceTable(files)
     print("Closest to mean:")
     print(filename)
     
   def populateDistanceTable(self, files):
+    #sortedArray=np.zeros(shape=(len(files),2))
+    #sortedArray[:,0]=files
+    #sortedArray[:,1]=self.LM.procdist
+    #sort array of filenames and distances by column with distances
+    #sortedArray[sortedArray[:,1].argsort()]
+    sortedArray = np.zeros(len(files), dtype={'names':('filename', 'procdist'),'formats':('U10','f8')})
+    sortedArray['filename']=files[:,0]
+    sortedArray['procdist']=self.LM.procdist
+    sortedArray.sort(order='procdist')
+    
     tableNode = slicer.vtkMRMLTableNode()
     col=tableNode.AddColumn()
     col.SetName('File Name')
     col=tableNode.AddColumn()
     col.SetName('Procrustes Distance')
     rowCounter=0;
-    for file in files:
+
+    for i in range(len(files)):
       tableNode.AddEmptyRow()
-      tableNode.SetCellText(rowCounter,0,'some value')
-      tableNode.SetCellText(rowCounter,1,'some value')
-      rowCounter+=1
+      tableNode.SetCellText(i,0,sortedArray[i,0])
+      tableNode.SetCellText(i,1,sortedArray[i,1])
+
     slicer.mrmlScene.AddNode(tableNode)
   
   def plot(self):
