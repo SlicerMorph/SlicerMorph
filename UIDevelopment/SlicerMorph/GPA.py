@@ -27,16 +27,17 @@ class GPA(ScriptedLoadableModule):
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "GPA" # TODO make this more human readable by adding spaces
-    self.parent.categories = ["GPA Toolbox"]
+    self.parent.categories = ["SlicerMorph"]
     self.parent.dependencies = []
-    self.parent.contributors = ["Ryan Young, Sara Rolfe, Murat Maga"] # replace with "Firstname Lastname (Organization)"
+    self.parent.contributors = [" Sara Rolfe (UW), Murat Maga (UW)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """
 This module preforms standard Generalized Procrustes Analysis (GPA) based on (citation)
 """
     self.parent.helpText += self.getDefaultModuleDocumentationLink()
     self.parent.acknowledgementText = """
-This file was originally developed by Jean-Christophe Fillion-Robin, Kitware Inc.
-and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR013218-12S1.
+This module was developed by Sara Rolfe and Murat Maga, through a NSF ABI Development grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 
+3D Morphology From Digital Biological Collections" (Award Numbers: 1759883 (Murat Maga), 1759637 (Adam Summers), 1759839 (Douglas Boyer)).
+https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false 
 """ # replace with organization, grant and thanks.
 
 #
