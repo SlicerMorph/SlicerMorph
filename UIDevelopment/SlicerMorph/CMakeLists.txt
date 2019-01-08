@@ -24,6 +24,7 @@ add_subdirectory(DownsampleImageStack)
 add_subdirectory(DownsampleImageStackFast)
 add_subdirectory(SegmentPadSave)
 add_subdirectory(ReadLandmarkFile)
+add_subdirectory(GPA)
 ## NEXT_MODULE
 
 #-----------------------------------------------------------------------------
