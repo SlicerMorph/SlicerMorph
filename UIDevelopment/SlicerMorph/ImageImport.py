@@ -275,22 +275,28 @@ class ImageImportLogic(ScriptedLoadableModuleLogic):
     if not(success):
       logging.info('Failed to load image')
       return False  
-    #set volume parameters
+    #calculate image spacing
     spacing = [imageLogFile.Resolution, imageLogFile.Resolution, imageLogFile.Resolution]
-    outputVolumeNode.SetSpacing(spacing)
-    outputVolumeNode.SetName(imageLogFile.Prefix)
+    
     # if vector image, convert to scalar using luminance (0.30*R + 0.59*G + 0.11*B + 0.0*A)
-    if imageLogFile.FileType not in ('tif', 'tiff'):
+    #check if loaded volume is vector type, if so convert to scalar
+    if outputVolumeNode.GetClassName() =='vtkMRMLVectorVolumeNode':
+      scalarVolumeNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLScalarVolumeNode', imageLogFile.Prefix)
+      scalarVolumeNode.SetSpacing(spacing)
       extractVTK = vtk.vtkImageExtractComponents()
       extractVTK.SetInputConnection(outputVolumeNode.GetImageDataConnection())
       extractVTK.SetComponents(0, 1, 2)
       luminance = vtk.vtkImageLuminance()
       luminance.SetInputConnection(extractVTK.GetOutputPort())
       luminance.Update()
-      outputVolumeNode.SetImageDataConnection(luminance.GetOutputPort()) # apply
+      scalarVolumeNode.SetImageDataConnection(luminance.GetOutputPort()) # apply
+      slicer.mrmlScene.RemoveNode(outputVolumeNode)
       slicer.util.resetSliceViews() #update the field of view
-
-      # Capture screenshot      
+    else:
+      outputVolumeNode.SetSpacing(spacing)
+      outputVolumeNode.SetName(imageLogFile.Prefix)
+      slicer.util.resetSliceViews() #update the field of view
+    # Capture screenshot      
     if enableScreenshots:
       self.takeScreenshot('ImageImportTest-Start','MyScreenshot',-1)
     logging.info('Processing completed')
