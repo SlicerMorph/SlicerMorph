@@ -301,7 +301,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.LM.calcEigen()
     self.updateList()
     self.LM.writeOutData(self.outputFolder, files)
-    
     filename=self.LM.closestSample(files)
     self.volumeRecText.setText(filename)
     self.populateDistanceTable(files)
@@ -309,29 +308,39 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     print(filename)
     
   def populateDistanceTable(self, files):
-    #sortedArray=np.zeros(shape=(len(files),2))
-    #sortedArray[:,0]=files
-    #sortedArray[:,1]=self.LM.procdist
-    #sort array of filenames and distances by column with distances
-    #sortedArray[sortedArray[:,1].argsort()]
     sortedArray = np.zeros(len(files), dtype={'names':('filename', 'procdist'),'formats':('U10','f8')})
-    sortedArray['filename']=files[:,0]
-    sortedArray['procdist']=self.LM.procdist
+    sortedArray['filename']=files
+    sortedArray['procdist']=self.LM.procdist[:,0]
     sortedArray.sort(order='procdist')
     
     tableNode = slicer.vtkMRMLTableNode()
-    col=tableNode.AddColumn()
-    col.SetName('File Name')
-    col=tableNode.AddColumn()
-    col.SetName('Procrustes Distance')
+    col1=tableNode.AddColumn()
+    col1.SetName('ID')
+    
+    col2=tableNode.AddColumn()
+    col2.SetName('Procrustes Distance')
+    tableNode.SetColumnType('ID',vtk.VTK_STRING)
+    tableNode.SetColumnType('Procrustes Distance',vtk.VTK_FLOAT)
     rowCounter=0;
 
     for i in range(len(files)):
       tableNode.AddEmptyRow()
-      tableNode.SetCellText(i,0,sortedArray[i,0])
-      tableNode.SetCellText(i,1,sortedArray[i,1])
+      tableNode.SetCellText(i,0,sortedArray['filename'][i])
+      tableNode.SetCellText(i,1,str(sortedArray['procdist'][i]))
 
     slicer.mrmlScene.AddNode(tableNode)
+    
+    barPlot = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", "barPlot")
+    barPlot.SetAndObserveTableNodeID(tableNode.GetID())
+    barPlot.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeBar)
+    chartNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotChartNode")
+    chartNode.AddAndObservePlotSeriesNodeID(barPlot.GetID())
+    layoutManager = slicer.app.layoutManager()
+    layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutConventionalPlotView)
+
+    plotWidget = layoutManager.plotWidget(0)
+    plotViewNode = plotWidget.mrmlPlotViewNode()
+    plotViewNode.SetPlotChartNodeID(chartNode.GetID())
   
   def plot(self):
     logic = GPALogic()
@@ -346,6 +355,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
       # plot it
       logic.makeScatterPlot(data,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1))
+      slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutConventionalPlotView)
 
     except AttributeError:
       qt.QMessageBox.critical(
@@ -359,7 +369,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     pcList=[pb1,pb2,pb3]
     logic = GPALogic()
-    logic.lollipopGraph(self.LM, self.sourceLMNode, pcList, self.sampleSizeScaleFactor)    
+    logic.lollipopGraph(self.LM, self.sourceLMNode, pcList, self.sampleSizeScaleFactor)  
+    slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutConventionalPlotView)
+    
   def reset(self):
     # delete the two data objects
 
@@ -606,7 +618,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.scaleSlider.singleStep = 1
     self.scaleSlider.minimum = 1
     self.scaleSlider.maximum = 10
-    self.scaleSlider.value = 1
+    self.scaleSlider.value = 5
     self.scaleSlider.setToolTip("Set scale for variance visualization")
     sliderLabel=qt.QLabel("Scale Glyphs")
     distributionLayout.addWidget(sliderLabel,5,1)
@@ -640,7 +652,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.sourceLMNode=self.FudSelect.currentNode()
     self.sourceLMnumpy=logic.convertFudicialToNP(self.sourceLMNode)
     self.sampleSizeScaleFactor = logic.dist2(self.sourceLMnumpy).max()
-    print(logic.dist2(self.sourceLMnumpy))
     print("Scale Factor: ", self.sampleSizeScaleFactor)
 
     self.transformNode=slicer.vtkMRMLTransformNode()
@@ -692,12 +703,14 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     #Connect transform to model
     self.transformNode.SetAndObserveTransformToParent( VTKTPS )
     self.modelNode.SetAndObserveTransformNodeID(self.transformNode.GetID())
-    
+    slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutConventionalPlotView)
+
   def onPlotDistribution(self):
     if self.CloudType.isChecked():
       self.plotDistributionCloud()
     else: 
       self.plotDistributionGlyph(self.scaleSlider.value)
+    slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutConventionalPlotView)
       
   def plotDistributionCloud(self):
     i,j,k=self.LM.lmRaw.shape
@@ -730,16 +743,17 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     glyph.Update()
   
     #display
-    modelNode = slicer.vtkMRMLModelNode()
-    modelNode.SetName('Landmark Variance')
-    slicer.mrmlScene.AddNode(modelNode)
-    modelDisplayNode = slicer.vtkMRMLModelDisplayNode()
+    modelNode=slicer.mrmlScene.GetFirstNodeByName('Landmark Variance Point Cloud')
+    if modelNode is None:
+      modelNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode', 'Landmark Point Cloud')
+      modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
+      modelNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
     
+    modelDisplayNode = modelNode.GetDisplayNode()
     modelDisplayNode.SetScalarVisibility(True)
     modelDisplayNode.SetActiveScalarName('LM Index')
     modelDisplayNode.SetAndObserveColorNodeID('vtkMRMLColorTableNodeFileColdToHotRainbow.txt')
-    slicer.mrmlScene.AddNode(modelDisplayNode)
-    modelNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
+
     modelNode.SetAndObservePolyData(glyph.GetOutput())
     
   def plotDistributionGlyph(self, sliderScale):
@@ -751,6 +765,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     points.SetNumberOfPoints(i)
     scales = vtk.vtkDoubleArray()
     scales.SetName("Scales")
+    index = vtk.vtkDoubleArray()
+    index.SetName("Index")
 
     #set up tensor array to scale ellipses
     tensors = vtk.vtkDoubleArray()
@@ -763,35 +779,47 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       points.SetPoint(landmark,pt)
       scales.InsertNextValue(sliderScale*(varianceMat[landmark,0]+varianceMat[landmark,1]+varianceMat[landmark,2])/3)
       tensors.InsertTuple9(landmark,sliderScale*varianceMat[landmark,0],0,0,0,sliderScale*varianceMat[landmark,1],0,0,0,sliderScale*varianceMat[landmark,2])
+      index.InsertNextValue(landmark)
 
     polydata=vtk.vtkPolyData()
     polydata.SetPoints(points)
-    polydata.GetPointData().SetScalars(scales)
-    polydata.GetPointData().SetTensors(tensors)
+    polydata.GetPointData().AddArray(index)
 
+    if self.EllipseType.isChecked():
+      polydata.GetPointData().SetScalars(index)
+      polydata.GetPointData().SetTensors(tensors)
+      glyph = vtk.vtkTensorGlyph()
+      glyph.ExtractEigenvaluesOff()
+      modelNode=slicer.mrmlScene.GetFirstNodeByName('Landmark Variance Ellipse')
+      if modelNode is None:
+        modelNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode', 'Landmark Variance Ellipse')
+        modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
+        modelNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
+
+    else:
+      polydata.GetPointData().SetScalars(scales)
+      polydata.GetPointData().AddArray(index)
+      glyph = vtk.vtkGlyph3D()
+      modelNode=slicer.mrmlScene.GetFirstNodeByName('Landmark Variance Sphere')
+      if modelNode is None:
+        modelNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode', 'Landmark Variance Sphere')
+        modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
+        modelNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
+    
     sphereSource = vtk.vtkSphereSource()
     sphereSource.SetThetaResolution(64)
     sphereSource.SetPhiResolution(64)
-
-    if self.EllipseType.isChecked():
-      glyph = vtk.vtkTensorGlyph()
-      glyph.ExtractEigenvaluesOff()
-    else:
-      glyph = vtk.vtkGlyph3D()
+    
     glyph.SetSourceConnection(sphereSource.GetOutputPort())
     glyph.SetInputData(polydata)
     glyph.Update()
 
-    modelNode = slicer.vtkMRMLModelNode()
-    modelNode.SetName('Landmark Variance')
-    slicer.mrmlScene.AddNode(modelNode)
-    modelDisplayNode = slicer.vtkMRMLModelDisplayNode()
-    modelDisplayNode.SetScalarVisibility(True)
-    modelDisplayNode.SetActiveScalarName('Scales')
-    modelDisplayNode.SetAndObserveColorNodeID('vtkMRMLColorTableNodeFileColdToHotRainbow.txt')
-    slicer.mrmlScene.AddNode(modelDisplayNode)
-    modelNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
     modelNode.SetAndObservePolyData(glyph.GetOutput())
+    modelDisplayNode = modelNode.GetDisplayNode()
+    modelDisplayNode.SetScalarVisibility(True)
+    modelDisplayNode.SetActiveScalarName('Index') #color by landmark number 
+    modelDisplayNode.SetAndObserveColorNodeID('vtkMRMLColorTableNodeFileColdToHotRainbow.txt')
+    
 
 
 #
@@ -1046,7 +1074,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
       table.SetValue(i, 0, data[i,0])
       table.SetValue(i, 1, data[i,1])
       
-    plotSeriesNode1 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", "Scatter Plot")
+    plotSeriesNode1 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", "Subjects")
     plotSeriesNode1.SetAndObserveTableNodeID(tableNode.GetID())
     plotSeriesNode1.SetXColumnName(xAxis)
     plotSeriesNode1.SetYColumnName(yAxis)
@@ -1057,13 +1085,12 @@ class GPALogic(ScriptedLoadableModuleLogic):
      
     plotChartNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotChartNode")
     plotChartNode.AddAndObservePlotSeriesNodeID(plotSeriesNode1.GetID())
-    plotChartNode.SetTitle('A simple scatter plot ')
+    plotChartNode.SetTitle('PCA Scatter Plot ')
     plotChartNode.SetXAxisTitle(xAxis)
     plotChartNode.SetYAxisTitle(yAxis)
      
     layoutManager = slicer.app.layoutManager()
-    layoutWithPlot = slicer.modules.plots.logic().GetLayoutWithPlot(layoutManager.layout)
-    layoutManager.setLayout(layoutWithPlot)
+    layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutConventionalPlotView)
 
     plotWidget = layoutManager.plotWidget(0)
     plotViewNode = plotWidget.mrmlPlotViewNode()
