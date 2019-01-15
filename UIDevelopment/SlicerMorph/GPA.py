@@ -311,9 +311,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     sortedArray = np.zeros(len(files), dtype={'names':('filename', 'procdist'),'formats':('U10','f8')})
     sortedArray['filename']=files
     sortedArray['procdist']=self.LM.procdist[:,0]
-    sortedArray.sort(order='procdist')
+    #sortedArray.sort(order='procdist')
     
-    tableNode = slicer.vtkMRMLTableNode()
+  
+    tableNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTableNode', 'Procrustes Distance Table')
     col1=tableNode.AddColumn()
     col1.SetName('ID')
     
@@ -328,12 +329,17 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       tableNode.SetCellText(i,0,sortedArray['filename'][i])
       tableNode.SetCellText(i,1,str(sortedArray['procdist'][i]))
 
-    slicer.mrmlScene.AddNode(tableNode)
     
-    barPlot = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", "barPlot")
+    barPlot = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLPlotSeriesNode', 'Distances')
     barPlot.SetAndObserveTableNodeID(tableNode.GetID())
     barPlot.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeBar)
-    chartNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotChartNode")
+    barPlot.SetLabelColumnName('ID') #displayed when hovering mouse
+    barPlot.SetYColumnName('Procrustes Distance') # for bar plots, index is the x-value
+    chartNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLPlotChartNode', 'Procrustes Distance Chart')
+    chartNode.SetTitle('Procrustes Distances')
+    chartNode.SetLegendVisibility(False)
+    chartNode.SetYAxisTitle('Distance')
+    chartNode.SetXAxisTitle('Subject')
     chartNode.AddAndObservePlotSeriesNodeID(barPlot.GetID())
     layoutManager = slicer.app.layoutManager()
     layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutConventionalPlotView)
@@ -654,10 +660,13 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.sampleSizeScaleFactor = logic.dist2(self.sourceLMnumpy).max()
     print("Scale Factor: ", self.sampleSizeScaleFactor)
 
-    self.transformNode=slicer.vtkMRMLTransformNode()
-    self.transformNode.SetName("TPSTransformNode")
-    slicer.mrmlScene.AddNode(self.transformNode)
+    
+    self.transformNode=slicer.mrmlScene.GetFirstNodeByName('TPS Transform')
+    if self.transformNode is None:
+      self.transformNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', 'TPS Transform')
+
     print("completed selections")
+    slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutConventionalPlotView)
 
   def onApply(self):
     pc1=self.slider1.boxValue()
