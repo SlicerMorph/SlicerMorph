@@ -14,6 +14,7 @@ import fnmatch
 import support.vtk_lib as vtk_lib
 import support.gpa_lib as gpa_lib
 import  numpy as np
+from datetime import datetime
 
 #
 # GPA
@@ -243,9 +244,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.LM_dir_name=qt.QFileDialog().getExistingDirectory()
     self.LMText.setText(self.LM_dir_name)
       
-  def selectOutputFolder(self):
-    self.outputFolder=qt.QFileDialog().getExistingDirectory()
-    self.outText.setText(self.outputFolder)
+  #def selectOutputFolder(self):
+  #  self.outputFolder=qt.QFileDialog().getExistingDirectory()
+  #  self.outText.setText(self.outputFolder)
 
   def updateList(self):
     i,j,k=self.LM.lm.shape
@@ -297,9 +298,19 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       tmp=[]
     self.LM.lmOrig, files = logic.mergeMatchs(self.LM_dir_name, tmp)
     self.LM.lmRaw, files = logic.mergeMatchs(self.LM_dir_name, tmp)
+    
+    #set scaling factor using mean of raw landmarks
+    rawMeanLandmarks = self.LM.lmOrig.mean(2)
+    logic = GPALogic()
+    self.sampleSizeScaleFactor = logic.dist2(rawMeanLandmarks).max()
+    print("Scale Factor: ", self.sampleSizeScaleFactor)
+    
     self.LM.doGpa(self.skipScalingCheckBox.checked)
     self.LM.calcEigen()
     self.updateList()
+    dateTimeStamp = datetime.now().strftime('%Y-%m-%d_%H_%M_%S')
+    self.outputFolder = os.path.join(self.LM_dir_name, dateTimeStamp)
+    os.makedirs(self.outputFolder)
     self.LM.writeOutData(self.outputFolder, files)
     filename=self.LM.closestSample(files)
     self.volumeRecText.setText(filename)
@@ -339,7 +350,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     chartNode.SetTitle('Procrustes Distances')
     chartNode.SetLegendVisibility(False)
     chartNode.SetYAxisTitle('Distance')
-    chartNode.SetXAxisTitle('Subject')
+    chartNode.SetXAxisTitle('Subjects')
     chartNode.AddAndObservePlotSeriesNodeID(barPlot.GetID())
     layoutManager = slicer.app.layoutManager()
     layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutConventionalPlotView)
@@ -429,13 +440,14 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     inputLayout.addWidget(self.LMbutton,1,3)
     self.layout.addWidget(inbutton)
     self.LMbutton.connect('clicked(bool)', self.selectLandmarkFile)
-
-    self.outText, outLabel, self.outbutton=self.textIn('Output folder prefix','', '')
-    inputLayout.addWidget(self.outText,2,2)
-    inputLayout.addWidget(outLabel,2,1)
-    inputLayout.addWidget(self.outbutton,2,3)
-    self.layout.addWidget(inbutton)
-    self.outbutton.connect('clicked(bool)', self.selectOutputFolder)
+    
+    # Removing output folder, will place time/date stamped folder in landmark folder selected
+    #self.outText, outLabel, self.outbutton=self.textIn('Output folder prefix','', '')
+    #inputLayout.addWidget(self.outText,2,2)
+    #inputLayout.addWidget(outLabel,2,1)
+    #inputLayout.addWidget(self.outbutton,2,3)
+    #self.layout.addWidget(inbutton)
+    #self.outbutton.connect('clicked(bool)', self.selectOutputFolder)
 
     self.excludeLMLabel=qt.QLabel('Exclude landmarks')
     inputLayout.addWidget(self.excludeLMLabel,3,1)
@@ -579,7 +591,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.layout.addWidget(lolliFrame)
 
     self.vectorOne=qt.QComboBox()
-    vectorOneLabel=qt.QLabel("Vector One: Red")
+    vectorOneLabel=qt.QLabel("PCA Component: ")
     lolliLayout.addWidget(vectorOneLabel,1,1)
     lolliLayout.addWidget(self.vectorOne,1,2,1,3)
 
@@ -592,12 +604,22 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     vector3Label=qt.QLabel("Vector Three: Blue")
     lolliLayout.addWidget(vector3Label,3,1)
     lolliLayout.addWidget(self.vectorThree,3,2,1,3)
+    
+    self.ThreeDType=qt.QRadioButton()
+    ThreeDTypeLabel=qt.QLabel("3D Plot")
+    self.ThreeDType.setChecked(True)
+    lolliLayout.addWidget(ThreeDTypeLabel,4,1)
+    lolliLayout.addWidget(self.ThreeDType,4,2,1,2)
+    self.TwoDType=qt.QRadioButton()
+    TwoDTypeLabel=qt.QLabel("2D Plot")
+    lolliLayout.addWidget(TwoDTypeLabel,4,4)
+    lolliLayout.addWidget(self.TwoDType,4,5,1,2)
 
     lolliButton = qt.QPushButton("Lollipop Plot")
     lolliButton.checkable = True
     lolliButton.setStyleSheet(self.StyleSheet)
     lolliButton.toolTip = "Plot PC vectors"
-    lolliLayout.addWidget(lolliButton,4,1,1,4)
+    lolliLayout.addWidget(lolliButton,5,1,1,4)
     lolliButton.connect('clicked(bool)', self.lolliPlot)
  
  # Landmark Distribution Section
@@ -657,10 +679,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     logic = GPALogic()
     self.sourceLMNode=self.FudSelect.currentNode()
     self.sourceLMnumpy=logic.convertFudicialToNP(self.sourceLMNode)
-    self.sampleSizeScaleFactor = logic.dist2(self.sourceLMnumpy).max()
-    print("Scale Factor: ", self.sampleSizeScaleFactor)
-
-    
     self.transformNode=slicer.mrmlScene.GetFirstNodeByName('TPS Transform')
     if self.transformNode is None:
       self.transformNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', 'TPS Transform')
@@ -782,9 +800,16 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     tensors.SetNumberOfTuples(i)
     tensors.SetNumberOfComponents(9)
     tensors.SetName("Tensors")
-
+    
+    #check if reference landmarks are loaded
+    try:
+      referenceLandmarks = self.sourceLMnumpy
+    except AttributeError:
+      referenceLandmarks = self.LM.lmOrig.mean(2)
+      print("No reference landmarks loaded. Plotting distributions at mean landmark points.")
+    
     for landmark in range(i):
-      pt=self.sourceLMnumpy[landmark,:]
+      pt=referenceLandmarks[landmark,:]
       points.SetPoint(landmark,pt)
       scales.InsertNextValue(sliderScale*(varianceMat[landmark,0]+varianceMat[landmark,1]+varianceMat[landmark,2])/3)
       tensors.InsertTuple9(landmark,sliderScale*varianceMat[landmark,0],0,0,0,sliderScale*varianceMat[landmark,1],0,0,0,sliderScale*varianceMat[landmark,2])
