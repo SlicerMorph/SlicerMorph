@@ -136,7 +136,6 @@ class LMData:
       self.lm, self.mShape=gpa_lib.doGPA(self.lmRaw)
 
   def calcEigen(self):
-    print("self LM: ", self.lm.shape)
     twoDim=gpa_lib.makeTwoDim(self.lm)
     mShape=gpa_lib.calcMean(twoDim)
     covMatrix=gpa_lib.calcCov(twoDim)
@@ -245,9 +244,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.LM_dir_name=qt.QFileDialog().getExistingDirectory()
     self.LMText.setText(self.LM_dir_name)
       
-  #def selectOutputFolder(self):
-  #  self.outputFolder=qt.QFileDialog().getExistingDirectory()
-  #  self.outText.setText(self.outputFolder)
+  def selectOutputDirectory(self):
+    self.outputDirectory=qt.QFileDialog().getExistingDirectory()
+    self.outText.setText(self.outputDirectory)
 
   def updateList(self):
     i,j,k=self.LM.lm.shape
@@ -298,27 +297,26 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       tmp=[]
     self.LM.lmOrig, files = logic.mergeMatchs(self.LM_dir_name, tmp)
     self.LM.lmRaw, files = logic.mergeMatchs(self.LM_dir_name, tmp)
-    print("orig LM", self.LM.lmOrig.shape)
-    print("raw LM", self.LM.lmRaw.shape)
-    
+    shape = self.LM.lmOrig.shape
+    print('Loaded ' + str(shape[2]) + ' subjects with ' + str(shape[0]) + ' landmark points.')
     #set scaling factor using mean of raw landmarks
     rawMeanLandmarks = self.LM.lmOrig.mean(2)
     logic = GPALogic()
     self.sampleSizeScaleFactor = logic.dist2(rawMeanLandmarks).max()
-    print("Scale Factor: ", self.sampleSizeScaleFactor)
+    print("Scale Factor: " + str(self.sampleSizeScaleFactor))
     
     self.LM.doGpa(self.skipScalingCheckBox.checked)
     self.LM.calcEigen()
     self.updateList()
     dateTimeStamp = datetime.now().strftime('%Y-%m-%d_%H_%M_%S')
-    self.outputFolder = os.path.join(self.LM_dir_name, dateTimeStamp)
+    self.outputFolder = os.path.join(self.outputDirectory, dateTimeStamp)
     os.makedirs(self.outputFolder)
     self.LM.writeOutData(self.outputFolder, files)
     filename=self.LM.closestSample(files)
     self.volumeRecText.setText(filename)
     self.populateDistanceTable(files)
-    print("Closest to mean:")
-    print(filename)
+    print("Closest sample to mean:" + filename)
+  
     
   def populateDistanceTable(self, files):
     sortedArray = np.zeros(len(files), dtype={'names':('filename', 'procdist'),'formats':('U10','f8')})
@@ -405,7 +403,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     # delete the two data objects
 
     # reset text fields
-    self.outputFolder=None
+    self.outputDirectory=None
     self.outText.setText(" ")
     self.LM_dir_name=None
     self.LMText.setText(" ")
@@ -453,13 +451,13 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.layout.addWidget(inbutton)
     self.LMbutton.connect('clicked(bool)', self.selectLandmarkFile)
     
-    # Removing output folder, will place time/date stamped folder in landmark folder selected
-    #self.outText, outLabel, self.outbutton=self.textIn('Output folder prefix','', '')
-    #inputLayout.addWidget(self.outText,2,2)
-    #inputLayout.addWidget(outLabel,2,1)
-    #inputLayout.addWidget(self.outbutton,2,3)
-    #self.layout.addWidget(inbutton)
-    #self.outbutton.connect('clicked(bool)', self.selectOutputFolder)
+    # Select output directory
+    self.outText, outLabel, self.outbutton=self.textIn('Output directory prefix','', '')
+    inputLayout.addWidget(self.outText,2,2)
+    inputLayout.addWidget(outLabel,2,1)
+    inputLayout.addWidget(self.outbutton,2,3)
+    self.layout.addWidget(inbutton)
+    self.outbutton.connect('clicked(bool)', self.selectOutputDirectory)
 
     self.excludeLMLabel=qt.QLabel('Exclude landmarks')
     inputLayout.addWidget(self.excludeLMLabel,3,1)
@@ -958,31 +956,17 @@ class GPALogic(ScriptedLoadableModuleLogic):
       landmarks=np.delete(landmarks,(np.int(lmToRemove[i])-1),axis=0)    
     return landmarks, matchedfiles
    
-  def createMatchList(self, topDir,suffix):
-    l=[]
+  def createMatchList(self, topDir,suffix): 
+   #eliminate requirement for 2 landmark files
+   #retains data structure in case filtering is required later.
+    validFiles=[]
     for root, dirs, files in os.walk(topDir):
       for name in files:
         if fnmatch.fnmatch(name,"*"+suffix):
-          l.append(os.path.join(root, name[:-5]))
-    matchList=[]
-    from sets import Set
-    noMatchList=Set()
-    for name1 in l:
-      for name2 in l:
-        if fnmatch.fnmatch(name2,name1[:-1]+"*2"):
-          if not fnmatch.fnmatch(name2,name1):
-            tmp=[name1,name2]
-            matchList.append(tmp)
-    #create list of no matchs
-    #flatten matchlist
-    matches=[item for sublist in matchList for item in sublist]
-    noMatchs=[]
-    #print "lenght l",len(l)
-    for items in l:
-     if items not in matches:
-       noMatchs.append(items)
-
-    return matches, noMatchs
+          validFiles.append(os.path.join(root, name[:-5]))
+    invalidFiles=[]
+    return validFiles, invalidFiles
+    
   def importLandMarks(self, filePath):
     """Imports the landmarks from a .fcsv file. Does not import sample if a  landmark is -1000
     Adjusts the resolution is log(nhrd) file is found returns kXd array of landmark data. k=# of landmarks d=dimension
