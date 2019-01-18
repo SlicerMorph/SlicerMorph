@@ -136,6 +136,7 @@ class LMData:
       self.lm, self.mShape=gpa_lib.doGPA(self.lmRaw)
 
   def calcEigen(self):
+    print("self LM: ", self.lm.shape)
     twoDim=gpa_lib.makeTwoDim(self.lm)
     mShape=gpa_lib.calcMean(twoDim)
     covMatrix=gpa_lib.calcCov(twoDim)
@@ -286,18 +287,19 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
   def onLoad(self):
     logic = GPALogic()
-    #logic.run(self.inputSelector.currentNode(), self.outputSelector.currentNode(), imageThreshold, enableScreenshotsFlag)
     self.LM=LMData()
     lmToExclude=self.excludeLMText.text
     if len(lmToExclude) != 0:
       tmp=lmToExclude.split(",")
-      print len(tmp)
+      print("Number of excluded landmarks: ", len(tmp))
       tmp=[np.int(x) for x in tmp]
       lmNP=np.asarray(tmp)
     else:
       tmp=[]
     self.LM.lmOrig, files = logic.mergeMatchs(self.LM_dir_name, tmp)
     self.LM.lmRaw, files = logic.mergeMatchs(self.LM_dir_name, tmp)
+    print("orig LM", self.LM.lmOrig.shape)
+    print("raw LM", self.LM.lmRaw.shape)
     
     #set scaling factor using mean of raw landmarks
     rawMeanLandmarks = self.LM.lmOrig.mean(2)
@@ -386,7 +388,17 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     pcList=[pb1,pb2,pb3]
     logic = GPALogic()
-    logic.lollipopGraph(self.LM, self.sourceLMNode, pcList, self.sampleSizeScaleFactor)  
+    #check if reference landmarks are loaded, otherwise use mean landmark positions to plot lollipops
+    try:
+      referenceLandmarks = logic.convertFudicialToNP(self.sourceLMNode)
+    except AttributeError:
+      referenceLandmarks = self.LM.lmOrig.mean(2)
+      print("No reference landmarks loaded, plotting lollipop vectors at mean landmarks points.")
+    
+    componentNumber = 1
+    for pc in pcList:
+      logic.lollipopGraph(self.LM, referenceLandmarks, pc, self.sampleSizeScaleFactor, componentNumber)
+      componentNumber+=1
     slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutConventionalPlotView)
     
   def reset(self):
@@ -520,8 +532,107 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     inputLayout.addWidget(loadButton,5,1,1,3)
     loadButton.toolTip = "Push to start the program. Make sure you have filled in all the data."
     loadButton.connect('clicked(bool)', self.onLoad)
+
+    #PC plot section
+    plotFrame=ctk.ctkCollapsibleButton()
+    plotFrame.text="PCA Scatter Plot Options"
+    plotLayout= qt.QGridLayout(plotFrame)
+    self.layout.addWidget(plotFrame)
+
+    self.XcomboBox=qt.QComboBox()
+    Xlabel=qt.QLabel("X Axis")
+    plotLayout.addWidget(Xlabel,1,1)
+    plotLayout.addWidget(self.XcomboBox,1,2,1,3)
+
+    self.YcomboBox=qt.QComboBox()
+    Ylabel=qt.QLabel("Y Axis")
+    plotLayout.addWidget(Ylabel,2,1)
+    plotLayout.addWidget(self.YcomboBox,2,2,1,3)
+
+    plotButton = qt.QPushButton("Scatter Plot")
+    plotButton.checkable = True
+    plotButton.setStyleSheet(self.StyleSheet)
+    plotButton.toolTip = "Plot PCs"
+    plotLayout.addWidget(plotButton,3,1,1,4)
+    plotButton.connect('clicked(bool)', self.plot)
+
+    # Lollipop Plot Section
+
+    lolliFrame=ctk.ctkCollapsibleButton()
+    lolliFrame.text="Lollipop Plot Options"
+    lolliLayout= qt.QGridLayout(lolliFrame)
+    self.layout.addWidget(lolliFrame)
+
+    self.vectorOne=qt.QComboBox()
+    vectorOneLabel=qt.QLabel("Vector One: Red")
+    lolliLayout.addWidget(vectorOneLabel,1,1)
+    lolliLayout.addWidget(self.vectorOne,1,2,1,3)
+
+    self.vectorTwo=qt.QComboBox()
+    vector2Label=qt.QLabel("Vector Two: Green")
+    lolliLayout.addWidget(vector2Label,2,1)
+    lolliLayout.addWidget(self.vectorTwo,2,2,1,3)
+
+    self.vectorThree=qt.QComboBox()
+    vector3Label=qt.QLabel("Vector Three: Blue")
+    lolliLayout.addWidget(vector3Label,3,1)
+    lolliLayout.addWidget(self.vectorThree,3,2,1,3)
     
-    # adjust PC sectore
+    self.ThreeDType=qt.QRadioButton()
+    ThreeDTypeLabel=qt.QLabel("3D Plot")
+    self.ThreeDType.setChecked(True)
+    lolliLayout.addWidget(ThreeDTypeLabel,4,1)
+    lolliLayout.addWidget(self.ThreeDType,4,2,1,2)
+    self.TwoDType=qt.QRadioButton()
+    TwoDTypeLabel=qt.QLabel("2D Plot")
+    lolliLayout.addWidget(TwoDTypeLabel,4,4)
+    lolliLayout.addWidget(self.TwoDType,4,5,1,2)
+
+    lolliButton = qt.QPushButton("Lollipop Vector Plot")
+    lolliButton.checkable = True
+    lolliButton.setStyleSheet(self.StyleSheet)
+    lolliButton.toolTip = "Plot PC vectors"
+    lolliLayout.addWidget(lolliButton,5,1,1,6)
+    lolliButton.connect('clicked(bool)', self.lolliPlot)
+ 
+ # Landmark Distribution Section
+    distributionFrame=ctk.ctkCollapsibleButton()
+    distributionFrame.text="Landmark Distribution Plot Options"
+    distributionLayout= qt.QGridLayout(distributionFrame)
+    self.layout.addWidget(distributionFrame)
+
+    self.EllipseType=qt.QRadioButton()
+    ellipseTypeLabel=qt.QLabel("Ellipse type")
+    self.EllipseType.setChecked(True)
+    distributionLayout.addWidget(ellipseTypeLabel,2,1)
+    distributionLayout.addWidget(self.EllipseType,2,2,1,2)
+    self.SphereType=qt.QRadioButton()
+    sphereTypeLabel=qt.QLabel("Sphere type")
+    distributionLayout.addWidget(sphereTypeLabel,3,1)
+    distributionLayout.addWidget(self.SphereType,3,2,1,2)
+    self.CloudType=qt.QRadioButton()
+    cloudTypeLabel=qt.QLabel("Point cloud type")
+    distributionLayout.addWidget(cloudTypeLabel,4,1)
+    distributionLayout.addWidget(self.CloudType,4,2,1,2)
+    
+    self.scaleSlider = ctk.ctkSliderWidget()
+    self.scaleSlider.singleStep = 1
+    self.scaleSlider.minimum = 1
+    self.scaleSlider.maximum = 10
+    self.scaleSlider.value = 5
+    self.scaleSlider.setToolTip("Set scale for variance visualization")
+    sliderLabel=qt.QLabel("Scale Glyphs")
+    distributionLayout.addWidget(sliderLabel,5,1)
+    distributionLayout.addWidget(self.scaleSlider,5,2,1,2)
+    
+    plotDistributionButton = qt.QPushButton("Plot LM Distribution")
+    plotDistributionButton.checkable = True
+    plotDistributionButton.setStyleSheet(self.StyleSheet)
+    plotDistributionButton.toolTip = "Visualize distribution of landmarks from all subjects"
+    distributionLayout.addWidget(plotDistributionButton,6,1,1,4)
+    plotDistributionButton.connect('clicked(bool)', self.onPlotDistribution)
+    
+    # PC warping
     vis=ctk.ctkCollapsibleButton()
     vis.text='PCA Visualization Parameters'
     visLayout= qt.QGridLayout(vis)
@@ -559,107 +670,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     applyFrame=qt.QFrame(self.parent)
     applyButton.connect('clicked(bool)', self.onApply)
     visLayout.addWidget(applyButton,8,1,1,2)
-
-    #PC plot section
-    plotFrame=ctk.ctkCollapsibleButton()
-    plotFrame.text="PCA Scatter Plot Options"
-    plotLayout= qt.QGridLayout(plotFrame)
-    self.layout.addWidget(plotFrame)
-
-    self.XcomboBox=qt.QComboBox()
-    Xlabel=qt.QLabel("X Axis")
-    plotLayout.addWidget(Xlabel,1,1)
-    plotLayout.addWidget(self.XcomboBox,1,2,1,3)
-
-    self.YcomboBox=qt.QComboBox()
-    Ylabel=qt.QLabel("Y Axis")
-    plotLayout.addWidget(Ylabel,2,1)
-    plotLayout.addWidget(self.YcomboBox,2,2,1,3)
-
-    plotButton = qt.QPushButton("Scatter Plot")
-    plotButton.checkable = True
-    plotButton.setStyleSheet(self.StyleSheet)
-    plotButton.toolTip = "Plot PCs"
-    plotLayout.addWidget(plotButton,3,1,1,4)
-    plotButton.connect('clicked(bool)', self.plot)
-
-    # Lollipop Plot Section
-
-    lolliFrame=ctk.ctkCollapsibleButton()
-    lolliFrame.text="Lollipop Plot Options"
-    lolliLayout= qt.QGridLayout(lolliFrame)
-    self.layout.addWidget(lolliFrame)
-
-    self.vectorOne=qt.QComboBox()
-    vectorOneLabel=qt.QLabel("PCA Component: ")
-    lolliLayout.addWidget(vectorOneLabel,1,1)
-    lolliLayout.addWidget(self.vectorOne,1,2,1,3)
-
-    self.vectorTwo=qt.QComboBox()
-    vector2Label=qt.QLabel("Vector Two: Green")
-    lolliLayout.addWidget(vector2Label,2,1)
-    lolliLayout.addWidget(self.vectorTwo,2,2,1,3)
-
-    self.vectorThree=qt.QComboBox()
-    vector3Label=qt.QLabel("Vector Three: Blue")
-    lolliLayout.addWidget(vector3Label,3,1)
-    lolliLayout.addWidget(self.vectorThree,3,2,1,3)
-    
-    self.ThreeDType=qt.QRadioButton()
-    ThreeDTypeLabel=qt.QLabel("3D Plot")
-    self.ThreeDType.setChecked(True)
-    lolliLayout.addWidget(ThreeDTypeLabel,4,1)
-    lolliLayout.addWidget(self.ThreeDType,4,2,1,2)
-    self.TwoDType=qt.QRadioButton()
-    TwoDTypeLabel=qt.QLabel("2D Plot")
-    lolliLayout.addWidget(TwoDTypeLabel,4,4)
-    lolliLayout.addWidget(self.TwoDType,4,5,1,2)
-
-    lolliButton = qt.QPushButton("Lollipop Plot")
-    lolliButton.checkable = True
-    lolliButton.setStyleSheet(self.StyleSheet)
-    lolliButton.toolTip = "Plot PC vectors"
-    lolliLayout.addWidget(lolliButton,5,1,1,4)
-    lolliButton.connect('clicked(bool)', self.lolliPlot)
- 
- # Landmark Distribution Section
-    distributionFrame=ctk.ctkCollapsibleButton()
-    distributionFrame.text="Landmark Distribution Plot Options"
-    distributionLayout= qt.QGridLayout(distributionFrame)
-    self.layout.addWidget(distributionFrame)
-
-    self.EllipseType=qt.QRadioButton()
-    ellipseTypeLabel=qt.QLabel("Ellipse type")
-    self.EllipseType.setChecked(True)
-    distributionLayout.addWidget(ellipseTypeLabel,2,1)
-    distributionLayout.addWidget(self.EllipseType,2,2,1,2)
-    self.SphereType=qt.QRadioButton()
-    sphereTypeLabel=qt.QLabel("Sphere type")
-    distributionLayout.addWidget(sphereTypeLabel,3,1)
-    distributionLayout.addWidget(self.SphereType,3,2,1,2)
-    self.CloudType=qt.QRadioButton()
-    cloudTypeLabel=qt.QLabel("Point cloud type")
-    distributionLayout.addWidget(cloudTypeLabel,4,1)
-    distributionLayout.addWidget(self.CloudType,4,2,1,2)
-    
-    self.scaleSlider = ctk.ctkSliderWidget()
-    self.scaleSlider.singleStep = 1
-    self.scaleSlider.minimum = 1
-    self.scaleSlider.maximum = 10
-    self.scaleSlider.value = 5
-    self.scaleSlider.setToolTip("Set scale for variance visualization")
-    sliderLabel=qt.QLabel("Scale Glyphs")
-    distributionLayout.addWidget(sliderLabel,5,1)
-    distributionLayout.addWidget(self.scaleSlider,5,2,1,2)
-    
-    
-    plotDistributionButton = qt.QPushButton("Plot LM Distribution")
-    plotDistributionButton.checkable = True
-    plotDistributionButton.setStyleSheet(self.StyleSheet)
-    plotDistributionButton.toolTip = "Visualize distribution of landmarks from all subjects"
-    distributionLayout.addWidget(plotDistributionButton,6,1,1,4)
-    plotDistributionButton.connect('clicked(bool)', self.onPlotDistribution)
-    
     resetButton = qt.QPushButton("Reset Scene")
     resetButton.checkable = True
     resetButton.setStyleSheet(self.StyleSheet)
@@ -1129,97 +1139,75 @@ class GPALogic(ScriptedLoadableModuleLogic):
     plotWidget = layoutManager.plotWidget(0)
     plotViewNode = plotWidget.mrmlPlotViewNode()
     plotViewNode.SetPlotChartNodeID(plotChartNode.GetID())
-      
-  def makeScatterPlotOld(self, data,title,xAxis,yAxis):
-    lns = slicer.mrmlScene.GetNodesByClass('vtkMRMLLayoutNode')
-    lns.InitTraversal()
-    ln = lns.GetNextItemAsObject()
-    ln.SetViewArrangement(24)
-    cvns = slicer.mrmlScene.GetNodesByClass('vtkMRMLChartViewNode')
-    cvns.InitTraversal()
-    cvn = cvns.GetNextItemAsObject()
-    #
-    dn = slicer.mrmlScene.AddNode(slicer.vtkMRMLDoubleArrayNode())
-    dn.SetName(xAxis+"_"+yAxis+"_data")
-    a = dn.GetArray()
-    i,j=data.shape
-    a.SetNumberOfTuples(i)
-    x = range(0, i)
-    for j in range(len(x)):
-      a.SetComponent(j, 0, data[j,0])
-      a.SetComponent(j, 1, data[j,1])
-      a.SetComponent(j, 2, 0)
 
-    cn = slicer.mrmlScene.AddNode(slicer.vtkMRMLChartNode())
-    state=cn.StartModify()
-    # Add the Array Nodes to the Chart. The first argument is a string used for the legend and to refer to the Array when setting properties.
-    cn.AddArray('A double array', dn.GetID())
-    #
-    # Set a few properties on the Chart. The first argument is a string identifying which Array to assign the property. 
-    # 'default' is used to assign a property to the Chart itself (as opposed to an Array Node).
-    cn.SetProperty('default', 'type', 'scatter')
-    cn.SetProperty('default', 'title', title)
-    cn.SetProperty('default', 'xAxisLabel', xAxis)
-    cn.SetProperty('default', 'yAxisLabel', yAxis)
-    cn.SetProperty('default', 'showLegend', '')
-    cn.SetName(xAxis+"_"+yAxis)
-    cn.EndModify(state)
-    cvn.SetChartNodeID(cn.GetID())
-    cvn.Modified()
-
-  def lollipopGraph(self, LMObj,LMNode, pcList, scaleFactor):
-    LM = self.convertFudicialToNP(LMNode)
-    ind=1
-    for pc in pcList:
-      if pc is not 0:
-        pc=pc-1
-        endpoints=self.calcEndpoints(LMObj,LM,pc,scaleFactor)
-        i,j=LM.shape
-        
-        # declare arrays for polydata
-        points = vtk.vtkPoints() 
-        points.SetNumberOfPoints(i*2)
-        lines = vtk.vtkCellArray()
-        magnitude = vtk.vtkFloatArray()
-        magnitude.SetName('Magnitude');
-        magnitude.SetNumberOfComponents(1);
-        magnitude.SetNumberOfValues(i);
-        
-        for x in range(i): #populate vtkPoints and vtkLines
-          points.SetPoint(x,LM[x,:])
-          points.SetPoint(x+i,endpoints[x,:])
-          line = vtk.vtkLine()
-          line.GetPointIds().SetId(0,x)
-          line.GetPointIds().SetId(1,x+i)
-          lines.InsertNextCell(line)
-          magnitude.InsertValue(x,abs(LM[x,0]-endpoints[x,0]) + abs(LM[x,1]-endpoints[x,1]) + abs(LM[x,2]-endpoints[x,2]))
-      ind=ind+1
-    polydata=vtk.vtkPolyData()
-    polydata.SetPoints(points)
-    polydata.SetLines(lines)
-    polydata.GetCellData().AddArray(magnitude)
-
-    tubeFilter = vtk.vtkTubeFilter()
-    tubeFilter.SetInputData(polydata)
-    tubeFilter.SetRadius(0.7)
-    tubeFilter.SetNumberOfSides(20)
-    tubeFilter.CappingOn()
-    tubeFilter.Update()
+  def lollipopGraph(self, LMObj,LM, pc, scaleFactor, componentNumber):
+    # set options for 3 vector displays
+    if componentNumber == 1:
+      color = [1,0,0]
+      modelNodeName = 'Lollipop Vector Plot 1'
+    elif componentNumber == 2:
+      color = [0,1,0]
+      modelNodeName = 'Lollipop Vector Plot 2'
+    else: 
+      color = [0,0,1]
+      modelNodeName = 'Lollipop Vector Plot 3'
     
-    modelNode = slicer.vtkMRMLModelNode()
-    slicer.mrmlScene.AddNode(modelNode)
-    modelDisplayNode = slicer.vtkMRMLModelDisplayNode()
-    modelDisplayNode.SetScalarVisibility(True)
-    modelDisplayNode.SetActiveScalarName('Magnitude')
-    modelDisplayNode.SetAndObserveColorNodeID('vtkMRMLColorTableNodeFileColdToHotRainbow.txt')
-    modelDisplayNode.SetSliceIntersectionVisibility(True)
-    modelDisplayNode.SetSliceDisplayModeToProjection()
-    slicer.mrmlScene.AddNode(modelDisplayNode)
-    modelNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
-    modelNode.SetAndObservePolyData(tubeFilter.GetOutput())
+    if pc is not 0:
+      pc=pc-1 # get current component 
+      endpoints=self.calcEndpoints(LMObj,LM,pc,scaleFactor)
+      i,j=LM.shape
+        
+      # declare arrays for polydata
+      points = vtk.vtkPoints() 
+      points.SetNumberOfPoints(i*2)
+      lines = vtk.vtkCellArray()
+      magnitude = vtk.vtkFloatArray()
+      magnitude.SetName('Magnitude');
+      magnitude.SetNumberOfComponents(1);
+      magnitude.SetNumberOfValues(i);
+        
+      for x in range(i): #populate vtkPoints and vtkLines
+        points.SetPoint(x,LM[x,:])
+        points.SetPoint(x+i,endpoints[x,:])
+        line = vtk.vtkLine()
+        line.GetPointIds().SetId(0,x)
+        line.GetPointIds().SetId(1,x+i)
+        lines.InsertNextCell(line)
+        magnitude.InsertValue(x,abs(LM[x,0]-endpoints[x,0]) + abs(LM[x,1]-endpoints[x,1]) + abs(LM[x,2]-endpoints[x,2]))
+
+      polydata=vtk.vtkPolyData()
+      polydata.SetPoints(points)
+      polydata.SetLines(lines)
+      polydata.GetCellData().AddArray(magnitude)
+
+      tubeFilter = vtk.vtkTubeFilter()
+      tubeFilter.SetInputData(polydata)
+      tubeFilter.SetRadius(0.7)
+      tubeFilter.SetNumberOfSides(20)
+      tubeFilter.CappingOn()
+      tubeFilter.Update()
+    
+      #check if there is a model node for lollipop plot
+      modelNode=slicer.mrmlScene.GetFirstNodeByName(modelNodeName)
+      if modelNode is None:
+        modelNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode', modelNodeName)
+        modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
+        modelNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
+ 
+      modelDisplayNode = modelNode.GetDisplayNode()
+      #modelDisplayNode.SetSliceDisplayModeToProjection()
+      modelDisplayNode.SetColor(color)
+      modelDisplayNode.SetSliceIntersectionVisibility(False)
+      modelNode.SetDisplayVisibility(1)
+      modelNode.SetAndObservePolyData(tubeFilter.GetOutput())
+    else:
+      modelNode=slicer.mrmlScene.GetFirstNodeByName(modelNodeName)
+      if modelNode is not None:
+        modelNode.SetDisplayVisibility(0)
     
   def calcEndpoints(self,LMObj,LM,pc, scaleFactor):
     i,j=LM.shape
+    print("LM shape: ", LM.shape)
     tmp=np.zeros((i,j))
     tmp[:,0]=LMObj.vec[0:i,pc]
     tmp[:,1]=LMObj.vec[i:2*i,pc]
