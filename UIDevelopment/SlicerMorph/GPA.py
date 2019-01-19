@@ -289,14 +289,14 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.LM=LMData()
     lmToExclude=self.excludeLMText.text
     if len(lmToExclude) != 0:
-      tmp=lmToExclude.split(",")
-      print("Number of excluded landmarks: ", len(tmp))
-      tmp=[np.int(x) for x in tmp]
-      lmNP=np.asarray(tmp)
+      self.LMExclusionList=lmToExclude.split(",")
+      print("Number of excluded landmarks: ", len(self.LMExclusionList))
+      self.LMExclusionList=[np.int(x) for x in self.LMExclusionList]
+      lmNP=np.asarray(self.LMExclusionList)
     else:
-      tmp=[]
-    self.LM.lmOrig, files = logic.mergeMatchs(self.LM_dir_name, tmp)
-    self.LM.lmRaw, files = logic.mergeMatchs(self.LM_dir_name, tmp)
+      self.LMExclusionList=[]
+    self.LM.lmOrig, files = logic.mergeMatchs(self.LM_dir_name, self.LMExclusionList)
+    self.LM.lmRaw, files = logic.mergeMatchs(self.LM_dir_name, self.LMExclusionList)
     shape = self.LM.lmOrig.shape
     print('Loaded ' + str(shape[2]) + ' subjects with ' + str(shape[0]) + ' landmark points.')
     #set scaling factor using mean of raw landmarks
@@ -387,6 +387,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     pcList=[pb1,pb2,pb3]
     logic = GPALogic()
     #check if reference landmarks are loaded, otherwise use mean landmark positions to plot lollipops
+    #later may update this to if self.sourceLMnumpy array is empty
     try:
       referenceLandmarks = logic.convertFudicialToNP(self.sourceLMNode)
     except AttributeError:
@@ -395,7 +396,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     
     componentNumber = 1
     for pc in pcList:
-      logic.lollipopGraph(self.LM, referenceLandmarks, pc, self.sampleSizeScaleFactor, componentNumber)
+      logic.lollipopGraph(self.LM, self.sourceLMnumpy, pc, self.sampleSizeScaleFactor, componentNumber)
       componentNumber+=1
     slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutConventionalPlotView)
     
@@ -687,6 +688,12 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     logic = GPALogic()
     self.sourceLMNode=self.FudSelect.currentNode()
     self.sourceLMnumpy=logic.convertFudicialToNP(self.sourceLMNode)
+    #remove any excluded landmarks
+    j=len(self.LMExclusionList)
+    if(j != 0):
+      for i in range(j):
+        self.sourceLMnumpy = np.delete(self.sourceLMnumpy,(np.int(self.LMExclusionList[i])-1),axis=0)
+        
     self.transformNode=slicer.mrmlScene.GetFirstNodeByName('TPS Transform')
     if self.transformNode is None:
       self.transformNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', 'TPS Transform')
@@ -724,10 +731,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     logic = GPALogic()
     #get target landmarks
     self.LM.ExpandAlongPCs(pcSelected,scaleFactors, self.sampleSizeScaleFactor)
-    sourceLMNP=logic.convertFudicialToNP(self.sourceLMNode)
-    target=sourceLMNP+self.LM.shift
+    #sourceLMNP=logic.convertFudicialToNP(self.sourceLMNode)
+
+    target=self.sourceLMnumpy+self.LM.shift
     targetLMVTK=logic.convertNumpyToVTK(target)
-    sourceLMVTK=logic.convertNumpyToVTK(sourceLMNP)
+    sourceLMVTK=logic.convertNumpyToVTK(self.sourceLMnumpy)
     
     #Set up TPS
     VTKTPS = vtk.vtkThinPlateSplineTransform()
