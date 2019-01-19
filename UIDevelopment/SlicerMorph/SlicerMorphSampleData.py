@@ -33,13 +33,14 @@ This work was was funded
 
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
       sampleName='Mouse Head microCT Atlas',
-      #category='SlicerMorph',
+      category='SlicerMorph',
       uris='https://github.com/muratmaga/mouse_CT_atlas/blob/3da1c36c057537384376155f347d08b34817fa5c/data/templates/35_mic_23strain_mus_template_UCHAR.nii.gz?raw=true',
       fileNames='35_mic_23strain_mus_template_UCHAR.nii.gz',
       nodeNames='Mus'
       )
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
       sampleName='MicroCT Mouse',
+      category='SlicerMorph',
       uris='http://slicermorph.fhl.washington.edu/mCT_mouse.mrb',
       loadFiles=True,
       fileNames='mCT_mouse.mrb',
