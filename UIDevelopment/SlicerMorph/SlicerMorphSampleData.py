@@ -30,22 +30,40 @@ This work was was funded
     # Add data sets to SampleData module
     iconsPath = os.path.join(os.path.dirname(self.parent.path), 'Resources/Icons')
     import SampleData
-
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
-      sampleName='Mouse Head microCT Atlas',
+      sampleName='Gorilla Skull Landmarks Only',
       category='SlicerMorph',
-      uris='https://github.com/muratmaga/mouse_CT_atlas/blob/3da1c36c057537384376155f347d08b34817fa5c/data/templates/35_mic_23strain_mus_template_UCHAR.nii.gz?raw=true',
-      fileNames='35_mic_23strain_mus_template_UCHAR.nii.gz',
-      nodeNames='Mus'
-      )
+      uris='https://github.com/SlicerMorph/SampleData/blob/master/Gorilla_Skull_LMs.zip?raw=true',
+      loadFiles=False,
+      fileNames='Gorilla_Skull_LMs.zip',
+      #thumbnailFileName=os.path.join(iconsPath, 'CTPCardio.png'),
+      loadFileType='zip',
+)
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
-      sampleName='MicroCT Mouse',
+      sampleName='Gorilla Skull Reference Model',
       category='SlicerMorph',
-      uris='http://slicermorph.fhl.washington.edu/mCT_mouse.mrb',
+      uris='https://github.com/SlicerMorph/SampleData/blob/master/gorilla_reference.mrb?raw=true',
       loadFiles=True,
-      fileNames='mCT_mouse.mrb',
+      fileNames='gorilla_reference.mrb',
       #thumbnailFileName=os.path.join(iconsPath, 'CTPCardio.png'),
       loadFileType='SceneFile',
-      )
+)  
+    SampleData.SampleDataLogic.registerCustomSampleDataSource(
+      sampleName='Mouse Skull Landmarks Only',
+      category='SlicerMorph',
+      uris='https://github.com/SlicerMorph/SampleData/blob/master/mouse_skull_LMs.zip?raw=true',
+      loadFiles=False,
+      fileNames='mouse_skull_LMs.zip',
+      #thumbnailFileName=os.path.join(iconsPath, 'CTPCardio.png'),
+      loadFileType='zip',
+)
+    SampleData.SampleDataLogic.registerCustomSampleDataSource(
+      sampleName='Mouse Skull Reference Model',
+      category='SlicerMorph',
+      uris='https://github.com/SlicerMorph/SampleData/blob/master/mouse_skull_reference.mrb?raw=true',
+      loadFiles=True,
+      fileNames='mouse_skull_reference.mrb',
+      #thumbnailFileName=os.path.join(iconsPath, 'CTPCardio.png'),
+      loadFileType='SceneFile',
+)  
 
-      
