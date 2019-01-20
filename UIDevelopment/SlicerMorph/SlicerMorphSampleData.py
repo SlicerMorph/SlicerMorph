@@ -66,4 +66,12 @@ This work was was funded
       #thumbnailFileName=os.path.join(iconsPath, 'CTPCardio.png'),
       loadFileType='SceneFile',
 )  
-
+    SampleData.SampleDataLogic.registerCustomSampleDataSource(
+      sampleName='Bruker/Sykscan mCT Recon sample',
+      category='SlicerMorph',
+      uris='https://github.com/SlicerMorph/SampleData/blob/master/sample_Skyscan_mCT_reconstruction.zip?raw=true',
+      loadFiles=False,
+      fileNames='sample_Skyscan_mCT_reconstruction.zip',
+      #thumbnailFileName=os.path.join(iconsPath, 'CTPCardio.png'),
+      loadFileType='zip',
+)
