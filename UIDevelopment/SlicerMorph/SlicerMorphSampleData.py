@@ -18,8 +18,8 @@ class SlicerMorphSampleData(ScriptedLoadableModule):
     self.parent.title = "SlicerMorph Sample Data"
     self.parent.categories = ["SlicerMorph"]
     self.parent.dependencies = ["SampleData"]
-    self.parent.contributors = [""]
-    self.parent.helpText = """This module adds sample data to SampleData module"""
+    self.parent.contributors = ["Murat Maga & Sara Rolfe"]
+    self.parent.helpText = """This module adds sample data for SlicerMorph into the SampleData module"""
     self.parent.acknowledgementText = """
 This work was was funded 
 """
@@ -36,7 +36,7 @@ This work was was funded
       uris='https://github.com/SlicerMorph/SampleData/blob/master/Gorilla_Skull_LMs.zip?raw=true',
       loadFiles=False,
       fileNames='Gorilla_Skull_LMs.zip',
-      #thumbnailFileName=os.path.join(iconsPath, 'CTPCardio.png'),
+      thumbnailFileName=os.path.join(iconsPath, 'pointcloud.png'),
       loadFileType='zip',
 )
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
@@ -45,7 +45,7 @@ This work was was funded
       uris='https://github.com/SlicerMorph/SampleData/blob/master/gorilla_reference.mrb?raw=true',
       loadFiles=True,
       fileNames='gorilla_reference.mrb',
-      #thumbnailFileName=os.path.join(iconsPath, 'CTPCardio.png'),
+      thumbnailFileName=os.path.join(iconsPath, 'gorilla3D.png'),
       loadFileType='SceneFile',
 )  
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
@@ -54,7 +54,7 @@ This work was was funded
       uris='https://github.com/SlicerMorph/SampleData/blob/master/mouse_skull_LMs.zip?raw=true',
       loadFiles=False,
       fileNames='mouse_skull_LMs.zip',
-      #thumbnailFileName=os.path.join(iconsPath, 'CTPCardio.png'),
+      thumbnailFileName=os.path.join(iconsPath, 'pointcloud.png'),
       loadFileType='zip',
 )
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
@@ -63,7 +63,7 @@ This work was was funded
       uris='https://github.com/SlicerMorph/SampleData/blob/master/mouse_skull_reference.mrb?raw=true',
       loadFiles=True,
       fileNames='mouse_skull_reference.mrb',
-      #thumbnailFileName=os.path.join(iconsPath, 'CTPCardio.png'),
+      thumbnailFileName=os.path.join(iconsPath, 'mouse3D.png'),
       loadFileType='SceneFile',
 )  
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
