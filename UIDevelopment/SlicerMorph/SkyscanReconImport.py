@@ -8,17 +8,17 @@ import logging
 import numpy as np
 import string
 #
-# ImageImport
+# SkyscanReconImport
 #
 
-class ImageImport(ScriptedLoadableModule):
+class SkyscanReconImport(ScriptedLoadableModule):
   """Uses ScriptedLoadableModule base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
 
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
-    self.parent.title = "ImageImport" # TODO make this more human readable by adding spaces
+    self.parent.title = "SkyscanReconImport" # TODO make this more human readable by adding spaces
     self.parent.categories = ["SlicerMorph"]
     self.parent.dependencies = []
     self.parent.contributors = ["Murat Maga (UW), Sara Rolfe (UW)"] # replace with "Firstname Lastname (Organization)"
@@ -32,10 +32,10 @@ https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
 """ # replace with organization, grant and thanks.
 
 #
-# ImageImportWidget
+# SkyscanReconImportWidget
 #
 
-class ImageImportWidget(ScriptedLoadableModuleWidget):
+class SkyscanReconImportWidget(ScriptedLoadableModuleWidget):
   """Uses ScriptedLoadableModuleWidget base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
@@ -115,7 +115,7 @@ class ImageImportWidget(ScriptedLoadableModuleWidget):
 
 
   def onApplyButton(self):
-    logic = ImageImportLogic()
+    logic = SkyscanReconImportLogic()
     enableScreenshotsFlag = self.enableScreenshotsFlagCheckBox.checked
     logic.run(self.inputFileSelector.currentPath, enableScreenshotsFlag)
 
@@ -167,9 +167,9 @@ class LogDataObject:
     return True     
      
 #
-# ImageImportLogic
+# SkyscanReconImportLogic
 #
-class ImageImportLogic(ScriptedLoadableModuleLogic):
+class SkyscanReconImportLogic(ScriptedLoadableModuleLogic):
   """This class should implement all the actual
   computation done by your module.  The interface
   should be such that other python code can import
@@ -298,13 +298,13 @@ class ImageImportLogic(ScriptedLoadableModuleLogic):
       slicer.util.resetSliceViews() #update the field of view
     # Capture screenshot      
     if enableScreenshots:
-      self.takeScreenshot('ImageImportTest-Start','MyScreenshot',-1)
+      self.takeScreenshot('SkyscanReconImportTest-Start','MyScreenshot',-1)
     logging.info('Processing completed')
 
     return True
 
 
-class ImageImportTest(ScriptedLoadableModuleTest):
+class SkyscanReconImportTest(ScriptedLoadableModuleTest):
   """
   This is the test case for your scripted module.
   Uses ScriptedLoadableModuleTest base class, available at:
@@ -320,9 +320,9 @@ class ImageImportTest(ScriptedLoadableModuleTest):
     """Run as few or as many tests as needed here.
     """
     self.setUp()
-    self.test_ImageImport1()
+    self.test_SkyscanReconImport1()
 
-  def test_ImageImport1(self):
+  def test_SkyscanReconImport1(self):
     """ Ideally you should have several levels of tests.  At the lowest level
     tests should exercise the functionality of the logic with different inputs
     (both valid and invalid).  At higher levels your tests should emulate the
@@ -354,6 +354,6 @@ class ImageImportTest(ScriptedLoadableModuleTest):
     self.delayDisplay('Finished with download and loading')
 
     volumeNode = slicer.util.getNode(pattern="FA")
-    logic = ImageImportLogic()
+    logic = SkyscanReconImportLogic()
     self.assertIsNotNone( logic.hasImageData(volumeNode) )
     self.delayDisplay('Test passed!')
