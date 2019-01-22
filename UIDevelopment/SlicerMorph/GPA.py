@@ -209,8 +209,7 @@ class LMData:
     import operator
     min_index, min_value = min(enumerate(self.procdist), key=operator.itemgetter(1))
     tmp=files[min_index]
-   # print "The closest sample to the mean shape is:", tmp[:-5]
-    return tmp[:-5]
+    return tmp
 
   def calcEndpoints(self,LM,pc, scaleFactor, MonsterObj):
     i,j=LM.shape
@@ -264,6 +263,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.vectorTwo.clear()
     self.vectorThree.clear()
     self.XcomboBox.clear()
+    self.XcomboBox.clear()
     self.YcomboBox.clear()
 
     self.vectorOne.addItem('None')
@@ -313,7 +313,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     os.makedirs(self.outputFolder)
     self.LM.writeOutData(self.outputFolder, files)
     filename=self.LM.closestSample(files)
-    self.volumeRecText.setText(filename)
     self.populateDistanceTable(files)
     print("Closest sample to mean:" + filename)
   
@@ -322,7 +321,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     sortedArray = np.zeros(len(files), dtype={'names':('filename', 'procdist'),'formats':('U10','f8')})
     sortedArray['filename']=files
     sortedArray['procdist']=self.LM.procdist[:,0]
-    #sortedArray.sort(order='procdist')
+    sortedArray.sort(order='procdist')
     
   
     tableNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTableNode', 'Procrustes Distance Table')
@@ -396,7 +395,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     
     componentNumber = 1
     for pc in pcList:
-      logic.lollipopGraph(self.LM, self.sourceLMnumpy, pc, self.sampleSizeScaleFactor, componentNumber)
+      logic.lollipopGraph(self.LM, referenceLandmarks, pc, self.sampleSizeScaleFactor, componentNumber)
       componentNumber+=1
     slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutConventionalPlotView)
     
@@ -408,8 +407,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.outText.setText(" ")
     self.LM_dir_name=None
     self.LMText.setText(" ")
-
-    self.volumeRecText.setText(" ")
 
     self.slider1.clear()
     self.slider2.clear()
@@ -478,14 +475,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     volumeButton.text="Setup 3D Visualization"
     volumeLayout= qt.QGridLayout(volumeButton)
 
-    self.volumeRecText, VolumeRecLabel, voluemrecbutton=self.textIn('Sample Closest to the mean','', '')
-    volumeLayout.addWidget(self.volumeRecText,1,2)
-    volumeLayout.addWidget(VolumeRecLabel,1,1)
-
-
     self.grayscaleSelectorLabel = qt.QLabel("Specify Reference Model for 3D Vis.")
     self.grayscaleSelectorLabel.setToolTip( "Select the model node for display")
-    volumeLayout.addWidget(self.grayscaleSelectorLabel,2,1)
+    volumeLayout.addWidget(self.grayscaleSelectorLabel,1,1)
 
     self.grayscaleSelector = slicer.qMRMLNodeComboBox()
     self.grayscaleSelector.nodeTypes = ( ("vtkMRMLModelNode"), "" )
@@ -497,7 +489,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.grayscaleSelector.showHidden = False
     #self.grayscaleSelector.showChildNodeTypes = False
     self.grayscaleSelector.setMRMLScene( slicer.mrmlScene )
-    volumeLayout.addWidget(self.grayscaleSelector,2,2,1,3)
+    volumeLayout.addWidget(self.grayscaleSelector,1,2,1,3)
 
 
     self.FudSelectLabel = qt.QLabel("Landmark List: ")
@@ -512,14 +504,14 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.FudSelect.showHidden = False
     self.FudSelect.showChildNodeTypes = False
     self.FudSelect.setMRMLScene( slicer.mrmlScene )
-    volumeLayout.addWidget(self.FudSelectLabel,3,1)
-    volumeLayout.addWidget(self.FudSelect,3,2,1,3)
+    volumeLayout.addWidget(self.FudSelectLabel,2,1)
+    volumeLayout.addWidget(self.FudSelect,2,2,1,3)
 
     
     selectorButton = qt.QPushButton("Select")
     selectorButton.checkable = True
     selectorButton.setStyleSheet(self.StyleSheet)
-    volumeLayout.addWidget(selectorButton,5,1,1,3)
+    volumeLayout.addWidget(selectorButton,3,1,1,4)
     selectorButton.connect('clicked(bool)', self.onSelect)
 
     self.layout.addWidget(volumeButton)
