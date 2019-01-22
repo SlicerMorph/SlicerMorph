@@ -34,10 +34,10 @@ This work was was funded
       sampleName='Gorilla Skull Landmarks Only',
       category='SlicerMorph',
       uris='https://github.com/SlicerMorph/SampleData/blob/master/Gorilla_Skull_LMs.zip?raw=true',
-      loadFiles=False,
+      loadFiles=True,
       fileNames='Gorilla_Skull_LMs.zip',
       thumbnailFileName=os.path.join(iconsPath, 'pointcloud.png'),
-      loadFileType='zip',
+      loadFileType='ZipFile',
 )
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
       sampleName='Gorilla Skull Reference Model',
@@ -52,10 +52,10 @@ This work was was funded
       sampleName='Mouse Skull Landmarks Only',
       category='SlicerMorph',
       uris='https://github.com/SlicerMorph/SampleData/blob/master/mouse_skull_LMs.zip?raw=true',
-      loadFiles=False,
+      loadFiles=True,
       fileNames='mouse_skull_LMs.zip',
       thumbnailFileName=os.path.join(iconsPath, 'pointcloud.png'),
-      loadFileType='zip',
+      loadFileType='ZipFile',
 )
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
       sampleName='Mouse Skull Reference Model',
