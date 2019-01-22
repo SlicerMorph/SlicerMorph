@@ -19,7 +19,7 @@ include(${Slicer_USE_FILE})
 
 #-----------------------------------------------------------------------------
 # Extension modules
-add_subdirectory(ImageImport)
+add_subdirectory(SkyscanReconImport)
 add_subdirectory(DownsampleImageStack)
 add_subdirectory(DownsampleImageStackFast)
 add_subdirectory(SegmentPadSave)
