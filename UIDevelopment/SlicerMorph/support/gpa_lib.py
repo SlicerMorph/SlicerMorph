@@ -37,6 +37,20 @@ def procrustesAlign(refShape,shape):
     shape=alignShape(refShape,shape)
     
     return shape
+    
+def procrustesAlignNoScale(refShape,shape):
+   #center both shapes
+    refShape=centerShape(refShape)
+    shape=centerShape(shape)
+    
+    #scale both shapes
+    #refShape=scaleShape(refShape)
+    #shape=scaleShape(shape)
+    
+    # rotate shape to match the refshape
+    shape=alignShape(refShape,shape)
+    
+    return shape
 
 # <codecell>
 
@@ -122,6 +136,17 @@ def alignToOne(monsters):
         monsters[:,:,x]=procrustesAlign(monsters[:,:,0],monsters[:,:,x])
           
     return monsters
+def alignToOneNoScale(monsters):
+    i,j,k=monsters.shape
+    #scale and center the first monster
+    monsters[:,:,0]=centerShape(monsters[:,:,0])
+    #monsters[:,:,0]=scaleShape(monsters[:,:,0])
+    
+    #align other monster to it
+    for x in range(1,k):
+        monsters[:,:,x]=procrustesAlignNoScale(monsters[:,:,0],monsters[:,:,x])
+          
+    return monsters
 
 def alignToMean(monsters,trys):
     mean1=meanShape(monsters)
@@ -151,9 +176,13 @@ def doGPA(monsters):
     monsters=alignToMean(monsters,1)
     mShape=meanShape(monsters)
     return monsters, mShape
-    
-    
-
+ 
+def doGPANoScale(monsters):
+    monsters=alignToOneNoScale(monsters)
+    mShape=meanShape(monsters)
+    monsters=alignToMean(monsters,1)
+    mShape=meanShape(monsters)
+    return monsters, mShape 
 
 def procDist(monsters,mshape):
     i,j,k=monsters.shape
