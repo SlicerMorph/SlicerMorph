@@ -137,7 +137,7 @@ class LMData:
 
   def calcEigen(self):
     twoDim=gpa_lib.makeTwoDim(self.lm)
-    mShape=gpa_lib.calcMean(twoDim)
+    #mShape=gpa_lib.calcMean(twoDim)
     covMatrix=gpa_lib.calcCov(twoDim)
     self.val, self.vec=np.linalg.eig(covMatrix)
     self.vec=np.real(self.vec) 
@@ -149,18 +149,16 @@ class LMData:
   def ExpandAlongPCs(self, numVec,scaleFactor,SampleScaleFactor):
     b=0
     i,j,k=self.lm.shape 
+    print i,j,k
     tmp=np.zeros((i,j)) 
     points=np.zeros((i,j))   
     self.vec=np.real(self.vec)  
     # scale eigenvector
     for y in numVec:
-      for s in scaleFactor:
-          #print y,s
-        if j==3 and y is not 0:
-            #print self.vec[0:i,y], tmp[:,0]
-          tmp[:,0]=tmp[:,0]+float(s)*self.vec[0:i,y]*SampleScaleFactor
-          tmp[:,1]=tmp[:,1]+float(s)*self.vec[i:2*i,y]*SampleScaleFactor
-          tmp[:,2]=tmp[:,2]+float(s)*self.vec[2*i:3*i,y]*SampleScaleFactor
+        if y is not 0:
+          tmp[:,0]=tmp[:,0]+float(scaleFactor[y])*self.vec[0:i,y]*SampleScaleFactor
+          tmp[:,1]=tmp[:,1]+float(scaleFactor[y])*self.vec[i:2*i,y]*SampleScaleFactor
+          tmp[:,2]=tmp[:,2]+float(scaleFactor[y])*self.vec[2*i:3*i,y]*SampleScaleFactor
     
     self.shift=tmp
 
@@ -381,21 +379,18 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     table.AddColumn(arrY2)
     
     table.SetNumberOfRows(points)
-    componentNumber=[1,0,0,0,0]
-    scaleFactors=[1,1,1,1,1]
-    self.LM.ExpandAlongPCs(componentNumber,scaleFactors, self.sampleSizeScaleFactor)
-
+    endpoints=self.LM.calcEndpoints(self.LM.mShape,componentNumber-1,1,self.LM)
     for i in range(points):
       table.SetValue(i, 0, self.LM.mShape[i,0])
       table.SetValue(i, 1, self.LM.mShape[i,1])
-      table.SetValue(i, 2, self.LM.mShape[i,0]+self.LM.shift[i,0])
-      table.SetValue(i, 3, self.LM.mShape[i,1]+self.LM.shift[i,1])
+      table.SetValue(i, 2, endpoints[i,0])
+      table.SetValue(i, 3, endpoints[i,1])
       
     plotSeriesNode1 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", "Mean Shape")
     plotSeriesNode1.SetAndObserveTableNodeID(tableNode.GetID())
     plotSeriesNode1.SetXColumnName('X-axis Start')
     plotSeriesNode1.SetYColumnName('Y-axis Start')
-    plotSeriesNode1.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeScatter)
+    plotSeriesNode1.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeScatter )
     plotSeriesNode1.SetLineStyle(slicer.vtkMRMLPlotSeriesNode.LineStyleNone)
     plotSeriesNode1.SetMarkerStyle(slicer.vtkMRMLPlotSeriesNode.MarkerStyleCircle)
     plotSeriesNode1.SetColor(0,0,0)
@@ -792,7 +787,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     #get target landmarks
     self.LM.ExpandAlongPCs(pcSelected,scaleFactors, self.sampleSizeScaleFactor)
     #sourceLMNP=logic.convertFudicialToNP(self.sourceLMNode)
-
+    
+    #target=endpoints
     target=self.sourceLMnumpy+self.LM.shift
     targetLMVTK=logic.convertNumpyToVTK(target)
     sourceLMVTK=logic.convertNumpyToVTK(self.sourceLMnumpy)
