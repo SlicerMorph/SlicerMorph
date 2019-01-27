@@ -154,11 +154,13 @@ class LMData:
     points=np.zeros((i,j))   
     self.vec=np.real(self.vec)  
     # scale eigenvector
-    for y in numVec:
-        if y is not 0:
-          tmp[:,0]=tmp[:,0]+float(scaleFactor[y])*self.vec[0:i,y]*SampleScaleFactor
-          tmp[:,1]=tmp[:,1]+float(scaleFactor[y])*self.vec[i:2*i,y]*SampleScaleFactor
-          tmp[:,2]=tmp[:,2]+float(scaleFactor[y])*self.vec[2*i:3*i,y]*SampleScaleFactor
+    for y in range(len(numVec)):
+        if numVec[y] is not 0:
+          print numVec[y], scaleFactor[y]
+          pcComponent = numVec[y] - 1 
+          tmp[:,0]=tmp[:,0]+float(scaleFactor[y])*self.vec[0:i,pcComponent]*SampleScaleFactor
+          tmp[:,1]=tmp[:,1]+float(scaleFactor[y])*self.vec[i:2*i,pcComponent]*SampleScaleFactor
+          tmp[:,2]=tmp[:,2]+float(scaleFactor[y])*self.vec[2*i:3*i,pcComponent]*SampleScaleFactor
     
     self.shift=tmp
 
@@ -785,6 +787,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     logic = GPALogic()
     #get target landmarks
+    print pcSelected, scaleFactors
     self.LM.ExpandAlongPCs(pcSelected,scaleFactors, self.sampleSizeScaleFactor)
     #sourceLMNP=logic.convertFudicialToNP(self.sourceLMNode)
     
