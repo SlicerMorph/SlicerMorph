@@ -20,6 +20,7 @@ from datetime import datetime
 # GPA
 #
 
+
 class GPA(ScriptedLoadableModule):
   """Uses ScriptedLoadableModule base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
@@ -103,6 +104,10 @@ class sliderGroup(qt.QGroupBox):
     slidersLayout.addWidget(self.spinBox,1,3)
     self.setLayout(slidersLayout) 
 
+  
+    
+    
+
 class LMData:
   def __init__(self):
     self.lm=0
@@ -156,7 +161,7 @@ class LMData:
     # scale eigenvector
     for y in range(len(numVec)):
         if numVec[y] is not 0:
-          print numVec[y], scaleFactor[y]
+          #print numVec[y], scaleFactor[y]
           pcComponent = numVec[y] - 1 
           tmp[:,0]=tmp[:,0]+float(scaleFactor[y])*self.vec[0:i,pcComponent]*SampleScaleFactor
           tmp[:,1]=tmp[:,1]+float(scaleFactor[y])*self.vec[i:2*i,pcComponent]*SampleScaleFactor
@@ -223,6 +228,51 @@ class GPAWidget(ScriptedLoadableModuleWidget):
   """Uses ScriptedLoadableModuleWidget base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
+  def assignLayoutDescription(self): 
+    customLayout1 = """
+      <layout type=\"vertical\" split=\"true\" >
+       <item splitSize=\"500\">
+         <layout type=\"horizontal\">
+           <item>
+            <view class=\"vtkMRMLViewNode\" singletontag=\"1\">
+             <property name=\"viewlabel\" action=\"default\">1</property>
+            </view>
+           </item>
+           <item>
+            <view class=\"vtkMRMLViewNode\" singletontag=\"2\" type=\"secondary\">"
+             <property name=\"viewlabel\" action=\"default\">2</property>"
+            </view>
+          </item>
+         </layout>
+       </item>
+       <item splitSize=\"500\">
+        <layout type=\"horizontal\">
+         <item>
+          <view class=\"vtkMRMLSliceNode\" singletontag=\"Red\">
+           <property name=\"orientation\" action=\"default\">Axial</property>
+           <property name=\"viewlabel\" action=\"default\">R</property>
+           <property name=\"viewcolor\" action=\"default\">#F34A33</property>
+          </view>
+         </item>
+           <item>
+            <view class=\"vtkMRMLPlotViewNode\" singletontag=\"PlotView1\">
+             <property name=\"viewlabel\" action=\"default\">1</property>
+            </view>
+           </item>
+         <item>
+          <view class=\"vtkMRMLTableViewNode\" singletontag=\"TableView1\">"
+           <property name=\"viewlabel\" action=\"default\">T</property>"
+          </view>"
+         </item>"
+        </layout>
+       </item>
+      </layout>
+     """
+    customLayoutId1=5489
+    layoutManager = slicer.app.layoutManager()
+    layoutManager.layoutLogic().GetLayoutNode().AddLayoutDescription(customLayoutId1, customLayout1)                                         
+    layoutManager.setLayout(customLayoutId1)
+    
   def textIn(self,label, dispText, toolTip):
     """ a function to set up the appearnce of a QlineEdit widget.
     the widget is returned.
@@ -339,7 +389,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       tableNode.SetCellText(i,0,sortedArray['filename'][i])
       tableNode.SetCellText(i,1,str(sortedArray['procdist'][i]))
 
-    
     barPlot = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLPlotSeriesNode', 'Distances')
     barPlot.SetAndObserveTableNodeID(tableNode.GetID())
     barPlot.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeBar)
@@ -352,11 +401,14 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     chartNode.SetXAxisTitle('Subjects')
     chartNode.AddAndObservePlotSeriesNodeID(barPlot.GetID())
     layoutManager = slicer.app.layoutManager()
-    layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutConventionalPlotView)
-
+    self.assignLayoutDescription()
+    #set up custom layout
     plotWidget = layoutManager.plotWidget(0)
     plotViewNode = plotWidget.mrmlPlotViewNode()
     plotViewNode.SetPlotChartNodeID(chartNode.GetID())
+    #add table to new layout
+    slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveTableID(tableNode.GetID())
+    slicer.app.applicationLogic().PropagateTableSelection()
     
   def lollipopTwoDPlot(self, componentNumber):  
     points,dims = self.LM.mShape.shape
@@ -414,7 +466,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     plotChartNode.SetYAxisTitle('Y-axis')
      
     layoutManager = slicer.app.layoutManager()
-    layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutConventionalPlotView)
+    #layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutConventionalPlotView)
+    #layoutManager.LayoutLogic().GetLayoutNode().AddLayoutDescription(customLayoutId1, customLayout1)                                    
+    #layoutManager.setLayout(customLayoutId1)
+    self.assignLayoutDescription()
+    
 
     plotWidget = layoutManager.plotWidget(0)
     plotViewNode = plotWidget.mrmlPlotViewNode()
@@ -433,13 +489,13 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
       # plot it
       logic.makeScatterPlot(data,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1))
-      slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutConventionalPlotView)
-
+      self.assignLayoutDescription()
+      
     except AttributeError:
       qt.QMessageBox.critical(
       slicer.util.mainWindow(),
-    'Error', 'Please make sure a Landmark folder has been loaded  !')
-    
+      'Error', 'Please make sure a Landmark folder has been loaded!')
+
   def lolliPlot(self):
     pb1=self.vectorOne.currentIndex
     pb2=self.vectorTwo.currentIndex
@@ -459,7 +515,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       for pc in pcList:
         logic.lollipopGraph(self.LM, referenceLandmarks, pc, self.sampleSizeScaleFactor, componentNumber)
         componentNumber+=1
-      slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutConventionalPlotView)
+      #slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutConventionalPlotView)
+      #slicer.app.layoutManager.LayoutLogic().GetLayoutNode().AddLayoutDescription(customLayoutId1, customLayout1)                            #slicer.app.layoutManager.setLayout(customLayoutId1)
+      self.assignLayoutDescription()
+      
+      
     else: #for a 2D plot in the chart window
       self.lollipopTwoDPlot(pb1)
   
@@ -756,7 +816,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.transformNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', 'TPS Transform')
 
     print("completed selections")
-    slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutConventionalPlotView)
+    #slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutConventionalPlotView)
+    #slicer.app.layoutManager.LayoutLogic().GetLayoutNode().AddLayoutDescription(customLayoutId1, customLayout1)                                         
+    #slicer.app.layoutManager.setLayout(customLayoutId1)
+    self.assignLayoutDescription()
+    
 
   def onApply(self):
     pc1=self.slider1.boxValue()
@@ -787,7 +851,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     logic = GPALogic()
     #get target landmarks
-    print pcSelected, scaleFactors
     self.LM.ExpandAlongPCs(pcSelected,scaleFactors, self.sampleSizeScaleFactor)
     #sourceLMNP=logic.convertFudicialToNP(self.sourceLMNode)
     
@@ -805,14 +868,22 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     #Connect transform to model
     self.transformNode.SetAndObserveTransformToParent( VTKTPS )
     self.modelNode.SetAndObserveTransformNodeID(self.transformNode.GetID())
-    slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutConventionalPlotView)
+    #slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutConventionalPlotView)
+    #slicer.app.layoutManager.LayoutLogic().GetLayoutNode().AddLayoutDescription(customLayoutId1, customLayout1)                                         
+    #slicer.app.layoutManager.setLayout(customLayoutId1)
+    self.assignLayoutDescription()
+    
 
   def onPlotDistribution(self):
     if self.CloudType.isChecked():
       self.plotDistributionCloud()
     else: 
       self.plotDistributionGlyph(self.scaleSlider.value)
-    slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutConventionalPlotView)
+    #slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutConventionalPlotView)
+    #slicer.app.layoutManager.LayoutLogic().GetLayoutNode().AddLayoutDescription(customLayoutId1, customLayout1)                                         
+    #slicer.app.layoutManager.setLayout(customLayoutId1)
+    self.assignLayoutDescription()
+    
       
   def plotDistributionCloud(self):
     i,j,k=self.LM.lmRaw.shape
@@ -1150,7 +1221,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
   #plotting functions
   def makeScatterPlot(self, data,title,xAxis,yAxis):
     numPoints = len(data)
-    print(data.shape)
+    #print(data.shape)
     
     tableNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode")
     table = tableNode.GetTable()
@@ -1165,7 +1236,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
     
     table.SetNumberOfRows(numPoints)
     for i in range(numPoints):
-      print(data[i,0])    
+      #print(data[i,0])    
       table.SetValue(i, 0, data[i,0])
       table.SetValue(i, 1, data[i,1])
       
@@ -1185,7 +1256,11 @@ class GPALogic(ScriptedLoadableModuleLogic):
     plotChartNode.SetYAxisTitle(yAxis)
      
     layoutManager = slicer.app.layoutManager()
-    layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutConventionalPlotView)
+    #layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutConventionalPlotView)
+    #layoutManager.LayoutLogic().GetLayoutNode().AddLayoutDescription(customLayoutId1, customLayout1)                                         
+    #layoutManager.setLayout(customLayoutId1)
+    #self.assignLayoutDescription()
+    
 
     plotWidget = layoutManager.plotWidget(0)
     plotViewNode = plotWidget.mrmlPlotViewNode()
