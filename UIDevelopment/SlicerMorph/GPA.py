@@ -136,6 +136,7 @@ class LMData:
     for i in range(k):
       self.centriodSize[i]=np.linalg.norm(self.lmRaw[:,:,i]-self.lmRaw[:,:,i].mean(axis=0))
     if skipScalingCheckBox:
+      print "Skipping Scaling"
       self.lm, self.mShape=gpa_lib.doGPANoScale(self.lmRaw)
     else:
       self.lm, self.mShape=gpa_lib.doGPA(self.lmRaw)
@@ -345,8 +346,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       lmNP=np.asarray(self.LMExclusionList)
     else:
       self.LMExclusionList=[]
-    self.LM.lmOrig, files = logic.mergeMatchs(self.LM_dir_name, self.LMExclusionList)
-    self.LM.lmRaw, files = logic.mergeMatchs(self.LM_dir_name, self.LMExclusionList)
+    self.LM.lmOrig, self.files = logic.mergeMatchs(self.LM_dir_name, self.LMExclusionList)
+    self.LM.lmRaw, self.files = logic.mergeMatchs(self.LM_dir_name, self.LMExclusionList)
     shape = self.LM.lmOrig.shape
     print('Loaded ' + str(shape[2]) + ' subjects with ' + str(shape[0]) + ' landmark points.')
     #set scaling factor using mean of raw landmarks
@@ -361,9 +362,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     dateTimeStamp = datetime.now().strftime('%Y-%m-%d_%H_%M_%S')
     self.outputFolder = os.path.join(self.outputDirectory, dateTimeStamp)
     os.makedirs(self.outputFolder)
-    self.LM.writeOutData(self.outputFolder, files)
-    filename=self.LM.closestSample(files)
-    self.populateDistanceTable(files)
+    self.LM.writeOutData(self.outputFolder, self.files)
+    filename=self.LM.closestSample(self.files)
+    self.populateDistanceTable(self.files)
     print("Closest sample to mean:" + filename)
   
     
@@ -382,7 +383,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     col2.SetName('Procrustes Distance')
     tableNode.SetColumnType('ID',vtk.VTK_STRING)
     tableNode.SetColumnType('Procrustes Distance',vtk.VTK_FLOAT)
-    rowCounter=0;
 
     for i in range(len(files)):
       tableNode.AddEmptyRow()
@@ -478,23 +478,23 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     
   def plot(self):
     logic = GPALogic()
-    try:
+    #try:
       # get values from boxs
-      xValue=self.XcomboBox.currentIndex
-      yValue=self.YcomboBox.currentIndex
+    xValue=self.XcomboBox.currentIndex
+    yValue=self.YcomboBox.currentIndex
 
       # get data to plot
-      data=gpa_lib.plotTanProj(self.LM.lm,xValue,yValue)
+    data=gpa_lib.plotTanProj(self.LM.lm,xValue,yValue)
       #print(data)
 
       # plot it
-      logic.makeScatterPlot(data,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1))
-      self.assignLayoutDescription()
+    logic.makeScatterPlot(data,self.files,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1))
+    self.assignLayoutDescription()
       
-    except AttributeError:
-      qt.QMessageBox.critical(
-      slicer.util.mainWindow(),
-      'Error', 'Please make sure a Landmark folder has been loaded!')
+    #except AttributeError:
+    #  qt.QMessageBox.critical(
+    #  slicer.util.mainWindow(),
+    #  'Error', 'Please make sure a Landmark folder has been loaded!')
 
   def lolliPlot(self):
     pb1=self.vectorOne.currentIndex
@@ -1219,31 +1219,35 @@ class GPALogic(ScriptedLoadableModuleLogic):
     return (dx**2.0+dy**2.0+dz**2.0)**0.5
 
   #plotting functions
-  def makeScatterPlot(self, data,title,xAxis,yAxis):
+  def makeScatterPlot(self, data, files, title,xAxis,yAxis):
     numPoints = len(data)
     #print(data.shape)
+    tableNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", 'PCA Scatter Plot Table')
     
-    tableNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode")
-    table = tableNode.GetTable()
-
-    arrX = vtk.vtkFloatArray()
-    arrX.SetName(xAxis)
-    table.AddColumn(arrX)
-
-    arrY1 = vtk.vtkFloatArray()
-    arrY1.SetName(yAxis)
-    table.AddColumn(arrY1)
+    #set up columns for X,Y, and labels
+    pcX=tableNode.AddColumn()
+    pcX.SetName(xAxis)
+    tableNode.SetColumnType(xAxis, vtk.VTK_FLOAT)
     
-    table.SetNumberOfRows(numPoints)
+    pcY=tableNode.AddColumn()
+    pcY.SetName(yAxis)
+    tableNode.SetColumnType(yAxis, vtk.VTK_FLOAT)
+    
+    labels=tableNode.AddColumn()
+    labels.SetName('Subject ID')
+    tableNode.SetColumnType('Subject ID',vtk.VTK_STRING)
+
     for i in range(numPoints):
-      #print(data[i,0])    
-      table.SetValue(i, 0, data[i,0])
-      table.SetValue(i, 1, data[i,1])
+      tableNode.AddEmptyRow()
+      tableNode.SetCellText(i, 0, str(data[i,0]))
+      tableNode.SetCellText(i, 1, str(data[i,1]))
+      tableNode.SetCellText(i,2,files[i])
       
     plotSeriesNode1 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", "Subjects")
     plotSeriesNode1.SetAndObserveTableNodeID(tableNode.GetID())
     plotSeriesNode1.SetXColumnName(xAxis)
     plotSeriesNode1.SetYColumnName(yAxis)
+    plotSeriesNode1.SetLabelColumnName('Subject ID')
     plotSeriesNode1.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeScatter)
     plotSeriesNode1.SetLineStyle(slicer.vtkMRMLPlotSeriesNode.LineStyleNone)
     plotSeriesNode1.SetMarkerStyle(slicer.vtkMRMLPlotSeriesNode.MarkerStyleSquare)
@@ -1256,11 +1260,6 @@ class GPALogic(ScriptedLoadableModuleLogic):
     plotChartNode.SetYAxisTitle(yAxis)
      
     layoutManager = slicer.app.layoutManager()
-    #layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutConventionalPlotView)
-    #layoutManager.LayoutLogic().GetLayoutNode().AddLayoutDescription(customLayoutId1, customLayout1)                                         
-    #layoutManager.setLayout(customLayoutId1)
-    #self.assignLayoutDescription()
-    
 
     plotWidget = layoutManager.plotWidget(0)
     plotViewNode = plotWidget.mrmlPlotViewNode()
