@@ -162,6 +162,21 @@ def alignToMean(monsters,trys):
         alignToMean(monsters, trys)
     
     return monsters
+    
+def alignToMeanNoScale(monsters,trys):
+    mean1=meanShape(monsters)
+    i,j,k=monsters.shape
+    for x in range(k):
+        monsters[:,:,x]=procrustesAlignNoScale(mean1,monsters[:,:,x])
+    mean2=meanShape(monsters)
+    
+    diff=np.linalg.norm(mean1-mean2)
+    # print diff
+    trys=trys+1
+    if diff>.00001 and trys< 50:
+        alignToMeanNoScale(monsters, trys)
+    
+    return monsters
 
 def centSize(monsters):
     i,j,k=monsters.shape
@@ -180,7 +195,7 @@ def doGPA(monsters):
 def doGPANoScale(monsters):
     monsters=alignToOneNoScale(monsters)
     mShape=meanShape(monsters)
-    monsters=alignToMean(monsters,1)
+    monsters=alignToMeanNoScale(monsters,1)
     mShape=meanShape(monsters)
     return monsters, mShape 
 
