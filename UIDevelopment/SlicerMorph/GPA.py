@@ -249,7 +249,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
        <item splitSize=\"500\">
         <layout type=\"horizontal\">
          <item>
-          <view class=\"vtkMRMLSliceNode\" singletontag=\"RedSliceWindow\">
+          <view class=\"vtkMRMLSliceNode\" singletontag=\"Red\">
            <property name=\"orientation\" action=\"default\">Axial</property>
            <property name=\"viewlabel\" action=\"default\">R</property>
            <property name=\"viewcolor\" action=\"default\">#F34A33</property>
@@ -279,7 +279,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       print "applying layout"
       viewNode1 = slicer.mrmlScene.GetFirstNodeByName("ViewGPA_1") #"View"+ singletonTag
       viewNode2 = slicer.mrmlScene.GetFirstNodeByName("ViewGPA_2")
-      viewNodeSlice = slicer.mrmlScene.GetFirstNodeByName("ViewRedSliceWindow")
+      viewNodeSlice = slicer.mrmlScene.GetFirstNodeByName("Red")
       self.modelDisplayNode.SetViewNodeIDs([viewNode1.GetID()])
       self.cloneModelDisplayNode.SetViewNodeIDs([viewNode2.GetID()])
             
