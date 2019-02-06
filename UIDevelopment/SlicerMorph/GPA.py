@@ -235,12 +235,12 @@ class GPAWidget(ScriptedLoadableModuleWidget):
        <item splitSize=\"500\">
          <layout type=\"horizontal\">
            <item>
-            <view class=\"vtkMRMLViewNode\" singletontag=\"1\">
+            <view class=\"vtkMRMLViewNode\" singletontag=\"GPA_1\">
              <property name=\"viewlabel\" action=\"default\">1</property>
             </view>
            </item>
            <item>
-            <view class=\"vtkMRMLViewNode\" singletontag=\"2\" type=\"secondary\">"
+            <view class=\"vtkMRMLViewNode\" singletontag=\"GPA_2\" type=\"secondary\">"
              <property name=\"viewlabel\" action=\"default\">2</property>"
             </view>
           </item>
@@ -249,19 +249,19 @@ class GPAWidget(ScriptedLoadableModuleWidget):
        <item splitSize=\"500\">
         <layout type=\"horizontal\">
          <item>
-          <view class=\"vtkMRMLSliceNode\" singletontag=\"Red\">
+          <view class=\"vtkMRMLSliceNode\" singletontag=\"RedSliceWindow\">
            <property name=\"orientation\" action=\"default\">Axial</property>
            <property name=\"viewlabel\" action=\"default\">R</property>
            <property name=\"viewcolor\" action=\"default\">#F34A33</property>
           </view>
          </item>
            <item>
-            <view class=\"vtkMRMLPlotViewNode\" singletontag=\"PlotView1\">
+            <view class=\"vtkMRMLPlotViewNode\" singletontag=\"PlotViewerWindow_1\">
              <property name=\"viewlabel\" action=\"default\">1</property>
             </view>
            </item>
          <item>
-          <view class=\"vtkMRMLTableViewNode\" singletontag=\"TableView1\">"
+          <view class=\"vtkMRMLTableViewNode\" singletontag=\"TableViewerWindow_1\">"
            <property name=\"viewlabel\" action=\"default\">T</property>"
           </view>"
          </item>"
@@ -274,6 +274,15 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     layoutManager.layoutLogic().GetLayoutNode().AddLayoutDescription(customLayoutId1, customLayout1)                                         
     layoutManager.setLayout(customLayoutId1)
     
+    # check for loaded reference model
+    if hasattr(self, 'modelDisplayNode'):
+      print "applying layout"
+      viewNode1 = slicer.mrmlScene.GetFirstNodeByName("ViewGPA_1") #"View"+ singletonTag
+      viewNode2 = slicer.mrmlScene.GetFirstNodeByName("ViewGPA_2")
+      viewNodeSlice = slicer.mrmlScene.GetFirstNodeByName("ViewRedSliceWindow")
+      self.modelDisplayNode.SetViewNodeIDs([viewNode1.GetID()])
+      self.cloneModelDisplayNode.SetViewNodeIDs([viewNode2.GetID()])
+            
   def textIn(self,label, dispText, toolTip):
     """ a function to set up the appearnce of a QlineEdit widget.
     the widget is returned.
@@ -409,7 +418,30 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     #add table to new layout
     slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveTableID(tableNode.GetID())
     slicer.app.applicationLogic().PropagateTableSelection()
+  
+  def lollipopTwoDPlotNew(self, componentNumber):
+    points,dims = self.LM.mShape.shape
+    tableNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", "Lolliplot2D")
+    table = tableNode.GetTable()
     
+    table.SetNumberOfRows(2) # row for start and finish points
+    #build arrays for rows
+    for i in range(points):
+      table.SetValue(0,i,self.LM.mShape[i,0])
+      table.SetValue(0,(2*points)+i,self.LM.mShape[i,1])
+      table.SetValue(1,i,endpoints[i,0])
+      table.SetValue(1,(2*points)+i,endpoints[i,1]) 
+      
+    for i in range(points):     
+      plotSeriesNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", "Segment"+str(i))
+      plotSeriesNode.SetAndObserveTableNodeID(tableNode.GetID())
+      plotSeriesNode.SetXColumnName('X-axis Start')
+      plotSeriesNode1.SetYColumnName('Y-axis Start')
+      plotSeriesNode1.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeScatter )
+      plotSeriesNode1.SetLineStyle(slicer.vtkMRMLPlotSeriesNode.LineStyleNone)
+      plotSeriesNode1.SetMarkerStyle(slicer.vtkMRMLPlotSeriesNode.MarkerStyleCircle)
+      plotSeriesNode1.SetColor(0,0,0)
+        
   def lollipopTwoDPlot(self, componentNumber):  
     points,dims = self.LM.mShape.shape
     
@@ -478,23 +510,22 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     
   def plot(self):
     logic = GPALogic()
-    #try:
+    try:
       # get values from boxs
-    xValue=self.XcomboBox.currentIndex
-    yValue=self.YcomboBox.currentIndex
+      xValue=self.XcomboBox.currentIndex
+      yValue=self.YcomboBox.currentIndex
 
       # get data to plot
-    data=gpa_lib.plotTanProj(self.LM.lm,xValue,yValue)
-      #print(data)
+      data=gpa_lib.plotTanProj(self.LM.lm,xValue,yValue)
 
       # plot it
-    logic.makeScatterPlot(data,self.files,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1))
-    self.assignLayoutDescription()
+      logic.makeScatterPlot(data,self.files,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1))
+      self.assignLayoutDescription()
       
-    #except AttributeError:
-    #  qt.QMessageBox.critical(
-    #  slicer.util.mainWindow(),
-    #  'Error', 'Please make sure a Landmark folder has been loaded!')
+    except AttributeError:
+      qt.QMessageBox.critical(
+      slicer.util.mainWindow(),
+      'Error', 'Please make sure a Landmark folder has been loaded!')
 
   def lolliPlot(self):
     pb1=self.vectorOne.currentIndex
@@ -802,9 +833,21 @@ class GPAWidget(ScriptedLoadableModuleWidget):
   def onSelect(self):
     self.modelNode=self.grayscaleSelector.currentNode()
     self.modelDisplayNode = self.modelNode.GetDisplayNode()
+    
+    #define a reference model as clone of selected volume
+    shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+    itemIDToClone = shNode.GetItemByDataNode(self.modelNode)
+    clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(shNode, itemIDToClone)
+    self.cloneModelNode = shNode.GetItemDataNode(clonedItemID)
+    self.cloneModelNode.SetName("GPA Reference Volume")
+    self.cloneModelDisplayNode = self.cloneModelNode.GetDisplayNode()
+    self.cloneModelDisplayNode.SetColor(0,0,1)
+    
+    #select landmarks
     logic = GPALogic()
     self.sourceLMNode=self.FudSelect.currentNode()
     self.sourceLMnumpy=logic.convertFudicialToNP(self.sourceLMNode)
+    
     #remove any excluded landmarks
     j=len(self.LMExclusionList)
     if(j != 0):
@@ -814,11 +857,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.transformNode=slicer.mrmlScene.GetFirstNodeByName('TPS Transform')
     if self.transformNode is None:
       self.transformNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', 'TPS Transform')
-
-    print("completed selections")
-    #slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutConventionalPlotView)
-    #slicer.app.layoutManager.LayoutLogic().GetLayoutNode().AddLayoutDescription(customLayoutId1, customLayout1)                                         
-    #slicer.app.layoutManager.setLayout(customLayoutId1)
+    #apply custom layout
     self.assignLayoutDescription()
     
 
@@ -879,9 +918,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.plotDistributionCloud()
     else: 
       self.plotDistributionGlyph(self.scaleSlider.value)
-    #slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutConventionalPlotView)
-    #slicer.app.layoutManager.LayoutLogic().GetLayoutNode().AddLayoutDescription(customLayoutId1, customLayout1)                                         
-    #slicer.app.layoutManager.setLayout(customLayoutId1)
+      
     self.assignLayoutDescription()
     
       
@@ -916,7 +953,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     glyph.Update()
   
     #display
-    modelNode=slicer.mrmlScene.GetFirstNodeByName('Landmark Variance Point Cloud')
+    modelNode=slicer.mrmlScene.GetFirstNodeByName('Landmark Point Cloud')
     if modelNode is None:
       modelNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode', 'Landmark Point Cloud')
       modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
@@ -953,7 +990,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     except AttributeError:
       referenceLandmarks = self.LM.lmOrig.mean(2)
       print("No reference landmarks loaded. Plotting distributions at mean landmark points.")
-    
+      print("mean landmarks: ", referenceLandmarks)
     for landmark in range(i):
       pt=referenceLandmarks[landmark,:]
       points.SetPoint(landmark,pt)
