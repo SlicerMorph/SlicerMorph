@@ -418,7 +418,27 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     #add table to new layout
     slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveTableID(tableNode.GetID())
     slicer.app.applicationLogic().PropagateTableSelection()
-  
+	
+	
+  def lollipopTwoDPlotNewest(self, componentNumber): 
+    points,dims = self.LM.mShape.shape
+    endpoints=self.LM.calcEndpoints(self.LM.mShape,componentNumber-1,1,self.LM)
+    logic = GPALogic()
+    targetLMVTK=logic.convertNumpyToVTK(endpoints)
+    sourceLMVTK=logic.convertNumpyToVTK(self.LM.mShape)
+    
+    #Set up TPS
+    VTKTPS = vtk.vtkThinPlateSplineTransform()
+    VTKTPS.SetSourceLandmarks( sourceLMVTK )
+    VTKTPS.SetTargetLandmarks( targetLMVTK )
+    VTKTPS.SetBasisToR()  # for 3D transform
+    lolliplotTransformNode=slicer.mrmlScene.GetFirstNodeByName('Lolliplot Transform')
+    
+    if lolliplotTransformNode is None:
+      lolliplotTransformNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', 'Lolliplot Transform')
+    
+    lolliplotTransformNode.SetAndObserveTransformToParent(VTKTPS)
+	
   def lollipopTwoDPlotNew(self, componentNumber):
     points,dims = self.LM.mShape.shape
     tableNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", "Lolliplot2D")
@@ -552,7 +572,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       
       
     else: #for a 2D plot in the chart window
-      self.lollipopTwoDPlot(pb1)
+      self.lollipopTwoDPlotNewest(pb1)
   
     
   def reset(self):
