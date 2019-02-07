@@ -438,96 +438,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       lolliplotTransformNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', 'Lolliplot Transform')
     
     lolliplotTransformNode.SetAndObserveTransformToParent(VTKTPS)
-	
-  def lollipopTwoDPlotNew(self, componentNumber):
-    points,dims = self.LM.mShape.shape
-    tableNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", "Lolliplot2D")
-    table = tableNode.GetTable()
-    
-    table.SetNumberOfRows(2) # row for start and finish points
-    #build arrays for rows
-    for i in range(points):
-      table.SetValue(0,i,self.LM.mShape[i,0])
-      table.SetValue(0,(2*points)+i,self.LM.mShape[i,1])
-      table.SetValue(1,i,endpoints[i,0])
-      table.SetValue(1,(2*points)+i,endpoints[i,1]) 
-      
-    for i in range(points):     
-      plotSeriesNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", "Segment"+str(i))
-      plotSeriesNode.SetAndObserveTableNodeID(tableNode.GetID())
-      plotSeriesNode.SetXColumnName('X-axis Start')
-      plotSeriesNode1.SetYColumnName('Y-axis Start')
-      plotSeriesNode1.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeScatter )
-      plotSeriesNode1.SetLineStyle(slicer.vtkMRMLPlotSeriesNode.LineStyleNone)
-      plotSeriesNode1.SetMarkerStyle(slicer.vtkMRMLPlotSeriesNode.MarkerStyleCircle)
-      plotSeriesNode1.SetColor(0,0,0)
-        
-  def lollipopTwoDPlot(self, componentNumber):  
-    points,dims = self.LM.mShape.shape
-    
-    tableNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", "Lolliplot2D")
-    table = tableNode.GetTable()
 
-    arrX1 = vtk.vtkFloatArray()
-    arrX1.SetName('X-axis Start')
-    table.AddColumn(arrX1)
-
-    arrY1 = vtk.vtkFloatArray()
-    arrY1.SetName('Y-axis Start')
-    table.AddColumn(arrY1)
-    
-    arrX2 = vtk.vtkFloatArray()
-    arrX2.SetName('X-axis End')
-    table.AddColumn(arrX2)
-
-    arrY2 = vtk.vtkFloatArray()
-    arrY2.SetName('Y-axis End')
-    table.AddColumn(arrY2)
-    
-    table.SetNumberOfRows(points)
-    endpoints=self.LM.calcEndpoints(self.LM.mShape,componentNumber-1,1,self.LM)
-    for i in range(points):
-      table.SetValue(i, 0, self.LM.mShape[i,0])
-      table.SetValue(i, 1, self.LM.mShape[i,1])
-      table.SetValue(i, 2, endpoints[i,0])
-      table.SetValue(i, 3, endpoints[i,1])
-      
-    plotSeriesNode1 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", "Mean Shape")
-    plotSeriesNode1.SetAndObserveTableNodeID(tableNode.GetID())
-    plotSeriesNode1.SetXColumnName('X-axis Start')
-    plotSeriesNode1.SetYColumnName('Y-axis Start')
-    plotSeriesNode1.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeScatter )
-    plotSeriesNode1.SetLineStyle(slicer.vtkMRMLPlotSeriesNode.LineStyleNone)
-    plotSeriesNode1.SetMarkerStyle(slicer.vtkMRMLPlotSeriesNode.MarkerStyleCircle)
-    plotSeriesNode1.SetColor(0,0,0)
-    
-    plotSeriesNode2 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", "PCA Component")
-    plotSeriesNode2.SetAndObserveTableNodeID(tableNode.GetID())
-    plotSeriesNode2.SetXColumnName('X-axis End')
-    plotSeriesNode2.SetYColumnName('Y-axis End')
-    plotSeriesNode2.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeScatter)
-    plotSeriesNode2.SetLineStyle(slicer.vtkMRMLPlotSeriesNode.LineStyleNone)
-    plotSeriesNode2.SetMarkerStyle(slicer.vtkMRMLPlotSeriesNode.MarkerStyleSquare)
-    plotSeriesNode2.SetColor(0,0,1)
-     
-    plotChartNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotChartNode")
-    plotChartNode.AddAndObservePlotSeriesNodeID(plotSeriesNode1.GetID())
-    plotChartNode.AddAndObservePlotSeriesNodeID(plotSeriesNode2.GetID())
-    plotChartNode.SetTitle('2D Lollipop Plot ')
-    plotChartNode.SetXAxisTitle('X-axis')
-    plotChartNode.SetYAxisTitle('Y-axis')
-     
-    layoutManager = slicer.app.layoutManager()
-    #layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutConventionalPlotView)
-    #layoutManager.LayoutLogic().GetLayoutNode().AddLayoutDescription(customLayoutId1, customLayout1)                                    
-    #layoutManager.setLayout(customLayoutId1)
-    self.assignLayoutDescription()
-    
-
-    plotWidget = layoutManager.plotWidget(0)
-    plotViewNode = plotWidget.mrmlPlotViewNode()
-    plotViewNode.SetPlotChartNodeID(plotChartNode.GetID())
-    
   def plot(self):
     logic = GPALogic()
     try:
@@ -556,23 +467,21 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     logic = GPALogic()
     #check if reference landmarks are loaded, otherwise use mean landmark positions to plot lollipops
     #later may update this to if self.sourceLMnumpy array is empty
-    if self.ThreeDType.isChecked(): #for 3D plot in the volume viewer window
-      try:
-        referenceLandmarks = logic.convertFudicialToNP(self.sourceLMNode)
-      except AttributeError:
-        referenceLandmarks = self.LM.lmOrig.mean(2)
-        print("No reference landmarks loaded, plotting lollipop vectors at mean landmarks points.")
-      componentNumber = 1
-      for pc in pcList:
-        logic.lollipopGraph(self.LM, referenceLandmarks, pc, self.sampleSizeScaleFactor, componentNumber)
-        componentNumber+=1
-      #slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutConventionalPlotView)
-      #slicer.app.layoutManager.LayoutLogic().GetLayoutNode().AddLayoutDescription(customLayoutId1, customLayout1)                            #slicer.app.layoutManager.setLayout(customLayoutId1)
-      self.assignLayoutDescription()
+    #if self.ThreeDType.isChecked(): #for 3D plot in the volume viewer window
+    try:
+      referenceLandmarks = logic.convertFudicialToNP(self.sourceLMNode)
+    except AttributeError:
+      referenceLandmarks = self.LM.lmOrig.mean(2)
+      print("No reference landmarks loaded, plotting lollipop vectors at mean landmarks points.")
+    componentNumber = 1
+    for pc in pcList:
+      logic.lollipopGraph(self.LM, referenceLandmarks, pc, self.sampleSizeScaleFactor, componentNumber, self.ThreeDType.isChecked())
+      componentNumber+=1
+    self.assignLayoutDescription()
       
       
-    else: #for a 2D plot in the chart window
-      self.lollipopTwoDPlotNewest(pb1)
+    #else: #for a 2D plot in the chart window
+    #  self.lollipopTwoDPlotNewest(pb1)
   
     
   def reset(self):
@@ -1322,7 +1231,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
     plotViewNode = plotWidget.mrmlPlotViewNode()
     plotViewNode.SetPlotChartNodeID(plotChartNode.GetID())
 
-  def lollipopGraph(self, LMObj,LM, pc, scaleFactor, componentNumber):
+  def lollipopGraph(self, LMObj,LM, pc, scaleFactor, componentNumber, ThreeDOption):
     # set options for 3 vector displays
     if componentNumber == 1:
       color = [1,0,0]
@@ -1377,11 +1286,14 @@ class GPALogic(ScriptedLoadableModuleLogic):
         modelNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
  
       modelDisplayNode = modelNode.GetDisplayNode()
-      #modelDisplayNode.SetSliceDisplayModeToProjection()
+      
       modelDisplayNode.SetColor(color)
       modelDisplayNode.SetSliceIntersectionVisibility(False)
       modelNode.SetDisplayVisibility(1)
       modelNode.SetAndObservePolyData(tubeFilter.GetOutput())
+      if not ThreeDOption:
+        modelDisplayNode.SetSliceDisplayModeToProjection()
+        modelDisplayNode.SetSliceIntersectionVisibility(True)
     else:
       modelNode=slicer.mrmlScene.GetFirstNodeByName(modelNodeName)
       if modelNode is not None:
