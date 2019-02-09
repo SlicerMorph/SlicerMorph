@@ -95,12 +95,13 @@ def makeTransformMatrix(ePair,pcA,pcB):
     tmp=ePair[0][0][1]
     i=tmp.shape
     i=i[0]
+    print i
     vec1=ePair[pcA][0][1]
     vec2=ePair[pcB][0][1]
     
     transform=np.zeros((i,2))
-    transform[:,0]=vec1.reshape(i)
-    transform[:,1]=vec2.reshape(i)
+    transform[:,0]=vec1.reshape(i).real
+    transform[:,1]=vec2.reshape(i).real
     return transform
 
 def plotTanProj(monsters,pcA,pcB):
