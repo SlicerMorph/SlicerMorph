@@ -235,12 +235,12 @@ class GPAWidget(ScriptedLoadableModuleWidget):
        <item splitSize=\"500\">
          <layout type=\"horizontal\">
            <item>
-            <view class=\"vtkMRMLViewNode\" singletontag=\"GPA_1\">
+            <view class=\"vtkMRMLViewNode\" singletontag=\"1\">
              <property name=\"viewlabel\" action=\"default\">1</property>
             </view>
            </item>
            <item>
-            <view class=\"vtkMRMLViewNode\" singletontag=\"GPA_2\" type=\"secondary\">"
+            <view class=\"vtkMRMLViewNode\" singletontag=\"2\" type=\"secondary\">"
              <property name=\"viewlabel\" action=\"default\">2</property>"
             </view>
           </item>
@@ -277,8 +277,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     # check for loaded reference model
     if hasattr(self, 'modelDisplayNode'):
       print "applying layout"
-      viewNode1 = slicer.mrmlScene.GetFirstNodeByName("ViewGPA_1") #"View"+ singletonTag
-      viewNode2 = slicer.mrmlScene.GetFirstNodeByName("ViewGPA_2")
+      viewNode1 = slicer.mrmlScene.GetFirstNodeByName("View1") #"View"+ singletonTag
+      viewNode2 = slicer.mrmlScene.GetFirstNodeByName("View2")
       viewNodeSlice = slicer.mrmlScene.GetFirstNodeByName("Red")
       self.modelDisplayNode.SetViewNodeIDs([viewNode1.GetID()])
       self.cloneModelDisplayNode.SetViewNodeIDs([viewNode2.GetID()])
