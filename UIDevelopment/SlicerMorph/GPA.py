@@ -274,12 +274,24 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     layoutManager.layoutLogic().GetLayoutNode().AddLayoutDescription(customLayoutId1, customLayout1)                                         
     layoutManager.setLayout(customLayoutId1)
     
+    #link whatever is in the 3D views
+    print "applying layout"
+    viewNode1 = slicer.mrmlScene.GetFirstNodeByName("View1") #"View"+ singletonTag
+    viewNode2 = slicer.mrmlScene.GetFirstNodeByName("View2")
+    #viewNodeSlice = slicer.mrmlScene.GetFirstNodeByName("Red")
+    viewNode1.SetLinkedControl(True)
+    viewNode2.SetLinkedControl(True)
+
+    #make sure both views are centered on focal point - not working
+    threeDWidget = layoutManager.threeDWidget(0)
+    threeDView = threeDWidget.threeDView()
+    threeDView.resetFocalPoint()
+    threeDWidget = layoutManager.threeDWidget(1)
+    threeDView = threeDWidget.threeDView()
+    threeDView.resetFocalPoint()
+    
     # check for loaded reference model
     if hasattr(self, 'modelDisplayNode'):
-      print "applying layout"
-      viewNode1 = slicer.mrmlScene.GetFirstNodeByName("View1") #"View"+ singletonTag
-      viewNode2 = slicer.mrmlScene.GetFirstNodeByName("View2")
-      viewNodeSlice = slicer.mrmlScene.GetFirstNodeByName("Red")
       self.modelDisplayNode.SetViewNodeIDs([viewNode1.GetID()])
       self.cloneModelDisplayNode.SetViewNodeIDs([viewNode2.GetID()])
             
