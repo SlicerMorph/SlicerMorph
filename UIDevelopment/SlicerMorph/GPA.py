@@ -733,22 +733,26 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     cloudTypeLabel=qt.QLabel("Point cloud type")
     distributionLayout.addWidget(cloudTypeLabel,4,1)
     distributionLayout.addWidget(self.CloudType,4,2,1,2)
+    self.NoneType=qt.QRadioButton()
+    noneTypeLabel=qt.QLabel("None")
+    distributionLayout.addWidget(noneTypeLabel,5,1)
+    distributionLayout.addWidget(self.NoneType,5,2,1,2)
     
     self.scaleSlider = ctk.ctkSliderWidget()
     self.scaleSlider.singleStep = 1
-    self.scaleSlider.minimum = 1
+    self.scaleSlider.minimum = 0
     self.scaleSlider.maximum = 10
     self.scaleSlider.value = 5
     self.scaleSlider.setToolTip("Set scale for variance visualization")
     sliderLabel=qt.QLabel("Scale Glyphs")
-    distributionLayout.addWidget(sliderLabel,5,1)
-    distributionLayout.addWidget(self.scaleSlider,5,2,1,2)
+    distributionLayout.addWidget(sliderLabel,6,1)
+    distributionLayout.addWidget(self.scaleSlider,6,2,1,2)
     
     plotDistributionButton = qt.QPushButton("Plot LM Distribution")
     plotDistributionButton.checkable = True
     plotDistributionButton.setStyleSheet(self.StyleSheet)
     plotDistributionButton.toolTip = "Visualize distribution of landmarks from all subjects"
-    distributionLayout.addWidget(plotDistributionButton,6,1,1,4)
+    distributionLayout.addWidget(plotDistributionButton,7,1,1,4)
     plotDistributionButton.connect('clicked(bool)', self.onPlotDistribution)
     
     # PC warping
@@ -887,13 +891,26 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     
 
   def onPlotDistribution(self):
-    if self.CloudType.isChecked():
+    if self.NoneType.isChecked():
+      self.unplotDistributions()
+    elif self.CloudType.isChecked():
       self.plotDistributionCloud()
     else: 
       self.plotDistributionGlyph(self.scaleSlider.value)
       
     self.assignLayoutDescription()
     
+      
+  def unplotDistributions(self):
+    modelNode=slicer.mrmlScene.GetFirstNodeByName('Landmark Point Cloud')
+    if modelNode:
+      slicer.mrmlScene.RemoveNode(modelNode)
+    modelNode=slicer.mrmlScene.GetFirstNodeByName('Landmark Variance Ellipse')
+    if modelNode:
+      slicer.mrmlScene.RemoveNode(modelNode)
+    modelNode=slicer.mrmlScene.GetFirstNodeByName('Landmark Variance Sphere')
+    if modelNode:
+      slicer.mrmlScene.RemoveNode(modelNode)
       
   def plotDistributionCloud(self):
     i,j,k=self.LM.lmRaw.shape
