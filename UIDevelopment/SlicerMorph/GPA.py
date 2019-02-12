@@ -19,7 +19,8 @@ from datetime import datetime
 #
 # GPA
 #
-
+#define global variable for node management
+GPANodeCollection=vtk.vtkCollection() #collect nodes created by module
 
 class GPA(ScriptedLoadableModule):
   """Uses ScriptedLoadableModule base class, available at:
@@ -355,8 +356,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.slider3.populateComboBox(self.PCList)
     self.slider4.populateComboBox(self.PCList)
     self.slider5.populateComboBox(self.PCList)
-
+    
   def onLoad(self):
+    self.initializeOnLoad() #clean up module from previous runs
+    
     logic = GPALogic()
     self.LM=LMData()
     lmToExclude=self.excludeLMText.text
@@ -388,7 +391,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.populateDistanceTable(self.files)
     print("Closest sample to mean:" + filename)
   
-    
   def populateDistanceTable(self, files):
     sortedArray = np.zeros(len(files), dtype={'names':('filename', 'procdist'),'formats':('U10','f8')})
     sortedArray['filename']=files
@@ -397,6 +399,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     
   
     tableNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTableNode', 'Procrustes Distance Table')
+    GPANodeCollection.AddItem(tableNode)
     col1=tableNode.AddColumn()
     col1.SetName('ID')
     
@@ -411,11 +414,13 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       tableNode.SetCellText(i,1,str(sortedArray['procdist'][i]))
 
     barPlot = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLPlotSeriesNode', 'Distances')
+    GPANodeCollection.AddItem(barPlot)
     barPlot.SetAndObserveTableNodeID(tableNode.GetID())
     barPlot.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeBar)
     barPlot.SetLabelColumnName('ID') #displayed when hovering mouse
     barPlot.SetYColumnName('Procrustes Distance') # for bar plots, index is the x-value
     chartNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLPlotChartNode', 'Procrustes Distance Chart')
+    GPANodeCollection.AddItem(chartNode)
     chartNode.SetTitle('Procrustes Distances')
     chartNode.SetLegendVisibility(False)
     chartNode.SetYAxisTitle('Distance')
@@ -448,6 +453,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     
     if lolliplotTransformNode is None:
       lolliplotTransformNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', 'Lolliplot Transform')
+      GPANodeCollection.AddItem(lolliplotTransformNode)
     
     lolliplotTransformNode.SetAndObserveTransformToParent(VTKTPS)
 
@@ -459,10 +465,15 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       yValue=self.YcomboBox.currentIndex
 
       # get data to plot
-      data=gpa_lib.plotTanProj(self.LM.lm,xValue,yValue)
-
+      #data=gpa_lib.plotTanProj(self.LM.lm,xValue,yValue)
+      shape = self.LM.lm.shape
+      dataAll= np.zeros(shape=(shape[2],10))
+      for i in range(10):
+        data=gpa_lib.plotTanProj(self.LM.lm,i,1)
+        dataAll[:,i] = data[:,0]
+        
       # plot it
-      logic.makeScatterPlot(data,self.files,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1))
+      logic.makeScatterPlot(dataAll,self.files,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1))
       self.assignLayoutDescription()
       
     except AttributeError:
@@ -496,14 +507,12 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     #  self.lollipopTwoDPlotNewest(pb1)
   
     
-  def reset(self):
-    # delete the two data objects
+  
+  def initializeOnLoad(self):
+  # clear rest of module when starting GPA analysis
 
-    # reset text fields
-    self.outputDirectory=None
-    self.outText.setText(" ")
-    self.LM_dir_name=None
-    self.LMText.setText(" ")
+    self.grayscaleSelector.setCurrentNode(None)
+    self.FudSelect.setCurrentNode(None)
 
     self.slider1.clear()
     self.slider2.clear()
@@ -516,19 +525,41 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.vectorThree.clear()
     self.XcomboBox.clear()
     self.YcomboBox.clear()
+    
+    self.nodeCleanUp()
+  
+  def reset(self):
+    # delete the two data objects
 
-    try:
-      if self.LM is not None:
-        del self.LM
-    except:
-      pass
-    try:
-      if self.volumes is not None:
-        del self.volumes
-    except:
-      pass
-    slicer.mrmlScene.Clear(0)
-    # could delete created volumes and chart nodes  
+    # reset text fields
+    self.outputDirectory=None
+    self.outText.setText(" ")
+    self.LM_dir_name=None
+    self.LMText.setText(" ")
+    
+    self.grayscaleSelector.setCurrentNode(None)
+    self.FudSelect.setCurrentNode(None)
+
+    self.slider1.clear()
+    self.slider2.clear()
+    self.slider3.clear()
+    self.slider4.clear()
+    self.slider5.clear()
+
+    self.vectorOne.clear()
+    self.vectorTwo.clear()
+    self.vectorThree.clear()
+    self.XcomboBox.clear()
+    self.YcomboBox.clear()
+    
+    self.nodeCleanUp()
+  
+  def nodeCleanUp(self):
+    # clear all nodes created by the module
+    for node in GPANodeCollection:
+      slicer.mrmlScene.RemoveNode(node)
+      GPANodeCollection.RemoveItem(node)
+      
     
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
@@ -798,6 +829,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.transformNode=slicer.mrmlScene.GetFirstNodeByName('TPS Transform')
     if self.transformNode is None:
       self.transformNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', 'TPS Transform')
+      GPANodeCollection.AddItem(self.transformNode)
     #apply custom layout
     self.assignLayoutDescription()
     
@@ -897,7 +929,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     modelNode=slicer.mrmlScene.GetFirstNodeByName('Landmark Point Cloud')
     if modelNode is None:
       modelNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode', 'Landmark Point Cloud')
+      GPANodeCollection.AddItem(modelNode)
       modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
+      GPANodeCollection.AddItem(modelDisplayNode)
       modelNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
     
     modelDisplayNode = modelNode.GetDisplayNode()
@@ -951,8 +985,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       modelNode=slicer.mrmlScene.GetFirstNodeByName('Landmark Variance Ellipse')
       if modelNode is None:
         modelNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode', 'Landmark Variance Ellipse')
+        GPANodeCollection.AddItem(modelNode)
         modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
         modelNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
+        GPANodeCollection.AddItem(modelDisplayNode)
 
     else:
       polydata.GetPointData().SetScalars(scales)
@@ -961,8 +997,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       modelNode=slicer.mrmlScene.GetFirstNodeByName('Landmark Variance Sphere')
       if modelNode is None:
         modelNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode', 'Landmark Variance Sphere')
+        GPANodeCollection.AddItem(modelNode)
         modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
         modelNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
+        GPANodeCollection.AddItem(modelDisplayNode)
     
     sphereSource = vtk.vtkSphereSource()
     sphereSource.SetThetaResolution(64)
@@ -1199,29 +1237,44 @@ class GPALogic(ScriptedLoadableModuleLogic):
   #plotting functions
   def makeScatterPlot(self, data, files, title,xAxis,yAxis):
     numPoints = len(data)
-    #print(data.shape)
-    tableNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", 'PCA Scatter Plot Table')
+    #check if there is a table node has been created
+    tableNode=slicer.mrmlScene.GetFirstNodeByName('PCA Scatter Plot Table')
+    if tableNode is None:
+      tableNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", 'PCA Scatter Plot Table')
+      GPANodeCollection.AddItem(tableNode)
     
-    #set up columns for X,Y, and labels
-    pcX=tableNode.AddColumn()
-    pcX.SetName(xAxis)
-    tableNode.SetColumnType(xAxis, vtk.VTK_FLOAT)
-    
-    pcY=tableNode.AddColumn()
-    pcY.SetName(yAxis)
-    tableNode.SetColumnType(yAxis, vtk.VTK_FLOAT)
-    
-    labels=tableNode.AddColumn()
-    labels.SetName('Subject ID')
-    tableNode.SetColumnType('Subject ID',vtk.VTK_STRING)
-
-    for i in range(numPoints):
-      tableNode.AddEmptyRow()
-      tableNode.SetCellText(i, 0, str(data[i,0]))
-      tableNode.SetCellText(i, 1, str(data[i,1]))
-      tableNode.SetCellText(i,2,files[i])
+      #set up columns for X,Y, and labels
+      labels=tableNode.AddColumn()
+      labels.SetName('Subject ID')
+      tableNode.SetColumnType('Subject ID',vtk.VTK_STRING)
       
-    plotSeriesNode1 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", "Subjects")
+      for i in range(10):
+        pc=tableNode.AddColumn()
+        colName="PC" + str(i+1)
+        pc.SetName(colName)
+        tableNode.SetColumnType(colName, vtk.VTK_FLOAT)
+    
+
+
+      for i in range(numPoints):
+        tableNode.AddEmptyRow()
+        tableNode.SetCellText(i, 0,files[i])
+        tableNode.SetCellText(i, 1, str(data[i,0]))
+        tableNode.SetCellText(i, 2, str(data[i,1]))
+        tableNode.SetCellText(i, 3, str(data[i,2]))
+        tableNode.SetCellText(i, 4, str(data[i,3]))
+        tableNode.SetCellText(i, 5, str(data[i,4]))
+        tableNode.SetCellText(i, 6, str(data[i,5]))
+        tableNode.SetCellText(i, 7, str(data[i,6]))
+        tableNode.SetCellText(i, 8, str(data[i,7]))
+        tableNode.SetCellText(i, 9, str(data[i,8]))
+        tableNode.SetCellText(i, 10, str(data[i,9]))      
+      
+    plotSeriesNode1=slicer.mrmlScene.GetFirstNodeByName("Series_PCA" + xAxis + "v" +yAxis)
+    if plotSeriesNode1 is None:
+      plotSeriesNode1 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", "Series_" + xAxis + "v" +yAxis)
+      GPANodeCollection.AddItem(plotSeriesNode1)
+      
     plotSeriesNode1.SetAndObserveTableNodeID(tableNode.GetID())
     plotSeriesNode1.SetXColumnName(xAxis)
     plotSeriesNode1.SetYColumnName(yAxis)
@@ -1231,7 +1284,11 @@ class GPALogic(ScriptedLoadableModuleLogic):
     plotSeriesNode1.SetMarkerStyle(slicer.vtkMRMLPlotSeriesNode.MarkerStyleSquare)
     plotSeriesNode1.SetUniqueColor()
      
-    plotChartNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotChartNode")
+    plotChartNode=slicer.mrmlScene.GetFirstNodeByName("Chart_PCA" + xAxis + "v" +yAxis)
+    if plotChartNode is None:
+      plotChartNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotChartNode", "Chart_" + xAxis + "v" +yAxis)
+      GPANodeCollection.AddItem(plotChartNode)
+      
     plotChartNode.AddAndObservePlotSeriesNodeID(plotSeriesNode1.GetID())
     plotChartNode.SetTitle('PCA Scatter Plot ')
     plotChartNode.SetXAxisTitle(xAxis)
@@ -1294,7 +1351,9 @@ class GPALogic(ScriptedLoadableModuleLogic):
       modelNode=slicer.mrmlScene.GetFirstNodeByName(modelNodeName)
       if modelNode is None:
         modelNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode', modelNodeName)
+        GPANodeCollection.AddItem(modelNode)
         modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
+        GPANodeCollection.AddItem(modelDisplayNode)
         modelNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
  
       modelDisplayNode = modelNode.GetDisplayNode()
