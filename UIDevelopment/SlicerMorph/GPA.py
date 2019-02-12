@@ -159,7 +159,8 @@ class LMData:
     print i,j,k
     tmp=np.zeros((i,j)) 
     points=np.zeros((i,j))   
-    self.vec=np.real(self.vec)  
+    self.vec=np.real(self.vec)
+    print self.vec.shape    
     # scale eigenvector
     for y in range(len(numVec)):
         if numVec[y] is not 0:
@@ -374,9 +375,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     shape = self.LM.lmOrig.shape
     print('Loaded ' + str(shape[2]) + ' subjects with ' + str(shape[0]) + ' landmark points.')
     #set scaling factor using mean of raw landmarks
-    rawMeanLandmarks = self.LM.lmOrig.mean(2)
+    self.rawMeanLandmarks = self.LM.lmOrig.mean(2)
     logic = GPALogic()
-    self.sampleSizeScaleFactor = logic.dist2(rawMeanLandmarks).max()
+    self.sampleSizeScaleFactor = logic.dist2(self.rawMeanLandmarks).max()
     print("Scale Factor: " + str(self.sampleSizeScaleFactor))
     
     self.LM.doGpa(self.skipScalingCheckBox.checked)
@@ -491,10 +492,12 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     #later may update this to if self.sourceLMnumpy array is empty
     #if self.ThreeDType.isChecked(): #for 3D plot in the volume viewer window
     try:
-      referenceLandmarks = logic.convertFudicialToNP(self.sourceLMNode)
+      referenceLandmarks = self.sourceLMnumpy
+      print referenceLandmarks.shape
     except AttributeError:
-      referenceLandmarks = self.LM.lmOrig.mean(2)
+      referenceLandmarks = self.rawMeanLandmarks
       print("No reference landmarks loaded, plotting lollipop vectors at mean landmarks points.")
+      print referenceLandmarks.shape
     componentNumber = 1
     for pc in pcList:
       logic.lollipopGraph(self.LM, referenceLandmarks, pc, self.sampleSizeScaleFactor, componentNumber, self.ThreeDType.isChecked())
@@ -825,9 +828,12 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     
     #remove any excluded landmarks
     j=len(self.LMExclusionList)
-    if(j != 0):
+    if (j != 0):
+      indexToRemove=np.zeros(j)
       for i in range(j):
-        self.sourceLMnumpy = np.delete(self.sourceLMnumpy,(np.int(self.LMExclusionList[i])-1),axis=0)
+        indexToRemove[i]=self.LMExclusionList[i]-1
+        print("removing",  indexToRemove[i]) 
+      self.sourceLMnumpy=np.delete(self.sourceLMnumpy,indexToRemove,axis=0)
         
     self.transformNode=slicer.mrmlScene.GetFirstNodeByName('TPS Transform')
     if self.transformNode is None:
@@ -980,7 +986,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     try:
       referenceLandmarks = self.sourceLMnumpy
     except AttributeError:
-      referenceLandmarks = self.LM.lmOrig.mean(2)
+      referenceLandmarks = self.rawMeanLandmarks
       print("No reference landmarks loaded. Plotting distributions at mean landmark points.")
     for landmark in range(i):
       pt=referenceLandmarks[landmark,:]
