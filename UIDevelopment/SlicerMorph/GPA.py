@@ -359,13 +359,12 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     
   def onLoad(self):
     self.initializeOnLoad() #clean up module from previous runs
-    
     logic = GPALogic()
     self.LM=LMData()
     lmToExclude=self.excludeLMText.text
     if len(lmToExclude) != 0:
       self.LMExclusionList=lmToExclude.split(",")
-      print("Number of excluded landmarks: ", len(self.LMExclusionList))
+      print("Excluded landmarks: ", self.LMExclusionList)
       self.LMExclusionList=[np.int(x) for x in self.LMExclusionList]
       lmNP=np.asarray(self.LMExclusionList)
     else:
@@ -960,6 +959,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     
   def plotDistributionGlyph(self, sliderScale):
     varianceMat = self.LM.calcLMVariation(self.sampleSizeScaleFactor)
+    print varianceMat.shape
     i,j,k=self.LM.lmRaw.shape
     pt=[0,0,0]
     #set up vtk point array for each landmark point
@@ -982,7 +982,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     except AttributeError:
       referenceLandmarks = self.LM.lmOrig.mean(2)
       print("No reference landmarks loaded. Plotting distributions at mean landmark points.")
-      print("mean landmarks: ", referenceLandmarks)
     for landmark in range(i):
       pt=referenceLandmarks[landmark,:]
       points.SetPoint(landmark,pt)
@@ -1122,9 +1121,11 @@ class GPALogic(ScriptedLoadableModuleLogic):
       tmp1=self.importLandMarks(matchList[i]+".fcsv")
       landmarks[:,:,i]=tmp1
       matchedfiles.append(os.path.basename(matchList[i]))
-    j=len(lmToRemove)
-    for i in range(j):
-      landmarks=np.delete(landmarks,(np.int(lmToRemove[i])-1),axis=0)    
+    indexToRemove=np.zeros(len(lmToRemove))
+    for i in range(len(lmToRemove)):
+      indexToRemove[i]=lmToRemove[i]-1
+      
+    landmarks=np.delete(landmarks,indexToRemove,axis=0)    
     return landmarks, matchedfiles
    
   def createMatchList(self, topDir,suffix): 
