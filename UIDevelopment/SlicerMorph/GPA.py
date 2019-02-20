@@ -361,6 +361,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
   def onLoad(self):
     self.initializeOnLoad() #clean up module from previous runs
     logic = GPALogic()
+    # get landmarks
     self.LM=LMData()
     lmToExclude=self.excludeLMText.text
     if len(lmToExclude) != 0:
@@ -376,6 +377,18 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     print('Loaded ' + str(shape[2]) + ' subjects with ' + str(shape[0]) + ' landmark points.')
     #set scaling factor using mean of raw landmarks
     self.rawMeanLandmarks = self.LM.lmOrig.mean(2)
+    # get mean landmarks as a fiducial node
+    self.meanLandmarkNode=slicer.mrmlScene.GetFirstNodeByName('Mean Landmark Node')
+    if self.meanLandmarkNode is None:
+      self.meanLandmarkNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode', 'Mean Landmark Node')
+      GPANodeCollection.AddItem(self.meanLandmarkNode)
+    for landmarkNumber in range (shape[0]):
+      name = str(landmarkNumber)
+      self.meanLandmarkNode.AddFiducialFromArray(self.rawMeanLandmarks[landmarkNumber,:], name)
+    self.meanLandmarkNode.SetDisplayVisibility(0)
+    
+      
+    # calculate scale factor using mean of raw landmarks
     logic = GPALogic()
     self.sampleSizeScaleFactor = logic.dist2(self.rawMeanLandmarks).max()
     print("Scale Factor: " + str(self.sampleSizeScaleFactor))
@@ -496,8 +509,12 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       print referenceLandmarks.shape
     except AttributeError:
       referenceLandmarks = self.rawMeanLandmarks
+      # get fiducial node for mean landmarks, make just labels visible
+      self.meanLandmarkNode=slicer.mrmlScene.GetFirstNodeByName('Mean Landmark Node')
+      self.meanLandmarkNode.SetDisplayVisibility(1)
+      self.meanLandmarkNode.GetDisplayNode().SetGlyphScale(0)
       print("No reference landmarks loaded, plotting lollipop vectors at mean landmarks points.")
-      print referenceLandmarks.shape
+
     componentNumber = 1
     for pc in pcList:
       logic.lollipopGraph(self.LM, referenceLandmarks, pc, self.sampleSizeScaleFactor, componentNumber, self.ThreeDType.isChecked())
@@ -809,10 +826,47 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     pass
 
   def onSelect(self):
+    # turn off visibility of mean landmarks that may have been used in previous plots
+    self.meanLandmarkNode=slicer.mrmlScene.GetFirstNodeByName('Mean Landmark Node')
+    self.meanLandmarkNode.SetDisplayVisibility(1)
+    
+    # get model selected
     self.modelNode=self.grayscaleSelector.currentNode()
     self.modelDisplayNode = self.modelNode.GetDisplayNode()
     
-    #define a reference model as clone of selected volume
+    # get landmarks selected
+    logic = GPALogic()
+    self.sourceLMNode=self.FudSelect.currentNode()
+    self.sourceLMnumpy=logic.convertFudicialToNP(self.sourceLMNode)
+    
+    # remove any excluded landmarks
+    j=len(self.LMExclusionList)
+    if (j != 0):
+      indexToRemove=np.zeros(j)
+      for i in range(j):
+        indexToRemove[i]=self.LMExclusionList[i]-1
+        print("removing",  indexToRemove[i]) 
+      self.sourceLMnumpy=np.delete(self.sourceLMnumpy,indexToRemove,axis=0)
+
+    #set up transform    
+    targetLMVTK=logic.convertNumpyToVTK(self.rawMeanLandmarks)
+    sourceLMVTK=logic.convertNumpyToVTK(self.sourceLMnumpy)
+
+    VTKTPS = vtk.vtkThinPlateSplineTransform()
+    VTKTPS.SetSourceLandmarks( sourceLMVTK )
+    VTKTPS.SetTargetLandmarks( targetLMVTK )
+    VTKTPS.SetBasisToR()  # for 3D transform
+
+    #Connect transform to model
+    self.transformNode=slicer.mrmlScene.GetFirstNodeByName('TPS Transform')
+    if self.transformNode is None:
+      self.transformNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', 'TPS Transform')
+      GPANodeCollection.AddItem(self.transformNode)
+    self.transformNode.SetAndObserveTransformToParent( VTKTPS )
+    self.modelNode.SetAndObserveTransformNodeID(self.transformNode.GetID())  
+    
+    
+    # define a reference model as clone of selected volume
     shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
     itemIDToClone = shNode.GetItemByDataNode(self.modelNode)
     clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(shNode, itemIDToClone)
@@ -821,24 +875,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.cloneModelDisplayNode = self.cloneModelNode.GetDisplayNode()
     self.cloneModelDisplayNode.SetColor(0,0,1)
     
-    #select landmarks
-    logic = GPALogic()
-    self.sourceLMNode=self.FudSelect.currentNode()
-    self.sourceLMnumpy=logic.convertFudicialToNP(self.sourceLMNode)
-    
-    #remove any excluded landmarks
-    j=len(self.LMExclusionList)
-    if (j != 0):
-      indexToRemove=np.zeros(j)
-      for i in range(j):
-        indexToRemove[i]=self.LMExclusionList[i]-1
-        print("removing",  indexToRemove[i]) 
-      self.sourceLMnumpy=np.delete(self.sourceLMnumpy,indexToRemove,axis=0)
-        
-    self.transformNode=slicer.mrmlScene.GetFirstNodeByName('TPS Transform')
-    if self.transformNode is None:
-      self.transformNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', 'TPS Transform')
-      GPANodeCollection.AddItem(self.transformNode)
     #apply custom layout
     self.assignLayoutDescription()
     
@@ -889,9 +925,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     #Connect transform to model
     self.transformNode.SetAndObserveTransformToParent( VTKTPS )
     self.modelNode.SetAndObserveTransformNodeID(self.transformNode.GetID())
-    #slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutConventionalPlotView)
-    #slicer.app.layoutManager.LayoutLogic().GetLayoutNode().AddLayoutDescription(customLayoutId1, customLayout1)                                         
-    #slicer.app.layoutManager.setLayout(customLayoutId1)
     self.assignLayoutDescription()
     
 
@@ -982,11 +1015,15 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     tensors.SetNumberOfComponents(9)
     tensors.SetName("Tensors")
     
-    #check if reference landmarks are loaded
+    #check if reference landmarks are loaded. otherwise plot at mean landmarks
     try:
       referenceLandmarks = self.sourceLMnumpy
     except AttributeError:
       referenceLandmarks = self.rawMeanLandmarks
+      # get fiducial node for mean landmarks, make just labels visible
+      self.meanLandmarkNode=slicer.mrmlScene.GetFirstNodeByName('Mean Landmark Node')
+      self.meanLandmarkNode.SetDisplayVisibility(1)
+      self.meanLandmarkNode.GetDisplayNode().SetGlyphScale(0)
       print("No reference landmarks loaded. Plotting distributions at mean landmark points.")
     for landmark in range(i):
       pt=referenceLandmarks[landmark,:]
