@@ -316,11 +316,22 @@ class GPAWidget(ScriptedLoadableModuleWidget):
   def selectLandmarkFile(self):
     self.LM_dir_name=qt.QFileDialog().getExistingDirectory()
     self.LMText.setText(self.LM_dir_name)
+    try:
+      self.loadButton.enabled = bool (self.LM_dir_name and self.outputDirectory)
+    except AttributeError:
+      self.loadButton.enabled = False
       
   def selectOutputDirectory(self):
     self.outputDirectory=qt.QFileDialog().getExistingDirectory()
     self.outText.setText(self.outputDirectory)
-
+    try:
+      self.loadButton.enabled = bool (self.LM_dir_name and self.outputDirectory)
+    except AttributeError:
+      self.loadButton.enabled = False
+  def onGrayscaleSelect(self):
+    self.selectorButton.enabled = bool (self.grayscaleSelector.currentNode() and self.FudSelect.currentNode())
+  def onFudSelect(self):
+    self.selectorButton.enabled = bool (self.grayscaleSelector.currentNode() and self.FudSelect.currentNode())      
   def updateList(self):
     i,j,k=self.LM.lm.shape
     self.PCList=[]
@@ -403,6 +414,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     filename=self.LM.closestSample(self.files)
     self.populateDistanceTable(self.files)
     print("Closest sample to mean:" + filename)
+    
+    # Enable buttons for workflow
+    self.plotButton.enabled = True
+    self.lolliButton.enabled = True
+    self.plotDistributionButton.enabled = True
   
   def populateDistanceTable(self, files):
     sortedArray = np.zeros(len(files), dtype={'names':('filename', 'procdist'),'formats':('U10','f8')})
@@ -636,6 +652,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.grayscaleSelector.showHidden = False
     #self.grayscaleSelector.showChildNodeTypes = False
     self.grayscaleSelector.setMRMLScene( slicer.mrmlScene )
+    self.grayscaleSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onGrayscaleSelect)
     volumeLayout.addWidget(self.grayscaleSelector,1,2,1,3)
 
 
@@ -651,25 +668,28 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.FudSelect.showHidden = False
     self.FudSelect.showChildNodeTypes = False
     self.FudSelect.setMRMLScene( slicer.mrmlScene )
+    self.FudSelect.connect("currentNodeChanged(vtkMRMLNode*)", self.onFudSelect)
     volumeLayout.addWidget(self.FudSelectLabel,2,1)
     volumeLayout.addWidget(self.FudSelect,2,2,1,3)
 
     
-    selectorButton = qt.QPushButton("Select")
-    selectorButton.checkable = True
-    selectorButton.setStyleSheet(self.StyleSheet)
-    volumeLayout.addWidget(selectorButton,3,1,1,4)
-    selectorButton.connect('clicked(bool)', self.onSelect)
+    self.selectorButton = qt.QPushButton("Select")
+    self.selectorButton.checkable = True
+    self.selectorButton.setStyleSheet(self.StyleSheet)
+    volumeLayout.addWidget(self.selectorButton,3,1,1,4)
+    self.selectorButton.enabled = False
+    self.selectorButton.connect('clicked(bool)', self.onSelect)
 
     self.layout.addWidget(volumeButton)
 
     #Apply Button 
-    loadButton = qt.QPushButton("Execute GPA + PCA")
-    loadButton.checkable = True
-    loadButton.setStyleSheet(self.StyleSheet)
-    inputLayout.addWidget(loadButton,5,1,1,3)
-    loadButton.toolTip = "Push to start the program. Make sure you have filled in all the data."
-    loadButton.connect('clicked(bool)', self.onLoad)
+    self.loadButton = qt.QPushButton("Execute GPA + PCA")
+    self.loadButton.checkable = True
+    self.loadButton.setStyleSheet(self.StyleSheet)
+    inputLayout.addWidget(self.loadButton,5,1,1,3)
+    self.loadButton.toolTip = "Push to start the program. Make sure you have filled in all the data."
+    self.loadButton.enabled = False
+    self.loadButton.connect('clicked(bool)', self.onLoad)
 
     #PC plot section
     plotFrame=ctk.ctkCollapsibleButton()
@@ -687,12 +707,13 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     plotLayout.addWidget(Ylabel,2,1)
     plotLayout.addWidget(self.YcomboBox,2,2,1,3)
 
-    plotButton = qt.QPushButton("Scatter Plot")
-    plotButton.checkable = True
-    plotButton.setStyleSheet(self.StyleSheet)
-    plotButton.toolTip = "Plot PCs"
-    plotLayout.addWidget(plotButton,3,1,1,4)
-    plotButton.connect('clicked(bool)', self.plot)
+    self.plotButton = qt.QPushButton("Scatter Plot")
+    self.plotButton.checkable = True
+    self.plotButton.setStyleSheet(self.StyleSheet)
+    self.plotButton.toolTip = "Plot PCs"
+    plotLayout.addWidget(self.plotButton,3,1,1,4)
+    self.plotButton.enabled = False
+    self.plotButton.connect('clicked(bool)', self.plot)
 
     # Lollipop Plot Section
 
@@ -726,16 +747,17 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     lolliLayout.addWidget(TwoDTypeLabel,4,4)
     lolliLayout.addWidget(self.TwoDType,4,5,1,2)
 
-    lolliButton = qt.QPushButton("Lollipop Vector Plot")
-    lolliButton.checkable = True
-    lolliButton.setStyleSheet(self.StyleSheet)
-    lolliButton.toolTip = "Plot PC vectors"
-    lolliLayout.addWidget(lolliButton,5,1,1,6)
-    lolliButton.connect('clicked(bool)', self.lolliPlot)
+    self.lolliButton = qt.QPushButton("Lollipop Vector Plot")
+    self.lolliButton.checkable = True
+    self.lolliButton.setStyleSheet(self.StyleSheet)
+    self.lolliButton.toolTip = "Plot PC vectors"
+    lolliLayout.addWidget(self.lolliButton,5,1,1,6)
+    self.lolliButton.enabled = False
+    self.lolliButton.connect('clicked(bool)', self.lolliPlot)
  
- # Landmark Distribution Section
+ # Landmark Variance Section
     distributionFrame=ctk.ctkCollapsibleButton()
-    distributionFrame.text="Landmark Distribution Plot Options"
+    distributionFrame.text="Landmark Variance Plot Options"
     distributionLayout= qt.QGridLayout(distributionFrame)
     self.layout.addWidget(distributionFrame)
 
@@ -767,12 +789,13 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     distributionLayout.addWidget(sliderLabel,6,1)
     distributionLayout.addWidget(self.scaleSlider,6,2,1,2)
     
-    plotDistributionButton = qt.QPushButton("Plot LM Distribution")
-    plotDistributionButton.checkable = True
-    plotDistributionButton.setStyleSheet(self.StyleSheet)
-    plotDistributionButton.toolTip = "Visualize distribution of landmarks from all subjects"
-    distributionLayout.addWidget(plotDistributionButton,7,1,1,4)
-    plotDistributionButton.connect('clicked(bool)', self.onPlotDistribution)
+    self.plotDistributionButton = qt.QPushButton("Plot LM variance")
+    self.plotDistributionButton.checkable = True
+    self.plotDistributionButton.setStyleSheet(self.StyleSheet)
+    self.plotDistributionButton.toolTip = "Visualize variance of landmarks from all subjects"
+    distributionLayout.addWidget(self.plotDistributionButton,7,1,1,4)
+    self.plotDistributionButton.enabled = False
+    self.plotDistributionButton.connect('clicked(bool)', self.onPlotDistribution)
     
     # PC warping
     vis=ctk.ctkCollapsibleButton()
@@ -803,15 +826,18 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.layout.addWidget(vis)
 
         
-    #Apply Button 
-    applyButton = qt.QPushButton("Apply")
-    applyButton.checkable = True
-    applyButton.setStyleSheet(self.StyleSheet)
-    self.layout.addWidget(applyButton)
-    applyButton.toolTip = "Push to start the program. Make sure you have filled in all the data."
+    # Apply Button 
+    self.applyButton = qt.QPushButton("Apply")
+    self.applyButton.checkable = True
+    self.applyButton.setStyleSheet(self.StyleSheet)
+    self.layout.addWidget(self.applyButton)
+    self.applyButton.toolTip = "Push to start the program. Make sure you have filled in all the data."
     applyFrame=qt.QFrame(self.parent)
-    applyButton.connect('clicked(bool)', self.onApply)
-    visLayout.addWidget(applyButton,8,1,1,2)
+    self.applyButton.connect('clicked(bool)', self.onApply)
+    self.applyButton.enabled = False
+    visLayout.addWidget(self.applyButton,8,1,1,2)
+    
+    # Reset button
     resetButton = qt.QPushButton("Reset Scene")
     resetButton.checkable = True
     resetButton.setStyleSheet(self.StyleSheet)
@@ -878,6 +904,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     #apply custom layout
     self.assignLayoutDescription()
     
+    # Enable warping 
+    self.applyButton.enabled = True
 
   def onApply(self):
     pc1=self.slider1.boxValue()
