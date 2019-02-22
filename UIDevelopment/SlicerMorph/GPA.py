@@ -74,7 +74,7 @@ class sliderGroup(qt.QGroupBox):
     self.spinBox.setValue(0)
     self.comboBox.clear()
     
-  def __init__(self, parent=None):
+  def __init__(self, parent=None, onChanged=None):
     super(sliderGroup, self).__init__( parent)
 
     # slider
@@ -96,6 +96,8 @@ class sliderGroup(qt.QGroupBox):
     # connect to eachother
     self.slider.valueChanged.connect(self.spinBox.setValue)
     self.spinBox.valueChanged.connect(self.slider.setValue)
+    if onChanged:
+      self.slider.valueChanged.connect(onChanged)
     # self.label.connect(self.comboBox ,self.comboBox.currentIndexChanged, self.label.setText('test1'))
 
     # layout
@@ -802,24 +804,28 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     vis.text='PCA Visualization Parameters'
     visLayout= qt.QGridLayout(vis)
 
+    def warpOnChange(value):
+      if self.applyButton.enabled:
+        self.onApply()
+
     self.PCList=[]
-    self.slider1=sliderGroup()
+    self.slider1=sliderGroup(onChanged = warpOnChange)
     self.slider1.connectList(self.PCList)
     visLayout.addWidget(self.slider1,3,1,1,2)
 
-    self.slider2=sliderGroup()
+    self.slider2=sliderGroup(onChanged = warpOnChange)
     self.slider2.connectList(self.PCList)
     visLayout.addWidget(self.slider2,4,1,1,2)
 
-    self.slider3=sliderGroup()
+    self.slider3=sliderGroup(onChanged = warpOnChange)
     self.slider3.connectList(self.PCList)
     visLayout.addWidget(self.slider3,5,1,1,2)
 
-    self.slider4=sliderGroup()
+    self.slider4=sliderGroup(onChanged = warpOnChange)
     self.slider4.connectList(self.PCList)
     visLayout.addWidget(self.slider4,6,1,1,2)
 
-    self.slider5=sliderGroup()
+    self.slider5=sliderGroup(onChanged = warpOnChange)
     self.slider5.connectList(self.PCList)
     visLayout.addWidget(self.slider5,7,1,1,2)
 
@@ -953,6 +959,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     #Connect transform to model
     self.transformNode.SetAndObserveTransformToParent( VTKTPS )
     self.modelNode.SetAndObserveTransformNodeID(self.transformNode.GetID())
+    self.cloneModelNode.SetAndObserveTransformNodeID("")
     self.assignLayoutDescription()
     
 
