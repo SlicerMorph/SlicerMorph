@@ -231,6 +231,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
   """Uses ScriptedLoadableModuleWidget base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
+
+  def onReload(self):
+    print('custom reload')
+    ScriptedLoadableModuleWidget.onReload(self)
+
   def assignLayoutDescription(self): 
     customLayout1 = """
       <layout type=\"vertical\" split=\"true\" >
