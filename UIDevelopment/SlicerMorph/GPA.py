@@ -74,7 +74,7 @@ class sliderGroup(qt.QGroupBox):
     self.spinBox.setValue(0)
     self.comboBox.clear()
     
-  def __init__(self, parent=None):
+  def __init__(self, parent=None, onChanged=None):
     super(sliderGroup, self).__init__( parent)
 
     # slider
@@ -97,7 +97,9 @@ class sliderGroup(qt.QGroupBox):
     self.slider.valueChanged.connect(self.spinBox.setValue)
     self.spinBox.valueChanged.connect(self.slider.setValue)
     # self.label.connect(self.comboBox ,self.comboBox.currentIndexChanged, self.label.setText('test1'))
-
+    if onChanged:
+      self.slider.valueChanged.connect(onChanged)
+      
     # layout
     slidersLayout = qt.QGridLayout()
     slidersLayout.addWidget(self.slider,1,2)
@@ -394,7 +396,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.meanLandmarkNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode', 'Mean Landmark Node')
       GPANodeCollection.AddItem(self.meanLandmarkNode)
     for landmarkNumber in range (shape[0]):
-      name = str(landmarkNumber)
+      name = str(landmarkNumber+1) #start numbering at 1
       self.meanLandmarkNode.AddFiducialFromArray(self.rawMeanLandmarks[landmarkNumber,:], name)
     self.meanLandmarkNode.SetDisplayVisibility(0)
     
@@ -521,7 +523,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     #later may update this to if self.sourceLMnumpy array is empty
     #if self.ThreeDType.isChecked(): #for 3D plot in the volume viewer window
     try:
-      referenceLandmarks = self.sourceLMnumpy
+      referenceLandmarks = self.sourceLMnumpyTransformed
       print referenceLandmarks.shape
     except AttributeError:
       referenceLandmarks = self.rawMeanLandmarks
@@ -801,25 +803,29 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     vis=ctk.ctkCollapsibleButton()
     vis.text='PCA Visualization Parameters'
     visLayout= qt.QGridLayout(vis)
+    
+    def warpOnChange(value):
+      if self.applyButton.enabled:
+        self.onApply()
 
     self.PCList=[]
-    self.slider1=sliderGroup()
+    self.slider1=sliderGroup(onChanged = warpOnChange)
     self.slider1.connectList(self.PCList)
     visLayout.addWidget(self.slider1,3,1,1,2)
 
-    self.slider2=sliderGroup()
+    self.slider2=sliderGroup(onChanged = warpOnChange)
     self.slider2.connectList(self.PCList)
     visLayout.addWidget(self.slider2,4,1,1,2)
 
-    self.slider3=sliderGroup()
+    self.slider3=sliderGroup(onChanged = warpOnChange)
     self.slider3.connectList(self.PCList)
     visLayout.addWidget(self.slider3,5,1,1,2)
 
-    self.slider4=sliderGroup()
+    self.slider4=sliderGroup(onChanged = warpOnChange)
     self.slider4.connectList(self.PCList)
     visLayout.addWidget(self.slider4,6,1,1,2)
 
-    self.slider5=sliderGroup()
+    self.slider5=sliderGroup(onChanged = warpOnChange)
     self.slider5.connectList(self.PCList)
     visLayout.addWidget(self.slider5,7,1,1,2)
 
@@ -854,13 +860,13 @@ class GPAWidget(ScriptedLoadableModuleWidget):
   def onSelect(self):
     # turn off visibility of mean landmarks that may have been used in previous plots
     self.meanLandmarkNode=slicer.mrmlScene.GetFirstNodeByName('Mean Landmark Node')
-    self.meanLandmarkNode.SetDisplayVisibility(1)
+    self.meanLandmarkNode.SetDisplayVisibility(0)
     
-    # get model selected
+    # get model node selected
     self.modelNode=self.grayscaleSelector.currentNode()
     self.modelDisplayNode = self.modelNode.GetDisplayNode()
     
-    # get landmarks selected
+    # get landmark node selected
     logic = GPALogic()
     self.sourceLMNode=self.FudSelect.currentNode()
     self.sourceLMnumpy=logic.convertFudicialToNP(self.sourceLMNode)
@@ -884,15 +890,21 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     VTKTPS.SetBasisToR()  # for 3D transform
 
     #Connect transform to model
-    self.transformNode=slicer.mrmlScene.GetFirstNodeByName('TPS Transform')
-    if self.transformNode is None:
-      self.transformNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', 'TPS Transform')
-      GPANodeCollection.AddItem(self.transformNode)
-    self.transformNode.SetAndObserveTransformToParent( VTKTPS )
-    self.modelNode.SetAndObserveTransformNodeID(self.transformNode.GetID())  
+    self.transformMeanNode=slicer.mrmlScene.GetFirstNodeByName('Mean TPS Transform')
+    if self.transformMeanNode is None:
+      self.transformMeanNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', 'Mean TPS Transform')
+      GPANodeCollection.AddItem(self.transformMeanNode)
+    self.transformMeanNode.SetAndObserveTransformToParent( VTKTPS )
+    self.modelNode.SetAndObserveTransformNodeID(self.transformMeanNode.GetID())  
+    self.sourceLMNode.SetAndObserveTransformNodeID(self.transformMeanNode.GetID())
     
+    # get transformed source landmark array
+    self.sourceLMnumpyTransformed=self.rawMeanLandmarks
     
     # define a reference model as clone of selected volume
+    self.cloneModelNode=slicer.mrmlScene.GetFirstNodeByName('GPA Reference Volume')
+    if self.cloneModelNode: # remove previous versions
+      slicer.mrmlScene.RemoveNode(self.cloneModelNode)
     shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
     itemIDToClone = shNode.GetItemByDataNode(self.modelNode)
     clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(shNode, itemIDToClone)
@@ -900,10 +912,18 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.cloneModelNode.SetName("GPA Reference Volume")
     self.cloneModelDisplayNode = self.cloneModelNode.GetDisplayNode()
     self.cloneModelDisplayNode.SetColor(0,0,1)
+    GPANodeCollection.AddItem(self.cloneModelNode)
     
     #apply custom layout
     self.assignLayoutDescription()
     
+    # Set up transform for PCA warping
+    #Connect transform to model
+    self.transformNode=slicer.mrmlScene.GetFirstNodeByName('PC TPS Transform')
+    if self.transformNode is None:
+      self.transformNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', 'PC TPS Transform')
+      GPANodeCollection.AddItem(self.transformNode)
+      
     # Enable warping 
     self.applyButton.enabled = True
 
@@ -1045,7 +1065,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     
     #check if reference landmarks are loaded. otherwise plot at mean landmarks
     try:
-      referenceLandmarks = self.sourceLMnumpy
+      referenceLandmarks = self.sourceLMnumpyTransformed
     except AttributeError:
       referenceLandmarks = self.rawMeanLandmarks
       # get fiducial node for mean landmarks, make just labels visible
