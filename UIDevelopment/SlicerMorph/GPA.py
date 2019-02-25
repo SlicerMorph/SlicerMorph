@@ -356,7 +356,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.vectorOne.addItem('None')
     self.vectorTwo.addItem('None')
     self.vectorThree.addItem('None')
-    for x in range(10):
+    for x in range(25):
       tmp="{:.1f}".format(percentVar[x]*100) 
       string='PC '+str(x+1)+': '+str(tmp)+"%" +" var"
       self.PCList.append(string)
@@ -498,8 +498,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       # get data to plot
       #data=gpa_lib.plotTanProj(self.LM.lm,xValue,yValue)
       shape = self.LM.lm.shape
-      dataAll= np.zeros(shape=(shape[2],10))
-      for i in range(10):
+      dataAll= np.zeros(shape=(shape[2],25))
+      for i in range(25):
         data=gpa_lib.plotTanProj(self.LM.lm,i,1)
         dataAll[:,i] = data[:,0]
         
@@ -1361,13 +1361,11 @@ class GPALogic(ScriptedLoadableModuleLogic):
       labels.SetName('Subject ID')
       tableNode.SetColumnType('Subject ID',vtk.VTK_STRING)
       
-      for i in range(10):
+      for i in range(25):
         pc=tableNode.AddColumn()
         colName="PC" + str(i+1)
         pc.SetName(colName)
         tableNode.SetColumnType(colName, vtk.VTK_FLOAT)
-    
-
 
       for i in range(numPoints):
         tableNode.AddEmptyRow()
@@ -1381,7 +1379,22 @@ class GPALogic(ScriptedLoadableModuleLogic):
         tableNode.SetCellText(i, 7, str(data[i,6]))
         tableNode.SetCellText(i, 8, str(data[i,7]))
         tableNode.SetCellText(i, 9, str(data[i,8]))
-        tableNode.SetCellText(i, 10, str(data[i,9]))      
+        tableNode.SetCellText(i, 10, str(data[i,9]))
+        tableNode.SetCellText(i, 11, str(data[i,10]))
+        tableNode.SetCellText(i, 12, str(data[i,11]))
+        tableNode.SetCellText(i, 13, str(data[i,12]))
+        tableNode.SetCellText(i, 14, str(data[i,13]))
+        tableNode.SetCellText(i, 15, str(data[i,14]))
+        tableNode.SetCellText(i, 16, str(data[i,15]))
+        tableNode.SetCellText(i, 17, str(data[i,16]))
+        tableNode.SetCellText(i, 18, str(data[i,17]))
+        tableNode.SetCellText(i, 19, str(data[i,18]))
+        tableNode.SetCellText(i, 20, str(data[i,19]))        
+        tableNode.SetCellText(i, 21, str(data[i,20]))
+        tableNode.SetCellText(i, 22, str(data[i,21]))
+        tableNode.SetCellText(i, 23, str(data[i,22]))
+        tableNode.SetCellText(i, 24, str(data[i,23]))
+        tableNode.SetCellText(i, 25, str(data[i,24]))
       
     plotSeriesNode1=slicer.mrmlScene.GetFirstNodeByName("Series_PCA" + xAxis + "v" +yAxis)
     if plotSeriesNode1 is None:
