@@ -93,7 +93,7 @@ class sliderGroup(qt.QGroupBox):
     self.spinBox.setMaximum(100)
     self.spinBox.setMinimum(-100)
 
-    # connect to eachother
+    # connect to each other
     self.slider.valueChanged.connect(self.spinBox.setValue)
     self.spinBox.valueChanged.connect(self.slider.setValue)
     # self.label.connect(self.comboBox ,self.comboBox.currentIndexChanged, self.label.setText('test1'))
@@ -880,7 +880,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         print("removing",  indexToRemove[i]) 
       self.sourceLMnumpy=np.delete(self.sourceLMnumpy,indexToRemove,axis=0)
 
-    #set up transform    
+    # set up transform    
     targetLMVTK=logic.convertNumpyToVTK(self.rawMeanLandmarks)
     sourceLMVTK=logic.convertNumpyToVTK(self.sourceLMnumpy)
 
@@ -889,7 +889,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     VTKTPS.SetTargetLandmarks( targetLMVTK )
     VTKTPS.SetBasisToR()  # for 3D transform
 
-    #Connect transform to model
+    # connect transform to model
     self.transformMeanNode=slicer.mrmlScene.GetFirstNodeByName('Mean TPS Transform')
     if self.transformMeanNode is None:
       self.transformMeanNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', 'Mean TPS Transform')
@@ -902,7 +902,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.sourceLMnumpyTransformed=self.rawMeanLandmarks
     
     # define a reference model as clone of selected volume
-    self.cloneModelNode=slicer.mrmlScene.GetFirstNodeByName('GPA Reference Volume')
+    self.cloneModelNode=slicer.mrmlScene.GetFirstNodeByName('GPA Warped Volume')
     if self.cloneModelNode: # remove previous versions
       slicer.mrmlScene.RemoveNode(self.cloneModelNode)
     shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
@@ -913,6 +913,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.cloneModelDisplayNode = self.cloneModelNode.GetDisplayNode()
     self.cloneModelDisplayNode.SetColor(0,0,1)
     GPANodeCollection.AddItem(self.cloneModelNode)
+    # permanently apply mean tps transform to cloned node. This will be the node warped by PCs
+    slicer.vtkSlicerTransformLogic().hardenTransform(self.cloneModelNode)
+  
     
     #apply custom layout
     self.assignLayoutDescription()
@@ -972,7 +975,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     #Connect transform to model
     self.transformNode.SetAndObserveTransformToParent( VTKTPS )
-    self.modelNode.SetAndObserveTransformNodeID(self.transformNode.GetID())
+    #self.modelNode.SetAndObserveTransformNodeID(self.transformNode.GetID())
+    self.cloneModelNode.SetAndObserveTransformNodeID(self.transformNode.GetID())
     self.assignLayoutDescription()
     
 
