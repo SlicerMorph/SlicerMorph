@@ -42,24 +42,13 @@ This work was was funded
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
       sampleName='Gorilla Skull Reference Model',
       category='SlicerMorph',
-      uris='https://github.com/SlicerMorph/SampleData/blob/master/Gor_template_low_res.vtk?raw=true',
-      loadFiles=True,
-      fileNames='Gor_template_low_res.vtk',
+      uris=['https://github.com/SlicerMorph/SampleData/blob/master/Gor_template_low_res.vtk?raw=true','https://raw.githubusercontent.com/SlicerMorph/SampleData/master/Gorilla_template_LM1.fcsv?raw=true'],
+      loadFiles=[True, True],
+      fileNames=['Gor_template_low_res.vtk', 'Gorilla_template_LM1.fcsv'],
+      nodeNames=['Gor_template_low_res', 'Gorilla_template_LM1'],
       thumbnailFileName=os.path.join(iconsPath, 'gorilla3D.png'),
-      loadFileType='ModelFile',
+      loadFileType=['ModelFile', 'MarkupsFiducials'],
 )  
-
-    SampleData.SampleDataLogic.registerCustomSampleDataSource(
-      sampleName='Gorilla Skull Reference Model Landmarks',
-      category='SlicerMorph',
-      uris='https://raw.githubusercontent.com/SlicerMorph/SampleData/master/Gorilla_template_LM1.fcsv?raw=true',
-      loadFiles=True,
-      fileNames='Gorilla_template_LM1.fcsv',
-      thumbnailFileName=os.path.join(iconsPath, 'pointCloud.png'),
-      loadFileType='MarkupsFiducials',
-)  
-
-
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
       sampleName='Mouse Skull Landmarks Only',
       category='SlicerMorph',
@@ -72,22 +61,13 @@ This work was was funded
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
       sampleName='Mouse Skull Reference Model',
       category='SlicerMorph',
-      uris='https://github.com/SlicerMorph/SampleData/blob/master/4074_skull.vtk?raw=true',
-      loadFiles=True,
-      fileNames='4074_skull.vtk',
+      uris=['https://github.com/SlicerMorph/SampleData/blob/master/4074_skull.vtk?raw=true', 'https://raw.githubusercontent.com/SlicerMorph/SampleData/master/4074_S_lm1.fcsv?raw=true'],
+      loadFiles=[True, True],
+      fileNames=['4074_skull.vtk','4074_S_lm1.fcsv'],
+      nodeNames=['4074_skull', '4074_S_lm1'],
       thumbnailFileName=os.path.join(iconsPath, 'mouse3D.png'),
-      loadFileType='ModelFile',
-) 
-    SampleData.SampleDataLogic.registerCustomSampleDataSource(
-      sampleName='Mouse Skull Reference Model Landmarks',
-      category='SlicerMorph',
-      uris='https://raw.githubusercontent.com/SlicerMorph/SampleData/master/4074_S_lm1.fcsv?raw=true',
-      loadFiles=True,
-      fileNames='4074_S_lm1.fcsv',
-      thumbnailFileName=os.path.join(iconsPath, 'pointCloud.png'),
-      loadFileType='MarkupsFiducials',
+      loadFileType=['ModelFile','MarkupsFiducials'],
 )  
-
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
       sampleName='Bruker/Sykscan mCT Recon sample',
       category='SlicerMorph',
