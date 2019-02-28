@@ -38,9 +38,9 @@ This module preforms standard Generalized Procrustes Analysis (GPA) based on (ci
 """
     self.parent.helpText += self.getDefaultModuleDocumentationLink()
     self.parent.acknowledgementText = """
-This module was developed by Sara Rolfe and Murat Maga, through a NSF ABI Development grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 
+This module was developed by Sara Rolfe and Murat Maga, through a NSF ABI Development grant, "An Integrated Platform for Retrieval, Visualization and Analysis of
 3D Morphology From Digital Biological Collections" (Award Numbers: 1759883 (Murat Maga), 1759637 (Adam Summers), 1759839 (Douglas Boyer)).
-https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false 
+https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
 """ # replace with organization, grant and thanks.
 
 #
@@ -73,7 +73,7 @@ class sliderGroup(qt.QGroupBox):
   def clear(self):
     self.spinBox.setValue(0)
     self.comboBox.clear()
-    
+
   def __init__(self, parent=None, onChanged=None):
     super(sliderGroup, self).__init__( parent)
 
@@ -99,17 +99,17 @@ class sliderGroup(qt.QGroupBox):
     # self.label.connect(self.comboBox ,self.comboBox.currentIndexChanged, self.label.setText('test1'))
     if onChanged:
       self.slider.valueChanged.connect(onChanged)
-      
+
     # layout
     slidersLayout = qt.QGridLayout()
     slidersLayout.addWidget(self.slider,1,2)
     slidersLayout.addWidget(self.comboBox,1,1)
     slidersLayout.addWidget(self.spinBox,1,3)
-    self.setLayout(slidersLayout) 
+    self.setLayout(slidersLayout)
 
-  
-    
-    
+
+
+
 
 class LMData:
   def __init__(self):
@@ -132,7 +132,7 @@ class LMData:
       varianceMat=varianceMat+tmp
     varianceMat = SampleScaleFactor*np.sqrt(varianceMat/(k-1))
     return varianceMat
-    
+
   def doGpa(self,skipScalingCheckBox):
     i,j,k=self.lmRaw.shape
     self.centriodSize=np.zeros(k)
@@ -149,7 +149,7 @@ class LMData:
     #mShape=gpa_lib.calcMean(twoDim)
     covMatrix=gpa_lib.calcCov(twoDim)
     self.val, self.vec=np.linalg.eig(covMatrix)
-    self.vec=np.real(self.vec) 
+    self.vec=np.real(self.vec)
     # scale eigen Vectors
     i,j =self.vec.shape
     # for q in range(j):
@@ -157,21 +157,21 @@ class LMData:
 
   def ExpandAlongPCs(self, numVec,scaleFactor,SampleScaleFactor):
     b=0
-    i,j,k=self.lm.shape 
+    i,j,k=self.lm.shape
     print i,j,k
-    tmp=np.zeros((i,j)) 
-    points=np.zeros((i,j))   
+    tmp=np.zeros((i,j))
+    points=np.zeros((i,j))
     self.vec=np.real(self.vec)
-    print self.vec.shape    
+    print self.vec.shape
     # scale eigenvector
     for y in range(len(numVec)):
         if numVec[y] is not 0:
           #print numVec[y], scaleFactor[y]
-          pcComponent = numVec[y] - 1 
+          pcComponent = numVec[y] - 1
           tmp[:,0]=tmp[:,0]+float(scaleFactor[y])*self.vec[0:i,pcComponent]*SampleScaleFactor
           tmp[:,1]=tmp[:,1]+float(scaleFactor[y])*self.vec[i:2*i,pcComponent]*SampleScaleFactor
           tmp[:,2]=tmp[:,2]+float(scaleFactor[y])*self.vec[2*i:3*i,pcComponent]*SampleScaleFactor
-    
+
     self.shift=tmp
 
   def writeOutData(self,outputFolder,files):
@@ -211,7 +211,7 @@ class LMData:
     twoDcoors=gpa_lib.makeTwoDim(self.lm)
     scores=np.dot(np.transpose(twoDcoors),self.vec)
     scores=np.transpose(np.real(scores))
-    
+
     scores=np.vstack((files.reshape(1,i),scores))
     np.savetxt(outputFolder+os.sep+"pcScores.csv", scores, fmt="%s", delimiter=",")
 
@@ -233,7 +233,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
   """Uses ScriptedLoadableModuleWidget base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
-  def assignLayoutDescription(self): 
+  def assignLayoutDescription(self):
     customLayout1 = """
       <layout type=\"vertical\" split=\"true\" >
        <item splitSize=\"500\">
@@ -275,9 +275,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
      """
     customLayoutId1=5489
     layoutManager = slicer.app.layoutManager()
-    layoutManager.layoutLogic().GetLayoutNode().AddLayoutDescription(customLayoutId1, customLayout1)                                         
+    layoutManager.layoutLogic().GetLayoutNode().AddLayoutDescription(customLayoutId1, customLayout1)
     layoutManager.setLayout(customLayoutId1)
-    
+
     #link whatever is in the 3D views
     print "applying layout"
     viewNode1 = slicer.mrmlScene.GetFirstNodeByName("View1") #"View"+ singletonTag
@@ -293,12 +293,12 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     threeDWidget = layoutManager.threeDWidget(1)
     threeDView = threeDWidget.threeDView()
     threeDView.resetFocalPoint()
-    
+
     # check for loaded reference model
     if hasattr(self, 'modelDisplayNode'):
       self.modelDisplayNode.SetViewNodeIDs([viewNode1.GetID()])
       self.cloneModelDisplayNode.SetViewNodeIDs([viewNode2.GetID()])
-            
+
   def textIn(self,label, dispText, toolTip):
     """ a function to set up the appearnce of a QlineEdit widget.
     the widget is returned.
@@ -313,8 +313,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     # make clickable button
     button=qt.QPushButton("..")
-    return textInLine, lineLabel, button  
-    
+    return textInLine, lineLabel, button
+
   def selectLandmarkFile(self):
     self.LM_dir_name=qt.QFileDialog().getExistingDirectory()
     self.LMText.setText(self.LM_dir_name)
@@ -322,7 +322,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.loadButton.enabled = bool (self.LM_dir_name and self.outputDirectory)
     except AttributeError:
       self.loadButton.enabled = False
-      
+
   def selectOutputDirectory(self):
     self.outputDirectory=qt.QFileDialog().getExistingDirectory()
     self.outText.setText(self.outputDirectory)
@@ -333,7 +333,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
   def onGrayscaleSelect(self):
     self.selectorButton.enabled = bool (self.grayscaleSelector.currentNode() and self.FudSelect.currentNode())
   def onFudSelect(self):
-    self.selectorButton.enabled = bool (self.grayscaleSelector.currentNode() and self.FudSelect.currentNode())      
+    self.selectorButton.enabled = bool (self.grayscaleSelector.currentNode() and self.FudSelect.currentNode())
   def updateList(self):
     i,j,k=self.LM.lm.shape
     self.PCList=[]
@@ -357,7 +357,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.vectorTwo.addItem('None')
     self.vectorThree.addItem('None')
     for x in range(25):
-      tmp="{:.1f}".format(percentVar[x]*100) 
+      tmp="{:.1f}".format(percentVar[x]*100)
       string='PC '+str(x+1)+': '+str(tmp)+"%" +" var"
       self.PCList.append(string)
       self.XcomboBox.addItem(string)
@@ -370,7 +370,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.slider3.populateComboBox(self.PCList)
     self.slider4.populateComboBox(self.PCList)
     self.slider5.populateComboBox(self.PCList)
-    
+
   def onLoad(self):
     self.initializeOnLoad() #clean up module from previous runs
     logic = GPALogic()
@@ -399,13 +399,13 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       name = str(landmarkNumber+1) #start numbering at 1
       self.meanLandmarkNode.AddFiducialFromArray(self.rawMeanLandmarks[landmarkNumber,:], name)
     self.meanLandmarkNode.SetDisplayVisibility(0)
-    
-      
+
+
     # calculate scale factor using mean of raw landmarks
     logic = GPALogic()
     self.sampleSizeScaleFactor = logic.dist2(self.rawMeanLandmarks).max()
     print("Scale Factor: " + str(self.sampleSizeScaleFactor))
-    
+
     self.LM.doGpa(self.skipScalingCheckBox.checked)
     self.LM.calcEigen()
     self.updateList()
@@ -416,24 +416,24 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     filename=self.LM.closestSample(self.files)
     self.populateDistanceTable(self.files)
     print("Closest sample to mean:" + filename)
-    
+
     # Enable buttons for workflow
     self.plotButton.enabled = True
     self.lolliButton.enabled = True
     self.plotDistributionButton.enabled = True
-  
+
   def populateDistanceTable(self, files):
     sortedArray = np.zeros(len(files), dtype={'names':('filename', 'procdist'),'formats':('U10','f8')})
     sortedArray['filename']=files
     sortedArray['procdist']=self.LM.procdist[:,0]
     sortedArray.sort(order='procdist')
-    
-  
+
+
     tableNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTableNode', 'Procrustes Distance Table')
     GPANodeCollection.AddItem(tableNode)
     col1=tableNode.AddColumn()
     col1.SetName('ID')
-    
+
     col2=tableNode.AddColumn()
     col2.SetName('Procrustes Distance')
     tableNode.SetColumnType('ID',vtk.VTK_STRING)
@@ -468,24 +468,24 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     slicer.app.applicationLogic().PropagateTableSelection()
 	
 	
-  def lollipopTwoDPlotNewest(self, componentNumber): 
+  def lollipopTwoDPlotNewest(self, componentNumber):
     points,dims = self.LM.mShape.shape
     endpoints=self.LM.calcEndpoints(self.LM.mShape,componentNumber-1,1,self.LM)
     logic = GPALogic()
     targetLMVTK=logic.convertNumpyToVTK(endpoints)
     sourceLMVTK=logic.convertNumpyToVTK(self.LM.mShape)
-    
+
     #Set up TPS
     VTKTPS = vtk.vtkThinPlateSplineTransform()
     VTKTPS.SetSourceLandmarks( sourceLMVTK )
     VTKTPS.SetTargetLandmarks( targetLMVTK )
     VTKTPS.SetBasisToR()  # for 3D transform
     lolliplotTransformNode=slicer.mrmlScene.GetFirstNodeByName('Lolliplot Transform')
-    
+
     if lolliplotTransformNode is None:
       lolliplotTransformNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', 'Lolliplot Transform')
       GPANodeCollection.AddItem(lolliplotTransformNode)
-    
+
     lolliplotTransformNode.SetAndObserveTransformToParent(VTKTPS)
 
   def plot(self):
@@ -502,11 +502,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       for i in range(25):
         data=gpa_lib.plotTanProj(self.LM.lm,i,1)
         dataAll[:,i] = data[:,0]
-        
+
       # plot it
       logic.makeScatterPlot(dataAll,self.files,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1))
       self.assignLayoutDescription()
-      
+
     except AttributeError:
       qt.QMessageBox.critical(
       slicer.util.mainWindow(),
@@ -538,13 +538,13 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       logic.lollipopGraph(self.LM, referenceLandmarks, pc, self.sampleSizeScaleFactor, componentNumber, self.ThreeDType.isChecked())
       componentNumber+=1
     self.assignLayoutDescription()
-      
-      
+
+
     #else: #for a 2D plot in the chart window
     #  self.lollipopTwoDPlotNewest(pb1)
-  
-    
-  
+
+
+
   def initializeOnLoad(self):
   # clear rest of module when starting GPA analysis
 
@@ -562,9 +562,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.vectorThree.clear()
     self.XcomboBox.clear()
     self.YcomboBox.clear()
-    
+
     self.nodeCleanUp()
-  
+
   def reset(self):
     # delete the two data objects
 
@@ -573,7 +573,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.outText.setText(" ")
     self.LM_dir_name=None
     self.LMText.setText(" ")
-    
+
     self.grayscaleSelector.setCurrentNode(None)
     self.FudSelect.setCurrentNode(None)
 
@@ -588,21 +588,21 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.vectorThree.clear()
     self.XcomboBox.clear()
     self.YcomboBox.clear()
-    
+
     self.nodeCleanUp()
-  
+
   def nodeCleanUp(self):
     # clear all nodes created by the module
     for node in GPANodeCollection:
       slicer.mrmlScene.RemoveNode(node)
       GPANodeCollection.RemoveItem(node)
-      
-    
+
+
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
     # self.input_file=[]
     self.StyleSheet="font: 12px;  min-height: 20 px ; background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #f6f7fa, stop: 1 #dadbde); border: 1px solid; border-radius: 4px; "
-       
+
     inbutton=ctk.ctkCollapsibleButton()
     inbutton.text="Setup Analysis"
     inputLayout= qt.QGridLayout(inbutton)
@@ -613,7 +613,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     inputLayout.addWidget(self.LMbutton,1,3)
     self.layout.addWidget(inbutton)
     self.LMbutton.connect('clicked(bool)', self.selectLandmarkFile)
-    
+
     # Select output directory
     self.outText, outLabel, self.outbutton=self.textIn('Output directory prefix','', '')
     inputLayout.addWidget(self.outText,2,2)
@@ -628,13 +628,13 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.excludeLMText=qt.QLineEdit()
     self.excludeLMText.setToolTip("No spaces. Seperate numbers by commas.  Example:  51,52")
     inputLayout.addWidget(self.excludeLMText,3,2,1,2)
-    
+
     self.skipScalingCheckBox = qt.QCheckBox()
     self.skipScalingCheckBox.setText("Skip Scaling during GPA")
     self.skipScalingCheckBox.checked = 0
     self.skipScalingCheckBox.setToolTip("If checked, GPA will skip scaling.")
     inputLayout.addWidget(self.skipScalingCheckBox, 4,2)
-    
+
     # node selector tab
     volumeButton=ctk.ctkCollapsibleButton()
     volumeButton.text="Setup 3D Visualization"
@@ -674,7 +674,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     volumeLayout.addWidget(self.FudSelectLabel,2,1)
     volumeLayout.addWidget(self.FudSelect,2,2,1,3)
 
-    
+
     self.selectorButton = qt.QPushButton("Select")
     self.selectorButton.checkable = True
     self.selectorButton.setStyleSheet(self.StyleSheet)
@@ -684,7 +684,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     self.layout.addWidget(volumeButton)
 
-    #Apply Button 
+    #Apply Button
     self.loadButton = qt.QPushButton("Execute GPA + PCA")
     self.loadButton.checkable = True
     self.loadButton.setStyleSheet(self.StyleSheet)
@@ -738,7 +738,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     vector3Label=qt.QLabel("Vector Three: Blue")
     lolliLayout.addWidget(vector3Label,3,1)
     lolliLayout.addWidget(self.vectorThree,3,2,1,3)
-    
+
     self.ThreeDType=qt.QRadioButton()
     ThreeDTypeLabel=qt.QLabel("3D Plot")
     self.ThreeDType.setChecked(True)
@@ -756,7 +756,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     lolliLayout.addWidget(self.lolliButton,5,1,1,6)
     self.lolliButton.enabled = False
     self.lolliButton.connect('clicked(bool)', self.lolliPlot)
- 
+
  # Landmark Variance Section
     distributionFrame=ctk.ctkCollapsibleButton()
     distributionFrame.text="Landmark Variance Plot Options"
@@ -780,7 +780,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     noneTypeLabel=qt.QLabel("None")
     distributionLayout.addWidget(noneTypeLabel,5,1)
     distributionLayout.addWidget(self.NoneType,5,2,1,2)
-    
+
     self.scaleSlider = ctk.ctkSliderWidget()
     self.scaleSlider.singleStep = 1
     self.scaleSlider.minimum = 0
@@ -790,7 +790,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     sliderLabel=qt.QLabel("Scale Glyphs")
     distributionLayout.addWidget(sliderLabel,6,1)
     distributionLayout.addWidget(self.scaleSlider,6,2,1,2)
-    
+
     self.plotDistributionButton = qt.QPushButton("Plot LM variance")
     self.plotDistributionButton.checkable = True
     self.plotDistributionButton.setStyleSheet(self.StyleSheet)
@@ -798,12 +798,12 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     distributionLayout.addWidget(self.plotDistributionButton,7,1,1,4)
     self.plotDistributionButton.enabled = False
     self.plotDistributionButton.connect('clicked(bool)', self.onPlotDistribution)
-    
+
     # PC warping
     vis=ctk.ctkCollapsibleButton()
     vis.text='PCA Visualization Parameters'
     visLayout= qt.QGridLayout(vis)
-    
+
     def warpOnChange(value):
       if self.applyButton.enabled:
         self.onApply()
@@ -831,8 +831,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     self.layout.addWidget(vis)
 
-        
-    # Apply Button 
+
+    # Apply Button
     self.applyButton = qt.QPushButton("Apply")
     self.applyButton.checkable = True
     self.applyButton.setStyleSheet(self.StyleSheet)
@@ -842,7 +842,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.applyButton.connect('clicked(bool)', self.onApply)
     self.applyButton.enabled = False
     visLayout.addWidget(self.applyButton,8,1,1,2)
-    
+
     # Reset button
     resetButton = qt.QPushButton("Reset Scene")
     resetButton.checkable = True
@@ -853,7 +853,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     self.layout.addStretch(1)
 
-    
+
   def cleanup(self):
     pass
 
@@ -861,26 +861,26 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     # turn off visibility of mean landmarks that may have been used in previous plots
     self.meanLandmarkNode=slicer.mrmlScene.GetFirstNodeByName('Mean Landmark Node')
     self.meanLandmarkNode.SetDisplayVisibility(0)
-    
+
     # get model node selected
     self.modelNode=self.grayscaleSelector.currentNode()
     self.modelDisplayNode = self.modelNode.GetDisplayNode()
-    
+
     # get landmark node selected
     logic = GPALogic()
     self.sourceLMNode=self.FudSelect.currentNode()
     self.sourceLMnumpy=logic.convertFudicialToNP(self.sourceLMNode)
-    
+
     # remove any excluded landmarks
     j=len(self.LMExclusionList)
     if (j != 0):
       indexToRemove=np.zeros(j)
       for i in range(j):
         indexToRemove[i]=self.LMExclusionList[i]-1
-        print("removing",  indexToRemove[i]) 
+        print("removing",  indexToRemove[i])
       self.sourceLMnumpy=np.delete(self.sourceLMnumpy,indexToRemove,axis=0)
 
-    # set up transform    
+    # set up transform
     targetLMVTK=logic.convertNumpyToVTK(self.rawMeanLandmarks)
     sourceLMVTK=logic.convertNumpyToVTK(self.sourceLMnumpy)
 
@@ -895,12 +895,12 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.transformMeanNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', 'Mean TPS Transform')
       GPANodeCollection.AddItem(self.transformMeanNode)
     self.transformMeanNode.SetAndObserveTransformToParent( VTKTPS )
-    self.modelNode.SetAndObserveTransformNodeID(self.transformMeanNode.GetID())  
+    self.modelNode.SetAndObserveTransformNodeID(self.transformMeanNode.GetID())
     self.sourceLMNode.SetAndObserveTransformNodeID(self.transformMeanNode.GetID())
-    
+
     # get transformed source landmark array
     self.sourceLMnumpyTransformed=self.rawMeanLandmarks
-    
+
     # define a reference model as clone of selected volume
     self.cloneModelNode=slicer.mrmlScene.GetFirstNodeByName('GPA Warped Volume')
     if self.cloneModelNode: # remove previous versions
@@ -915,19 +915,19 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     GPANodeCollection.AddItem(self.cloneModelNode)
     # permanently apply mean tps transform to cloned node. This will be the node warped by PCs
     slicer.vtkSlicerTransformLogic().hardenTransform(self.cloneModelNode)
-  
-    
+
+
     #apply custom layout
     self.assignLayoutDescription()
-    
+
     # Set up transform for PCA warping
     #Connect transform to model
     self.transformNode=slicer.mrmlScene.GetFirstNodeByName('PC TPS Transform')
     if self.transformNode is None:
       self.transformNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', 'PC TPS Transform')
       GPANodeCollection.AddItem(self.transformNode)
-      
-    # Enable warping 
+
+    # Enable warping
     self.applyButton.enabled = True
 
   def onApply(self):
@@ -961,12 +961,12 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     #get target landmarks
     self.LM.ExpandAlongPCs(pcSelected,scaleFactors, self.sampleSizeScaleFactor)
     #sourceLMNP=logic.convertFudicialToNP(self.sourceLMNode)
-    
+
     #target=endpoints
     target=self.sourceLMnumpy+self.LM.shift
     targetLMVTK=logic.convertNumpyToVTK(target)
     sourceLMVTK=logic.convertNumpyToVTK(self.sourceLMnumpy)
-    
+
     #Set up TPS
     VTKTPS = vtk.vtkThinPlateSplineTransform()
     VTKTPS.SetSourceLandmarks( sourceLMVTK )
@@ -978,19 +978,19 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     #self.modelNode.SetAndObserveTransformNodeID(self.transformNode.GetID())
     self.cloneModelNode.SetAndObserveTransformNodeID(self.transformNode.GetID())
     self.assignLayoutDescription()
-    
+
 
   def onPlotDistribution(self):
     if self.NoneType.isChecked():
       self.unplotDistributions()
     elif self.CloudType.isChecked():
       self.plotDistributionCloud()
-    else: 
+    else:
       self.plotDistributionGlyph(self.scaleSlider.value)
-      
+
     self.assignLayoutDescription()
-    
-      
+
+
   def unplotDistributions(self):
     modelNode=slicer.mrmlScene.GetFirstNodeByName('Landmark Point Cloud')
     if modelNode:
@@ -1001,7 +1001,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     modelNode=slicer.mrmlScene.GetFirstNodeByName('Landmark Variance Sphere')
     if modelNode:
       slicer.mrmlScene.RemoveNode(modelNode)
-      
+
   def plotDistributionCloud(self):
     i,j,k=self.LM.lmRaw.shape
     pt=[0,0,0]
@@ -1011,27 +1011,27 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     indexes = vtk.vtkDoubleArray()
     indexes.SetName('LM Index')
     pointCounter = 0
-   
+
     for subject in range(0,k):
       for landmark in range(0,i):
         pt=self.LM.lmOrig[landmark,:,subject]
         points.SetPoint(pointCounter,pt)
         indexes.InsertNextValue(landmark)
         pointCounter+=1
-    
+
     #add points to polydata
     polydata=vtk.vtkPolyData()
     polydata.SetPoints(points)
     polydata.GetPointData().SetScalars(indexes)
-    
+
     #set up glyph for visualizing point cloud
     sphereSource = vtk.vtkSphereSource()
     glyph = vtk.vtkGlyph3D()
     glyph.SetSourceConnection(sphereSource.GetOutputPort())
-    glyph.SetInputData(polydata)   
-    glyph.ScalingOff()    
+    glyph.SetInputData(polydata)
+    glyph.ScalingOff()
     glyph.Update()
-  
+
     #display
     modelNode=slicer.mrmlScene.GetFirstNodeByName('Landmark Point Cloud')
     if modelNode is None:
@@ -1040,14 +1040,14 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
       GPANodeCollection.AddItem(modelDisplayNode)
       modelNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
-    
+
     modelDisplayNode = modelNode.GetDisplayNode()
     modelDisplayNode.SetScalarVisibility(True)
     modelDisplayNode.SetActiveScalarName('LM Index')
     modelDisplayNode.SetAndObserveColorNodeID('vtkMRMLColorTableNodeFileColdToHotRainbow.txt')
 
     modelNode.SetAndObservePolyData(glyph.GetOutput())
-    
+
   def plotDistributionGlyph(self, sliderScale):
     varianceMat = self.LM.calcLMVariation(self.sampleSizeScaleFactor)
     print varianceMat.shape
@@ -1066,7 +1066,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     tensors.SetNumberOfTuples(i)
     tensors.SetNumberOfComponents(9)
     tensors.SetName("Tensors")
-    
+
     #check if reference landmarks are loaded. otherwise plot at mean landmarks
     try:
       referenceLandmarks = self.sourceLMnumpyTransformed
@@ -1112,11 +1112,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
         modelNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
         GPANodeCollection.AddItem(modelDisplayNode)
-    
+
     sphereSource = vtk.vtkSphereSource()
     sphereSource.SetThetaResolution(64)
     sphereSource.SetPhiResolution(64)
-    
+
     glyph.SetSourceConnection(sphereSource.GetOutputPort())
     glyph.SetInputData(polydata)
     glyph.Update()
@@ -1124,9 +1124,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     modelNode.SetAndObservePolyData(glyph.GetOutput())
     modelDisplayNode = modelNode.GetDisplayNode()
     modelDisplayNode.SetScalarVisibility(True)
-    modelDisplayNode.SetActiveScalarName('Index') #color by landmark number 
+    modelDisplayNode.SetActiveScalarName('Index') #color by landmark number
     modelDisplayNode.SetAndObserveColorNodeID('vtkMRMLColorTableNodeFileColdToHotRainbow.txt')
-    
+
 
 
 #
@@ -1219,11 +1219,11 @@ class GPALogic(ScriptedLoadableModuleLogic):
     indexToRemove=np.zeros(len(lmToRemove))
     for i in range(len(lmToRemove)):
       indexToRemove[i]=lmToRemove[i]-1
-      
-    landmarks=np.delete(landmarks,indexToRemove,axis=0)    
+
+    landmarks=np.delete(landmarks,indexToRemove,axis=0)
     return landmarks, matchedfiles
-   
-  def createMatchList(self, topDir,suffix): 
+
+  def createMatchList(self, topDir,suffix):
    #eliminate requirement for 2 landmark files
    #retains data structure in case filtering is required later.
     validFiles=[]
@@ -1233,7 +1233,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
           validFiles.append(os.path.join(root, name[:-5]))
     invalidFiles=[]
     return validFiles, invalidFiles
-    
+
   def importLandMarks(self, filePath):
     """Imports the landmarks from a .fcsv file. Does not import sample if a  landmark is -1000
     Adjusts the resolution is log(nhrd) file is found returns kXd array of landmark data. k=# of landmarks d=dimension
@@ -1271,11 +1271,11 @@ class GPALogic(ScriptedLoadableModuleLogic):
           file_to_open.append(filename)
     return dir_to_explore, file_to_open
 
-  def initDataArray(self, dirs, file,k):  
+  def initDataArray(self, dirs, file,k):
     """
     returns an np array for the storage of the landmarks.
     """
-    j=3 
+    j=3
     # import data file
     datafile=open(dirs[0]+os.sep+file,'r')
     data=[]
@@ -1326,7 +1326,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
   def dist(self, a):
     """
     Computes the ecuideain distance matrix for nXK points in a 3D space. So the input matrix is nX3xk
-    Returns a nXnXk matrix 
+    Returns a nXnXk matrix
     """
     id,jd,kd=a.shape
     fnx = lambda q : q - np.reshape(q, (id, 1,kd))
@@ -1338,7 +1338,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
   def dist2(self, a):
     """
     Computes the ecuideain distance matrix for n points in a 3D space
-    Returns a nXn matrix 
+    Returns a nXn matrix
      """
     id,jd=a.shape
     fnx = lambda q : q - np.reshape(q, (id, 1))
@@ -1355,12 +1355,12 @@ class GPALogic(ScriptedLoadableModuleLogic):
     if tableNode is None:
       tableNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", 'PCA Scatter Plot Table')
       GPANodeCollection.AddItem(tableNode)
-    
+
       #set up columns for X,Y, and labels
       labels=tableNode.AddColumn()
       labels.SetName('Subject ID')
       tableNode.SetColumnType('Subject ID',vtk.VTK_STRING)
-      
+
       for i in range(25):
         pc=tableNode.AddColumn()
         colName="PC" + str(i+1)
@@ -1389,18 +1389,18 @@ class GPALogic(ScriptedLoadableModuleLogic):
         tableNode.SetCellText(i, 17, str(data[i,16]))
         tableNode.SetCellText(i, 18, str(data[i,17]))
         tableNode.SetCellText(i, 19, str(data[i,18]))
-        tableNode.SetCellText(i, 20, str(data[i,19]))        
+        tableNode.SetCellText(i, 20, str(data[i,19]))
         tableNode.SetCellText(i, 21, str(data[i,20]))
         tableNode.SetCellText(i, 22, str(data[i,21]))
         tableNode.SetCellText(i, 23, str(data[i,22]))
         tableNode.SetCellText(i, 24, str(data[i,23]))
         tableNode.SetCellText(i, 25, str(data[i,24]))
-      
+
     plotSeriesNode1=slicer.mrmlScene.GetFirstNodeByName("Series_PCA" + xAxis + "v" +yAxis)
     if plotSeriesNode1 is None:
       plotSeriesNode1 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", "Series_" + xAxis + "v" +yAxis)
       GPANodeCollection.AddItem(plotSeriesNode1)
-      
+
     plotSeriesNode1.SetAndObserveTableNodeID(tableNode.GetID())
     plotSeriesNode1.SetXColumnName(xAxis)
     plotSeriesNode1.SetYColumnName(yAxis)
@@ -1409,17 +1409,17 @@ class GPALogic(ScriptedLoadableModuleLogic):
     plotSeriesNode1.SetLineStyle(slicer.vtkMRMLPlotSeriesNode.LineStyleNone)
     plotSeriesNode1.SetMarkerStyle(slicer.vtkMRMLPlotSeriesNode.MarkerStyleSquare)
     plotSeriesNode1.SetUniqueColor()
-     
+
     plotChartNode=slicer.mrmlScene.GetFirstNodeByName("Chart_PCA" + xAxis + "v" +yAxis)
     if plotChartNode is None:
       plotChartNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotChartNode", "Chart_" + xAxis + "v" +yAxis)
       GPANodeCollection.AddItem(plotChartNode)
-      
+
     plotChartNode.AddAndObservePlotSeriesNodeID(plotSeriesNode1.GetID())
     plotChartNode.SetTitle('PCA Scatter Plot ')
     plotChartNode.SetXAxisTitle(xAxis)
     plotChartNode.SetYAxisTitle(yAxis)
-     
+
     layoutManager = slicer.app.layoutManager()
 
     plotWidget = layoutManager.plotWidget(0)
@@ -1434,24 +1434,24 @@ class GPALogic(ScriptedLoadableModuleLogic):
     elif componentNumber == 2:
       color = [0,1,0]
       modelNodeName = 'Lollipop Vector Plot 2'
-    else: 
+    else:
       color = [0,0,1]
       modelNodeName = 'Lollipop Vector Plot 3'
-    
+
     if pc is not 0:
-      pc=pc-1 # get current component 
+      pc=pc-1 # get current component
       endpoints=self.calcEndpoints(LMObj,LM,pc,scaleFactor)
       i,j=LM.shape
-        
+
       # declare arrays for polydata
-      points = vtk.vtkPoints() 
+      points = vtk.vtkPoints()
       points.SetNumberOfPoints(i*2)
       lines = vtk.vtkCellArray()
       magnitude = vtk.vtkFloatArray()
       magnitude.SetName('Magnitude');
       magnitude.SetNumberOfComponents(1);
       magnitude.SetNumberOfValues(i);
-        
+
       for x in range(i): #populate vtkPoints and vtkLines
         points.SetPoint(x,LM[x,:])
         points.SetPoint(x+i,endpoints[x,:])
@@ -1472,7 +1472,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
       tubeFilter.SetNumberOfSides(20)
       tubeFilter.CappingOn()
       tubeFilter.Update()
-    
+
       #check if there is a model node for lollipop plot
       modelNode=slicer.mrmlScene.GetFirstNodeByName(modelNodeName)
       if modelNode is None:
@@ -1481,9 +1481,9 @@ class GPALogic(ScriptedLoadableModuleLogic):
         modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
         GPANodeCollection.AddItem(modelDisplayNode)
         modelNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
- 
+
       modelDisplayNode = modelNode.GetDisplayNode()
-      
+
       modelDisplayNode.SetColor(color)
       modelDisplayNode.SetSliceIntersectionVisibility(False)
       modelNode.SetDisplayVisibility(1)
@@ -1495,7 +1495,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
       modelNode=slicer.mrmlScene.GetFirstNodeByName(modelNodeName)
       if modelNode is not None:
         modelNode.SetDisplayVisibility(0)
-    
+
   def calcEndpoints(self,LMObj,LM,pc, scaleFactor):
     i,j=LM.shape
     print("LM shape: ", LM.shape)
@@ -1504,7 +1504,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
     tmp[:,1]=LMObj.vec[i:2*i,pc]
     tmp[:,2]=LMObj.vec[2*i:3*i,pc]
     return LM+tmp*scaleFactor/3.0
-    
+
   def convertFudicialToVTKPoint(self, fnode):
     import numpy as np
     numberOfLM=fnode.GetNumberOfFiducials()
@@ -1518,7 +1518,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
     # print lmData
     points=vtk.vtkPoints()
     for i in range(numberOfLM):
-      points.InsertNextPoint(lmData[i,0], lmData[i,1], lmData[i,2]) 
+      points.InsertNextPoint(lmData[i,0], lmData[i,1], lmData[i,2])
     return points
 
   def convertFudicialToNP(self, fnode):
@@ -1527,7 +1527,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
     x=y=z=0
     loc=[x,y,z]
     lmData=np.zeros((numberOfLM,3))
-    # 
+    #
     for i in range(numberOfLM):
       fnode.GetNthFiducialPosition(i,loc)
       lmData[i,:]=np.asarray(loc)
