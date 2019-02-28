@@ -296,8 +296,29 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     # check for loaded reference model
     if hasattr(self, 'modelDisplayNode'):
+      # assign each model to a specific view
       self.modelDisplayNode.SetViewNodeIDs([viewNode1.GetID()])
       self.cloneModelDisplayNode.SetViewNodeIDs([viewNode2.GetID()])
+      # fit the red slice node to show the plot projections
+      redNode = layoutManager.sliceWidget('Red').sliceView().mrmlSliceNode()
+      modelNode = self.modelDisplayNode.GetDisplayableNode()
+      rasBounds = [0,]*6
+      modelNode.GetRASBounds(rasBounds)
+      redNode.GetSliceToRAS().SetElement(0, 3, (rasBounds[1]+rasBounds[0]) / 2.)
+      redNode.GetSliceToRAS().SetElement(1, 3, (rasBounds[3]+rasBounds[2]) / 2.)
+      redNode.GetSliceToRAS().SetElement(2, 3, (rasBounds[5]+rasBounds[4]) / 2.)
+      rSize = rasBounds[1]+rasBounds[0]
+      aSize = rasBounds[3]+rasBounds[2]
+      if False:
+          # TODO: if needed fit the size of the slice view to match the data
+          # (didn't seem necessary for the gorilla but may be for other data)
+          dimensions = redNode.GetDimensions()
+          aspectRatio = float(dimensions[0]) / float(dimensions[1])
+          if rSize > aSize:
+            redNode.SetFieldOfView(rSize, rSize/aspectRatio, 1.)
+          else:
+            redNode.SetFieldOfView(aSize*aspectRatio, aSize, 1.)
+      redNode.UpdateMatrices()
 
   def textIn(self,label, dispText, toolTip):
     """ a function to set up the appearnce of a QlineEdit widget.
