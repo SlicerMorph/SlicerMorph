@@ -417,8 +417,15 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     # get mean landmarks as a fiducial node
     self.meanLandmarkNode=slicer.mrmlScene.GetFirstNodeByName('Mean Landmark Node')
     if self.meanLandmarkNode is None:
-      self.meanLandmarkNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode', 'Mean Landmark Node')
+      #self.meanLandmarkNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode', 'Mean Landmark Node')
+      self.meanLandmarkNode = slicer.vtkMRMLMarkupsFiducialNode()
+      self.meanLandmarkNode.SetName('Mean Landmark Node')
+      self.meanLandmarkNode.SetHideFromEditors(1) #hide from module so these cannot be selected for analysis 
+      slicer.mrmlScene.AddNode(self.meanLandmarkNode)
       GPANodeCollection.AddItem(self.meanLandmarkNode)
+      modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
+      GPANodeCollection.AddItem(modelDisplayNode)
+      
     for landmarkNumber in range (shape[0]):
       name = str(landmarkNumber+1) #start numbering at 1
       self.meanLandmarkNode.AddFiducialFromArray(self.rawMeanLandmarks[landmarkNumber,:], name)
@@ -615,6 +622,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       slicer.mrmlScene.RemoveNode(node)
       GPANodeCollection.RemoveItem(node)
 
+  def callback(self):
+    print self.menu.currentNode()
+    print self.menu.showHidden
+    print self.grayscaleSelector.showHidden
 
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
@@ -670,14 +681,14 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.grayscaleSelector.removeEnabled = False
     self.grayscaleSelector.noneEnabled = True
     self.grayscaleSelector.showHidden = False
-    #self.grayscaleSelector.showChildNodeTypes = False
+    self.grayscaleSelector.showChildNodeTypes = False
     self.grayscaleSelector.setMRMLScene( slicer.mrmlScene )
     self.grayscaleSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onGrayscaleSelect)
     volumeLayout.addWidget(self.grayscaleSelector,1,2,1,3)
 
 
     self.FudSelectLabel = qt.QLabel("Landmark List: ")
-    self.FudSelectLabel.setToolTip( "Select the glandmark list")
+    self.FudSelectLabel.setToolTip( "Select the landmark list")
     self.FudSelect = slicer.qMRMLNodeComboBox()
     self.FudSelect.nodeTypes = ( ('vtkMRMLMarkupsFiducialNode'), "" )
     #self.FudSelect.addAttribute( "vtkMRMLScalarVolumeNode", "LabelMap", 0 )
@@ -1053,7 +1064,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     #display
     modelNode=slicer.mrmlScene.GetFirstNodeByName('Landmark Point Cloud')
     if modelNode is None:
-      modelNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode', 'Landmark Point Cloud')
+      #modelNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode', 'Landmark Point Cloud')
+      modelNode = slicer.vtkMRMLModelNode()
+      modelNode.SetName('Landmark Point Cloud')
+      modelNode.SetHideFromEditors(1) #hide from module so these cannot be selected for analysis 
+      slicer.mrmlScene.AddNode(modelNode)
       GPANodeCollection.AddItem(modelNode)
       modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
       GPANodeCollection.AddItem(modelDisplayNode)
@@ -1113,7 +1128,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       glyph.ExtractEigenvaluesOff()
       modelNode=slicer.mrmlScene.GetFirstNodeByName('Landmark Variance Ellipse')
       if modelNode is None:
-        modelNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode', 'Landmark Variance Ellipse')
+        #modelNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode', 'Landmark Variance Ellipse')
+        modelNode = slicer.vtkMRMLModelNode()
+        modelNode.SetName('Landmark Variance Ellipse')
+        modelNode.SetHideFromEditors(1) #hide from module so these cannot be selected for analysis 
+        slicer.mrmlScene.AddNode(modelNode)
         GPANodeCollection.AddItem(modelNode)
         modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
         modelNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
@@ -1125,10 +1144,15 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       glyph = vtk.vtkGlyph3D()
       modelNode=slicer.mrmlScene.GetFirstNodeByName('Landmark Variance Sphere')
       if modelNode is None:
-        modelNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode', 'Landmark Variance Sphere')
+        #modelNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode', 'Landmark Variance Sphere')
+        modelNode = slicer.vtkMRMLModelNode()
+        modelNode.SetName('Landmark Variance Sphere')
+        modelNode.SetHideFromEditors(1) #hide from module so these cannot be selected for analysis
+        slicer.mrmlScene.AddNode(modelNode)
         GPANodeCollection.AddItem(modelNode)
         modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
         modelNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
+        
         GPANodeCollection.AddItem(modelDisplayNode)
 
     sphereSource = vtk.vtkSphereSource()
@@ -1494,7 +1518,11 @@ class GPALogic(ScriptedLoadableModuleLogic):
       #check if there is a model node for lollipop plot
       modelNode=slicer.mrmlScene.GetFirstNodeByName(modelNodeName)
       if modelNode is None:
-        modelNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode', modelNodeName)
+        #modelNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode', modelNodeName)
+        modelNode = slicer.vtkMRMLModelNode()
+        modelNode.SetName(modelNodeName)
+        modelNode.SetHideFromEditors(1) #hide from module so these cannot be selected for analysis 
+        slicer.mrmlScene.AddNode(modelNode)
         GPANodeCollection.AddItem(modelNode)
         modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
         GPANodeCollection.AddItem(modelDisplayNode)
