@@ -622,11 +622,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       slicer.mrmlScene.RemoveNode(node)
       GPANodeCollection.RemoveItem(node)
 
-  def callback(self):
-    print self.menu.currentNode()
-    print self.menu.showHidden
-    print self.grayscaleSelector.showHidden
-
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
     # self.input_file=[]
@@ -681,7 +676,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.grayscaleSelector.removeEnabled = False
     self.grayscaleSelector.noneEnabled = True
     self.grayscaleSelector.showHidden = False
-    self.grayscaleSelector.showChildNodeTypes = False
+    #self.grayscaleSelector.showChildNodeTypes = False
     self.grayscaleSelector.setMRMLScene( slicer.mrmlScene )
     self.grayscaleSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onGrayscaleSelect)
     volumeLayout.addWidget(self.grayscaleSelector,1,2,1,3)
