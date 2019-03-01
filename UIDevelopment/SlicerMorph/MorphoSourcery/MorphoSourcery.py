@@ -146,7 +146,10 @@ class MorphoSourceryLogic(ScriptedLoadableModuleLogic):
     # TODO: need to expose loadFinished signal from QWebEngine via qSlicerWebWidget
     # so that we will know when to send this (current 2 second delay is a hack
     # that may not always work).
-    qt.QTimer.singleShot(2000, lambda : self.onFinishLoading(username, password))
+    onFinishLoading = lambda : self.onFinishLoading(username, password)
+    connected = self.webWidget.connect('loadFinished(bool)', onFinishLoading)
+    if not connected:
+      qt.QTimer.singleShot(3000, lambda : self.onFinishLoading(username, password))
 
     return self.webWidget
 
