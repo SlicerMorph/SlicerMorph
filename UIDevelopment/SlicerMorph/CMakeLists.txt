@@ -25,6 +25,7 @@ add_subdirectory(SkyscanReconImport)
 #add_subdirectory(SegmentPadSave)
 add_subdirectory(ReadLandmarkFile)
 add_subdirectory(GPA)
+add_subdirectory(MorphoSourcery)
 ## NEXT_MODULE
 
 #-----------------------------------------------------------------------------
