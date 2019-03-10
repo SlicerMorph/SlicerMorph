@@ -26,6 +26,7 @@ add_subdirectory(SkyscanReconImport)
 add_subdirectory(ReadLandmarkFile)
 add_subdirectory(GPA)
 add_subdirectory(MorphoSourcery)
+add_subdirectory(ConvertMorphologikaLandmarks)
 ## NEXT_MODULE
 
 #-----------------------------------------------------------------------------
