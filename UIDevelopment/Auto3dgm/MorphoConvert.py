@@ -67,6 +67,17 @@ class MorphoConvertWidget(ScriptedLoadableModuleWidget):
     self.outputDirectory = ctk.ctkDirectoryButton()
     self.outputDirectory.directory = qt.QDir.homePath()
     parametersFormLayout.addRow("Output Directory:", self.outputDirectory)
+    
+    #
+    # Get header length
+    #
+    self.multiplierWidget = ctk.ctkDoubleSpinBox()
+    self.multiplierWidget.value = 1
+    self.multiplierWidget.minimum = 0
+    self.multiplierWidget.maximum = 1000
+    self.multiplierWidget.singleStep = .1
+    self.multiplierWidget.setToolTip("Units should be mm. Use multiplier to convert if needed.")
+    parametersFormLayout.addRow("Multiplier:", self.multiplierWidget)
 
     #
     # check box to trigger taking screen shots for later use in tutorials
@@ -105,7 +116,7 @@ class MorphoConvertWidget(ScriptedLoadableModuleWidget):
   def onApplyButton(self):
     logic = MorphoConvertLogic()
     enableScreenshotsFlag = self.enableScreenshotsFlagCheckBox.checked
-    logic.run(self.inputFileSelector.currentPath, self.outputDirectory.directory)
+    logic.run(self.inputFileSelector.currentPath, self.outputDirectory.directory, self.multiplierWidget.value)
 
 #
 # MorphoConvertLogic
@@ -184,7 +195,7 @@ class MorphoConvertLogic(ScriptedLoadableModuleLogic):
     annotationLogic = slicer.modules.annotations.logic()
     annotationLogic.CreateSnapShot(name, description, type, 1, imageData)
 
-  def run(self, morphFileName, outputDirectory):
+  def run(self, morphFileName, outputDirectory, multiplier):
     """
     Run the actual conversion
     """
@@ -231,7 +242,7 @@ class MorphoConvertLogic(ScriptedLoadableModuleLogic):
         
         for landmark in range(landmarkNumber):
           lineData = rawData.pop(0).split() #get first line and split by whitespace
-          coordinates = [float(lineData[0]), float(lineData[1]), float(lineData[2])]
+          coordinates = [float(lineData[0])*multiplier, float(lineData[1])*multiplier, float(lineData[2])*multiplier]
           fiducialNode.AddFiducialFromArray(coordinates, str(landmark)) #insert fiducial named by landmark number
         
         slicer.mrmlScene.AddNode(fiducialNode)
