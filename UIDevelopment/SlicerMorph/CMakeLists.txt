@@ -27,6 +27,7 @@ add_subdirectory(ReadLandmarkFile)
 add_subdirectory(GPA)
 add_subdirectory(MorphoSourcery)
 add_subdirectory(ConvertMorphologikaLandmarks)
+add_subdirectory(ImportSurfaceToSegment)
 ## NEXT_MODULE
 
 #-----------------------------------------------------------------------------
