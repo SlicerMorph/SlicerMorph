@@ -192,15 +192,14 @@ class ImportSurfaceToSegmentLogic(ScriptedLoadableModuleLogic):
     slicer.modules.segmentations.logic().ExportAllSegmentsToLabelmapNode(segmentNode, labelmapNode)
     
     # Set up interface for editing
-    slicer.app.openNodeModule(segmentNode)
+    slicer.util.selectModule(slicer.modules.segmenteditor)
     editorWidget=slicer.modules.segmenteditor.widgetRepresentation()
-    #masterVolumeSelector = slicer.util.findChild(editorWidget, 'SegmentEditorModuleWidget')
-    #masterVolumeSelector.setCurrentNode(labelmapNode)
     segmentID=segmentNode.GetSegmentation().GetNthSegmentID(0)
     qWidget=slicer.util.findChild(editorWidget,'qMRMLSegmentEditorWidget')
     qWidget.setCurrentSegmentID(segmentID)
     qWidget.setMasterVolumeNode(labelmapNode)
-
+    #remove original model Node
+    slicer.mrmlScene.RemoveNode(modelNode)  
     logging.info('Processing completed')
 
     return True
