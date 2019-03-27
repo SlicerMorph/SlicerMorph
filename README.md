@@ -1,2 +1,2 @@
 # Slicer_Morphometrics
-This is the private development repository for our NSF ABI grant
+This is the development repository for our NSF ABI grant
