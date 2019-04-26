@@ -212,18 +212,18 @@ class ConvertMorphologikaLandmarksLogic(ScriptedLoadableModuleLogic):
 
     #Check that size variables were found	
     if subjectNumber==0 or landmarkNumber==0 or dimensionNumber==0:
-      print 'Error reading file: can not read size'
+      print("Error reading file: can not read size")
 
-    print 'Individuals: ', subjectNumber
-    print 'Landmarks: ', landmarkNumber
-    print 'Dimensions: ', dimensionNumber
+    print("Individuals: ", subjectNumber)
+    print("Landmarks: ", landmarkNumber)
+    print("Dimensions: ", dimensionNumber)
 
     subjectList=data[nameIndex+1:nameIndex+1+subjectNumber]
     rawData = data[rawIndex+1:len(data)] # get raw data portion of file
     rawData = [ line for line in rawData if not ("\'" in line or "\n" == line)] # remove spaces and names
       
     if len(rawData) != subjectNumber*landmarkNumber:    # check for error in landmark import 
-      print 'Error reading file: incorrect landmark number'
+      print("Error reading file: incorrect landmark number")
     else:
       fiducialNode = slicer.vtkMRMLMarkupsFiducialNode() # Create a markups node for imported points
       for index, subject in enumerate(subjectList): # iterate through each subject

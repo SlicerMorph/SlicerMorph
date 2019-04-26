@@ -1,4 +1,3 @@
-
 import numpy as np
 import os
 import fnmatch
@@ -42,12 +41,6 @@ def procrustesAlignNoScale(refShape,shape):
    #center both shapes
     refShape=centerShape(refShape)
     shape=centerShape(shape)
-    
-    #scale both shapes
-    #refShape=scaleShape(refShape)
-    #shape=scaleShape(shape)
-    
-    # rotate shape to match the refshape
     shape=alignShape(refShape,shape)
     
     return shape
@@ -77,9 +70,6 @@ def calcCov(vec):
         t1=((vec[:,x]-meanVec).T).reshape(i,1)
         t2=(vec[:,x]-meanVec).reshape(1,i)
         covMatrix+=np.dot(t1,t2)/float(j)
-        
-    #tmp=np.diag(np.diag(np.divide(1.0,covMatrix)))
-    #covMatrix=np.dot(tmp,np.dot(covMatrix,tmp))
     return covMatrix
 
 def sortEig(eVal, eVec):
@@ -95,7 +85,6 @@ def makeTransformMatrix(ePair,pcA,pcB):
     tmp=ePair[0][0][1]
     i=tmp.shape
     i=i[0]
-    print i
     vec1=ePair[pcA][0][1]
     vec2=ePair[pcB][0][1]
     
@@ -105,22 +94,16 @@ def makeTransformMatrix(ePair,pcA,pcB):
     return transform
 
 def plotTanProj(monsters,pcA,pcB):
-   # pcA=pcA-1
-    #pcB=pcB-1
     twoDim=makeTwoDim(monsters)
     mShape=calcMean(twoDim)
     covMatrix=calcCov(twoDim)
     eigVal, eigVec=np.linalg.eig(covMatrix)
     eigPair=sortEig(eigVal,eigVec)
     transform=makeTransformMatrix(eigPair,pcA,pcB)
-    #print transform
     transform=np.transpose(transform)
     coords=np.dot(transform,twoDim)
-    #plot(-coords[0,:],-coords[1,:],'o', markersize=7, color='blue', alpha=0.5)
     tmp=np.column_stack((coords[0,:],coords[1,:]))
     return tmp
-
-# <codecell>
 
 #GPA 
 def meanShape(monsters):
@@ -141,12 +124,10 @@ def alignToOneNoScale(monsters):
     i,j,k=monsters.shape
     #scale and center the first monster
     monsters[:,:,0]=centerShape(monsters[:,:,0])
-    #monsters[:,:,0]=scaleShape(monsters[:,:,0])
     
     #align other monster to it
     for x in range(1,k):
         monsters[:,:,x]=procrustesAlignNoScale(monsters[:,:,0],monsters[:,:,x])
-          
     return monsters
 
 def alignToMean(monsters,trys):
@@ -157,7 +138,6 @@ def alignToMean(monsters,trys):
     mean2=meanShape(monsters)
     
     diff=np.linalg.norm(mean1-mean2)
-    # print diff
     trys=trys+1
     if diff>.00001 and trys< 50:
         alignToMean(monsters, trys)
@@ -172,7 +152,6 @@ def alignToMeanNoScale(monsters,trys):
     mean2=meanShape(monsters)
     
     diff=np.linalg.norm(mean1-mean2)
-    # print diff
     trys=trys+1
     if diff>.00001 and trys< 50:
         alignToMeanNoScale(monsters, trys)
