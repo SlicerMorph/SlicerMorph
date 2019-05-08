@@ -35,7 +35,7 @@ iconurl     https://github.com/SlicerMorph/SlicerMorph/blob/master/SlicerMorph_C
 status      Beta
 
 # One line stating what the module does
-description This toolkit will enable biologists to retrieve, visualize, measure and annotate high-resolution specimen data both from volumetric scans (CTs and MRs) as well as from 3D surface scanners effectively within 3D-Slicer. 
+description This toolkit enables retrieval, visualization, measurement and annotatation of high-resolution specimen data from volumetric scans (CTs and MRs) or 3D surface scans within 3D-Slicer. 
 
 # Space separated list of urls
 screenshoturls https://na-mic.github.io/ProjectWeek/PW30_2019_GranCanaria/Projects/SlicerMorphGeometricMorphometricToolset/SM_screen.png https://na-mic.github.io/ProjectWeek/PW30_2019_GranCanaria/Projects/SlicerMorphGeometricMorphometricToolset/SM2.png
