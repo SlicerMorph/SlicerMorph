@@ -1,0 +1,44 @@
+#
+# First token of each non-comment line is the keyword and the rest of the line
+# (including spaces) is the value.
+# - the value can be blank
+#
+
+# This is source code manager (i.e. svn)
+scm git
+scmurl git://github.com/carma-center/carma_slicer_extension.git
+scmrevision 4e01680
+
+# list dependencies
+# - These should be names of other modules that have .s4ext files
+# - The dependencies will be built first
+depends     NA
+
+# Inner build directory (default is .)
+build_subdirectory .
+
+# homepage
+homepage    https://slicermorph.github.io/
+
+# Firstname1 Lastname1 ([SubOrg1, ]Org1), Firstname2 Lastname2 ([SubOrg2, ]Org2)
+# For example: Jane Roe (Superware), John Doe (Lab1, Nowhere), Joe Bloggs (Noware)
+contributors Sara Rolfe (UW), Murat Maga (SCRI)
+
+# Match category in the xml description of the module (where it shows up in Modules menu)
+category    SlicerMorph
+
+# url to icon (png, size 128x128 pixels)
+iconurl     http://capulet.med.utah.edu/namic/images/CMRTK-logo.png
+
+# Give people an idea what to expect from this code
+#  - Is it just a test or something you stand behind?
+status      Beta
+
+# One line stating what the module does
+description This toolkit will enable biologists to retrieve, visualize, measure and annotate high-resolution specimen data both from volumetric scans (CTs and MRs) as well as from 3D surface scanners effectively within 3D-Slicer. 
+
+# Space separated list of urls
+screenshoturls https://na-mic.github.io/ProjectWeek/PW30_2019_GranCanaria/Projects/SlicerMorphGeometricMorphometricToolset/SM_screen.png https://na-mic.github.io/ProjectWeek/PW30_2019_GranCanaria/Projects/SlicerMorphGeometricMorphometricToolset/SM2.png
+
+# 0 or 1: Define if the extension should be enabled after its installation.
+enabled 1
