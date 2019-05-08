@@ -6,8 +6,8 @@
 
 # This is source code manager (i.e. svn)
 scm git
-scmurl git://github.com/carma-center/carma_slicer_extension.git
-scmrevision 4e01680
+scmurl git://github.com/SlicerMorph/SlicerMorph.git
+scmrevision 1c66504  
 
 # list dependencies
 # - These should be names of other modules that have .s4ext files
@@ -28,7 +28,7 @@ contributors Sara Rolfe (UW), Murat Maga (SCRI)
 category    SlicerMorph
 
 # url to icon (png, size 128x128 pixels)
-iconurl     http://capulet.med.utah.edu/namic/images/CMRTK-logo.png
+iconurl     https://github.com/SlicerMorph/SlicerMorph/blob/master/SlicerMorph_Color.png
 
 # Give people an idea what to expect from this code
 #  - Is it just a test or something you stand behind?
