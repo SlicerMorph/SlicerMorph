@@ -1,5 +1,5 @@
 #-----------------------------------------------------------------------------
-set(MODULE_NAME ImportSurfaceToSegment
+set(MODULE_NAME ImportSurfaceToSegment)
 
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS
