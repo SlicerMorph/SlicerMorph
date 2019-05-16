@@ -1,5 +1,5 @@
 #-----------------------------------------------------------------------------
-set(MODULE_NAME SkyscanReconImport
+set(MODULE_NAME SkyscanReconImport)
 
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS
