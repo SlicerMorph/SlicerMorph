@@ -1,5 +1,5 @@
 #-----------------------------------------------------------------------------
-set(MODULE_NAME ReadLandmarkFile
+set(MODULE_NAME ReadLandmarkFile)
 
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS
