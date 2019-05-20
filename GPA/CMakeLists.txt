@@ -18,6 +18,8 @@ slicerMacroBuildScriptedModule(
   WITH_GENERIC_TESTS
   )
 
+#-------Add path
+add_subdirectory(Support)
 #-----------------------------------------------------------------------------
 if(BUILD_TESTING)
 
