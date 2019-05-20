@@ -4,6 +4,9 @@ set(MODULE_NAME GPA)
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}.py
+  Support/__init__.py
+  Support/gpa_lib.py
+  Support/vtk_lib.py
   )
 
 set(MODULE_PYTHON_RESOURCES
@@ -17,9 +20,6 @@ slicerMacroBuildScriptedModule(
   RESOURCES ${MODULE_PYTHON_RESOURCES}
   WITH_GENERIC_TESTS
   )
-
-#-------Add path
-add_subdirectory(Support)
 #-----------------------------------------------------------------------------
 if(BUILD_TESTING)
 
