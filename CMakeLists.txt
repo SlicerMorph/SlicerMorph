@@ -4,12 +4,12 @@ project(SlicerMorph)
 
 #-----------------------------------------------------------------------------
 # Extension meta-information
-set(EXTENSION_HOMEPAGE "http://slicer.org/slicerWiki/index.php/Documentation/Nightly/Extensions/SlicerMorph")
+set(EXTENSION_HOMEPAGE "https://slicermorph.github.io/")
 set(EXTENSION_CATEGORY "SlicerMorph")
 set(EXTENSION_CONTRIBUTORS "Sara Rolfe (UW), Murat Maga (SCRI)")
-set(EXTENSION_DESCRIPTION "This extension will load modules developed for the SlicerMorph project. ")
-set(EXTENSION_ICONURL "SlicerMorph_Color.png")
-set(EXTENSION_SCREENSHOTURLS "http://www.example.com/Slicer/Extensions/SlicerMorph/Screenshots/1.png")
+set(EXTENSION_DESCRIPTION "This extension enables retrieval, visualization, measurement and annotation of high-resolution specimen data from volumetric scans (CTs and MRs) or 3D surface scans.")
+set(EXTENSION_ICONURL "https://raw.githubusercontent.com/SlicerMorph/SlicerMorph/master/SlicerMorph_Color.png")
+set(EXTENSION_SCREENSHOTURLS "https://na-mic.github.io/ProjectWeek/PW30_2019_GranCanaria/Projects/SlicerMorphGeometricMorphometricToolset/SM_screen.png https://na-mic.github.io/ProjectWeek/PW30_2019_GranCanaria/Projects/SlicerMorphGeometricMorphometricToolset/SM2.png")
 set(EXTENSION_DEPENDS "NA") # Specified as a space separated string, a list or 'NA' if any
 
 #-----------------------------------------------------------------------------
