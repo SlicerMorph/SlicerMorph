@@ -586,8 +586,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
   def nodeCleanUp(self):
     # clear all nodes created by the module
     for node in GPANodeCollection:
-      slicer.mrmlScene.RemoveNode(node)
+      
       GPANodeCollection.RemoveItem(node)
+      if node.GetClassName() != "vtkMRMLMarkupsFiducialNode":
+        slicer.mrmlScene.RemoveNode(node)
 
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
