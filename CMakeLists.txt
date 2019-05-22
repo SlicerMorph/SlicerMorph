@@ -25,6 +25,7 @@ add_subdirectory(ImportSurfaceToSegment)
 add_subdirectory(ReadLandmarkFile)
 add_subdirectory(SkyscanReconImport)
 add_subdirectory(MorphoSource)
+add_subdirectory(SlicerMorphSampleData)
 
 ## NEXT_MODULE
 
