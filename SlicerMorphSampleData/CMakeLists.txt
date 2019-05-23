@@ -8,6 +8,9 @@ set(MODULE_PYTHON_SCRIPTS
 
 set(MODULE_PYTHON_RESOURCES
   Resources/Icons/${MODULE_NAME}.png
+  Resources/Icons/gorilla3D.png
+  Resources/Icons/mouse3D.png
+  Resources/Icons/pointcloud.png
   )
 
 #-----------------------------------------------------------------------------
