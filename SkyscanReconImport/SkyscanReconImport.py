@@ -159,7 +159,7 @@ class LogDataObject:
           self.SeqenceEnd = element.split('=', 1)[1].zfill(4) #pad with zeros to 4 digits 
       
   def VerifyParameters(self):
-    for attr, value in self.__dict__.iteritems():        
+    for attr, value in self.__dict__.items():        
         if(str(value) == "NULL"):
           logging.debug("Read Failed: Please check log format")
           logging.debug(attr,value)
