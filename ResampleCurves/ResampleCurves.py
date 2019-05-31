@@ -76,6 +76,7 @@ class ResampleCurvesWidget(ScriptedLoadableModuleWidget):
     self.ResampleRateWidget = ctk.ctkDoubleSpinBox()
     self.ResampleRateWidget.value = 50
     self.ResampleRateWidget.minimum = 3
+    self.ResampleRateWidget.maximum = 1000
     self.ResampleRateWidget.singleStep = 1
     self.ResampleRateWidget.setDecimals(0)
     self.ResampleRateWidget.setToolTip("Select the number of points for resampling: ")
