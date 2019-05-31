@@ -56,22 +56,31 @@ class ResampleCurvesWidget(ScriptedLoadableModuleWidget):
     #
     # Select landmark file to import
     #
-    self.inputputDirectory = ctk.ctkDirectoryButton()
-    self.outputDirectory.directory = qt.QDir.homePath()
-    parametersFormLayout.addRow("Output Directory:", self.outputDirectory)
+    self.inputDirectory = ctk.ctkPathLineEdit()
+    self.inputDirectory.filters = ctk.ctkPathLineEdit.Dirs
+    self.inputDirectory.setToolTip( "Select directory containing curves to resample" )
+    parametersFormLayout.addRow("Input Directory:", self.inputDirectory)
     
-    
-    
-    self.inputFileSelector = ctk.ctkPathLineEdit()
-    self.inputFileSelector.setToolTip( "Select Morphologika landmark file for conversion" )
-    parametersFormLayout.addRow("Select file containing landmark names and coordinates to load:", self.inputFileSelector)
     
     #
     # output directory selector
     #
-    self.outputDirectory = ctk.ctkDirectoryButton()
-    self.outputDirectory.directory = qt.QDir.homePath()
+    self.outputDirectory = ctk.ctkPathLineEdit()
+    self.outputDirectory.filters = ctk.ctkPathLineEdit.Dirs
+    self.outputDirectory.currentPath = qt.QDir.tempPath()
     parametersFormLayout.addRow("Output Directory:", self.outputDirectory)
+
+    #
+    # Get Resample number
+    #
+    self.ResampleRateWidget = ctk.ctkDoubleSpinBox()
+    self.ResampleRateWidget.value = 50
+    self.ResampleRateWidget.minimum = 3
+    self.ResampleRateWidget.singleStep = 1
+    self.ResampleRateWidget.setDecimals(0)
+    self.ResampleRateWidget.setToolTip("Select the number of points for resampling: ")
+    parametersFormLayout.addRow("Output sample number: ", self.ResampleRateWidget)
+
 
     #
     # check box to trigger taking screen shots for later use in tutorials
@@ -81,6 +90,7 @@ class ResampleCurvesWidget(ScriptedLoadableModuleWidget):
     self.enableScreenshotsFlagCheckBox.setToolTip("If checked, take screen shots for tutorials. Use Save Data to write them to disk.")
     parametersFormLayout.addRow("Enable Screenshots", self.enableScreenshotsFlagCheckBox)
 
+    
     #
     # Apply Button
     #
@@ -88,10 +98,10 @@ class ResampleCurvesWidget(ScriptedLoadableModuleWidget):
     self.applyButton.toolTip = "Run the conversion."
     self.applyButton.enabled = False
     parametersFormLayout.addRow(self.applyButton)
-
+    
     # connections
     self.applyButton.connect('clicked(bool)', self.onApplyButton)
-    self.inputFileSelector.connect('validInputChanged(bool)', self.inputFileSelector)
+    self.inputDirectory.connect('validInputChanged(bool)', self.onSelectInput)
  
     # Add vertical spacer
     self.layout.addStretch(1)
@@ -104,13 +114,13 @@ class ResampleCurvesWidget(ScriptedLoadableModuleWidget):
     pass
 
   def onSelectInput(self):
-    self.applyButton.enabled = bool(self.inputFileSelector.currentPath) 
+    self.applyButton.enabled = bool(self.inputDirectory.currentPath) 
 
 
   def onApplyButton(self):
     logic = ResampleCurvesLogic()
     enableScreenshotsFlag = self.enableScreenshotsFlagCheckBox.checked
-    logic.run(self.inputFileSelector.currentPath, self.outputDirectory.directory)
+    logic.run(self.inputDirectory.currentPath, self.outputDirectory.currentPath, int(self.ResampleRateWidget.value))
 
 #
 # ResampleCurvesLogic
@@ -125,33 +135,6 @@ class ResampleCurvesLogic(ScriptedLoadableModuleLogic):
   Uses ScriptedLoadableModuleLogic base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
-
-  def hasImageData(self,volumeNode):
-    """This is an example logic method that
-    returns true if the passed in volume
-    node has valid image data
-    """
-    if not volumeNode:
-      logging.debug('hasImageData failed: no volume node')
-      return False
-    if volumeNode.GetImageData() is None:
-      logging.debug('hasImageData failed: no image data in volume node')
-      return False
-    return True
-
-  def isValidInputOutputData(self, inputVolumeNode, outputVolumeNode):
-    """Validates if the output is not the same as input
-    """
-    if not inputVolumeNode:
-      logging.debug('isValidInputOutputData failed: no input volume node defined')
-      return False
-    if not outputVolumeNode:
-      logging.debug('isValidInputOutputData failed: no output volume node defined')
-      return False
-    if inputVolumeNode.GetID()==outputVolumeNode.GetID():
-      logging.debug('isValidInputOutputData failed: input and output volume is the same. Create a new volume for output to avoid this error.')
-      return False
-    return True
 
   def takeScreenshot(self,name,description,type=-1):
     # show the message even if not taking a screen shot
@@ -188,64 +171,58 @@ class ResampleCurvesLogic(ScriptedLoadableModuleLogic):
 
     annotationLogic = slicer.modules.annotations.logic()
     annotationLogic.CreateSnapShot(name, description, type, 1, imageData)
-
-  def run(self, morphFileName, outputDirectory):
-    """
-    Run the actual conversion
-    """
-    f=open(morphFileName,'r')
-    data=f.readlines()
-    f.close
-
-    subjectNumber= 0
-    landmarkNumber=0
-    dimensionNumber=0
-    nameIndex=0
-    rawIndex=0
-
-    #Scan file for data size 
-    for num, line in enumerate(data, 0):
-      if 'individuals' in line.lower():
-        subjectNumber= int(data[num+1])	
-      elif 'landmarks' in line.lower():
-        landmarkNumber= int(data[num+1])
-      elif 'dimensions' in line.lower():
-        dimensionNumber = int(data[num+1])
-      elif 'names' in line.lower():
-        nameIndex=num
-      elif 'rawpoints' in line.lower():
-        rawIndex = num
-
-    #Check that size variables were found	
-    if subjectNumber==0 or landmarkNumber==0 or dimensionNumber==0:
-      print("Error reading file: can not read size")
-
-    print("Individuals: ", subjectNumber)
-    print("Landmarks: ", landmarkNumber)
-    print("Dimensions: ", dimensionNumber)
-
-    subjectList=data[nameIndex+1:nameIndex+1+subjectNumber]
-    rawData = data[rawIndex+1:len(data)] # get raw data portion of file
-    rawData = [ line for line in rawData if not ("\'" in line or "\n" == line)] # remove spaces and names
-      
-    if len(rawData) != subjectNumber*landmarkNumber:    # check for error in landmark import 
-      print("Error reading file: incorrect landmark number")
-    else:
-      fiducialNode = slicer.vtkMRMLMarkupsFiducialNode() # Create a markups node for imported points
-      for index, subject in enumerate(subjectList): # iterate through each subject
+    
+  def run(self, inputDirectory, outputDirectory, resampleNumber):
+    extension = ".fcsv"
+    for file in os.listdir(inputDirectory):
+      if file.endswith(extension):
+        # read landmark file
+        inputFilePath = os.path.join(inputDirectory, file)
+        [success, markupsNode] =slicer.util.loadMarkupsFiducialList(inputFilePath, "True")
         
-        for landmark in range(landmarkNumber):
-          lineData = rawData.pop(0).split() #get first line and split by whitespace
-          coordinates = [float(lineData[0]), float(lineData[1]), float(lineData[2])]
-          fiducialNode.AddFiducialFromArray(coordinates, str(landmark)) #insert fiducial named by landmark number
+        #resample 
+        curve = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsCurveNode", "resampled_temp")
+        resampledCurve = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsCurveNode", "resampledCurve")
+        vector=vtk.vtkVector3d()
+        pt=[0,0,0]
+        landmarkNumber = markupsNode.GetNumberOfFiducials()
+
+        for landmark in range(0,landmarkNumber):
+          markupsNode.GetMarkupPoint(landmark,0,pt)
+          vector[0]=pt[0]
+          vector[1]=pt[1]
+          vector[2]=pt[2]
+          curve.AddControlPoint(vector)
+
+        currentPoints = curve.GetCurvePointsWorld()
+        newPoints = vtk.vtkPoints()
+        sampleDist = curve.GetCurveLengthWorld()/resampleNumber
+        curve.ResamplePoints(currentPoints, newPoints,sampleDist,0)
+        newPointNumber = newPoints.GetNumberOfPoints()
+
+        #set resampleNumber-1 control points
+        for controlPoint in range(0,resampleNumber-1):
+          newPoints.GetPoint(controlPoint,pt)
+          vector[0]=pt[0]
+          vector[1]=pt[1]
+          vector[2]=pt[2]
+          resampledCurve.AddControlPoint(vector)
+          
+        # Add endpoint
+        markupsNode.GetMarkupPoint(landmarkNumber-1,0,pt)
+        vector[0]=pt[0]
+        vector[1]=pt[1]
+        vector[2]=pt[2]
+        resampledCurve.AddControlPoint(vector)
         
-        slicer.mrmlScene.AddNode(fiducialNode)
-        fiducialNode.SetName(subject.split()[0]) # set name to subject name, removing new line char
-        path = os.path.join(outputDirectory, subject.split()[0] + '.fcsv')
-        slicer.util.saveNode(fiducialNode, path)
-        slicer.mrmlScene.RemoveNode(fiducialNode)  #remove node from scene
-        #fiducialNode.RemoveAllControlPoints() # remove all landmarks from node (new markups version)
-        fiducialNode.RemoveAllMarkups()  # remove all landmarks from node
+        # save
+        newFileName = os.path.splitext(file)[0] + "_resample_" +str(resampleNumber) + extension
+        outputFilePath = os.path.join(outputDirectory, newFileName)
+        slicer.util.saveNode(resampledCurve, outputFilePath)
+        slicer.mrmlScene.RemoveNode(markupsNode)  #remove node from scene
+        slicer.mrmlScene.RemoveNode(curve)
+        slicer.mrmlScene.RemoveNode(resampledCurve)
+    
     logging.info('Processing completed')
 
     return True
