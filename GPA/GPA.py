@@ -978,9 +978,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     logic = GPALogic()
     #get target landmarks
     self.LM.ExpandAlongPCs(pcSelected,scaleFactors, self.sampleSizeScaleFactor)
-    target=self.sourceLMnumpy+self.LM.shift
+    target=self.sourceLMnumpyTransformed+self.LM.shift
     targetLMVTK=logic.convertNumpyToVTK(target)
-    sourceLMVTK=logic.convertNumpyToVTK(self.sourceLMnumpy)
+    sourceLMVTK=logic.convertNumpyToVTK(self.sourceLMnumpyTransformed)
 
     #Set up TPS
     VTKTPS = vtk.vtkThinPlateSplineTransform()
