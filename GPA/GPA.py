@@ -1485,7 +1485,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
 
       tubeFilter = vtk.vtkTubeFilter()
       tubeFilter.SetInputData(polydata)
-      tubeFilter.SetRadius(0.7)
+      tubeFilter.SetRadius(scaleFactor/500)
       tubeFilter.SetNumberOfSides(20)
       tubeFilter.CappingOn()
       tubeFilter.Update()
