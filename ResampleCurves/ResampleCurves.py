@@ -82,7 +82,20 @@ class ResampleCurvesWidget(ScriptedLoadableModuleWidget):
     self.ResampleRateWidget.setToolTip("Select the number of points for resampling: ")
     parametersFormLayout.addRow("Output sample number: ", self.ResampleRateWidget)
 
-
+    #
+    # Get open or closed curve option
+    #
+    curveTypeSelector = qt.QHBoxLayout()
+    self.curveTypeOpen=qt.QRadioButton("open")
+    self.curveTypeOpen.setToolTip("Select option for no interpolation between first and last points")
+    self.curveTypeOpen.setChecked(True)
+    self.curveTypeClosed=qt.QRadioButton("closed")
+    self.curveTypeClosed.setToolTip("Select option to interpolate between first and last points")
+    curveTypeSelector.addWidget(self.curveTypeOpen)
+    curveTypeSelector.addWidget(self.curveTypeClosed)
+    curveTypeSelector.addStretch()
+    parametersFormLayout.addRow("Curve Type: ",curveTypeSelector)
+    
     #
     # check box to trigger taking screen shots for later use in tutorials
     #
@@ -121,7 +134,7 @@ class ResampleCurvesWidget(ScriptedLoadableModuleWidget):
   def onApplyButton(self):
     logic = ResampleCurvesLogic()
     enableScreenshotsFlag = self.enableScreenshotsFlagCheckBox.checked
-    logic.run(self.inputDirectory.currentPath, self.outputDirectory.currentPath, int(self.ResampleRateWidget.value))
+    logic.run(self.inputDirectory.currentPath, self.outputDirectory.currentPath, int(self.ResampleRateWidget.value), self.curveTypeClosed.isChecked())
 
 #
 # ResampleCurvesLogic
@@ -173,7 +186,7 @@ class ResampleCurvesLogic(ScriptedLoadableModuleLogic):
     annotationLogic = slicer.modules.annotations.logic()
     annotationLogic.CreateSnapShot(name, description, type, 1, imageData)
     
-  def run(self, inputDirectory, outputDirectory, resampleNumber):
+  def run(self, inputDirectory, outputDirectory, resampleNumber, closedCurveOption):
     extension = ".fcsv"
     for file in os.listdir(inputDirectory):
       if file.endswith(extension):
@@ -181,9 +194,15 @@ class ResampleCurvesLogic(ScriptedLoadableModuleLogic):
         inputFilePath = os.path.join(inputDirectory, file)
         [success, markupsNode] =slicer.util.loadMarkupsFiducialList(inputFilePath, "True")
         
-        #resample 
-        curve = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsCurveNode", "resampled_temp")
-        resampledCurve = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsCurveNode", "resampledCurve")
+        #resample
+        if closedCurveOption:
+          curve = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsClosedCurveNode", "resampled_temp")
+          resampledCurve = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsClosedCurveNode", "resampledCurve")
+          resampleNumber+=1
+        else:
+          curve = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsCurveNode", "resampled_temp")
+          resampledCurve = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsCurveNode", "resampledCurve")
+        
         vector=vtk.vtkVector3d()
         pt=[0,0,0]
         landmarkNumber = markupsNode.GetNumberOfFiducials()
@@ -198,8 +217,7 @@ class ResampleCurvesLogic(ScriptedLoadableModuleLogic):
         currentPoints = curve.GetCurvePointsWorld()
         newPoints = vtk.vtkPoints()
         sampleDist = curve.GetCurveLengthWorld()/resampleNumber
-        curve.ResamplePoints(currentPoints, newPoints,sampleDist,0)
-        newPointNumber = newPoints.GetNumberOfPoints()
+        curve.ResamplePoints(currentPoints, newPoints,sampleDist,closedCurveOption)
 
         #set resampleNumber-1 control points
         for controlPoint in range(0,resampleNumber-1):
@@ -209,15 +227,18 @@ class ResampleCurvesLogic(ScriptedLoadableModuleLogic):
           vector[2]=pt[2]
           resampledCurve.AddControlPoint(vector)
           
-        # Add endpoint
-        markupsNode.GetMarkupPoint(landmarkNumber-1,0,pt)
-        vector[0]=pt[0]
-        vector[1]=pt[1]
-        vector[2]=pt[2]
-        resampledCurve.AddControlPoint(vector)
+        # Add endpoint if not closed curve
+        if not closedCurveOption:
+          markupsNode.GetMarkupPoint(landmarkNumber-1,0,pt)
+          vector[0]=pt[0]
+          vector[1]=pt[1]
+          vector[2]=pt[2]
+          resampledCurve.AddControlPoint(vector)
+        
+        newPointNumber = resampledCurve.GetNumberOfControlPoints()
         
         # save
-        newFileName = os.path.splitext(file)[0] + "_resample_" +str(resampleNumber) + extension
+        newFileName = os.path.splitext(file)[0] + "_resample_" +str(newPointNumber) + extension
         outputFilePath = os.path.join(outputDirectory, newFileName)
         slicer.util.saveNode(resampledCurve, outputFilePath)
         slicer.mrmlScene.RemoveNode(markupsNode)  #remove node from scene
