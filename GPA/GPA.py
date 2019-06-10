@@ -628,7 +628,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     inputLayout.addWidget(self.skipScalingCheckBox, 4,2)
 
 
-    #Apply Button
+    #Load Button
     self.loadButton = qt.QPushButton("Execute GPA + PCA")
     self.loadButton.checkable = True
     self.loadButton.setStyleSheet(self.StyleSheet)
@@ -764,8 +764,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     selectTemplatesLayout.addWidget(self.grayscaleSelector,1,2,1,3)
 
 
-    self.FudSelectLabel = qt.QLabel("Landmark List: ")
-    self.FudSelectLabel.setToolTip( "Select the landmark list")
+    self.FudSelectLabel = qt.QLabel("Specify LM set for the selected model: ")
+    self.FudSelectLabel.setToolTip( "Select the landmark set that corresponds to the reference model")
     self.FudSelect = slicer.qMRMLNodeComboBox()
     self.FudSelect.nodeTypes = ( ('vtkMRMLMarkupsFiducialNode'), "" )
     self.FudSelect.selectNodeUponCreation = False
@@ -780,7 +780,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     selectTemplatesLayout.addWidget(self.FudSelect,2,2,1,3)
 
 
-    self.selectorButton = qt.QPushButton("Select models")
+    self.selectorButton = qt.QPushButton("Apply")
     self.selectorButton.checkable = True
     self.selectorButton.setStyleSheet(self.StyleSheet)
     selectTemplatesLayout.addWidget(self.selectorButton,3,1,1,4)
@@ -793,9 +793,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     vis=ctk.ctkCollapsibleButton()
     vis.text='PCA Visualization Parameters'
     visLayout= qt.QGridLayout(vis)
+    self.applyEnabled=False
 
     def warpOnChange(value):
-      if self.applyButton.enabled:
+      if self.applyEnabled:
         self.onApply()
 
     self.PCList=[]
@@ -808,18 +809,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     visLayout.addWidget(self.slider2,4,1,1,2)
 
     self.layout.addWidget(vis)
-
-
-    # Apply Button
-    self.applyButton = qt.QPushButton("Apply")
-    self.applyButton.checkable = True
-    self.applyButton.setStyleSheet(self.StyleSheet)
-    self.layout.addWidget(self.applyButton)
-    self.applyButton.toolTip = "Push to start the program. Make sure you have filled in all the data."
-    applyFrame=qt.QFrame(self.parent)
-    self.applyButton.connect('clicked(bool)', self.onApply)
-    self.applyButton.enabled = False
-    visLayout.addWidget(self.applyButton,8,1,1,2)
     
     # Create Animations
     animate=ctk.ctkCollapsibleButton()
@@ -954,8 +943,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       GPANodeCollection.AddItem(self.transformNode)
 
     # Enable PCA warping and recording
-    self.applyButton.enabled = True
     self.startRecordButton.enabled = True
+    self.applyEnabled = True
 
   def onApply(self):
     pc1=self.slider1.boxValue()
