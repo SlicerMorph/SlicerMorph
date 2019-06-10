@@ -169,17 +169,16 @@ class LMData:
     self.shift=tmp
 
   def writeOutData(self,outputFolder,files):
-    np.savetxt(outputFolder+os.sep+"MeanShape.csv", self.mShape, delimiter=",")
+    np.savetxt(outputFolder+os.sep+"MeanShape.csv", self.mShape, delimiter=",",fmt='%s')
+    np.savetxt(outputFolder+os.sep+"eigenvalues.csv", self.val, delimiter=",",fmt='%s')
+    
     # make headers for eigenvector matrix
-    headerRow=np.empty(self.vec.shape[0], dtype='S10')
-    headerCol=np.empty(self.vec.shape[0], dtype='S10')
-    for i in range(self.vec.shape[0]-1):
-      headerRow[i]="R_"+str(i)
-      headerCol[i]="C_"+str(i)
-      #print(headerCol[i])
-    #vecHeader = np.column_stack(headerCol.reshape(self.vec.shape[0],1),self.vec)
-    np.savetxt(outputFolder+os.sep+"eigenvector.csv", self.vec, delimiter=",")
-    np.savetxt(outputFolder+os.sep+"eigenvalues.csv", self.val, delimiter=",")
+    headerRow=[]
+    for i in range(self.vec.shape[0]):
+      headerRow.append("PC "+str(i+1))
+    temp = np.vstack((np.array(headerRow),self.vec))
+    np.savetxt(outputFolder+os.sep+"eigenvector.csv", temp, delimiter=",",fmt='%s')
+    
 
     percentVar=self.val/self.val.sum()
     self.procdist=gpa_lib.procDist(self.lm, self.mShape)
