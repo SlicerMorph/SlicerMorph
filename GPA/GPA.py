@@ -170,6 +170,14 @@ class LMData:
 
   def writeOutData(self,outputFolder,files):
     np.savetxt(outputFolder+os.sep+"MeanShape.csv", self.mShape, delimiter=",")
+    # make headers for eigenvector matrix
+    headerRow=np.empty(self.vec.shape[0], dtype='S10')
+    headerCol=np.empty(self.vec.shape[0], dtype='S10')
+    for i in range(self.vec.shape[0]-1):
+      headerRow[i]="R_"+str(i)
+      headerCol[i]="C_"+str(i)
+      #print(headerCol[i])
+    #vecHeader = np.column_stack(headerCol.reshape(self.vec.shape[0],1),self.vec)
     np.savetxt(outputFolder+os.sep+"eigenvector.csv", self.vec, delimiter=",")
     np.savetxt(outputFolder+os.sep+"eigenvalues.csv", self.val, delimiter=",")
 
@@ -204,9 +212,9 @@ class LMData:
     # calc PC scores
     twoDcoors=gpa_lib.makeTwoDim(self.lm)
     scores=np.dot(np.transpose(twoDcoors),self.vec)
-    scores=np.transpose(np.real(scores))
+    scores=np.real(scores)
 
-    scores=np.vstack((files.reshape(1,i),scores))
+    scores=np.column_stack((files.reshape(i,1),scores))
     np.savetxt(outputFolder+os.sep+"pcScores.csv", scores, fmt="%s", delimiter=",")
 
   def closestSample(self,files):
@@ -809,7 +817,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     visLayout.addWidget(self.slider2,4,1,1,2)
 
     self.layout.addWidget(vis)
-    
+
     # Create Animations
     animate=ctk.ctkCollapsibleButton()
     animate.text='Create animation of PC Warping'
@@ -943,8 +951,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       GPANodeCollection.AddItem(self.transformNode)
 
     # Enable PCA warping and recording
-    self.startRecordButton.enabled = True
     self.applyEnabled = True
+    self.startRecordButton.enabled = True
 
   def onApply(self):
     pc1=self.slider1.boxValue()
