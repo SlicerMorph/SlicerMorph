@@ -443,6 +443,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.plotButton.enabled = True
     self.lolliButton.enabled = True
     self.plotDistributionButton.enabled = True
+    self.plotMeanButton3D.enabled = True
+    self.plotMeanButton2D.enabled = True
 
   def populateDistanceTable(self, files):
     sortedArray = np.zeros(len(files), dtype={'names':('filename', 'procdist'),'formats':('U10','f8')})
@@ -535,12 +537,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       # get fiducial node for mean landmarks
       self.meanLandmarkNode=slicer.mrmlScene.GetFirstNodeByName('Mean Landmark Node')
       self.meanLandmarkNode.SetDisplayVisibility(1)
-      if self.TwoDLM.isChecked():
-        self.meanLandmarkNode.GetDisplayNode().SetSliceProjection(1) 
-        self.meanLandmarkNode.GetDisplayNode().SetSliceProjectionOpacity(1) 
-        self.meanLandmarkNode.GetDisplayNode().SetGlyphScale(3)
-      else:
-        self.meanLandmarkNode.GetDisplayNode().SetSliceProjection(0) 
 
       print("No reference landmarks loaded, plotting lollipop vectors at mean landmarks points.")
 
@@ -597,6 +593,26 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       GPANodeCollection.RemoveItem(node)
       if node.GetClassName() != "vtkMRMLMarkupsFiducialNode":
         slicer.mrmlScene.RemoveNode(node)
+  
+  def toggleMeanPlot(self):
+    visibility = self.meanLandmarkNode.GetDisplayVisibility() 
+    if visibility:
+      visibility = self.meanLandmarkNode.SetDisplayVisibility(False)
+    else:
+      visibility = self.meanLandmarkNode.SetDisplayVisibility(True)
+      
+  def toggleMeanPlot2D(self):
+    visibility = self.meanLandmarkNode.GetDisplayNode().GetSliceProjection() 
+    if visibility:
+      self.meanLandmarkNode.GetDisplayNode().SetSliceProjection(0) 
+    else:
+      self.meanLandmarkNode.GetDisplayNode().SetSliceProjection(1) 
+      self.meanLandmarkNode.GetDisplayNode().SetSliceProjectionOpacity(1) 
+      self.meanLandmarkNode.GetDisplayNode().SetGlyphScale(3)  #Need to update fixed value
+      
+  def toggleMeanColor(self):
+    color = self.meanShapeColor.color
+    self.meanLandmarkNode.GetDisplayNode().SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255]) 
 
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
@@ -644,6 +660,40 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.loadButton.enabled = False
     self.loadButton.connect('clicked(bool)', self.onLoad)
 
+    #Mean Shape display section
+    meanShapeFrame = ctk.ctkCollapsibleButton()
+    meanShapeFrame.text="Mean Shape Plot Options"
+    meanShapeLayout= qt.QGridLayout(meanShapeFrame)
+    self.layout.addWidget(meanShapeFrame)
+    
+    meanButtonLable=qt.QLabel("Mean shape visibility: ")
+    meanShapeLayout.addWidget(meanButtonLable,1,1)
+    
+    self.plotMeanButton3D = qt.QPushButton("Toggle plot visibility")
+    self.plotMeanButton3D.checkable = True
+    self.plotMeanButton3D.setStyleSheet(self.StyleSheet)
+    self.plotMeanButton3D.toolTip = "Toggle visibility of mean plot"
+    meanShapeLayout.addWidget(self.plotMeanButton3D,1,2,1,1)
+    self.plotMeanButton3D.enabled = False
+    self.plotMeanButton3D.connect('clicked(bool)', self.toggleMeanPlot)
+    
+    self.plotMeanButton2D = qt.QPushButton("Toggle 2D projection")
+    self.plotMeanButton2D.checkable = True
+    self.plotMeanButton2D.setStyleSheet(self.StyleSheet)
+    self.plotMeanButton2D.toolTip = "Toggle visibility of mean plot in 2D"
+    meanShapeLayout.addWidget(self.plotMeanButton2D,1,3,1,1)
+    self.plotMeanButton2D.enabled = False
+    self.plotMeanButton2D.connect('clicked(bool)', self.toggleMeanPlot2D)
+    
+    meanColorLable=qt.QLabel("Mean shape color: ")
+    meanShapeLayout.addWidget(meanColorLable,2,1)
+    self.meanShapeColor = ctk.ctkColorPickerButton()
+    self.meanShapeColor.displayColorName = False
+    self.meanShapeColor.color = qt.QColor(255,0,0)
+    meanShapeLayout.addWidget(self.meanShapeColor,2,2,1,1)
+    self.meanShapeColor.connect('colorChanged(QColor)', self.toggleMeanColor)
+    
+    
     #PC plot section
     plotFrame=ctk.ctkCollapsibleButton()
     plotFrame.text="PCA Scatter Plot Options"
@@ -694,11 +744,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.TwoDType.checked = False
     self.TwoDType.setText("Lollipop 2D Projection")
     lolliLayout.addWidget(self.TwoDType,4,2)   
-    self.TwoDLM=qt.QCheckBox()
-    self.TwoDLM.checked = False
-    self.TwoDLM.setText("Mean Shape 2D Projection")
-    lolliLayout.addWidget(self.TwoDLM,4,4)
-
     
     self.lolliButton = qt.QPushButton("Lollipop Vector Plot")
     self.lolliButton.checkable = True
