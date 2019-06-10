@@ -170,7 +170,15 @@ class LMData:
 
   def writeOutData(self,outputFolder,files):
     np.savetxt(outputFolder+os.sep+"MeanShape.csv", self.mShape, delimiter=",")
-    np.savetxt(outputFolder+os.sep+"eigenvector.csv", self.vec, delimiter=",")
+    # make headers for eigenvector matrix
+    headerRow=np.empty(self.vec.shape[0], dtype='S10')
+    headerCol=np.empty(self.vec.shape[0], dtype='S10')
+    for i in range(self.vec.shape[0]-1):
+      headerRow[i]="R_"+str(i)
+      headerCol[i]="C_"+str(i)
+      print(headerCol[i])
+    #vecHeader = np.column_stack(headerCol.reshape(self.vec.shape[0],1),self.vec)
+    np.savetxt(outputFolder+os.sep+"eigenvector.csv", vecHeader, delimiter=",")
     np.savetxt(outputFolder+os.sep+"eigenvalues.csv", self.val, delimiter=",")
 
     percentVar=self.val/self.val.sum()
@@ -204,9 +212,9 @@ class LMData:
     # calc PC scores
     twoDcoors=gpa_lib.makeTwoDim(self.lm)
     scores=np.dot(np.transpose(twoDcoors),self.vec)
-    scores=np.transpose(np.real(scores))
+    scores=np.real(scores)
 
-    scores=np.vstack((files.reshape(1,i),scores))
+    scores=np.column_stack((files.reshape(i,1),scores))
     np.savetxt(outputFolder+os.sep+"pcScores.csv", scores, fmt="%s", delimiter=",")
 
   def closestSample(self,files):
@@ -628,7 +636,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     inputLayout.addWidget(self.skipScalingCheckBox, 4,2)
 
 
-    #Load Button
+    #Apply Button
     self.loadButton = qt.QPushButton("Execute GPA + PCA")
     self.loadButton.checkable = True
     self.loadButton.setStyleSheet(self.StyleSheet)
@@ -764,8 +772,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     selectTemplatesLayout.addWidget(self.grayscaleSelector,1,2,1,3)
 
 
-    self.FudSelectLabel = qt.QLabel("Specify LM set for the selected model: ")
-    self.FudSelectLabel.setToolTip( "Select the landmark set that corresponds to the reference model")
+    self.FudSelectLabel = qt.QLabel("Landmark List: ")
+    self.FudSelectLabel.setToolTip( "Select the landmark list")
     self.FudSelect = slicer.qMRMLNodeComboBox()
     self.FudSelect.nodeTypes = ( ('vtkMRMLMarkupsFiducialNode'), "" )
     self.FudSelect.selectNodeUponCreation = False
@@ -780,7 +788,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     selectTemplatesLayout.addWidget(self.FudSelect,2,2,1,3)
 
 
-    self.selectorButton = qt.QPushButton("Apply")
+    self.selectorButton = qt.QPushButton("Select models")
     self.selectorButton.checkable = True
     self.selectorButton.setStyleSheet(self.StyleSheet)
     selectTemplatesLayout.addWidget(self.selectorButton,3,1,1,4)
@@ -793,10 +801,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     vis=ctk.ctkCollapsibleButton()
     vis.text='PCA Visualization Parameters'
     visLayout= qt.QGridLayout(vis)
-    self.applyEnabled=False
 
     def warpOnChange(value):
-      if self.applyEnabled:
+      if self.applyButton.enabled:
         self.onApply()
 
     self.PCList=[]
@@ -809,6 +816,18 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     visLayout.addWidget(self.slider2,4,1,1,2)
 
     self.layout.addWidget(vis)
+
+
+    # Apply Button
+    self.applyButton = qt.QPushButton("Apply")
+    self.applyButton.checkable = True
+    self.applyButton.setStyleSheet(self.StyleSheet)
+    self.layout.addWidget(self.applyButton)
+    self.applyButton.toolTip = "Push to start the program. Make sure you have filled in all the data."
+    applyFrame=qt.QFrame(self.parent)
+    self.applyButton.connect('clicked(bool)', self.onApply)
+    self.applyButton.enabled = False
+    visLayout.addWidget(self.applyButton,8,1,1,2)
     
     # Create Animations
     animate=ctk.ctkCollapsibleButton()
@@ -943,8 +962,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       GPANodeCollection.AddItem(self.transformNode)
 
     # Enable PCA warping and recording
+    self.applyButton.enabled = True
     self.startRecordButton.enabled = True
-    self.applyEnabled = True
 
   def onApply(self):
     pc1=self.slider1.boxValue()
