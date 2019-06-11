@@ -612,7 +612,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     else:
       visibility = self.meanLandmarkNode.SetDisplayVisibility(True)
       #refresh color and scale from GUI
-      scaleFactor = self.sampleSizeScaleFactor/200
+      scaleFactor = self.sampleSizeScaleFactor/10
       self.meanLandmarkNode.GetDisplayNode().SetGlyphScale(scaleFactor*self.scaleMeanShapeSlider.value/5) 
       color = self.meanShapeColor.color
       self.meanLandmarkNode.GetDisplayNode().SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255]) 
@@ -625,7 +625,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.meanLandmarkNode.GetDisplayNode().SetSliceProjection(1) 
       self.meanLandmarkNode.GetDisplayNode().SetSliceProjectionOpacity(1) 
       #refresh color and scale from GUI
-      scaleFactor = self.sampleSizeScaleFactor/200
+      scaleFactor = 1/self.sampleSizeScaleFactor/10
       self.meanLandmarkNode.GetDisplayNode().SetGlyphScale(scaleFactor*self.scaleMeanShapeSlider.value/5)  
       color = self.meanShapeColor.color
       self.meanLandmarkNode.GetDisplayNode().SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255]) 
@@ -635,7 +635,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.meanLandmarkNode.GetDisplayNode().SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255]) 
     
   def scaleMeanGlyph(self):
-    scaleFactor = self.sampleSizeScaleFactor/200
+    scaleFactor = self.sampleSizeScaleFactor/10
     self.meanLandmarkNode.GetDisplayNode().SetGlyphScale(scaleFactor*self.scaleMeanShapeSlider.value/5)
     
   def setup(self):
@@ -719,7 +719,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     
     
     self.scaleMeanShapeSlider = ctk.ctkSliderWidget()
-    self.scaleMeanShapeSlider.singleStep = .25
+    self.scaleMeanShapeSlider.singleStep = .1
     self.scaleMeanShapeSlider.minimum = 0
     self.scaleMeanShapeSlider.maximum = 10
     self.scaleMeanShapeSlider.value = 5
