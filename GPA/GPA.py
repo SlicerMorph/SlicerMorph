@@ -583,7 +583,19 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.vectorThree.clear()
     self.XcomboBox.clear()
     self.YcomboBox.clear()
-
+    
+    self.scaleMeanShapeSlider.value=5
+    self.meanShapeColor.color=qt.QColor(255,0,0)    
+    
+    # Disable buttons for workflow
+    self.plotButton.enabled = False
+    self.lolliButton.enabled = False
+    self.plotDistributionButton.enabled = False
+    self.plotMeanButton3D.enabled = False
+    self.plotMeanButton2D.enabled = False
+    self.loadButton.enabled = False
+    
+    #delete data from previous runs
     self.nodeCleanUp()
 
   def nodeCleanUp(self):
@@ -591,8 +603,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     for node in GPANodeCollection:
       
       GPANodeCollection.RemoveItem(node)
-      if node.GetClassName() != "vtkMRMLMarkupsFiducialNode":
-        slicer.mrmlScene.RemoveNode(node)
+      slicer.mrmlScene.RemoveNode(node)
   
   def toggleMeanPlot(self):
     visibility = self.meanLandmarkNode.GetDisplayVisibility() 
@@ -600,6 +611,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       visibility = self.meanLandmarkNode.SetDisplayVisibility(False)
     else:
       visibility = self.meanLandmarkNode.SetDisplayVisibility(True)
+      #refresh color and scale from GUI
+      scaleFactor = self.sampleSizeScaleFactor/200
+      self.meanLandmarkNode.GetDisplayNode().SetGlyphScale(scaleFactor*self.scaleMeanShapeSlider.value/5) 
+      color = self.meanShapeColor.color
+      self.meanLandmarkNode.GetDisplayNode().SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255]) 
       
   def toggleMeanPlot2D(self):
     visibility = self.meanLandmarkNode.GetDisplayNode().GetSliceProjection() 
@@ -608,12 +624,20 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     else:
       self.meanLandmarkNode.GetDisplayNode().SetSliceProjection(1) 
       self.meanLandmarkNode.GetDisplayNode().SetSliceProjectionOpacity(1) 
-      self.meanLandmarkNode.GetDisplayNode().SetGlyphScale(3)  #Need to update fixed value
+      #refresh color and scale from GUI
+      scaleFactor = self.sampleSizeScaleFactor/200
+      self.meanLandmarkNode.GetDisplayNode().SetGlyphScale(scaleFactor*self.scaleMeanShapeSlider.value/5)  
+      color = self.meanShapeColor.color
+      self.meanLandmarkNode.GetDisplayNode().SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255]) 
       
   def toggleMeanColor(self):
     color = self.meanShapeColor.color
     self.meanLandmarkNode.GetDisplayNode().SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255]) 
-
+    
+  def scaleMeanGlyph(self):
+    scaleFactor = self.sampleSizeScaleFactor/200
+    self.meanLandmarkNode.GetDisplayNode().SetGlyphScale(scaleFactor*self.scaleMeanShapeSlider.value/5)
+    
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
     self.StyleSheet="font: 12px;  min-height: 20 px ; background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #f6f7fa, stop: 1 #dadbde); border: 1px solid; border-radius: 4px; "
@@ -693,6 +717,17 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     meanShapeLayout.addWidget(self.meanShapeColor,2,2,1,1)
     self.meanShapeColor.connect('colorChanged(QColor)', self.toggleMeanColor)
     
+    
+    self.scaleMeanShapeSlider = ctk.ctkSliderWidget()
+    self.scaleMeanShapeSlider.singleStep = .25
+    self.scaleMeanShapeSlider.minimum = 0
+    self.scaleMeanShapeSlider.maximum = 10
+    self.scaleMeanShapeSlider.value = 5
+    self.scaleMeanShapeSlider.setToolTip("Set scale for mean shape glyphs")
+    meanShapeSliderLabel=qt.QLabel("Mean shape glyph scale")
+    meanShapeLayout.addWidget(meanShapeSliderLabel,3,1)
+    meanShapeLayout.addWidget(self.scaleMeanShapeSlider,3,2,1,2)
+    self.scaleMeanShapeSlider.connect('valueChanged(double)', self.scaleMeanGlyph)
     
     #PC plot section
     plotFrame=ctk.ctkCollapsibleButton()
