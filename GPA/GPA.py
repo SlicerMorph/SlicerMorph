@@ -591,8 +591,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     for node in GPANodeCollection:
       
       GPANodeCollection.RemoveItem(node)
-      if node.GetClassName() != "vtkMRMLMarkupsFiducialNode":
-        slicer.mrmlScene.RemoveNode(node)
+      slicer.mrmlScene.RemoveNode(node)
   
   def toggleMeanPlot(self):
     visibility = self.meanLandmarkNode.GetDisplayVisibility() 
