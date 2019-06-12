@@ -169,17 +169,33 @@ class LMData:
     self.shift=tmp
 
   def writeOutData(self,outputFolder,files):
-    np.savetxt(outputFolder+os.sep+"MeanShape.csv", self.mShape, delimiter=",",fmt='%s')
-    np.savetxt(outputFolder+os.sep+"eigenvalues.csv", self.val, delimiter=",",fmt='%s')
+    
+    
     
     # make headers for eigenvector matrix
-    headerRow=[]
+    headerPC=[]
+    headerLM=[""]
     for i in range(self.vec.shape[0]):
-      headerRow.append("PC "+str(i+1))
-    temp = np.vstack((np.array(headerRow),self.vec))
+      headerPC.append("PC "+str(i+1))
+    for i in range(int(self.vec.shape[0]/3)):
+      headerLM.append("LM "+str(i+1)+"_X")
+      headerLM.append("LM "+str(i+1)+"_Y")
+      headerLM.append("LM "+str(i+1)+"_Z")
+      
+    temp = np.vstack((np.array(headerPC),self.vec))
+    temp = np.column_stack((np.array(headerLM),temp))
     np.savetxt(outputFolder+os.sep+"eigenvector.csv", temp, delimiter=",",fmt='%s')
-    
-
+    temp = np.column_stack((np.array(headerPC),self.val))
+    np.savetxt(outputFolder+os.sep+"eigenvalues.csv", temp, delimiter=",",fmt='%s')
+   
+    headerLM=[]
+    headerCoordinate = ["","X","Y","Z"]
+    for i in range(len(self.mShape)):
+      headerLM.append("LM " +str(i+1))
+    temp = np.column_stack((np.array(headerLM),self.mShape))
+    temp = np.vstack((np.array(headerCoordinate),temp))
+    np.savetxt(outputFolder+os.sep+"MeanShape.csv", temp, delimiter=",",fmt='%s')
+   
     percentVar=self.val/self.val.sum()
     self.procdist=gpa_lib.procDist(self.lm, self.mShape)
     files=np.array(files)
@@ -200,9 +216,9 @@ class LMData:
 
     for x in range(int(coodrsL)):
       loc=x+1
-      l[3*x]="x"+str(loc)
-      l[3*x+1]="y"+str(loc)
-      l[3*x+2]="z"+str(loc)
+      l[3*x]="LM " +str(loc) + "_X"
+      l[3*x+1]="LM " +str(loc) + "_Y"
+      l[3*x+2]="LM " +str(loc) + "_Z"
     l=np.array(l)
     header=np.column_stack((header.reshape(1,3),l.reshape(1,int(3*coodrsL))))
     tmp1=np.vstack((header,tmp))
@@ -212,9 +228,10 @@ class LMData:
     twoDcoors=gpa_lib.makeTwoDim(self.lm)
     scores=np.dot(np.transpose(twoDcoors),self.vec)
     scores=np.real(scores)
-
-    scores=np.column_stack((files.reshape(i,1),scores))
-    np.savetxt(outputFolder+os.sep+"pcScores.csv", scores, fmt="%s", delimiter=",")
+    headerPC.insert(0,"Sample_name")
+    temp=np.column_stack((files.reshape(i,1),scores))
+    temp=np.vstack((headerPC,temp))
+    np.savetxt(outputFolder+os.sep+"pcScores.csv", temp, fmt="%s", delimiter=",")
 
   def closestSample(self,files):
     import operator
