@@ -714,10 +714,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     meanButtonLable=qt.QLabel("Mean shape visibility: ")
     meanShapeLayout.addWidget(meanButtonLable,1,1)
     
-    self.plotMeanButton3D = qt.QPushButton("Toggle plot visibility")
+    self.plotMeanButton3D = qt.QPushButton("Toggle mean shape visibility")
     self.plotMeanButton3D.checkable = True
     self.plotMeanButton3D.setStyleSheet(self.StyleSheet)
-    self.plotMeanButton3D.toolTip = "Toggle visibility of mean plot"
+    self.plotMeanButton3D.toolTip = "Toggle visibility of mean shape plot"
     meanShapeLayout.addWidget(self.plotMeanButton3D,1,2,1,1)
     self.plotMeanButton3D.enabled = False
     self.plotMeanButton3D.connect('clicked(bool)', self.toggleMeanPlot)
