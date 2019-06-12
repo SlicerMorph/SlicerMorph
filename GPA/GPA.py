@@ -560,6 +560,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.vectorThree.clear()
     self.XcomboBox.clear()
     self.YcomboBox.clear()
+    
+    self.scaleSlider.value=3
+    self.scaleMeanShapeSlider.value=3
+    self.meanShapeColor.color=qt.QColor(255,0,0) 
 
     self.nodeCleanUp()
 
@@ -584,7 +588,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.XcomboBox.clear()
     self.YcomboBox.clear()
     
-    self.scaleMeanShapeSlider.value=5
+    self.scaleSlider.value=3
+    
+    self.scaleMeanShapeSlider.value=3
     self.meanShapeColor.color=qt.QColor(255,0,0)    
     
     # Disable buttons for workflow
@@ -612,8 +618,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     else:
       visibility = self.meanLandmarkNode.SetDisplayVisibility(True)
       #refresh color and scale from GUI
-      scaleFactor = self.sampleSizeScaleFactor/10
-      self.meanLandmarkNode.GetDisplayNode().SetGlyphScale(scaleFactor*self.scaleMeanShapeSlider.value/5) 
+      self.meanLandmarkNode.GetDisplayNode().SetGlyphScale(self.scaleMeanShapeSlider.value) 
       color = self.meanShapeColor.color
       self.meanLandmarkNode.GetDisplayNode().SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255]) 
       
@@ -625,8 +630,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.meanLandmarkNode.GetDisplayNode().SetSliceProjection(1) 
       self.meanLandmarkNode.GetDisplayNode().SetSliceProjectionOpacity(1) 
       #refresh color and scale from GUI
-      scaleFactor = 1/self.sampleSizeScaleFactor/10
-      self.meanLandmarkNode.GetDisplayNode().SetGlyphScale(scaleFactor*self.scaleMeanShapeSlider.value/5)  
+      self.meanLandmarkNode.GetDisplayNode().SetGlyphScale(self.scaleMeanShapeSlider.value)   
       color = self.meanShapeColor.color
       self.meanLandmarkNode.GetDisplayNode().SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255]) 
       
@@ -636,7 +640,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     
   def scaleMeanGlyph(self):
     scaleFactor = self.sampleSizeScaleFactor/10
-    self.meanLandmarkNode.GetDisplayNode().SetGlyphScale(scaleFactor*self.scaleMeanShapeSlider.value/5)
+    self.meanLandmarkNode.GetDisplayNode().SetGlyphScale(self.scaleMeanShapeSlider.value) 
     
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
@@ -722,7 +726,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.scaleMeanShapeSlider.singleStep = .1
     self.scaleMeanShapeSlider.minimum = 0
     self.scaleMeanShapeSlider.maximum = 10
-    self.scaleMeanShapeSlider.value = 5
+    self.scaleMeanShapeSlider.value = 3
     self.scaleMeanShapeSlider.setToolTip("Set scale for mean shape glyphs")
     meanShapeSliderLabel=qt.QLabel("Mean shape glyph scale")
     meanShapeLayout.addWidget(meanShapeSliderLabel,3,1)
@@ -813,10 +817,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     distributionLayout.addWidget(self.NoneType,5,2,1,2)
 
     self.scaleSlider = ctk.ctkSliderWidget()
-    self.scaleSlider.singleStep = 1
+    self.scaleSlider.singleStep = .1
     self.scaleSlider.minimum = 0
     self.scaleSlider.maximum = 10
-    self.scaleSlider.value = 5
+    self.scaleSlider.value = 3
     self.scaleSlider.setToolTip("Set scale for variance visualization")
     sliderLabel=qt.QLabel("Scale Glyphs")
     distributionLayout.addWidget(sliderLabel,6,1)
@@ -1076,7 +1080,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     elif self.CloudType.isChecked():
       self.plotDistributionCloud()
     else:
-      self.plotDistributionGlyph(self.scaleSlider.value)
+      self.plotDistributionGlyph(2*self.scaleSlider.value)
 
     self.assignLayoutDescription()
 
@@ -1116,6 +1120,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     #set up glyph for visualizing point cloud
     sphereSource = vtk.vtkSphereSource()
+    sphereSource.SetRadius(self.sampleSizeScaleFactor/300)
     glyph = vtk.vtkGlyph3D()
     glyph.SetSourceConnection(sphereSource.GetOutputPort())
     glyph.SetInputData(polydata)
@@ -1167,6 +1172,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       # get fiducial node for mean landmarks, make just labels visible
       self.meanLandmarkNode=slicer.mrmlScene.GetFirstNodeByName('Mean Landmark Node')
       self.meanLandmarkNode.SetDisplayVisibility(1)
+      self.scaleMeanShapeSlider.value=0
       print("No reference landmarks loaded. Plotting distributions at mean landmark points.")
     for landmark in range(i):
       pt=referenceLandmarks[landmark,:]
