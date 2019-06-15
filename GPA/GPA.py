@@ -129,6 +129,7 @@ class LMData:
     for subject in range(k):
       tmp=pow((self.lmRaw[:,:,subject]-self.mShape),2)
       varianceMat=varianceMat+tmp
+    # if GPA scaling has been skipped, don't apply image size scaling factor
     if(skipScalingCheckBox):
       varianceMat = np.sqrt(varianceMat/(k-1))
     else:
@@ -309,10 +310,12 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     threeDWidget = layoutManager.threeDWidget(0)
     threeDView = threeDWidget.threeDView()
     threeDView.resetCamera()
+    threeDView.resetFocalPoint()
     threeDWidget = layoutManager.threeDWidget(1)
     threeDView = threeDWidget.threeDView()
     threeDView.resetCamera()
-
+    threeDView.resetFocalPoint()
+    
     # check for loaded reference model
     if hasattr(self, 'modelDisplayNode'):
       # assign each model to a specific view
