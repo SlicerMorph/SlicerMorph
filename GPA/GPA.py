@@ -123,13 +123,16 @@ class LMData:
     self.shift=0
     self.centriodSize=0
 
-  def calcLMVariation(self, SampleScaleFactor):
+  def calcLMVariation(self, SampleScaleFactor, skipScalingCheckBox):
     i,j,k=self.lmRaw.shape
     varianceMat=np.zeros((i,j))
     for subject in range(k):
       tmp=pow((self.lmRaw[:,:,subject]-self.mShape),2)
       varianceMat=varianceMat+tmp
-    varianceMat = SampleScaleFactor*np.sqrt(varianceMat/(k-1))
+    if(skipScalingCheckBox):
+      varianceMat = np.sqrt(varianceMat/(k-1))
+    else:
+      varianceMat = SampleScaleFactor*np.sqrt(varianceMat/(k-1))
     return varianceMat
 
   def doGpa(self,skipScalingCheckBox):
@@ -305,10 +308,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     #make sure both views are centered on focal point - not working
     threeDWidget = layoutManager.threeDWidget(0)
     threeDView = threeDWidget.threeDView()
-    threeDView.resetFocalPoint()
+    threeDView.resetCamera()
     threeDWidget = layoutManager.threeDWidget(1)
     threeDView = threeDWidget.threeDView()
-    threeDView.resetFocalPoint()
+    threeDView.resetCamera()
 
     # check for loaded reference model
     if hasattr(self, 'modelDisplayNode'):
@@ -1164,7 +1167,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     modelNode.SetAndObservePolyData(glyph.GetOutput())
 
   def plotDistributionGlyph(self, sliderScale):
-    varianceMat = self.LM.calcLMVariation(self.sampleSizeScaleFactor)
+    varianceMat = self.LM.calcLMVariation(self.sampleSizeScaleFactor,self.skipScalingCheckBox.checked)
     i,j,k=self.LM.lmRaw.shape
     pt=[0,0,0]
     #set up vtk point array for each landmark point
