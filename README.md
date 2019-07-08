@@ -4,6 +4,9 @@ This is the development repository for our NSF ABI grant
 
 SlicerMorph enable biologists to retrieve, visualize, measure and annotate high-resolution specimen data both from volumetric scans (CTs and MRs) as well as from 3D surface scanners effectively within 3D-Slicer. It also provides a Generalized Procrustes Analysis (GPA) module as well as tools to visualize PCA decomposition of the GPA results.
 
+## Installation
+To install SlicerMorph, please first install the Preview Release of [3D-Slicer]:https://download.slicer.org/. Open the application and use the [Extensions Manager module]:https://www.slicer.org/wiki/Documentation/Nightly/SlicerApplication/ExtensionsManager to install the SlicerMorph extension. After restarting 3D-Slicer, all SlicerMorph modules will be available in the application.
+
 ## Module Descriptions
 - **ConvertMorphologikaLandmarks:** Imports a Morphologika formatted landmark file that may contain multiple subjects and exports a Slicer .FCSV landmark file for each individual to a directory specified by the user.
 - **GPA:** Performs generalized Procrustes analysis (GPA) with or without scaling and principle component analysis (PCA) of shape from landmark data and provides visualizations of statistical output.
