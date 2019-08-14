@@ -1104,9 +1104,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     else:
       self.plotDistributionGlyph(2*self.scaleSlider.value)
 
-    self.assignLayoutDescription()
-
-
   def unplotDistributions(self):
     modelNode=slicer.mrmlScene.GetFirstNodeByName('Landmark Point Cloud')
     if modelNode:
