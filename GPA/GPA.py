@@ -567,7 +567,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     for pc in pcList:
       logic.lollipopGraph(self.LM, referenceLandmarks, pc, self.sampleSizeScaleFactor, componentNumber, self.TwoDType.isChecked())
       componentNumber+=1
-    self.assignLayoutDescription()
 
   def initializeOnLoad(self):
   # clear rest of module when starting GPA analysis
