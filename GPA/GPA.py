@@ -464,6 +464,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     # Enable buttons for workflow
     self.plotButton.enabled = True
+    self.inputCovariateButton.enabled = True
     self.lolliButton.enabled = True
     self.plotDistributionButton.enabled = True
     self.plotMeanButton3D.enabled = True
@@ -514,29 +515,64 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveTableID(tableNode.GetID())
     slicer.app.applicationLogic().PropagateTableSelection()
 
+def enterCovariates(self):
+    sortedArray = np.zeros(len(self.files), dtype={'names':('filename', 'procdist'),'formats':('U10','f8')})
+    sortedArray['filename']=self.files
+    
+    #check for an existing covariate table
+    if hasattr(self, 'covariateTableNode'):
+      self.covariateTableNode.RemoveAllColumns()
+    else:
+      self.covariateTableNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTableNode', 'Covariate Table')
+      
+    
+    GPANodeCollection.AddItem(self.covariateTableNode)
+    col1=self.covariateTableNode.AddColumn()
+    col1.SetName('ID')
+
+    col2=self.covariateTableNode.AddColumn()
+    if self.covariateName.text:
+      col2.SetName(self.covariateName.text)
+    else: 
+      col2.SetName("Covariate")    
+    
+    for i in range(len(self.files)):
+      self.covariateTableNode.AddEmptyRow()
+      self.covariateTableNode.SetCellText(i,0,sortedArray['filename'][i])
+    
+    #add table to new layout
+    slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveTableID(self.covariateTableNode.GetID())
+    slicer.app.applicationLogic().PropagateTableSelection()
+    
   def plot(self):
     logic = GPALogic()
-    try:
-      # get values from boxs
-      xValue=self.XcomboBox.currentIndex
-      yValue=self.YcomboBox.currentIndex
+    # get values from boxs
+    xValue=self.XcomboBox.currentIndex
+    yValue=self.YcomboBox.currentIndex
 
-      # get data to plot
-      #data=gpa_lib.plotTanProj(self.LM.lm,xValue,yValue)
-      shape = self.LM.lm.shape
-      dataAll= np.zeros(shape=(shape[2],25))
-      for i in range(25):
-        data=gpa_lib.plotTanProj(self.LM.lm,i,1)
-        dataAll[:,i] = data[:,0]
-
-      # plot it
+    # get data to plot
+    shape = self.LM.lm.shape
+    dataAll= np.zeros(shape=(shape[2],25))
+    for i in range(25):
+      data=gpa_lib.plotTanProj(self.LM.lm,i,1)
+      dataAll[:,i] = data[:,0]
+    
+    if self.useCovariatesCheckBox.checked and hasattr(self, 'covariateTableNode'):
+      covariateCol = self.covariateTableNode.GetTable().GetColumn(1)
+      covariateArray=[]
+      for i in range(covariateCol.GetNumberOfTuples()):
+        covariateArray.append(covariateCol.GetValue(i))
+      covariateArrayNP = np.array(covariateArray)
+      print('covariates: ',np.unique(covariateArrayNP))
+      if(len(np.unique(covariateArrayNP))>1 and len(np.unique(covariateArrayNP))<4): #check values of covariates for scatter plot
+        logic.makeScatterPlotWithCovariates(dataAll,self.files,covariateArrayNP,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1))
+      else:   #if the user input a covariate requiring more than 3 groups, do not use covariate
+        qt.QMessageBox.critical(slicer.util.mainWindow(),
+        'Error', 'Please use covariates with 3 discrete values or less')
+        logic.makeScatterPlot(dataAll,self.files,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1))
+    else:
       logic.makeScatterPlot(dataAll,self.files,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1))
-      self.assignLayoutDescription()
-
-    except AttributeError:
-      qt.QMessageBox.critical(
-      slicer.util.mainWindow(),
-      'Error', 'Please make sure a Landmark folder has been loaded!')
+    self.assignLayoutDescription()
 
   def lolliPlot(self):
     pb1=self.vectorOne.currentIndex
@@ -582,6 +618,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.vectorThree.clear()
     self.XcomboBox.clear()
     self.YcomboBox.clear()
+    self.useCovariatesCheckBox.checked = 0
     
     self.scaleSlider.value=3
     self.scaleMeanShapeSlider.value=3
@@ -609,6 +646,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.vectorThree.clear()
     self.XcomboBox.clear()
     self.YcomboBox.clear()
+    self.useCovariatesCheckBox.checked = 0
     
     self.scaleSlider.value=3
     
@@ -617,6 +655,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     
     # Disable buttons for workflow
     self.plotButton.enabled = False
+    self.inputCovariateButton.enabled = False
     self.lolliButton.enabled = False
     self.plotDistributionButton.enabled = False
     self.plotMeanButton3D.enabled = False
@@ -770,12 +809,33 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     Ylabel=qt.QLabel("Y Axis")
     plotLayout.addWidget(Ylabel,2,1)
     plotLayout.addWidget(self.YcomboBox,2,2,1,3)
-
+    
+    self.useCovariatesCheckBox = qt.QCheckBox()
+    self.useCovariatesCheckBox.setText("Use Optional Covariate Data ")
+    self.useCovariatesCheckBox.checked = 0
+    self.useCovariatesCheckBox.setToolTip("When checked, data will be plotted using covariates input below.")
+    plotLayout.addWidget(self.useCovariatesCheckBox, 3,1)
+    
+    self.covariateNameLabel=qt.QLabel('Covariate Name:')
+    plotLayout.addWidget(self.covariateNameLabel,4,1)
+    
+    self.covariateName=qt.QLineEdit()
+    self.covariateName.setToolTip("Enter covariate name")
+    plotLayout.addWidget(self.covariateName,4,2)
+    
+    self.inputCovariateButton = qt.QPushButton("Add covariate data")
+    self.inputCovariateButton.checkable = True
+    self.inputCovariateButton.setStyleSheet(self.StyleSheet)
+    self.inputCovariateButton.toolTip = "Open table to input covariate data"
+    plotLayout.addWidget(self.inputCovariateButton,4,4)
+    self.inputCovariateButton.enabled = False
+    self.inputCovariateButton.connect('clicked(bool)', self.enterCovariates)
+    
     self.plotButton = qt.QPushButton("Scatter Plot")
     self.plotButton.checkable = True
     self.plotButton.setStyleSheet(self.StyleSheet)
     self.plotButton.toolTip = "Plot PCs"
-    plotLayout.addWidget(self.plotButton,3,1,1,4)
+    plotLayout.addWidget(self.plotButton,5,1,1,5)
     self.plotButton.enabled = False
     self.plotButton.connect('clicked(bool)', self.plot)
 
@@ -1466,6 +1526,162 @@ class GPALogic(ScriptedLoadableModuleLogic):
     return (dx**2.0+dy**2.0+dz**2.0)**0.5
 
   #plotting functions
+  def makeScatterPlotWithCovariates(self, data, files, covariates,title,xAxis,yAxis):
+    #create two tables for the first two covariates and then check for a third
+    #check if there is a table node has been created
+    numPoints = len(data)
+    uniqueCovariates = np.unique(covariates)
+    covariateNumber = len(uniqueCovariates)
+    
+    #Table 1
+    tableNode1=slicer.mrmlScene.GetFirstNodeByName('PCA Scatter Plot Table Covariate 1')
+    if tableNode1 is None:
+      tableNode1 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", 'PCA Scatter Plot Table Covariate 1')
+      GPANodeCollection.AddItem(tableNode1)
+    else:
+      tableNode1.RemoveAllColumns()    #clear previous data from columns
+    
+    #set up columns for X,Y, and labels  
+    labels=tableNode1.AddColumn()
+    labels.SetName('Subject ID')
+    tableNode1.SetColumnType('Subject ID',vtk.VTK_STRING)
+    
+    for i in range(25):
+      pc=tableNode1.AddColumn()
+      colName="PC" + str(i+1)
+      pc.SetName(colName)
+      tableNode1.SetColumnType(colName, vtk.VTK_FLOAT)
+    
+    covariateCounter=0
+    for i in range(0,numPoints):
+        if (covariates[i] == uniqueCovariates[0]):      
+          tableNode1.AddEmptyRow()
+          tableNode1.SetCellText(covariateCounter, 0,files[i])
+          for j in range(1,26):
+            tableNode1.SetCellText(covariateCounter, j, str(data[i,j-1]))
+          covariateCounter+=1
+            
+    #Plot series 1
+    plotSeriesNode1=slicer.mrmlScene.GetFirstNodeByName("Series_PCA_cov1" + xAxis + "v" +yAxis)
+    if plotSeriesNode1 is None:
+      plotSeriesNode1 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", "Series_PCA_cov1" + xAxis + "v" +yAxis)
+      GPANodeCollection.AddItem(plotSeriesNode1)
+
+    plotSeriesNode1.SetAndObserveTableNodeID(tableNode1.GetID())
+    plotSeriesNode1.SetXColumnName(xAxis)
+    plotSeriesNode1.SetYColumnName(yAxis)
+    plotSeriesNode1.SetLabelColumnName('Subject ID')
+    plotSeriesNode1.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeScatter)
+    plotSeriesNode1.SetLineStyle(slicer.vtkMRMLPlotSeriesNode.LineStyleNone)
+    plotSeriesNode1.SetMarkerStyle(slicer.vtkMRMLPlotSeriesNode.MarkerStyleSquare)
+    plotSeriesNode1.SetUniqueColor()
+    
+    #Table 2
+    tableNode2=slicer.mrmlScene.GetFirstNodeByName('PCA Scatter Plot Table Covariate 2')
+    if tableNode2 is None:
+      tableNode2 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", 'PCA Scatter Plot Table Covariate 2')
+      GPANodeCollection.AddItem(tableNode2)
+    else:
+      tableNode2.RemoveAllColumns()    #clear previous data from columns
+    
+    #set up columns for X,Y, and labels  
+    labels=tableNode2.AddColumn()
+    labels.SetName('Subject ID')
+    tableNode2.SetColumnType('Subject ID',vtk.VTK_STRING)
+    
+    for i in range(25):
+      pc=tableNode2.AddColumn()
+      colName="PC" + str(i+1)
+      pc.SetName(colName)
+      tableNode2.SetColumnType(colName, vtk.VTK_FLOAT)
+    
+    covariateCounter=0
+    for i in range(0,numPoints):
+        if (covariates[i] == uniqueCovariates[1]):  
+          tableNode2.AddEmptyRow()
+          tableNode2.SetCellText(covariateCounter, 0,files[i])
+          for j in range(1,26):
+            tableNode2.SetCellText(covariateCounter, j, str(data[i,j-1]))
+          covariateCounter+=1
+    #Plot series 2
+    plotSeriesNode2=slicer.mrmlScene.GetFirstNodeByName("Series_PCA_cov2" + xAxis + "v" +yAxis)
+    if plotSeriesNode2 is None:
+      plotSeriesNode2 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", "Series_PCA_cov2" + xAxis + "v" +yAxis)
+      GPANodeCollection.AddItem(plotSeriesNode2)
+
+    plotSeriesNode2.SetAndObserveTableNodeID(tableNode2.GetID())
+    plotSeriesNode2.SetXColumnName(xAxis)
+    plotSeriesNode2.SetYColumnName(yAxis)
+    plotSeriesNode2.SetLabelColumnName('Subject ID')
+    plotSeriesNode2.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeScatter)
+    plotSeriesNode2.SetLineStyle(slicer.vtkMRMLPlotSeriesNode.LineStyleNone)
+    plotSeriesNode2.SetMarkerStyle(slicer.vtkMRMLPlotSeriesNode.MarkerStyleSquare)
+    plotSeriesNode2.SetUniqueColor()
+    
+    if(covariateNumber > 2):
+      #Table 3
+      tableNode3=slicer.mrmlScene.GetFirstNodeByName('PCA Scatter Plot Table Covariate 3')
+      if tableNode3 is None:
+        tableNode3 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", 'PCA Scatter Plot Table Covariate 3')
+        GPANodeCollection.AddItem(tableNode3)
+      else:
+        tableNode3.RemoveAllColumns()    #clear previous data from columns
+    
+      #set up columns for X,Y, and labels  
+      labels=tableNode3.AddColumn()
+      labels.SetName('Subject ID')
+      tableNode3.SetColumnType('Subject ID',vtk.VTK_STRING)
+    
+      for i in range(25):
+        pc=tableNode3.AddColumn()
+        colName="PC" + str(i+1)
+        pc.SetName(colName)
+        tableNode3.SetColumnType(colName, vtk.VTK_FLOAT)
+    
+      covariateCounter=0    
+      for i in range(0,numPoints):
+          if (covariates[i] == uniqueCovariates[2]):  
+            tableNode3.AddEmptyRow()
+            tableNode3.SetCellText(covariateCounter, 0,files[i])
+            for j in range(1,26):
+              tableNode3.SetCellText(covariateCounter, j, str(data[i,j-1]))
+            covariateCounter+=1
+      
+      #Plot series 3
+      plotSeriesNode3=slicer.mrmlScene.GetFirstNodeByName("Series_PCA_cov3" + xAxis + "v" +yAxis)
+      if plotSeriesNode3 is None:
+        plotSeriesNode3 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", "Series_PCA_cov3" + xAxis + "v" +yAxis)
+        GPANodeCollection.AddItem(plotSeriesNode3)
+
+      plotSeriesNode3.SetAndObserveTableNodeID(tableNode3.GetID())
+      plotSeriesNode3.SetXColumnName(xAxis)
+      plotSeriesNode3.SetYColumnName(yAxis)
+      plotSeriesNode3.SetLabelColumnName('Subject ID')
+      plotSeriesNode3.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeScatter)
+      plotSeriesNode3.SetLineStyle(slicer.vtkMRMLPlotSeriesNode.LineStyleNone)
+      plotSeriesNode3.SetMarkerStyle(slicer.vtkMRMLPlotSeriesNode.MarkerStyleSquare)
+      plotSeriesNode3.SetUniqueColor()
+    
+    plotChartNode=slicer.mrmlScene.GetFirstNodeByName("Chart_PCA_cov" + xAxis + "v" +yAxis)
+    if plotChartNode is None:
+      plotChartNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotChartNode", "Chart_PCA_cov" + xAxis + "v" +yAxis)
+      GPANodeCollection.AddItem(plotChartNode)
+    #add data series
+    plotChartNode.AddAndObservePlotSeriesNodeID(plotSeriesNode1.GetID())
+    plotChartNode.AddAndObservePlotSeriesNodeID(plotSeriesNode2.GetID())
+    if(covariateNumber > 2):
+      plotChartNode.AddAndObservePlotSeriesNodeID(plotSeriesNode3.GetID())
+      
+    plotChartNode.SetTitle('PCA Scatter Plot with covariate ')
+    plotChartNode.SetXAxisTitle(xAxis)
+    plotChartNode.SetYAxisTitle(yAxis)
+
+    layoutManager = slicer.app.layoutManager()
+
+    plotWidget = layoutManager.plotWidget(0)
+    plotViewNode = plotWidget.mrmlPlotViewNode()
+    plotViewNode.SetPlotChartNodeID(plotChartNode.GetID())
+      
   def makeScatterPlot(self, data, files, title,xAxis,yAxis):
     numPoints = len(data)
     #check if there is a table node has been created
@@ -1488,35 +1704,12 @@ class GPALogic(ScriptedLoadableModuleLogic):
       for i in range(numPoints):
         tableNode.AddEmptyRow()
         tableNode.SetCellText(i, 0,files[i])
-        tableNode.SetCellText(i, 1, str(data[i,0]))
-        tableNode.SetCellText(i, 2, str(data[i,1]))
-        tableNode.SetCellText(i, 3, str(data[i,2]))
-        tableNode.SetCellText(i, 4, str(data[i,3]))
-        tableNode.SetCellText(i, 5, str(data[i,4]))
-        tableNode.SetCellText(i, 6, str(data[i,5]))
-        tableNode.SetCellText(i, 7, str(data[i,6]))
-        tableNode.SetCellText(i, 8, str(data[i,7]))
-        tableNode.SetCellText(i, 9, str(data[i,8]))
-        tableNode.SetCellText(i, 10, str(data[i,9]))
-        tableNode.SetCellText(i, 11, str(data[i,10]))
-        tableNode.SetCellText(i, 12, str(data[i,11]))
-        tableNode.SetCellText(i, 13, str(data[i,12]))
-        tableNode.SetCellText(i, 14, str(data[i,13]))
-        tableNode.SetCellText(i, 15, str(data[i,14]))
-        tableNode.SetCellText(i, 16, str(data[i,15]))
-        tableNode.SetCellText(i, 17, str(data[i,16]))
-        tableNode.SetCellText(i, 18, str(data[i,17]))
-        tableNode.SetCellText(i, 19, str(data[i,18]))
-        tableNode.SetCellText(i, 20, str(data[i,19]))
-        tableNode.SetCellText(i, 21, str(data[i,20]))
-        tableNode.SetCellText(i, 22, str(data[i,21]))
-        tableNode.SetCellText(i, 23, str(data[i,22]))
-        tableNode.SetCellText(i, 24, str(data[i,23]))
-        tableNode.SetCellText(i, 25, str(data[i,24]))
+        for j in range(1,26):
+          tableNode.SetCellText(i, j, str(data[i,j-1]))
 
     plotSeriesNode1=slicer.mrmlScene.GetFirstNodeByName("Series_PCA" + xAxis + "v" +yAxis)
     if plotSeriesNode1 is None:
-      plotSeriesNode1 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", "Series_" + xAxis + "v" +yAxis)
+      plotSeriesNode1 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", "Series_PCA" + xAxis + "v" +yAxis)
       GPANodeCollection.AddItem(plotSeriesNode1)
 
     plotSeriesNode1.SetAndObserveTableNodeID(tableNode.GetID())
