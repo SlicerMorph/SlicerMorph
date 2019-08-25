@@ -515,7 +515,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveTableID(tableNode.GetID())
     slicer.app.applicationLogic().PropagateTableSelection()
 
-def enterCovariates(self):
+  def enterCovariates(self):
     sortedArray = np.zeros(len(self.files), dtype={'names':('filename', 'procdist'),'formats':('U10','f8')})
     sortedArray['filename']=self.files
     
