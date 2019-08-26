@@ -1648,9 +1648,9 @@ class GPALogic(ScriptedLoadableModuleLogic):
             covariateCounter+=1
       
       #Plot series 3
-      plotSeriesNode3=slicer.mrmlScene.GetFirstNodeByName("Series_PCA_" uniqueCovariates[2] +"_"+ xAxis + "v" +yAxis)
+      plotSeriesNode3=slicer.mrmlScene.GetFirstNodeByName("Series_PCA_" + uniqueCovariates[2] +"_"+ xAxis + "v" +yAxis)
       if plotSeriesNode3 is None:
-        plotSeriesNode3 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", "Series_PCA_" uniqueCovariates[2] + "_" + xAxis + "v" +yAxis)
+        plotSeriesNode3 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", "Series_PCA_" + uniqueCovariates[2] + "_" + xAxis + "v" +yAxis)
         GPANodeCollection.AddItem(plotSeriesNode3)
 
       plotSeriesNode3.SetAndObserveTableNodeID(tableNode3.GetID())
