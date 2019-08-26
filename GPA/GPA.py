@@ -1562,9 +1562,9 @@ class GPALogic(ScriptedLoadableModuleLogic):
           covariateCounter+=1
             
     #Plot series 1
-    plotSeriesNode1=slicer.mrmlScene.GetFirstNodeByName("Series_PCA_cov1" + xAxis + "v" +yAxis)
+    plotSeriesNode1=slicer.mrmlScene.GetFirstNodeByName("Series_PCA_" + uniqueCovariates[0] + "_" + xAxis + "v" +yAxis)
     if plotSeriesNode1 is None:
-      plotSeriesNode1 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", "Series_PCA_cov1" + xAxis + "v" +yAxis)
+      plotSeriesNode1 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", "Series_PCA_" + uniqueCovariates[0] + "_" + xAxis + "v" +yAxis)
       GPANodeCollection.AddItem(plotSeriesNode1)
 
     plotSeriesNode1.SetAndObserveTableNodeID(tableNode1.GetID())
@@ -1604,9 +1604,9 @@ class GPALogic(ScriptedLoadableModuleLogic):
             tableNode2.SetCellText(covariateCounter, j, str(data[i,j-1]))
           covariateCounter+=1
     #Plot series 2
-    plotSeriesNode2=slicer.mrmlScene.GetFirstNodeByName("Series_PCA_cov2" + xAxis + "v" +yAxis)
+    plotSeriesNode2=slicer.mrmlScene.GetFirstNodeByName("Series_PCA_" + uniqueCovariates[1] + "_" + xAxis + "v" +yAxis)
     if plotSeriesNode2 is None:
-      plotSeriesNode2 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", "Series_PCA_cov2" + xAxis + "v" +yAxis)
+      plotSeriesNode2 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", "Series_PCA_" + uniqueCovariates[1] + "_" + xAxis + "v" +yAxis)
       GPANodeCollection.AddItem(plotSeriesNode2)
 
     plotSeriesNode2.SetAndObserveTableNodeID(tableNode2.GetID())
@@ -1648,9 +1648,9 @@ class GPALogic(ScriptedLoadableModuleLogic):
             covariateCounter+=1
       
       #Plot series 3
-      plotSeriesNode3=slicer.mrmlScene.GetFirstNodeByName("Series_PCA_cov3" + xAxis + "v" +yAxis)
+      plotSeriesNode3=slicer.mrmlScene.GetFirstNodeByName("Series_PCA_" uniqueCovariates[2] +"_"+ xAxis + "v" +yAxis)
       if plotSeriesNode3 is None:
-        plotSeriesNode3 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", "Series_PCA_cov3" + xAxis + "v" +yAxis)
+        plotSeriesNode3 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", "Series_PCA_" uniqueCovariates[2] + "_" + xAxis + "v" +yAxis)
         GPANodeCollection.AddItem(plotSeriesNode3)
 
       plotSeriesNode3.SetAndObserveTableNodeID(tableNode3.GetID())
