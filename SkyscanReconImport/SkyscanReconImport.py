@@ -132,7 +132,7 @@ class LogDataObject:
     self.Prefix = "NULL"
     self.IndexLength = "NULL"
     self.SequenceStart = "NULL"
-    self.SeqenceEnd = "NULL"
+    self.SequenceEnd = "NULL"
   
   def ImportFromFile(self, LogFilename):
     lines = [] 					#Declare an empty list to read file into
@@ -159,7 +159,7 @@ class LogDataObject:
         if(element.find("First Section=")>=0):
           self.SequenceStart = element.split('=', 1)[1]
         if(element.find("Last Section=")>=0):
-          self.SeqenceEnd = element.split('=', 1)[1]
+          self.SequenceEnd = element.split('=', 1)[1]
     self.SequenceStart=self.SequenceStart.zfill(int(self.IndexLength)) #pad with zeros to index length
     self.SequenceEnd=self.SequenceEnd.zfill(int(self.IndexLength)) #pad with zeros to index length
     
