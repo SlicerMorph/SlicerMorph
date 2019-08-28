@@ -130,6 +130,7 @@ class LogDataObject:
     self.Z = "NULL"
     self.Resolution = "NULL"
     self.Prefix = "NULL"
+    self.IndexLength = "NULL"
     self.SequenceStart = "NULL"
     self.SeqenceEnd = "NULL"
   
@@ -153,11 +154,15 @@ class LogDataObject:
           self.Resolution = float(element.split('=', 1)[1])/1000 #convert from um to mm 
         if(element.find("Filename Prefix=")>=0):
           self.Prefix = element.split('=', 1)[1]
+        if(element.find("Filename Index Length=")>=0):
+          self.IndexLength = element.split('=', 1)[1] 
         if(element.find("First Section=")>=0):
-          self.SequenceStart = element.split('=', 1)[1].zfill(4) #pad with zeros to 4 digits
+          self.SequenceStart = element.split('=', 1)[1]
         if(element.find("Last Section=")>=0):
-          self.SeqenceEnd = element.split('=', 1)[1].zfill(4) #pad with zeros to 4 digits 
-      
+          self.SeqenceEnd = element.split('=', 1)[1]
+    self.SequenceStart=self.SequenceStart.zfill(int(self.IndexLength)) #pad with zeros to index length
+    self.SequenceEnd=self.SequenceEnd.zfill(int(self.IndexLength)) #pad with zeros to index length
+    
   def VerifyParameters(self):
     for attr, value in self.__dict__.items():        
         if(str(value) == "NULL"):
@@ -271,10 +276,7 @@ class SkyscanReconImportLogic(ScriptedLoadableModuleLogic):
     # read image 
     (inputDirectory,logPath) = os.path.split(inputFile)
     imageFileTemplate = os.path.join(inputDirectory, imageLogFile.Prefix + imageLogFile.SequenceStart + "." + imageLogFile.FileType)
-    [success, outputVolumeNode] = slicer.util.loadVolume(imageFileTemplate, returnNode=True)
-    if not(success):
-      logging.info('Failed to load image')
-      return False  
+    outputVolumeNode = slicer.util.loadVolume(imageFileTemplate) 
     #calculate image spacing
     spacing = [imageLogFile.Resolution, imageLogFile.Resolution, imageLogFile.Resolution]
     
