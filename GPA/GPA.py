@@ -398,7 +398,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.vectorOne.addItem('None')
     self.vectorTwo.addItem('None')
     self.vectorThree.addItem('None')
-    for x in range(25):
+    pcNumber=25
+    if len(percentVar)<pcNumber:
+      pcNumber=len(percentVar)
+    for x in range(pcNumber):
       tmp="{:.1f}".format(percentVar[x]*100)
       string='PC '+str(x+1)+': '+str(tmp)+"%" +" var"
       self.PCList.append(string)
