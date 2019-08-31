@@ -398,10 +398,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.vectorOne.addItem('None')
     self.vectorTwo.addItem('None')
     self.vectorThree.addItem('None')
-    pcNumber=25
-    if len(percentVar)<pcNumber:
-      pcNumber=len(percentVar)
-    for x in range(pcNumber):
+    self.pcNumber=25
+    if len(percentVar)<self.pcNumber:
+      self.pcNumber=len(percentVar)
+    for x in range(self.pcNumber):
       tmp="{:.1f}".format(percentVar[x]*100)
       string='PC '+str(x+1)+': '+str(tmp)+"%" +" var"
       self.PCList.append(string)
@@ -527,13 +527,13 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       # get data to plot
       #data=gpa_lib.plotTanProj(self.LM.lm,xValue,yValue)
       shape = self.LM.lm.shape
-      dataAll= np.zeros(shape=(shape[2],25))
-      for i in range(25):
+      dataAll= np.zeros(shape=(shape[2],self.pcNumber))
+      for i in range(self.pcNumber):
         data=gpa_lib.plotTanProj(self.LM.lm,i,1)
         dataAll[:,i] = data[:,0]
 
       # plot it
-      logic.makeScatterPlot(dataAll,self.files,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1))
+      logic.makeScatterPlot(dataAll,self.files,self.pcNumber,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1))
       self.assignLayoutDescription()
 
     except AttributeError:
@@ -1469,7 +1469,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
     return (dx**2.0+dy**2.0+dz**2.0)**0.5
 
   #plotting functions
-  def makeScatterPlot(self, data, files, title,xAxis,yAxis):
+  def makeScatterPlot(self, data, files, pcNumber, title,xAxis,yAxis):
     numPoints = len(data)
     #check if there is a table node has been created
     tableNode=slicer.mrmlScene.GetFirstNodeByName('PCA Scatter Plot Table')
@@ -1482,7 +1482,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
       labels.SetName('Subject ID')
       tableNode.SetColumnType('Subject ID',vtk.VTK_STRING)
 
-      for i in range(25):
+      for i in range(pcNumber):
         pc=tableNode.AddColumn()
         colName="PC" + str(i+1)
         pc.SetName(colName)
@@ -1491,31 +1491,8 @@ class GPALogic(ScriptedLoadableModuleLogic):
       for i in range(numPoints):
         tableNode.AddEmptyRow()
         tableNode.SetCellText(i, 0,files[i])
-        tableNode.SetCellText(i, 1, str(data[i,0]))
-        tableNode.SetCellText(i, 2, str(data[i,1]))
-        tableNode.SetCellText(i, 3, str(data[i,2]))
-        tableNode.SetCellText(i, 4, str(data[i,3]))
-        tableNode.SetCellText(i, 5, str(data[i,4]))
-        tableNode.SetCellText(i, 6, str(data[i,5]))
-        tableNode.SetCellText(i, 7, str(data[i,6]))
-        tableNode.SetCellText(i, 8, str(data[i,7]))
-        tableNode.SetCellText(i, 9, str(data[i,8]))
-        tableNode.SetCellText(i, 10, str(data[i,9]))
-        tableNode.SetCellText(i, 11, str(data[i,10]))
-        tableNode.SetCellText(i, 12, str(data[i,11]))
-        tableNode.SetCellText(i, 13, str(data[i,12]))
-        tableNode.SetCellText(i, 14, str(data[i,13]))
-        tableNode.SetCellText(i, 15, str(data[i,14]))
-        tableNode.SetCellText(i, 16, str(data[i,15]))
-        tableNode.SetCellText(i, 17, str(data[i,16]))
-        tableNode.SetCellText(i, 18, str(data[i,17]))
-        tableNode.SetCellText(i, 19, str(data[i,18]))
-        tableNode.SetCellText(i, 20, str(data[i,19]))
-        tableNode.SetCellText(i, 21, str(data[i,20]))
-        tableNode.SetCellText(i, 22, str(data[i,21]))
-        tableNode.SetCellText(i, 23, str(data[i,22]))
-        tableNode.SetCellText(i, 24, str(data[i,23]))
-        tableNode.SetCellText(i, 25, str(data[i,24]))
+        for j in range(pcNumber):
+            tableNode.SetCellText(i, j+1, str(data[i,j]))
 
     plotSeriesNode1=slicer.mrmlScene.GetFirstNodeByName("Series_PCA" + xAxis + "v" +yAxis)
     if plotSeriesNode1 is None:
