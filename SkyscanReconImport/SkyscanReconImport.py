@@ -255,7 +255,25 @@ class SkyscanReconImportLogic(ScriptedLoadableModuleLogic):
     annotationLogic = slicer.modules.annotations.logic()
     annotationLogic.CreateSnapShot(name, description, type, 1, imageData)
   
-  
+  def applySkyscanTransform(self, volumeNode):
+    #set up transform node
+    transformNode = slicer.vtkMRMLTransformNode()
+    slicer.mrmlScene.AddNode(transformNode)
+    volumeNode.SetAndObserveTransformNodeID(transformNode.GetID())
+
+    #set up Skyscan transform
+    transformMatrixNp  = np.array([[1,0,0,0],[0,0,1,0],[0,1,0,0],[0,0,0,1]])
+    transformMatrixVTK = vtk.vtkMatrix4x4()
+    for row in range(4):
+      for col in range(4):
+        transformMatrixVTK.SetElement(row, col, transformMatrixNp[row,col])
+        
+    transformNode.SetMatrixTransformToParent(transformMatrixVTK) 
+    
+    #harden and clean up
+    slicer.vtkSlicerTransformLogic().hardenTransform(volumeNode) 
+    slicer.mrmlScene.RemoveNode(transformNode)
+    
   def run(self, inputFile, enableScreenshots=0):
     """
     Run the actual algorithm
@@ -276,28 +294,36 @@ class SkyscanReconImportLogic(ScriptedLoadableModuleLogic):
     # read image 
     (inputDirectory,logPath) = os.path.split(inputFile)
     imageFileTemplate = os.path.join(inputDirectory, imageLogFile.Prefix + imageLogFile.SequenceStart + "." + imageLogFile.FileType)
-    outputVolumeNode = slicer.util.loadVolume(imageFileTemplate) 
+    readVolumeNode = slicer.util.loadVolume(imageFileTemplate) 
     #calculate image spacing
     spacing = [imageLogFile.Resolution, imageLogFile.Resolution, imageLogFile.Resolution]
     
     # if vector image, convert to scalar using luminance (0.30*R + 0.59*G + 0.11*B + 0.0*A)
     #check if loaded volume is vector type, if so convert to scalar
-    if outputVolumeNode.GetClassName() =='vtkMRMLVectorVolumeNode':
+    if readVolumeNode.GetClassName() =='vtkMRMLVectorVolumeNode':
       scalarVolumeNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLScalarVolumeNode', imageLogFile.Prefix)
+      ijkToRAS = vtk.vtkMatrix4x4()
+      readVolumeNode.GetIJKToRASMatrix(ijkToRAS)
+      scalarVolumeNode.SetIJKToRASMatrix(ijkToRAS)
+          
       scalarVolumeNode.SetSpacing(spacing)
       extractVTK = vtk.vtkImageExtractComponents()
-      extractVTK.SetInputConnection(outputVolumeNode.GetImageDataConnection())
+      extractVTK.SetInputConnection(readVolumeNode.GetImageDataConnection())
       extractVTK.SetComponents(0, 1, 2)
       luminance = vtk.vtkImageLuminance()
       luminance.SetInputConnection(extractVTK.GetOutputPort())
       luminance.Update()
       scalarVolumeNode.SetImageDataConnection(luminance.GetOutputPort()) # apply
-      slicer.mrmlScene.RemoveNode(outputVolumeNode)
-      slicer.util.resetSliceViews() #update the field of view
+      slicer.mrmlScene.RemoveNode(readVolumeNode)
+      
     else:
-      outputVolumeNode.SetSpacing(spacing)
-      outputVolumeNode.SetName(imageLogFile.Prefix)
-      slicer.util.resetSliceViews() #update the field of view
+      scalarVolumeNode = readVolumeNode    
+      scalarVolumeNode.SetSpacing(spacing)
+      scalarVolumeNode.SetName(imageLogFile.Prefix)
+    
+    self.applySkyscanTransform(scalarVolumeNode)  
+    slicer.util.resetSliceViews() #update the field of view 
+    
     # Capture screenshot      
     if enableScreenshots:
       self.takeScreenshot('SkyscanReconImportTest-Start','MyScreenshot',-1)
