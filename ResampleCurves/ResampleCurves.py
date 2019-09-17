@@ -248,11 +248,12 @@ class ResampleCurvesLogic(ScriptedLoadableModuleLogic):
         #resample
         if closedCurveOption:
           curve = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsClosedCurveNode", "resampled_temp")
-          resampledCurve = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsClosedCurveNode", "resampledCurve")
-          resampleNumber+=1  #add extra control point to repeat starting point
+          resampledCurve = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsClosedCurveNode", "resampledClosedCurve")
+          
         else:
           curve = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsCurveNode", "resampled_temp")
           resampledCurve = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsCurveNode", "resampledCurve")
+          
         
         vector=vtk.vtkVector3d()
         pt=[0,0,0]
@@ -267,11 +268,16 @@ class ResampleCurvesLogic(ScriptedLoadableModuleLogic):
 
         currentPoints = curve.GetCurvePointsWorld()
         newPoints = vtk.vtkPoints()
-        sampleDist = curve.GetCurveLengthWorld()/(resampleNumber-1)
+        
+        if closedCurveOption:
+          sampleDist = curve.GetCurveLengthWorld()/(resampleNumber)
+        else:
+          sampleDist = curve.GetCurveLengthWorld()/(resampleNumber-1)
+        
         self.ResamplePoints(currentPoints, newPoints,sampleDist,closedCurveOption)
         
         #set resampleNumber control points
-        if newPoints.GetNumberOfPoints() == resampleNumber:
+        if (newPoints.GetNumberOfPoints() == resampleNumber) or (closedCurveOption and (newPoints.GetNumberOfPoints() == resampleNumber+1)) :
           for controlPoint in range(0,resampleNumber):
             newPoints.GetPoint(controlPoint,pt)
             vector[0]=pt[0]
@@ -287,9 +293,10 @@ class ResampleCurvesLogic(ScriptedLoadableModuleLogic):
           slicer.util.saveNode(resampledCurve, outputFilePath)
           slicer.mrmlScene.RemoveNode(markupsNode)  #remove node from scene
           slicer.mrmlScene.RemoveNode(curve)
-          slicer.mrmlScene.RemoveNode(resampledCurve)
+          #slicer.mrmlScene.RemoveNode(resampledCurve)
         else:
           print("Error: resampling did not return expected number of points")
+          print("Resampled Points: ", newPoints.GetNumberOfPoints())
     
     logging.info('Processing completed')
 
