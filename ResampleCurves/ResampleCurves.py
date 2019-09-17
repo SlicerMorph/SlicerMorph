@@ -3,6 +3,8 @@ import unittest
 import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
 import logging
+import math
+import numpy as np
 
 #
 # ResampleCurves
@@ -67,16 +69,16 @@ class ResampleCurvesWidget(ScriptedLoadableModuleWidget):
     #
     self.outputDirectory = ctk.ctkPathLineEdit()
     self.outputDirectory.filters = ctk.ctkPathLineEdit.Dirs
-    self.outputDirectory.currentPath = qt.QDir.tempPath()
+    self.outputDirectory.currentPath = slicer.util.tempDirectory()
     parametersFormLayout.addRow("Output Directory:", self.outputDirectory)
 
     #
     # Get Resample number
     #
     self.ResampleRateWidget = ctk.ctkDoubleSpinBox()
-    self.ResampleRateWidget.value = 50
+    self.ResampleRateWidget.value = 70
     self.ResampleRateWidget.minimum = 3
-    self.ResampleRateWidget.maximum = 1000
+    self.ResampleRateWidget.maximum = 5000
     self.ResampleRateWidget.singleStep = 1
     self.ResampleRateWidget.setDecimals(0)
     self.ResampleRateWidget.setToolTip("Select the number of points for resampling: ")
@@ -186,19 +188,68 @@ class ResampleCurvesLogic(ScriptedLoadableModuleLogic):
     annotationLogic = slicer.modules.annotations.logic()
     annotationLogic.CreateSnapShot(name, description, type, 1, imageData)
     
+  def ResamplePoints(self, originalPoints, sampledPoints, samplingDistance, closedCurve):
+    if (not originalPoints or not sampledPoints or samplingDistance <= 0):
+      print("ResamplePoints failed: invalid inputs")
+      return False
+    if (originalPoints.GetNumberOfPoints() < 2):
+      sampledPoints.DeepCopy(originalPoints)
+      return True
+
+    distanceFromLastSampledPoint = 0
+    previousCurvePoint = originalPoints.GetPoint(0)
+    sampledPoints.Reset()
+    sampledPoints.InsertNextPoint(previousCurvePoint) # First point in new set is always point 0
+    numberOfOriginalPoints = originalPoints.GetNumberOfPoints()
+    totalSegmentLength = 0;
+    for originalPointIndex in range(numberOfOriginalPoints):
+      currentCurvePoint = originalPoints.GetPoint(originalPointIndex)
+      segmentLength = math.sqrt(vtk.vtkMath().Distance2BetweenPoints(currentCurvePoint,previousCurvePoint))
+      totalSegmentLength+=segmentLength
+      if segmentLength <= 0:
+        continue
+       
+      remainingSegmentLength = distanceFromLastSampledPoint + segmentLength
+      if round(remainingSegmentLength,4) >= round(samplingDistance,4):
+        segmentDirectionVector = np.array([
+          (currentCurvePoint[0] - previousCurvePoint[0]) / segmentLength,
+          (currentCurvePoint[1] - previousCurvePoint[1]) / segmentLength,
+          (currentCurvePoint[2] - previousCurvePoint[2]) / segmentLength
+          ])
+        # distance of new sampled point from previous curve point
+        distanceFromLastInterpolatedPoint = samplingDistance - distanceFromLastSampledPoint
+        while (round(remainingSegmentLength,4) >= round(samplingDistance,4)):
+          newSampledPoint = np.array([
+            previousCurvePoint[0] + segmentDirectionVector[0] * distanceFromLastInterpolatedPoint,
+            previousCurvePoint[1] + segmentDirectionVector[1] * distanceFromLastInterpolatedPoint,
+            previousCurvePoint[2] + segmentDirectionVector[2] * distanceFromLastInterpolatedPoint
+            ])
+          sampledPoints.InsertNextPoint(newSampledPoint)
+          distanceFromLastSampledPoint = 0
+          distanceFromLastInterpolatedPoint += samplingDistance
+          remainingSegmentLength -= samplingDistance
+        distanceFromLastSampledPoint = remainingSegmentLength
+      else:
+        distanceFromLastSampledPoint += segmentLength
+      previousCurvePoint = currentCurvePoint
+      
+    # No longer need to slide last points, but closed curve should have one point added to repeat start point
+
+    return True  
+  
   def run(self, inputDirectory, outputDirectory, resampleNumber, closedCurveOption):
     extension = ".fcsv"
     for file in os.listdir(inputDirectory):
       if file.endswith(extension):
         # read landmark file
         inputFilePath = os.path.join(inputDirectory, file)
-        [success, markupsNode] =slicer.util.loadMarkupsFiducialList(inputFilePath, "True")
+        markupsNode =slicer.util.loadMarkupsFiducialList(inputFilePath)
         
         #resample
         if closedCurveOption:
           curve = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsClosedCurveNode", "resampled_temp")
           resampledCurve = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsClosedCurveNode", "resampledCurve")
-          resampleNumber+=1
+          resampleNumber+=1  #add extra control point to repeat starting point
         else:
           curve = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsCurveNode", "resampled_temp")
           resampledCurve = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsCurveNode", "resampledCurve")
@@ -216,34 +267,29 @@ class ResampleCurvesLogic(ScriptedLoadableModuleLogic):
 
         currentPoints = curve.GetCurvePointsWorld()
         newPoints = vtk.vtkPoints()
-        sampleDist = curve.GetCurveLengthWorld()/resampleNumber
-        curve.ResamplePoints(currentPoints, newPoints,sampleDist,closedCurveOption)
-
-        #set resampleNumber-1 control points
-        for controlPoint in range(0,resampleNumber-1):
-          newPoints.GetPoint(controlPoint,pt)
-          vector[0]=pt[0]
-          vector[1]=pt[1]
-          vector[2]=pt[2]
-          resampledCurve.AddControlPoint(vector)
-          
-        # Add endpoint if not closed curve
-        if not closedCurveOption:
-          markupsNode.GetMarkupPoint(landmarkNumber-1,0,pt)
-          vector[0]=pt[0]
-          vector[1]=pt[1]
-          vector[2]=pt[2]
-          resampledCurve.AddControlPoint(vector)
+        sampleDist = curve.GetCurveLengthWorld()/(resampleNumber-1)
+        self.ResamplePoints(currentPoints, newPoints,sampleDist,closedCurveOption)
         
-        newPointNumber = resampledCurve.GetNumberOfControlPoints()
+        #set resampleNumber control points
+        if newPoints.GetNumberOfPoints() == resampleNumber:
+          for controlPoint in range(0,resampleNumber):
+            newPoints.GetPoint(controlPoint,pt)
+            vector[0]=pt[0]
+            vector[1]=pt[1]
+            vector[2]=pt[2]
+            resampledCurve.AddControlPoint(vector)
         
-        # save
-        newFileName = os.path.splitext(file)[0] + "_resample_" +str(newPointNumber) + extension
-        outputFilePath = os.path.join(outputDirectory, newFileName)
-        slicer.util.saveNode(resampledCurve, outputFilePath)
-        slicer.mrmlScene.RemoveNode(markupsNode)  #remove node from scene
-        slicer.mrmlScene.RemoveNode(curve)
-        slicer.mrmlScene.RemoveNode(resampledCurve)
+          newPointNumber = resampledCurve.GetNumberOfControlPoints()
+        
+          # save
+          newFileName = os.path.splitext(file)[0] + "_resample_" +str(newPointNumber) + extension
+          outputFilePath = os.path.join(outputDirectory, newFileName)
+          slicer.util.saveNode(resampledCurve, outputFilePath)
+          slicer.mrmlScene.RemoveNode(markupsNode)  #remove node from scene
+          slicer.mrmlScene.RemoveNode(curve)
+          slicer.mrmlScene.RemoveNode(resampledCurve)
+        else:
+          print("Error: resampling did not return expected number of points")
     
     logging.info('Processing completed')
 
