@@ -69,14 +69,14 @@ class ResampleCurvesWidget(ScriptedLoadableModuleWidget):
     #
     self.outputDirectory = ctk.ctkPathLineEdit()
     self.outputDirectory.filters = ctk.ctkPathLineEdit.Dirs
-    self.outputDirectory.currentPath = slicer.util.tempDirectory()
+    self.outputDirectory.currentPath = slicer.app.temporaryPath
     parametersFormLayout.addRow("Output Directory:", self.outputDirectory)
 
     #
     # Get Resample number
     #
     self.ResampleRateWidget = ctk.ctkDoubleSpinBox()
-    self.ResampleRateWidget.value = 70
+    self.ResampleRateWidget.value = 50
     self.ResampleRateWidget.minimum = 3
     self.ResampleRateWidget.maximum = 5000
     self.ResampleRateWidget.singleStep = 1
@@ -232,8 +232,6 @@ class ResampleCurvesLogic(ScriptedLoadableModuleLogic):
       else:
         distanceFromLastSampledPoint += segmentLength
       previousCurvePoint = currentCurvePoint
-      
-    # No longer need to slide last points, but closed curve should have one point added to repeat start point
 
     return True  
   
@@ -274,7 +272,7 @@ class ResampleCurvesLogic(ScriptedLoadableModuleLogic):
         else:
           sampleDist = curve.GetCurveLengthWorld()/(resampleNumber-1)
         
-        self.ResamplePoints(currentPoints, newPoints,sampleDist,closedCurveOption)
+        curve.ResamplePoints(currentPoints, newPoints,sampleDist,closedCurveOption)
         
         #set resampleNumber control points
         if (newPoints.GetNumberOfPoints() == resampleNumber) or (closedCurveOption and (newPoints.GetNumberOfPoints() == resampleNumber+1)) :
@@ -293,7 +291,7 @@ class ResampleCurvesLogic(ScriptedLoadableModuleLogic):
           slicer.util.saveNode(resampledCurve, outputFilePath)
           slicer.mrmlScene.RemoveNode(markupsNode)  #remove node from scene
           slicer.mrmlScene.RemoveNode(curve)
-          #slicer.mrmlScene.RemoveNode(resampledCurve)
+          slicer.mrmlScene.RemoveNode(resampledCurve)
         else:
           print("Error: resampling did not return expected number of points")
           print("Resampled Points: ", newPoints.GetNumberOfPoints())
