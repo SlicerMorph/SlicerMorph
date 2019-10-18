@@ -398,10 +398,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.vectorOne.addItem('None')
     self.vectorTwo.addItem('None')
     self.vectorThree.addItem('None')
-    pcNumber=25
-    if len(percentVar)<pcNumber:
-      pcNumber=len(percentVar)
-    for x in range(pcNumber):
+    self.pcNumber=25
+    if len(percentVar)<self.pcNumber:
+      self.pcNumber=len(percentVar)
+    for x in range(self.pcNumber):
       tmp="{:.1f}".format(percentVar[x]*100)
       string='PC '+str(x+1)+': '+str(tmp)+"%" +" var"
       self.PCList.append(string)
@@ -1529,6 +1529,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
     return (dx**2.0+dy**2.0+dz**2.0)**0.5
 
   #plotting functions
+
   def makeScatterPlotWithCovariates(self, data, files, covariates,title,xAxis,yAxis):
     #create two tables for the first two covariates and then check for a third
     #check if there is a table node has been created
@@ -1698,7 +1699,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
       labels.SetName('Subject ID')
       tableNode.SetColumnType('Subject ID',vtk.VTK_STRING)
 
-      for i in range(25):
+      for i in range(self.pcNumber):
         pc=tableNode.AddColumn()
         colName="PC" + str(i+1)
         pc.SetName(colName)
@@ -1707,8 +1708,9 @@ class GPALogic(ScriptedLoadableModuleLogic):
       for i in range(numPoints):
         tableNode.AddEmptyRow()
         tableNode.SetCellText(i, 0,files[i])
-        for j in range(1,26):
-          tableNode.SetCellText(i, j, str(data[i,j-1]))
+        for j in range(self.pcNumber):
+            tableNode.SetCellText(i, j+1, str(data[i,j]))
+
 
     plotSeriesNode1=slicer.mrmlScene.GetFirstNodeByName("Series_PCA" + xAxis + "v" +yAxis)
     if plotSeriesNode1 is None:
