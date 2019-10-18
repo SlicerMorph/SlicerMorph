@@ -568,13 +568,13 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       covariateArrayNP = np.array(covariateArray)
       print('covariates: ',np.unique(covariateArrayNP))
       if(len(np.unique(covariateArrayNP))>1 and len(np.unique(covariateArrayNP))<4): #check values of covariates for scatter plot
-        logic.makeScatterPlotWithCovariates(dataAll,self.files,covariateArrayNP,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1))
+        logic.makeScatterPlotWithCovariates(dataAll,self.files,covariateArrayNP,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1),self.pcNumber)
       else:   #if the user input a covariate requiring more than 3 groups, do not use covariate
         qt.QMessageBox.critical(slicer.util.mainWindow(),
         'Error', 'Please use covariates with 3 discrete values or less')
-        logic.makeScatterPlot(dataAll,self.files,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1))
+        logic.makeScatterPlot(dataAll,self.files,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1),self.pcNumber)
     else:
-      logic.makeScatterPlot(dataAll,self.files,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1))
+      logic.makeScatterPlot(dataAll,self.files,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1),self.pcNumber)
     self.assignLayoutDescription()
 
   def lolliPlot(self):
@@ -1530,7 +1530,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
 
   #plotting functions
 
-  def makeScatterPlotWithCovariates(self, data, files, covariates,title,xAxis,yAxis):
+  def makeScatterPlotWithCovariates(self, data, files, covariates,title,xAxis,yAxis,pcNumber):
     #create two tables for the first two covariates and then check for a third
     #check if there is a table node has been created
     numPoints = len(data)
@@ -1550,7 +1550,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
     labels.SetName('Subject ID')
     tableNode1.SetColumnType('Subject ID',vtk.VTK_STRING)
     
-    for i in range(25):
+    for i in range(pcNumber):
       pc=tableNode1.AddColumn()
       colName="PC" + str(i+1)
       pc.SetName(colName)
@@ -1561,8 +1561,8 @@ class GPALogic(ScriptedLoadableModuleLogic):
         if (covariates[i] == uniqueCovariates[0]):      
           tableNode1.AddEmptyRow()
           tableNode1.SetCellText(covariateCounter, 0,files[i])
-          for j in range(1,26):
-            tableNode1.SetCellText(covariateCounter, j, str(data[i,j-1]))
+          for j in range(pcNumber):
+            tableNode1.SetCellText(covariateCounter, j, str(data[i,j]))
           covariateCounter+=1
             
     #Plot series 1
@@ -1593,7 +1593,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
     labels.SetName('Subject ID')
     tableNode2.SetColumnType('Subject ID',vtk.VTK_STRING)
     
-    for i in range(25):
+    for i in range(pcNumber):
       pc=tableNode2.AddColumn()
       colName="PC" + str(i+1)
       pc.SetName(colName)
@@ -1636,7 +1636,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
       labels.SetName('Subject ID')
       tableNode3.SetColumnType('Subject ID',vtk.VTK_STRING)
     
-      for i in range(25):
+      for i in range(pcNumber):
         pc=tableNode3.AddColumn()
         colName="PC" + str(i+1)
         pc.SetName(colName)
@@ -1647,8 +1647,8 @@ class GPALogic(ScriptedLoadableModuleLogic):
           if (covariates[i] == uniqueCovariates[2]):  
             tableNode3.AddEmptyRow()
             tableNode3.SetCellText(covariateCounter, 0,files[i])
-            for j in range(1,26):
-              tableNode3.SetCellText(covariateCounter, j, str(data[i,j-1]))
+            for j in range(pcNumber):
+              tableNode3.SetCellText(covariateCounter, j, str(data[i,j]))
             covariateCounter+=1
       
       #Plot series 3
@@ -1686,7 +1686,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
     plotViewNode = plotWidget.mrmlPlotViewNode()
     plotViewNode.SetPlotChartNodeID(plotChartNode.GetID())
       
-  def makeScatterPlot(self, data, files, title,xAxis,yAxis):
+  def makeScatterPlot(self, data, files, title,xAxis,yAxis,pcNumber):
     numPoints = len(data)
     #check if there is a table node has been created
     tableNode=slicer.mrmlScene.GetFirstNodeByName('PCA Scatter Plot Table')
@@ -1699,7 +1699,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
       labels.SetName('Subject ID')
       tableNode.SetColumnType('Subject ID',vtk.VTK_STRING)
 
-      for i in range(self.pcNumber):
+      for i in range(pcNumber):
         pc=tableNode.AddColumn()
         colName="PC" + str(i+1)
         pc.SetName(colName)
@@ -1708,7 +1708,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
       for i in range(numPoints):
         tableNode.AddEmptyRow()
         tableNode.SetCellText(i, 0,files[i])
-        for j in range(self.pcNumber):
+        for j in range(pcNumber):
             tableNode.SetCellText(i, j+1, str(data[i,j]))
 
 
