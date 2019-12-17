@@ -567,7 +567,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         covariateArray.append(covariateCol.GetValue(i))
       covariateArrayNP = np.array(covariateArray)
       print('covariates: ',np.unique(covariateArrayNP))
-      if(len(np.unique(covariateArrayNP))>1 and len(np.unique(covariateArrayNP))<4): #check values of covariates for scatter plot
+      if(len(np.unique(covariateArrayNP))>1 ): #check values of covariates for scatter plot
         logic.makeScatterPlotWithCovariates(dataAll,self.files,covariateArrayNP,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1),self.pcNumber)
       else:   #if the user input a covariate requiring more than 3 groups, do not use covariate
         qt.QMessageBox.critical(slicer.util.mainWindow(),
@@ -1537,149 +1537,63 @@ class GPALogic(ScriptedLoadableModuleLogic):
     uniqueCovariates = np.unique(covariates)
     covariateNumber = len(uniqueCovariates)
     
-    #Table 1
-    tableNode1=slicer.mrmlScene.GetFirstNodeByName('PCA Scatter Plot Table Covariate 1')
-    if tableNode1 is None:
-      tableNode1 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", 'PCA Scatter Plot Table Covariate 1')
-      GPANodeCollection.AddItem(tableNode1)
-    else:
-      tableNode1.RemoveAllColumns()    #clear previous data from columns
-    
-    #set up columns for X,Y, and labels  
-    labels=tableNode1.AddColumn()
-    labels.SetName('Subject ID')
-    tableNode1.SetColumnType('Subject ID',vtk.VTK_STRING)
-    
-    for i in range(pcNumber):
-      pc=tableNode1.AddColumn()
-      colName="PC" + str(i+1)
-      pc.SetName(colName)
-      tableNode1.SetColumnType(colName, vtk.VTK_FLOAT)
-    
-    covariateCounter=0
-    for i in range(0,numPoints):
-        if (covariates[i] == uniqueCovariates[0]):      
-          tableNode1.AddEmptyRow()
-          tableNode1.SetCellText(covariateCounter, 0,files[i])
-          for j in range(pcNumber):
-            tableNode1.SetCellText(covariateCounter, j, str(data[i,j]))
-          covariateCounter+=1
-            
-    #Plot series 1
-    plotSeriesNode1=slicer.mrmlScene.GetFirstNodeByName("Series_PCA_" + uniqueCovariates[0] + "_" + xAxis + "v" +yAxis)
-    if plotSeriesNode1 is None:
-      plotSeriesNode1 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", "Series_PCA_" + uniqueCovariates[0] + "_" + xAxis + "v" +yAxis)
-      GPANodeCollection.AddItem(plotSeriesNode1)
-
-    plotSeriesNode1.SetAndObserveTableNodeID(tableNode1.GetID())
-    plotSeriesNode1.SetXColumnName(xAxis)
-    plotSeriesNode1.SetYColumnName(yAxis)
-    plotSeriesNode1.SetLabelColumnName('Subject ID')
-    plotSeriesNode1.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeScatter)
-    plotSeriesNode1.SetLineStyle(slicer.vtkMRMLPlotSeriesNode.LineStyleNone)
-    plotSeriesNode1.SetMarkerStyle(slicer.vtkMRMLPlotSeriesNode.MarkerStyleSquare)
-    plotSeriesNode1.SetUniqueColor()
-    
-    #Table 2
-    tableNode2=slicer.mrmlScene.GetFirstNodeByName('PCA Scatter Plot Table Covariate 2')
-    if tableNode2 is None:
-      tableNode2 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", 'PCA Scatter Plot Table Covariate 2')
-      GPANodeCollection.AddItem(tableNode2)
-    else:
-      tableNode2.RemoveAllColumns()    #clear previous data from columns
-    
-    #set up columns for X,Y, and labels  
-    labels=tableNode2.AddColumn()
-    labels.SetName('Subject ID')
-    tableNode2.SetColumnType('Subject ID',vtk.VTK_STRING)
-    
-    for i in range(pcNumber):
-      pc=tableNode2.AddColumn()
-      colName="PC" + str(i+1)
-      pc.SetName(colName)
-      tableNode2.SetColumnType(colName, vtk.VTK_FLOAT)
-    
-    covariateCounter=0
-    for i in range(0,numPoints):
-        if (covariates[i] == uniqueCovariates[1]):  
-          tableNode2.AddEmptyRow()
-          tableNode2.SetCellText(covariateCounter, 0,files[i])
-          for j in range(1,26):
-            tableNode2.SetCellText(covariateCounter, j, str(data[i,j-1]))
-          covariateCounter+=1
-    #Plot series 2
-    plotSeriesNode2=slicer.mrmlScene.GetFirstNodeByName("Series_PCA_" + uniqueCovariates[1] + "_" + xAxis + "v" +yAxis)
-    if plotSeriesNode2 is None:
-      plotSeriesNode2 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", "Series_PCA_" + uniqueCovariates[1] + "_" + xAxis + "v" +yAxis)
-      GPANodeCollection.AddItem(plotSeriesNode2)
-
-    plotSeriesNode2.SetAndObserveTableNodeID(tableNode2.GetID())
-    plotSeriesNode2.SetXColumnName(xAxis)
-    plotSeriesNode2.SetYColumnName(yAxis)
-    plotSeriesNode2.SetLabelColumnName('Subject ID')
-    plotSeriesNode2.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeScatter)
-    plotSeriesNode2.SetLineStyle(slicer.vtkMRMLPlotSeriesNode.LineStyleNone)
-    plotSeriesNode2.SetMarkerStyle(slicer.vtkMRMLPlotSeriesNode.MarkerStyleSquare)
-    plotSeriesNode2.SetUniqueColor()
-    
-    if(covariateNumber > 2):
-      #Table 3
-      tableNode3=slicer.mrmlScene.GetFirstNodeByName('PCA Scatter Plot Table Covariate 3')
-      if tableNode3 is None:
-        tableNode3 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", 'PCA Scatter Plot Table Covariate 3')
-        GPANodeCollection.AddItem(tableNode3)
-      else:
-        tableNode3.RemoveAllColumns()    #clear previous data from columns
-    
-      #set up columns for X,Y, and labels  
-      labels=tableNode3.AddColumn()
-      labels.SetName('Subject ID')
-      tableNode3.SetColumnType('Subject ID',vtk.VTK_STRING)
-    
-      for i in range(pcNumber):
-        pc=tableNode3.AddColumn()
-        colName="PC" + str(i+1)
-        pc.SetName(colName)
-        tableNode3.SetColumnType(colName, vtk.VTK_FLOAT)
-    
-      covariateCounter=0    
-      for i in range(0,numPoints):
-          if (covariates[i] == uniqueCovariates[2]):  
-            tableNode3.AddEmptyRow()
-            tableNode3.SetCellText(covariateCounter, 0,files[i])
-            for j in range(pcNumber):
-              tableNode3.SetCellText(covariateCounter, j, str(data[i,j]))
-            covariateCounter+=1
-      
-      #Plot series 3
-      plotSeriesNode3=slicer.mrmlScene.GetFirstNodeByName("Series_PCA_" + uniqueCovariates[2] +"_"+ xAxis + "v" +yAxis)
-      if plotSeriesNode3 is None:
-        plotSeriesNode3 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", "Series_PCA_" + uniqueCovariates[2] + "_" + xAxis + "v" +yAxis)
-        GPANodeCollection.AddItem(plotSeriesNode3)
-
-      plotSeriesNode3.SetAndObserveTableNodeID(tableNode3.GetID())
-      plotSeriesNode3.SetXColumnName(xAxis)
-      plotSeriesNode3.SetYColumnName(yAxis)
-      plotSeriesNode3.SetLabelColumnName('Subject ID')
-      plotSeriesNode3.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeScatter)
-      plotSeriesNode3.SetLineStyle(slicer.vtkMRMLPlotSeriesNode.LineStyleNone)
-      plotSeriesNode3.SetMarkerStyle(slicer.vtkMRMLPlotSeriesNode.MarkerStyleSquare)
-      plotSeriesNode3.SetUniqueColor()
-    
+    #Set up chart
     plotChartNode=slicer.mrmlScene.GetFirstNodeByName("Chart_PCA_cov" + xAxis + "v" +yAxis)
     if plotChartNode is None:
       plotChartNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotChartNode", "Chart_PCA_cov" + xAxis + "v" +yAxis)
       GPANodeCollection.AddItem(plotChartNode)
-    #add data series
-    plotChartNode.AddAndObservePlotSeriesNodeID(plotSeriesNode1.GetID())
-    plotChartNode.AddAndObservePlotSeriesNodeID(plotSeriesNode2.GetID())
-    if(covariateNumber > 2):
-      plotChartNode.AddAndObservePlotSeriesNodeID(plotSeriesNode3.GetID())
+    else:
+      plotChartNode.RemoveAllPlotSeriesNodeIDs()
+     
+    # Plot all series 
+    for covariate in uniqueCovariates:
+      tableNode=slicer.mrmlScene.GetFirstNodeByName('PCA Scatter Plot Table Covariate ' + covariate)
+      if tableNode is None:
+        tableNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", 'PCA Scatter Plot Table Covariate ' + covariate)
+        GPANodeCollection.AddItem(tableNode)
+      else:
+        tableNode.RemoveAllColumns()    #clear previous data from columns
+    
+      # Set up columns for X,Y, and labels  
+      labels=tableNode.AddColumn()
+      labels.SetName('Subject ID')
+      tableNode.SetColumnType('Subject ID',vtk.VTK_STRING)
+    
+      for i in range(pcNumber):
+        pc=tableNode.AddColumn()
+        colName="PC" + str(i+1)
+        pc.SetName(colName)
+        tableNode.SetColumnType(colName, vtk.VTK_FLOAT)
       
-    plotChartNode.SetTitle('PCA Scatter Plot with covariate ')
+      covariateCounter=0
+      for i in range(numPoints):
+        if (covariates[i] == covariate):      
+          tableNode.AddEmptyRow()
+          tableNode.SetCellText(covariateCounter, 0,files[i])
+          for j in range(pcNumber):
+            tableNode.SetCellText(covariateCounter, j+1, str(data[i,j]))
+          covariateCounter+=1
+          
+      plotSeriesNode=slicer.mrmlScene.GetFirstNodeByName("Series_PCA_" + covariate + "_" + xAxis + "v" +yAxis)
+      if plotSeriesNode is None:
+        plotSeriesNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", "Covariate_" + covariate + "_" + xAxis + "v" +yAxis)
+        GPANodeCollection.AddItem(plotSeriesNode)
+      # Create data series from table
+      plotSeriesNode.SetAndObserveTableNodeID(tableNode.GetID())
+      plotSeriesNode.SetXColumnName(xAxis)
+      plotSeriesNode.SetYColumnName(yAxis)
+      plotSeriesNode.SetLabelColumnName('Subject ID')
+      plotSeriesNode.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeScatter)
+      plotSeriesNode.SetLineStyle(slicer.vtkMRMLPlotSeriesNode.LineStyleNone)
+      plotSeriesNode.SetMarkerStyle(slicer.vtkMRMLPlotSeriesNode.MarkerStyleSquare)
+      plotSeriesNode.SetUniqueColor()
+      # Add data series to chart
+      plotChartNode.AddAndObservePlotSeriesNodeID(plotSeriesNode.GetID())
+    
+    # Set up view options for chart
+    plotChartNode.SetTitle('PCA Scatter Plot with covariates')
     plotChartNode.SetXAxisTitle(xAxis)
     plotChartNode.SetYAxisTitle(yAxis)
-
     layoutManager = slicer.app.layoutManager()
 
     plotWidget = layoutManager.plotWidget(0)
