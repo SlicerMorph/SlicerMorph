@@ -523,29 +523,30 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     sortedArray['filename']=self.files
     
     #check for an existing covariate table
-    if hasattr(self, 'covariateTableNode'):
-      self.covariateTableNode.RemoveAllColumns()
-    else:
+    if not hasattr(self, 'covariateTableNode'):
       self.covariateTableNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTableNode', 'Covariate Table')
-      
-    
-    GPANodeCollection.AddItem(self.covariateTableNode)
-    col1=self.covariateTableNode.AddColumn()
-    col1.SetName('ID')
+      GPANodeCollection.AddItem(self.covariateTableNode)
+      col1=self.covariateTableNode.AddColumn()
+      col1.SetName('ID')   
+      for i in range(len(self.files)):
+       self.covariateTableNode.AddEmptyRow()
+       self.covariateTableNode.SetCellText(i,0,sortedArray['filename'][i])
 
     col2=self.covariateTableNode.AddColumn()
     if self.covariateName.text:
       col2.SetName(self.covariateName.text)
+      self.selectCovariate.addItem(self.covariateName.text)
     else: 
-      col2.SetName("Covariate")    
-    
-    for i in range(len(self.files)):
-      self.covariateTableNode.AddEmptyRow()
-      self.covariateTableNode.SetCellText(i,0,sortedArray['filename'][i])
-    
+      defaultName = "Covariate_" + str(self.covariateTableNode.GetNumberOfColumns()-2)
+      col2.SetName(defaultName)    
+      self.selectCovariate.addItem(defaultName)
+   
     #add table to new layout
     slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveTableID(self.covariateTableNode.GetID())
     slicer.app.applicationLogic().PropagateTableSelection()
+    
+    #reset text field for names
+    self.covariateName.setText("")
     
   def plot(self):
     logic = GPALogic()
@@ -560,11 +561,14 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       data=gpa_lib.plotTanProj(self.LM.lm,i,1)
       dataAll[:,i] = data[:,0]
     
-    if self.useCovariatesCheckBox.checked and hasattr(self, 'covariateTableNode'):
-      covariateCol = self.covariateTableNode.GetTable().GetColumn(1)
+    covariateIndex = self.selectCovariate.currentIndex
+    if (covariateIndex > 0) and hasattr(self, 'covariateTableNode') and (self.covariateTableNode.GetNumberOfColumns()>covariateIndex):
+      covariateCol = self.covariateTableNode.GetTable().GetColumn(covariateIndex)
       covariateArray=[]
+      print("number of tuples: ",covariateCol.GetNumberOfTuples())
       for i in range(covariateCol.GetNumberOfTuples()):
         covariateArray.append(covariateCol.GetValue(i))
+        print(covariateCol.GetValue(i))
       covariateArrayNP = np.array(covariateArray)
       print('covariates: ',np.unique(covariateArrayNP))
       if(len(np.unique(covariateArrayNP))>1 ): #check values of covariates for scatter plot
@@ -621,7 +625,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.vectorThree.clear()
     self.XcomboBox.clear()
     self.YcomboBox.clear()
-    self.useCovariatesCheckBox.checked = 0
     
     self.scaleSlider.value=3
     self.scaleMeanShapeSlider.value=3
@@ -649,8 +652,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.vectorThree.clear()
     self.XcomboBox.clear()
     self.YcomboBox.clear()
-    self.useCovariatesCheckBox.checked = 0
-    
+    self.selectCovariate.clear()
+    self.covariateName.setText("")
     self.scaleSlider.value=3
     
     self.scaleMeanShapeSlider.value=3
@@ -813,27 +816,26 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     plotLayout.addWidget(Ylabel,2,1)
     plotLayout.addWidget(self.YcomboBox,2,2,1,3)
     
-    self.useCovariatesCheckBox = qt.QCheckBox()
-    self.useCovariatesCheckBox.setText("Use Optional Covariate Data ")
-    self.useCovariatesCheckBox.checked = 0
-    self.useCovariatesCheckBox.setToolTip("When checked, data will be plotted using covariates input below.")
-    plotLayout.addWidget(self.useCovariatesCheckBox, 3,1)
-    
     self.covariateNameLabel=qt.QLabel('Covariate Name:')
-    plotLayout.addWidget(self.covariateNameLabel,4,1)
-    
+    plotLayout.addWidget(self.covariateNameLabel,3,1)
     self.covariateName=qt.QLineEdit()
     self.covariateName.setToolTip("Enter covariate name")
-    plotLayout.addWidget(self.covariateName,4,2)
+    plotLayout.addWidget(self.covariateName,3,2)
     
     self.inputCovariateButton = qt.QPushButton("Add covariate data")
     self.inputCovariateButton.checkable = True
     self.inputCovariateButton.setStyleSheet(self.StyleSheet)
     self.inputCovariateButton.toolTip = "Open table to input covariate data"
-    plotLayout.addWidget(self.inputCovariateButton,4,4)
+    plotLayout.addWidget(self.inputCovariateButton,3,4)
     self.inputCovariateButton.enabled = False
     self.inputCovariateButton.connect('clicked(bool)', self.enterCovariates)
     
+    self.selectCovariate=qt.QComboBox()
+    self.selectCovariate.addItem("No covariate data")
+    selectCovariateLabel=qt.QLabel("Select covariate: ")
+    plotLayout.addWidget(selectCovariateLabel,4,1)
+    plotLayout.addWidget(self.selectCovariate,4,2,)
+
     self.plotButton = qt.QPushButton("Scatter Plot")
     self.plotButton.checkable = True
     self.plotButton.setStyleSheet(self.StyleSheet)
