@@ -467,7 +467,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     # Enable buttons for workflow
     self.plotButton.enabled = True
-    self.inputCovariateButton.enabled = True
     self.lolliButton.enabled = True
     self.plotDistributionButton.enabled = True
     self.plotMeanButton3D.enabled = True
@@ -517,36 +516,40 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     #add table to new layout
     slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveTableID(tableNode.GetID())
     slicer.app.applicationLogic().PropagateTableSelection()
-
-  def enterCovariates(self):
+    
+  def factorStringChanged(self):
+    if self.factorName.text is not "": 
+      self.inputFactorButton.enabled = True
+    else: 
+      self.inputFactorButton.enabled = False
+      
+  def enterFactors(self):
     sortedArray = np.zeros(len(self.files), dtype={'names':('filename', 'procdist'),'formats':('U10','f8')})
     sortedArray['filename']=self.files
     
-    #check for an existing covariate table
-    if not hasattr(self, 'covariateTableNode'):
-      self.covariateTableNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTableNode', 'Covariate Table')
-      GPANodeCollection.AddItem(self.covariateTableNode)
-      col1=self.covariateTableNode.AddColumn()
+    #check for an existing factor table
+    if not hasattr(self, 'factorTableNode'):
+      print("No table yet, creating now:")
+      self.factorTableNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTableNode', 'Factor Table')
+      GPANodeCollection.AddItem(self.factorTableNode)
+      col1=self.factorTableNode.AddColumn()
       col1.SetName('ID')   
       for i in range(len(self.files)):
-       self.covariateTableNode.AddEmptyRow()
-       self.covariateTableNode.SetCellText(i,0,sortedArray['filename'][i])
+       self.factorTableNode.AddEmptyRow()
+       self.factorTableNode.SetCellText(i,0,sortedArray['filename'][i])
 
-    col2=self.covariateTableNode.AddColumn()
-    if self.covariateName.text:
-      col2.SetName(self.covariateName.text)
-      self.selectCovariate.addItem(self.covariateName.text)
-    else: 
-      defaultName = "Covariate_" + str(self.covariateTableNode.GetNumberOfColumns()-2)
-      col2.SetName(defaultName)    
-      self.selectCovariate.addItem(defaultName)
+    col2=self.factorTableNode.AddColumn()
+    col2.SetName(self.factorName.text)
+    self.selectFactor.addItem(self.factorName.text)
    
     #add table to new layout
-    slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveTableID(self.covariateTableNode.GetID())
+    slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveTableID(self.factorTableNode.GetID())
     slicer.app.applicationLogic().PropagateTableSelection()
+    self.factorTableNode.GetTable().Modified()
     
     #reset text field for names
-    self.covariateName.setText("")
+    self.factorName.setText("")
+    self.inputFactorButton.enabled = False
     
   def plot(self):
     logic = GPALogic()
@@ -561,21 +564,18 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       data=gpa_lib.plotTanProj(self.LM.lm,i,1)
       dataAll[:,i] = data[:,0]
     
-    covariateIndex = self.selectCovariate.currentIndex
-    if (covariateIndex > 0) and hasattr(self, 'covariateTableNode') and (self.covariateTableNode.GetNumberOfColumns()>covariateIndex):
-      covariateCol = self.covariateTableNode.GetTable().GetColumn(covariateIndex)
-      covariateArray=[]
-      print("number of tuples: ",covariateCol.GetNumberOfTuples())
-      for i in range(covariateCol.GetNumberOfTuples()):
-        covariateArray.append(covariateCol.GetValue(i))
-        print(covariateCol.GetValue(i))
-      covariateArrayNP = np.array(covariateArray)
-      print('covariates: ',np.unique(covariateArrayNP))
-      if(len(np.unique(covariateArrayNP))>1 ): #check values of covariates for scatter plot
-        logic.makeScatterPlotWithCovariates(dataAll,self.files,covariateArrayNP,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1),self.pcNumber)
-      else:   #if the user input a covariate requiring more than 3 groups, do not use covariate
+    factorIndex = self.selectFactor.currentIndex
+    if (factorIndex > 0) and hasattr(self, 'factorTableNode') and (self.factorTableNode.GetNumberOfColumns()>factorIndex):
+      factorCol = self.factorTableNode.GetTable().GetColumn(factorIndex)
+      factorArray=[]
+      for i in range(factorCol.GetNumberOfTuples()):
+        factorArray.append(factorCol.GetValue(i))
+      factorArrayNP = np.array(factorArray)
+      if(len(np.unique(factorArrayNP))>1 ): #check values of factors for scatter plot
+        logic.makeScatterPlotWithFactors(dataAll,self.files,factorArrayNP,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1),self.pcNumber)
+      else:   #if the user input a factor requiring more than 3 groups, do not use factor
         qt.QMessageBox.critical(slicer.util.mainWindow(),
-        'Error', 'Please use covariates with 3 discrete values or less')
+        'Error', 'Please use factors with 3 discrete values or less')
         logic.makeScatterPlot(dataAll,self.files,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1),self.pcNumber)
     else:
       logic.makeScatterPlot(dataAll,self.files,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1),self.pcNumber)
@@ -652,8 +652,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.vectorThree.clear()
     self.XcomboBox.clear()
     self.YcomboBox.clear()
-    self.selectCovariate.clear()
-    self.covariateName.setText("")
+    self.selectFactor.clear()
+    self.factorName.setText("")
     self.scaleSlider.value=3
     
     self.scaleMeanShapeSlider.value=3
@@ -661,7 +661,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     
     # Disable buttons for workflow
     self.plotButton.enabled = False
-    self.inputCovariateButton.enabled = False
+    self.inputFactorButton.enabled = False
     self.lolliButton.enabled = False
     self.plotDistributionButton.enabled = False
     self.plotMeanButton3D.enabled = False
@@ -816,25 +816,26 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     plotLayout.addWidget(Ylabel,2,1)
     plotLayout.addWidget(self.YcomboBox,2,2,1,3)
     
-    self.covariateNameLabel=qt.QLabel('Covariate Name:')
-    plotLayout.addWidget(self.covariateNameLabel,3,1)
-    self.covariateName=qt.QLineEdit()
-    self.covariateName.setToolTip("Enter covariate name")
-    plotLayout.addWidget(self.covariateName,3,2)
+    self.factorNameLabel=qt.QLabel('Factor Name:')
+    plotLayout.addWidget(self.factorNameLabel,3,1)
+    self.factorName=qt.QLineEdit()
+    self.factorName.setToolTip("Enter factor name")
+    self.factorName.connect('textChanged(const QString &)', self.factorStringChanged)
+    plotLayout.addWidget(self.factorName,3,2)
     
-    self.inputCovariateButton = qt.QPushButton("Add covariate data")
-    self.inputCovariateButton.checkable = True
-    self.inputCovariateButton.setStyleSheet(self.StyleSheet)
-    self.inputCovariateButton.toolTip = "Open table to input covariate data"
-    plotLayout.addWidget(self.inputCovariateButton,3,4)
-    self.inputCovariateButton.enabled = False
-    self.inputCovariateButton.connect('clicked(bool)', self.enterCovariates)
+    self.inputFactorButton = qt.QPushButton("Add factor data")
+    self.inputFactorButton.checkable = True
+    self.inputFactorButton.setStyleSheet(self.StyleSheet)
+    self.inputFactorButton.toolTip = "Open table to input factor data"
+    plotLayout.addWidget(self.inputFactorButton,3,4)
+    self.inputFactorButton.enabled = False
+    self.inputFactorButton.connect('clicked(bool)', self.enterFactors)
     
-    self.selectCovariate=qt.QComboBox()
-    self.selectCovariate.addItem("No covariate data")
-    selectCovariateLabel=qt.QLabel("Select covariate: ")
-    plotLayout.addWidget(selectCovariateLabel,4,1)
-    plotLayout.addWidget(self.selectCovariate,4,2,)
+    self.selectFactor=qt.QComboBox()
+    self.selectFactor.addItem("No factor data")
+    selectFactorLabel=qt.QLabel("Select factor: ")
+    plotLayout.addWidget(selectFactorLabel,4,1)
+    plotLayout.addWidget(self.selectFactor,4,2,)
 
     self.plotButton = qt.QPushButton("Scatter Plot")
     self.plotButton.checkable = True
@@ -1532,12 +1533,12 @@ class GPALogic(ScriptedLoadableModuleLogic):
 
   #plotting functions
 
-  def makeScatterPlotWithCovariates(self, data, files, covariates,title,xAxis,yAxis,pcNumber):
-    #create two tables for the first two covariates and then check for a third
+  def makeScatterPlotWithFactors(self, data, files, factors,title,xAxis,yAxis,pcNumber):
+    #create two tables for the first two factors and then check for a third
     #check if there is a table node has been created
     numPoints = len(data)
-    uniqueCovariates = np.unique(covariates)
-    covariateNumber = len(uniqueCovariates)
+    uniqueFactors = np.unique(factors)
+    factorNumber = len(uniqueFactors)
     
     #Set up chart
     plotChartNode=slicer.mrmlScene.GetFirstNodeByName("Chart_PCA_cov" + xAxis + "v" +yAxis)
@@ -1548,10 +1549,10 @@ class GPALogic(ScriptedLoadableModuleLogic):
       plotChartNode.RemoveAllPlotSeriesNodeIDs()
      
     # Plot all series 
-    for covariate in uniqueCovariates:
-      tableNode=slicer.mrmlScene.GetFirstNodeByName('PCA Scatter Plot Table Covariate ' + covariate)
+    for factor in uniqueFactors:
+      tableNode=slicer.mrmlScene.GetFirstNodeByName('PCA Scatter Plot Table Factor ' + factor)
       if tableNode is None:
-        tableNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", 'PCA Scatter Plot Table Covariate ' + covariate)
+        tableNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", 'PCA Scatter Plot Table Factor ' + factor)
         GPANodeCollection.AddItem(tableNode)
       else:
         tableNode.RemoveAllColumns()    #clear previous data from columns
@@ -1567,18 +1568,18 @@ class GPALogic(ScriptedLoadableModuleLogic):
         pc.SetName(colName)
         tableNode.SetColumnType(colName, vtk.VTK_FLOAT)
       
-      covariateCounter=0
+      factorCounter=0
       for i in range(numPoints):
-        if (covariates[i] == covariate):      
+        if (factors[i] == factor):      
           tableNode.AddEmptyRow()
-          tableNode.SetCellText(covariateCounter, 0,files[i])
+          tableNode.SetCellText(factorCounter, 0,files[i])
           for j in range(pcNumber):
-            tableNode.SetCellText(covariateCounter, j+1, str(data[i,j]))
-          covariateCounter+=1
+            tableNode.SetCellText(factorCounter, j+1, str(data[i,j]))
+          factorCounter+=1
           
-      plotSeriesNode=slicer.mrmlScene.GetFirstNodeByName("Series_PCA_" + covariate + "_" + xAxis + "v" +yAxis)
+      plotSeriesNode=slicer.mrmlScene.GetFirstNodeByName("Series_PCA_" + factor + "_" + xAxis + "v" +yAxis)
       if plotSeriesNode is None:
-        plotSeriesNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", "Covariate_" + covariate + "_" + xAxis + "v" +yAxis)
+        plotSeriesNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", factor)
         GPANodeCollection.AddItem(plotSeriesNode)
       # Create data series from table
       plotSeriesNode.SetAndObserveTableNodeID(tableNode.GetID())
@@ -1593,7 +1594,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
       plotChartNode.AddAndObservePlotSeriesNodeID(plotSeriesNode.GetID())
     
     # Set up view options for chart
-    plotChartNode.SetTitle('PCA Scatter Plot with covariates')
+    plotChartNode.SetTitle('PCA Scatter Plot with factors')
     plotChartNode.SetXAxisTitle(xAxis)
     plotChartNode.SetYAxisTitle(yAxis)
     layoutManager = slicer.app.layoutManager()
