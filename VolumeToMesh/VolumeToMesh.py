@@ -20,7 +20,7 @@ class VolumeToMesh(ScriptedLoadableModule):
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "VolumeToMesh" # TODO make this more human readable by adding spaces
-    self.parent.categories = ["SlicerMorph.Labs"]
+    self.parent.categories = ["SlicerMorph.SlicerMorph Labs"]
     self.parent.dependencies = []
     self.parent.contributors = ["Sara Rolfe (UW), Murat Maga (UW)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """
