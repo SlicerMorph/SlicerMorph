@@ -312,9 +312,10 @@ class SemiLandmarkLogic(ScriptedLoadableModuleLogic):
     # set initial three grid points
     for index in range(0,3):
       origLMPoint=resampledPolydata.GetPoint(index)
-      landmarkLabel = LMNode.GetNthFiducialLabel(gridLandmarks[index]-1)
+      #landmarkLabel = LMNode.GetNthFiducialLabel(gridLandmarks[index]-1)
+      landmarkLabel = str(gridLandmarks[index])
       semilandmarkPoints.AddFiducialFromArray(origLMPoint, landmarkLabel)
-      
+    
     # calculate maximum projection distance
     projectionTolerance = 2
     boundingBox = vtk.vtkBoundingBox() 
@@ -425,7 +426,8 @@ class SemiLandmarkLogic(ScriptedLoadableModuleLogic):
     pt=[0,0,0]
     triangleList=[]
     lineSegmentList=[]
-    pointList=[]
+    pointList=[] 
+              
     # Add semi-landmark points within triangle patches
     for currentNode in nodeList:
       if currentNode != landmarkNode:
@@ -444,7 +446,7 @@ class SemiLandmarkLogic(ScriptedLoadableModuleLogic):
         pointList.append(p1)
         pointList.append(p2)
         pointList.append(p3)
-        
+    
     # Add semilandmark points on curves betweeen landmark points
     seenVertices=set()  
     lineSegmentList_edit=[]
@@ -514,9 +516,10 @@ class SemiLandmarkLogic(ScriptedLoadableModuleLogic):
       triangle=triangleList[i]
       tableNode.SetCellText(i,0,str(triangle[0]))
       tableNode.SetCellText(i,1,str(triangle[1]))   
-      tableNode.SetCellText(i,2,str(triangle[2]))       
+      tableNode.SetCellText(i,2,str(triangle[2]))    
+  
     return True
-    
+           
   def takeScreenshot(self,name,description,type=-1):
     # show the message even if not taking a screen shot
     slicer.util.delayDisplay('Take screenshot: '+description+'.\nResult is available in the Annotations module.', 3000)
