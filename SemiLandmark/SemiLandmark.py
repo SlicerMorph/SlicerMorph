@@ -22,7 +22,7 @@ class SemiLandmark(ScriptedLoadableModule):
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "SemiLandmark" # TODO make this more human readable by adding spaces
-    self.parent.categories = ["SlicerMorph.Labs"]
+    self.parent.categories = ["SlicerMorph.SlicerMorph Labs"]
     self.parent.dependencies = []
     self.parent.contributors = ["Sara Rolfe (UW), Murat Maga (UW)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """
@@ -444,8 +444,7 @@ class SemiLandmarkLogic(ScriptedLoadableModuleLogic):
         pointList.append(p1)
         pointList.append(p2)
         pointList.append(p3)
-        return True
-    
+        
     # Add semilandmark points on curves betweeen landmark points
     seenVertices=set()  
     lineSegmentList_edit=[]
@@ -516,7 +515,8 @@ class SemiLandmarkLogic(ScriptedLoadableModuleLogic):
       tableNode.SetCellText(i,0,str(triangle[0]))
       tableNode.SetCellText(i,1,str(triangle[1]))   
       tableNode.SetCellText(i,2,str(triangle[2]))       
-                  
+    return True
+    
   def takeScreenshot(self,name,description,type=-1):
     # show the message even if not taking a screen shot
     slicer.util.delayDisplay('Take screenshot: '+description+'.\nResult is available in the Annotations module.', 3000)
