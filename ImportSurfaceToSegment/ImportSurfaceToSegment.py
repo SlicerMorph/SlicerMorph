@@ -20,14 +20,14 @@ class ImportSurfaceToSegment(ScriptedLoadableModule):
     self.parent.dependencies = []
     self.parent.contributors = ["Sara Rolfe (UW), Murat Maga (UW)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """
-This module imports a surface image and converts it to a segmentation for editing. If the default segmentation produced by this module is not sufficient, 
+This module imports a surface image and converts it to a segmentation for editing. If the default segmentation produced by this module is not sufficient,
 please see the Segmentations module Export to Files tab to set advanced settings.
 """
     self.parent.helpText += self.getDefaultModuleDocumentationLink()
     self.parent.acknowledgementText = """
-This module was developed by Sara Rolfe and Murat Maga, through a NSF ABI Development grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 
+This module was developed by Sara Rolfe and Murat Maga, through a NSF ABI Development grant, "An Integrated Platform for Retrieval, Visualization and Analysis of
 3D Morphology From Digital Biological Collections" (Award Numbers: 1759883 (Murat Maga), 1759637 (Adam Summers), 1759839 (Douglas Boyer)).
-https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false 
+https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
 """ # replace with organization, grant and thanks.
 
 #
@@ -80,7 +80,7 @@ class ImportSurfaceToSegmentWidget(ScriptedLoadableModuleWidget):
     # connections
     self.applyButton.connect('clicked(bool)', self.onApplyButton)
     self.inputFileSelector.connect('validInputChanged(bool)', self.onSelectInput)
- 
+
     # Add vertical spacer
     self.layout.addStretch(1)
 
@@ -92,7 +92,7 @@ class ImportSurfaceToSegmentWidget(ScriptedLoadableModuleWidget):
     pass
 
   def onSelectInput(self):
-    self.applyButton.enabled = bool(self.inputFileSelector.currentPath) 
+    self.applyButton.enabled = bool(self.inputFileSelector.currentPath)
 
 
   def onApplyButton(self):
@@ -190,7 +190,7 @@ class ImportSurfaceToSegmentLogic(ScriptedLoadableModuleLogic):
     labelName = modelNode.GetName() + '-labelmap'
     labelmapNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLLabelMapVolumeNode', labelName)
     slicer.modules.segmentations.logic().ExportAllSegmentsToLabelmapNode(segmentNode, labelmapNode)
-    
+
     # Set up interface for editing
     slicer.util.selectModule(slicer.modules.segmenteditor)
     editorWidget=slicer.modules.segmenteditor.widgetRepresentation()
@@ -199,7 +199,7 @@ class ImportSurfaceToSegmentLogic(ScriptedLoadableModuleLogic):
     qWidget.setCurrentSegmentID(segmentID)
     qWidget.setMasterVolumeNode(labelmapNode)
     #remove original model Node
-    slicer.mrmlScene.RemoveNode(modelNode)  
+    slicer.mrmlScene.RemoveNode(modelNode)
     logging.info('Processing completed')
 
     return True

@@ -22,13 +22,13 @@ class ResampleCurves(ScriptedLoadableModule):
     self.parent.dependencies = []
     self.parent.contributors = ["Sara Rolfe (UW), Murat Maga (UW)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """
-This module imports curve markups saved as FCSV files from a directory, resamples them at the requested sample rate and saves them to the output directory selected. 
+This module imports curve markups saved as FCSV files from a directory, resamples them at the requested sample rate and saves them to the output directory selected.
 """
     self.parent.helpText += self.getDefaultModuleDocumentationLink()
     self.parent.acknowledgementText = """
-This module was developed by Sara Rolfe and Murat Maga, through a NSF ABI Development grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 
+This module was developed by Sara Rolfe and Murat Maga, through a NSF ABI Development grant, "An Integrated Platform for Retrieval, Visualization and Analysis of
 3D Morphology From Digital Biological Collections" (Award Numbers: 1759883 (Murat Maga), 1759637 (Adam Summers), 1759839 (Douglas Boyer)).
-https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false 
+https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
 """ # replace with organization, grant and thanks.
 
 #
@@ -62,8 +62,8 @@ class ResampleCurvesWidget(ScriptedLoadableModuleWidget):
     self.inputDirectory.filters = ctk.ctkPathLineEdit.Dirs
     self.inputDirectory.setToolTip( "Select directory containing curves to resample" )
     parametersFormLayout.addRow("Input Directory:", self.inputDirectory)
-    
-    
+
+
     #
     # output directory selector
     #
@@ -97,7 +97,7 @@ class ResampleCurvesWidget(ScriptedLoadableModuleWidget):
     curveTypeSelector.addWidget(self.curveTypeClosed)
     curveTypeSelector.addStretch()
     parametersFormLayout.addRow("Curve Type: ",curveTypeSelector)
-    
+
     #
     # check box to trigger taking screen shots for later use in tutorials
     #
@@ -106,7 +106,7 @@ class ResampleCurvesWidget(ScriptedLoadableModuleWidget):
     self.enableScreenshotsFlagCheckBox.setToolTip("If checked, take screen shots for tutorials. Use Save Data to write them to disk.")
     parametersFormLayout.addRow("Enable Screenshots", self.enableScreenshotsFlagCheckBox)
 
-    
+
     #
     # Apply Button
     #
@@ -114,11 +114,11 @@ class ResampleCurvesWidget(ScriptedLoadableModuleWidget):
     self.applyButton.toolTip = "Run the conversion."
     self.applyButton.enabled = False
     parametersFormLayout.addRow(self.applyButton)
-    
+
     # connections
     self.applyButton.connect('clicked(bool)', self.onApplyButton)
     self.inputDirectory.connect('validInputChanged(bool)', self.onSelectInput)
- 
+
     # Add vertical spacer
     self.layout.addStretch(1)
 
@@ -130,7 +130,7 @@ class ResampleCurvesWidget(ScriptedLoadableModuleWidget):
     pass
 
   def onSelectInput(self):
-    self.applyButton.enabled = bool(self.inputDirectory.currentPath) 
+    self.applyButton.enabled = bool(self.inputDirectory.currentPath)
 
 
   def onApplyButton(self):
@@ -187,7 +187,7 @@ class ResampleCurvesLogic(ScriptedLoadableModuleLogic):
 
     annotationLogic = slicer.modules.annotations.logic()
     annotationLogic.CreateSnapShot(name, description, type, 1, imageData)
-    
+
   def ResamplePoints(self, originalPoints, sampledPoints, samplingDistance, closedCurve):
     if (not originalPoints or not sampledPoints or samplingDistance <= 0):
       print("ResamplePoints failed: invalid inputs")
@@ -208,7 +208,7 @@ class ResampleCurvesLogic(ScriptedLoadableModuleLogic):
       totalSegmentLength+=segmentLength
       if segmentLength <= 0:
         continue
-       
+
       remainingSegmentLength = distanceFromLastSampledPoint + segmentLength
       if round(remainingSegmentLength,4) >= round(samplingDistance,4):
         segmentDirectionVector = np.array([
@@ -233,8 +233,8 @@ class ResampleCurvesLogic(ScriptedLoadableModuleLogic):
         distanceFromLastSampledPoint += segmentLength
       previousCurvePoint = currentCurvePoint
 
-    return True  
-  
+    return True
+
   def run(self, inputDirectory, outputDirectory, resampleNumber, closedCurveOption):
     extension = ".fcsv"
     for file in os.listdir(inputDirectory):
@@ -242,17 +242,17 @@ class ResampleCurvesLogic(ScriptedLoadableModuleLogic):
         # read landmark file
         inputFilePath = os.path.join(inputDirectory, file)
         markupsNode =slicer.util.loadMarkupsFiducialList(inputFilePath)
-        
+
         #resample
         if closedCurveOption:
           curve = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsClosedCurveNode", "resampled_temp")
           resampledCurve = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsClosedCurveNode", "resampledClosedCurve")
-          
+
         else:
           curve = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsCurveNode", "resampled_temp")
           resampledCurve = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsCurveNode", "resampledCurve")
-          
-        
+
+
         vector=vtk.vtkVector3d()
         pt=[0,0,0]
         landmarkNumber = markupsNode.GetNumberOfFiducials()
@@ -266,14 +266,14 @@ class ResampleCurvesLogic(ScriptedLoadableModuleLogic):
 
         currentPoints = curve.GetCurvePointsWorld()
         newPoints = vtk.vtkPoints()
-        
+
         if closedCurveOption:
           sampleDist = curve.GetCurveLengthWorld()/(resampleNumber)
         else:
           sampleDist = curve.GetCurveLengthWorld()/(resampleNumber-1)
-        
+
         curve.ResamplePoints(currentPoints, newPoints,sampleDist,closedCurveOption)
-        
+
         #set resampleNumber control points
         if (newPoints.GetNumberOfPoints() == resampleNumber) or (closedCurveOption and (newPoints.GetNumberOfPoints() == resampleNumber+1)) :
           for controlPoint in range(0,resampleNumber):
@@ -282,9 +282,9 @@ class ResampleCurvesLogic(ScriptedLoadableModuleLogic):
             vector[1]=pt[1]
             vector[2]=pt[2]
             resampledCurve.AddControlPoint(vector)
-        
+
           newPointNumber = resampledCurve.GetNumberOfControlPoints()
-        
+
           # save
           newFileName = os.path.splitext(file)[0] + "_resample_" +str(newPointNumber) + extension
           outputFilePath = os.path.join(outputDirectory, newFileName)
@@ -295,7 +295,7 @@ class ResampleCurvesLogic(ScriptedLoadableModuleLogic):
         else:
           print("Error: resampling did not return expected number of points")
           print("Resampled Points: ", newPoints.GetNumberOfPoints())
-    
+
     logging.info('Processing completed')
 
     return True

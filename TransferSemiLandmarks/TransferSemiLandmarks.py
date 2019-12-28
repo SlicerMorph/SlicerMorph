@@ -19,7 +19,7 @@ class TransferSemiLandmarks(ScriptedLoadableModule):
   """Uses ScriptedLoadableModule base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
-  
+
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "TransferSemiLandmarks" # TODO make this more human readable by adding spaces
@@ -27,7 +27,7 @@ class TransferSemiLandmarks(ScriptedLoadableModule):
     self.parent.dependencies = []
     self.parent.contributors = ["Sara Rolfe (UW), Murat Maga (UW)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """
-      This module takes a directory of volumes and segments them using a user-supplied threshold value. The output segments are converted to models and saved in the 
+      This module takes a directory of volumes and segments them using a user-supplied threshold value. The output segments are converted to models and saved in the
       output directory.
       """
     self.parent.helpText += self.getDefaultModuleDocumentationLink()
@@ -47,19 +47,19 @@ class TransferSemiLandmarksWidget(ScriptedLoadableModuleWidget):
     """
   def onSelect(self):
     self.applyButton.enabled = bool (self.meshDirectory.currentPath and self.landmarkDirectory.currentPath and self.outputDirectory.currentPath)
-          
+
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
-    
+
     # Instantiate and connect widgets ...
-    
+
     #
     # Parameters Area
     #
     parametersCollapsibleButton = ctk.ctkCollapsibleButton()
     parametersCollapsibleButton.text = "Parameters"
     self.layout.addWidget(parametersCollapsibleButton)
-    
+
     # Layout within the dummy collapsible button
     parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
 
@@ -67,22 +67,22 @@ class TransferSemiLandmarksWidget(ScriptedLoadableModuleWidget):
     self.meshDirectory.filters = ctk.ctkPathLineEdit.Dirs
     self.meshDirectory.setToolTip( "Select directory containing landmarks" )
     parametersFormLayout.addRow("Mesh directory: ", self.meshDirectory)
-    
+
     self.landmarkDirectory=ctk.ctkPathLineEdit()
     self.landmarkDirectory.filters = ctk.ctkPathLineEdit.Dirs
     self.landmarkDirectory.setToolTip( "Select directory containing meshes" )
     parametersFormLayout.addRow("Landmark directory: ", self.landmarkDirectory)
-    
+
     self.gridFile=ctk.ctkPathLineEdit()
     self.gridFile.setToolTip( "Select file specifying semi-landmark connectivity" )
     parametersFormLayout.addRow("Grid connectivity file: ", self.gridFile)
-    
+
     # Select output directory
     self.outputDirectory=ctk.ctkPathLineEdit()
     self.outputDirectory.filters = ctk.ctkPathLineEdit.Dirs
     self.outputDirectory.setToolTip( "Select directory for output models: " )
     parametersFormLayout.addRow("Output directory: ", self.outputDirectory)
-    
+
     #
     # set sample rate value
     #
@@ -101,26 +101,26 @@ class TransferSemiLandmarksWidget(ScriptedLoadableModuleWidget):
     self.applyButton.toolTip = "Generate TransferSemiLandmarkss."
     self.applyButton.enabled = False
     parametersFormLayout.addRow(self.applyButton)
-    
+
     # connections
     self.meshDirectory.connect('validInputChanged(bool)', self.onSelect)
     self.landmarkDirectory.connect('validInputChanged(bool)', self.onSelect)
     self.gridFile.connect('validInputChanged(bool)', self.onSelect)
     self.outputDirectory.connect('validInputChanged(bool)', self.onSelect)
     self.applyButton.connect('clicked(bool)', self.onApplyButton)
-    
+
     # Add vertical spacer
     self.layout.addStretch(1)
-  
+
   def cleanup(self):
     pass
-  
-  
+
+
   def onApplyButton(self):
     logic = TransferSemiLandmarksLogic()
     logic.run(self.meshDirectory.currentPath, self.landmarkDirectory.currentPath, self.gridFile.currentPath,
       self.outputDirectory.currentPath, int(self.sampleRate.value))
-    
+
 #
 # TransferSemiLandmarksLogic
 #
@@ -142,7 +142,7 @@ class TransferSemiLandmarksLogic(ScriptedLoadableModuleLogic):
       next(gridReader) # skip header
       for row in gridReader:
         gridVertices.append([int(row[0]),int(row[1]),int(row[2])])
-    
+
     for meshFileName in os.listdir(meshDirectory):
       if(not meshFileName.startswith(".")):
         print (meshFileName)
@@ -157,7 +157,7 @@ class TransferSemiLandmarksLogic(ScriptedLoadableModuleLogic):
             landmarkNode = slicer.util.loadMarkupsFiducialList(lmFilePath)
             landmarkNumber=landmarkNode.GetNumberOfControlPoints()
             for n in range(landmarkNumber):
-              landmarkNode.SetNthControlPointLabel(n, str(n+1)) 
+              landmarkNode.SetNthControlPointLabel(n, str(n+1))
             for triangle in gridVertices:
               newNode = SLLogic.run(meshNode, landmarkNode, triangle, sampleRate)
             nodeList = slicer.mrmlScene.GetNodesByClass("vtkMRMLMarkupsFiducialNode")
@@ -167,14 +167,14 @@ class TransferSemiLandmarksLogic(ScriptedLoadableModuleLogic):
             if not success:
               print("Something went wrong in SemilandmarkLogic.merge")
             outputFileName = meshFileName + '_merged.fcsv'
-            outputFilePath = os.path.join(ouputDirectory, outputFileName) 
+            outputFilePath = os.path.join(ouputDirectory, outputFileName)
             slicer.util.saveNode(mergedLandmarkNode, outputFilePath)
             slicer.mrmlScene.Clear(0)
-          
+
   def takeScreenshot(self,name,description,type=-1):
     # show the message even if not taking a screen shot
     slicer.util.delayDisplay('Take screenshot: '+description+'.\nResult is available in the Annotations module.', 3000)
-    
+
     lm = slicer.app.layoutManager()
     # switch on the type to get the requested window
     widget = 0
@@ -198,12 +198,12 @@ class TransferSemiLandmarksLogic(ScriptedLoadableModuleLogic):
       widget = slicer.util.mainWindow()
       # reset the type so that the node is set correctly
       type = slicer.qMRMLScreenShotDialog.FullLayout
-    
+
     # grab and convert to vtk image data
     qimage = ctk.ctkWidgetsUtils.grabWidget(widget)
     imageData = vtk.vtkImageData()
     slicer.qMRMLUtils().qImageToVtkImageData(qimage,imageData)
-    
+
     annotationLogic = slicer.modules.annotations.logic()
     annotationLogic.CreateSnapShot(name, description, type, 1, imageData)
 
@@ -214,18 +214,18 @@ class TransferSemiLandmarksTest(ScriptedLoadableModuleTest):
     Uses ScriptedLoadableModuleTest base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
-  
+
   def setUp(self):
     """ Do whatever is needed to reset the state - typically a scene clear will be enough.
       """
     slicer.mrmlScene.Clear(0)
-  
+
   def runTest(self):
     """Run as few or as many tests as needed here.
       """
     self.setUp()
     self.test_TransferSemiLandmarks1()
-  
+
   def test_TransferSemiLandmarks1(self):
     """ Ideally you should have several levels of tests.  At the lowest level
       tests should exercise the functionality of the logic with different inputs

@@ -23,12 +23,12 @@ class SkyscanReconImport(ScriptedLoadableModule):
     self.parent.dependencies = []
     self.parent.contributors = ["Murat Maga (UW), Sara Rolfe (UW)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """
-This module imports an image sequence from Bruker Skyscan microCT's into Slicer as a scalar 3D volume with correct image spacing. Accepted formats are TIF, PNG, JPG and BMP. 
-User needs to be point out to the *_Rec.log file found in the reconstruction folder. 
+This module imports an image sequence from Bruker Skyscan microCT's into Slicer as a scalar 3D volume with correct image spacing. Accepted formats are TIF, PNG, JPG and BMP.
+User needs to be point out to the *_Rec.log file found in the reconstruction folder.
 
-This module was developed by Sara Rolfe and Murat Maga, through a NSF ABI Development grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 
+This module was developed by Sara Rolfe and Murat Maga, through a NSF ABI Development grant, "An Integrated Platform for Retrieval, Visualization and Analysis of
 3D Morphology From Digital Biological Collections" (Award Numbers: 1759883).
-https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false 
+https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
 """ # replace with organization, grant and thanks.
 
 #
@@ -58,12 +58,12 @@ class SkyscanReconImportWidget(ScriptedLoadableModuleWidget):
     #
     # input selector
     #
-   
+
     # File dialog to select a file template for series
     self.inputFileSelector = ctk.ctkPathLineEdit()
     self.inputFileSelector.setToolTip( "Select log file from a directory of images." )
     parametersFormLayout.addRow("Select log file from image series:", self.inputFileSelector)
-    
+
     #
     # output volume selector
     #
@@ -79,7 +79,7 @@ class SkyscanReconImportWidget(ScriptedLoadableModuleWidget):
     # self.outputSelector.setMRMLScene( slicer.mrmlScene )
     # self.outputSelector.setToolTip( "Pick the output to the algorithm." )
     # parametersFormLayout.addRow("Output Volume: ", self.outputSelector)
-    
+
     #
     # check box to trigger taking screen shots for later use in tutorials
     #
@@ -133,10 +133,10 @@ class LogDataObject:
     self.IndexLength = "NULL"
     self.SequenceStart = "NULL"
     self.SequenceEnd = "NULL"
-  
+
   def ImportFromFile(self, LogFilename):
     lines = [] 					#Declare an empty list to read file into
-    with open (LogFilename, 'rt') as in_file:  							
+    with open (LogFilename, 'rt') as in_file:
       for line in in_file:
         lines.append(line.strip("\n"))     # add that line list, get rid of line endings
       for element in lines:  # For each element in list
@@ -151,26 +151,26 @@ class LogDataObject:
         if(element.find("Sections Count=")>=0):
           self.Z = int(element.split('=', 1)[1])
         if(element.find("Pixel Size (um)=")>=0):
-          self.Resolution = float(element.split('=', 1)[1])/1000 #convert from um to mm 
+          self.Resolution = float(element.split('=', 1)[1])/1000 #convert from um to mm
         if(element.find("Filename Prefix=")>=0):
           self.Prefix = element.split('=', 1)[1]
         if(element.find("Filename Index Length=")>=0):
-          self.IndexLength = element.split('=', 1)[1] 
+          self.IndexLength = element.split('=', 1)[1]
         if(element.find("First Section=")>=0):
           self.SequenceStart = element.split('=', 1)[1]
         if(element.find("Last Section=")>=0):
           self.SequenceEnd = element.split('=', 1)[1]
     self.SequenceStart=self.SequenceStart.zfill(int(self.IndexLength)) #pad with zeros to index length
     self.SequenceEnd=self.SequenceEnd.zfill(int(self.IndexLength)) #pad with zeros to index length
-    
+
   def VerifyParameters(self):
-    for attr, value in self.__dict__.items():        
+    for attr, value in self.__dict__.items():
         if(str(value) == "NULL"):
           logging.debug("Read Failed: Please check log format")
           logging.debug(attr,value)
           return False
-    return True     
-     
+    return True
+
 #
 # SkyscanReconImportLogic
 #
@@ -210,7 +210,7 @@ class SkyscanReconImportLogic(ScriptedLoadableModuleLogic):
       logging.debug('isValidInputOutputData failed: input and output volume is the same. Create a new volume for output to avoid this error.')
       return False
     return True
-  
+
   def isValidImageFileType(self, extension):
     """Checks for extensions from valid image types
     """
@@ -254,7 +254,7 @@ class SkyscanReconImportLogic(ScriptedLoadableModuleLogic):
 
     annotationLogic = slicer.modules.annotations.logic()
     annotationLogic.CreateSnapShot(name, description, type, 1, imageData)
-  
+
   def applySkyscanTransform(self, volumeNode):
     #set up transform node
     transformNode = slicer.vtkMRMLTransformNode()
@@ -267,37 +267,37 @@ class SkyscanReconImportLogic(ScriptedLoadableModuleLogic):
     for row in range(4):
       for col in range(4):
         transformMatrixVTK.SetElement(row, col, transformMatrixNp[row,col])
-        
-    transformNode.SetMatrixTransformToParent(transformMatrixVTK) 
-    
+
+    transformNode.SetMatrixTransformToParent(transformMatrixVTK)
+
     #harden and clean up
-    slicer.vtkSlicerTransformLogic().hardenTransform(volumeNode) 
+    slicer.vtkSlicerTransformLogic().hardenTransform(volumeNode)
     slicer.mrmlScene.RemoveNode(transformNode)
-    
+
   def run(self, inputFile, enableScreenshots=0):
     """
     Run the actual algorithm
     """
     #parse logfile
     logging.info('Processing started')
-    imageLogFile = LogDataObject()   #initialize log object 
+    imageLogFile = LogDataObject()   #initialize log object
     imageLogFile.ImportFromFile(inputFile)  #import image parameters of log object
-    
-    if not(imageLogFile.VerifyParameters()): #check that all parameters were set 
+
+    if not(imageLogFile.VerifyParameters()): #check that all parameters were set
       logging.info('Failed: Log file parameters not set')
       return False
     if not(self.isValidImageFileType(imageLogFile.FileType)): #check for valid file type
       logging.info('Failed: Invalid image type')
       logging.info(imageLogFile.FileType)
       return False
-    
-    # read image 
+
+    # read image
     (inputDirectory,logPath) = os.path.split(inputFile)
     imageFileTemplate = os.path.join(inputDirectory, imageLogFile.Prefix + imageLogFile.SequenceStart + "." + imageLogFile.FileType)
-    readVolumeNode = slicer.util.loadVolume(imageFileTemplate) 
+    readVolumeNode = slicer.util.loadVolume(imageFileTemplate)
     #calculate image spacing
     spacing = [imageLogFile.Resolution, imageLogFile.Resolution, imageLogFile.Resolution]
-    
+
     # if vector image, convert to scalar using luminance (0.30*R + 0.59*G + 0.11*B + 0.0*A)
     #check if loaded volume is vector type, if so convert to scalar
     if readVolumeNode.GetClassName() =='vtkMRMLVectorVolumeNode':
@@ -305,7 +305,7 @@ class SkyscanReconImportLogic(ScriptedLoadableModuleLogic):
       ijkToRAS = vtk.vtkMatrix4x4()
       readVolumeNode.GetIJKToRASMatrix(ijkToRAS)
       scalarVolumeNode.SetIJKToRASMatrix(ijkToRAS)
-          
+
       scalarVolumeNode.SetSpacing(spacing)
       extractVTK = vtk.vtkImageExtractComponents()
       extractVTK.SetInputConnection(readVolumeNode.GetImageDataConnection())
@@ -315,16 +315,16 @@ class SkyscanReconImportLogic(ScriptedLoadableModuleLogic):
       luminance.Update()
       scalarVolumeNode.SetImageDataConnection(luminance.GetOutputPort()) # apply
       slicer.mrmlScene.RemoveNode(readVolumeNode)
-      
+
     else:
-      scalarVolumeNode = readVolumeNode    
+      scalarVolumeNode = readVolumeNode
       scalarVolumeNode.SetSpacing(spacing)
       scalarVolumeNode.SetName(imageLogFile.Prefix)
-    
-    self.applySkyscanTransform(scalarVolumeNode)  
-    slicer.util.resetSliceViews() #update the field of view 
-    
-    # Capture screenshot      
+
+    self.applySkyscanTransform(scalarVolumeNode)
+    slicer.util.resetSliceViews() #update the field of view
+
+    # Capture screenshot
     if enableScreenshots:
       self.takeScreenshot('SkyscanReconImportTest-Start','MyScreenshot',-1)
     logging.info('Processing completed')

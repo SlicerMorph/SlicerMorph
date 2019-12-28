@@ -20,13 +20,13 @@ class ConvertMorphologikaLandmarks(ScriptedLoadableModule):
     self.parent.dependencies = []
     self.parent.contributors = ["Sara Rolfe (UW), Murat Maga (UW)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """
-This module imports a file containing landmarks in Morphologika format and saves them to a file in Slicer FCSV format, one file per subject. 
+This module imports a file containing landmarks in Morphologika format and saves them to a file in Slicer FCSV format, one file per subject.
 """
     self.parent.helpText += self.getDefaultModuleDocumentationLink()
     self.parent.acknowledgementText = """
-This module was developed by Sara Rolfe and Murat Maga, through a NSF ABI Development grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 
+This module was developed by Sara Rolfe and Murat Maga, through a NSF ABI Development grant, "An Integrated Platform for Retrieval, Visualization and Analysis of
 3D Morphology From Digital Biological Collections" (Award Numbers: 1759883 (Murat Maga), 1759637 (Adam Summers), 1759839 (Douglas Boyer)).
-https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false 
+https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
 """ # replace with organization, grant and thanks.
 
 #
@@ -59,7 +59,7 @@ class ConvertMorphologikaLandmarksWidget(ScriptedLoadableModuleWidget):
     self.inputFileSelector = ctk.ctkPathLineEdit()
     self.inputFileSelector.setToolTip( "Select Morphologika landmark file for conversion" )
     parametersFormLayout.addRow("Select file containing landmark names and coordinates to load:", self.inputFileSelector)
-    
+
     #
     # output directory selector
     #
@@ -86,7 +86,7 @@ class ConvertMorphologikaLandmarksWidget(ScriptedLoadableModuleWidget):
     # connections
     self.applyButton.connect('clicked(bool)', self.onApplyButton)
     self.inputFileSelector.connect('validInputChanged(bool)', self.onSelectInput)
- 
+
     # Add vertical spacer
     self.layout.addStretch(1)
 
@@ -98,7 +98,7 @@ class ConvertMorphologikaLandmarksWidget(ScriptedLoadableModuleWidget):
     pass
 
   def onSelectInput(self):
-    self.applyButton.enabled = bool(self.inputFileSelector.currentPath) 
+    self.applyButton.enabled = bool(self.inputFileSelector.currentPath)
 
 
   def onApplyButton(self):
@@ -197,10 +197,10 @@ class ConvertMorphologikaLandmarksLogic(ScriptedLoadableModuleLogic):
     nameIndex=0
     rawIndex=0
 
-    #Scan file for data size 
+    #Scan file for data size
     for num, line in enumerate(data, 0):
       if 'individuals' in line.lower():
-        subjectNumber= int(data[num+1])	
+        subjectNumber= int(data[num+1])
       elif 'landmarks' in line.lower():
         landmarkNumber= int(data[num+1])
       elif 'dimensions' in line.lower():
@@ -210,7 +210,7 @@ class ConvertMorphologikaLandmarksLogic(ScriptedLoadableModuleLogic):
       elif 'rawpoints' in line.lower():
         rawIndex = num
 
-    #Check that size variables were found	
+    #Check that size variables were found
     if subjectNumber==0 or landmarkNumber==0 or dimensionNumber==0:
       print("Error reading file: can not read size")
 
@@ -221,18 +221,18 @@ class ConvertMorphologikaLandmarksLogic(ScriptedLoadableModuleLogic):
     subjectList=data[nameIndex+1:nameIndex+1+subjectNumber]
     rawData = data[rawIndex+1:len(data)] # get raw data portion of file
     rawData = [ line for line in rawData if not ("\'" in line or "\n" == line)] # remove spaces and names
-      
-    if len(rawData) != subjectNumber*landmarkNumber:    # check for error in landmark import 
+
+    if len(rawData) != subjectNumber*landmarkNumber:    # check for error in landmark import
       print("Error reading file: incorrect landmark number")
     else:
       fiducialNode = slicer.vtkMRMLMarkupsFiducialNode() # Create a markups node for imported points
       for index, subject in enumerate(subjectList): # iterate through each subject
-        
+
         for landmark in range(landmarkNumber):
           lineData = rawData.pop(0).split() #get first line and split by whitespace
           coordinates = [float(lineData[0]), float(lineData[1]), float(lineData[2])]
           fiducialNode.AddFiducialFromArray(coordinates, str(landmark)) #insert fiducial named by landmark number
-        
+
         slicer.mrmlScene.AddNode(fiducialNode)
         fiducialNode.SetName(subject.split()[0]) # set name to subject name, removing new line char
         path = os.path.join(outputDirectory, subject.split()[0] + '.fcsv')
