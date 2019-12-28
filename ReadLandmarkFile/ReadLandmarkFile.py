@@ -21,13 +21,13 @@ class ReadLandmarkFile(ScriptedLoadableModule):
     self.parent.contributors = ["Murat Maga (UW), Sara Rolfe (UW)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """
 This module imports an image sequence into Slicer as a 3D volume. Accepted formats are TIF, PNG, JPG and BMP. For DICOMS, use the DICOM module.
-User can optionally perform downsampling of the volume at the time of import. For specific use cases and options, 
+User can optionally perform downsampling of the volume at the time of import. For specific use cases and options,
 """
     self.parent.helpText += self.getDefaultModuleDocumentationLink()
     self.parent.acknowledgementText = """
-This module was developed by Sara Rolfe and Murat Maga, through a NSF ABI Development grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 
+This module was developed by Sara Rolfe and Murat Maga, through a NSF ABI Development grant, "An Integrated Platform for Retrieval, Visualization and Analysis of
 3D Morphology From Digital Biological Collections" (Award Numbers: 1759883 (Murat Maga), 1759637 (Adam Summers), 1759839 (Douglas Boyer)).
-https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false 
+https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
 """ # replace with organization, grant and thanks.
 
 #
@@ -60,7 +60,7 @@ class ReadLandmarkFileWidget(ScriptedLoadableModuleWidget):
     self.inputFileSelector = ctk.ctkPathLineEdit()
     self.inputFileSelector.setToolTip( "Select landmark file for import" )
     parametersFormLayout.addRow("Select file containing landmark names and coordinates to load:", self.inputFileSelector)
-    
+
     #
     # Get header length
     #
@@ -90,7 +90,7 @@ class ReadLandmarkFileWidget(ScriptedLoadableModuleWidget):
     # connections
     self.applyButton.connect('clicked(bool)', self.onApplyButton)
     self.inputFileSelector.connect('validInputChanged(bool)', self.onSelect)
-    
+
 
     # Add vertical spacer
     self.layout.addStretch(1)
@@ -216,7 +216,7 @@ class ReadLandmarkFileLogic(ScriptedLoadableModuleLogic):
         coordinates = [float(lineData[1]), float(lineData[2]), float(lineData[3])]
         name = lineData[0]
         fiducialNode.AddFiducialFromArray(coordinates, name)
-      else: 
+      else:
         logging.debug("Error: not a supported landmark file format")
 
     # Capture screenshot

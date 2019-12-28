@@ -173,9 +173,9 @@ class LMData:
     self.shift=tmp
 
   def writeOutData(self,outputFolder,files):
-    
-    
-    
+
+
+
     # make headers for eigenvector matrix
     headerPC=[]
     headerLM=[""]
@@ -185,13 +185,13 @@ class LMData:
       headerLM.append("LM "+str(i+1)+"_X")
       headerLM.append("LM "+str(i+1)+"_Y")
       headerLM.append("LM "+str(i+1)+"_Z")
-      
+
     temp = np.vstack((np.array(headerPC),self.vec))
     temp = np.column_stack((np.array(headerLM),temp))
     np.savetxt(outputFolder+os.sep+"eigenvector.csv", temp, delimiter=",",fmt='%s')
     temp = np.column_stack((np.array(headerPC),self.val))
     np.savetxt(outputFolder+os.sep+"eigenvalues.csv", temp, delimiter=",",fmt='%s')
-   
+
     headerLM=[]
     headerCoordinate = ["","X","Y","Z"]
     for i in range(len(self.mShape)):
@@ -199,7 +199,7 @@ class LMData:
     temp = np.column_stack((np.array(headerLM),self.mShape))
     temp = np.vstack((np.array(headerCoordinate),temp))
     np.savetxt(outputFolder+os.sep+"MeanShape.csv", temp, delimiter=",",fmt='%s')
-   
+
     percentVar=self.val/self.val.sum()
     self.procdist=gpa_lib.procDist(self.lm, self.mShape)
     files=np.array(files)
@@ -315,7 +315,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     threeDView = threeDWidget.threeDView()
     threeDView.resetCamera()
     threeDView.resetFocalPoint()
-    
+
     # check for loaded reference model
     if hasattr(self, 'modelDisplayNode'):
       # assign each model to a specific view
@@ -326,7 +326,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       referenceModelNode = self.meanLandmarkNode
     # fit the red slice node to show the plot projections
     redNode = layoutManager.sliceWidget('Red').sliceView().mrmlSliceNode()
-    
+
     rasBounds = [0,]*6
     referenceModelNode.GetRASBounds(rasBounds)
     redNode.GetSliceToRAS().SetElement(0, 3, (rasBounds[1]+rasBounds[0]) / 2.)
@@ -437,12 +437,12 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     if self.meanLandmarkNode is None:
       self.meanLandmarkNode = slicer.vtkMRMLMarkupsFiducialNode()
       self.meanLandmarkNode.SetName('Mean Landmark Node')
-      self.meanLandmarkNode.SetHideFromEditors(1) #hide from module so these cannot be selected for analysis 
+      self.meanLandmarkNode.SetHideFromEditors(1) #hide from module so these cannot be selected for analysis
       slicer.mrmlScene.AddNode(self.meanLandmarkNode)
       GPANodeCollection.AddItem(self.meanLandmarkNode)
       modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
       GPANodeCollection.AddItem(modelDisplayNode)
-      
+
     for landmarkNumber in range (shape[0]):
       name = str(landmarkNumber+1) #start numbering at 1
       self.meanLandmarkNode.AddFiducialFromArray(self.rawMeanLandmarks[landmarkNumber,:], name)
@@ -516,24 +516,24 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     #add table to new layout
     slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveTableID(tableNode.GetID())
     slicer.app.applicationLogic().PropagateTableSelection()
-    
+
   def factorStringChanged(self):
-    if self.factorName.text is not "": 
+    if self.factorName.text is not "":
       self.inputFactorButton.enabled = True
-    else: 
+    else:
       self.inputFactorButton.enabled = False
-      
+
   def enterFactors(self):
     sortedArray = np.zeros(len(self.files), dtype={'names':('filename', 'procdist'),'formats':('U10','f8')})
     sortedArray['filename']=self.files
-    
+
     #check for an existing factor table
     if not hasattr(self, 'factorTableNode'):
       print("No table yet, creating now:")
       self.factorTableNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTableNode', 'Factor Table')
       GPANodeCollection.AddItem(self.factorTableNode)
       col1=self.factorTableNode.AddColumn()
-      col1.SetName('ID')   
+      col1.SetName('ID')
       for i in range(len(self.files)):
        self.factorTableNode.AddEmptyRow()
        self.factorTableNode.SetCellText(i,0,sortedArray['filename'][i])
@@ -541,16 +541,16 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     col2=self.factorTableNode.AddColumn()
     col2.SetName(self.factorName.text)
     self.selectFactor.addItem(self.factorName.text)
-   
+
     #add table to new layout
     slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveTableID(self.factorTableNode.GetID())
     slicer.app.applicationLogic().PropagateTableSelection()
     self.factorTableNode.GetTable().Modified()
-    
+
     #reset text field for names
     self.factorName.setText("")
     self.inputFactorButton.enabled = False
-    
+
   def plot(self):
     logic = GPALogic()
     # get values from boxs
@@ -563,7 +563,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     for i in range(25):
       data=gpa_lib.plotTanProj(self.LM.lm,i,1)
       dataAll[:,i] = data[:,0]
-    
+
     factorIndex = self.selectFactor.currentIndex
     if (factorIndex > 0) and hasattr(self, 'factorTableNode') and (self.factorTableNode.GetNumberOfColumns()>factorIndex):
       factorCol = self.factorTableNode.GetTable().GetColumn(factorIndex)
@@ -594,10 +594,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       referenceLandmarks = self.sourceLMnumpyTransformed
       if self.TwoDLM.isChecked():
         if self.modelDisplayNode is not None:
-          self.modelDisplayNode.SetSliceProjection(1) 
-          self.modelDisplayNode.SetSliceProjectionOpacity(1) 
+          self.modelDisplayNode.SetSliceProjection(1)
+          self.modelDisplayNode.SetSliceProjectionOpacity(1)
         else:
-          self.modelDisplayNode.SetSliceProjection(0) 
+          self.modelDisplayNode.SetSliceProjection(0)
     except AttributeError:
       referenceLandmarks = self.rawMeanLandmarks
       # get fiducial node for mean landmarks
@@ -625,10 +625,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.vectorThree.clear()
     self.XcomboBox.clear()
     self.YcomboBox.clear()
-    
+
     self.scaleSlider.value=3
     self.scaleMeanShapeSlider.value=3
-    self.meanShapeColor.color=qt.QColor(255,0,0) 
+    self.meanShapeColor.color=qt.QColor(255,0,0)
 
     self.nodeCleanUp()
 
@@ -655,10 +655,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.selectFactor.clear()
     self.factorName.setText("")
     self.scaleSlider.value=3
-    
+
     self.scaleMeanShapeSlider.value=3
-    self.meanShapeColor.color=qt.QColor(255,0,0)    
-    
+    self.meanShapeColor.color=qt.QColor(255,0,0)
+
     # Disable buttons for workflow
     self.plotButton.enabled = False
     self.inputFactorButton.enabled = False
@@ -667,48 +667,48 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.plotMeanButton3D.enabled = False
     self.plotMeanButton2D.enabled = False
     self.loadButton.enabled = False
-    
+
     #delete data from previous runs
     self.nodeCleanUp()
 
   def nodeCleanUp(self):
     # clear all nodes created by the module
     for node in GPANodeCollection:
-      
+
       GPANodeCollection.RemoveItem(node)
       slicer.mrmlScene.RemoveNode(node)
-  
+
   def toggleMeanPlot(self):
-    visibility = self.meanLandmarkNode.GetDisplayVisibility() 
+    visibility = self.meanLandmarkNode.GetDisplayVisibility()
     if visibility:
       visibility = self.meanLandmarkNode.SetDisplayVisibility(False)
     else:
       visibility = self.meanLandmarkNode.SetDisplayVisibility(True)
       #refresh color and scale from GUI
-      self.meanLandmarkNode.GetDisplayNode().SetGlyphScale(self.scaleMeanShapeSlider.value) 
+      self.meanLandmarkNode.GetDisplayNode().SetGlyphScale(self.scaleMeanShapeSlider.value)
       color = self.meanShapeColor.color
-      self.meanLandmarkNode.GetDisplayNode().SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255]) 
-      
+      self.meanLandmarkNode.GetDisplayNode().SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
+
   def toggleMeanPlot2D(self):
-    visibility = self.meanLandmarkNode.GetDisplayNode().GetSliceProjection() 
+    visibility = self.meanLandmarkNode.GetDisplayNode().GetSliceProjection()
     if visibility:
-      self.meanLandmarkNode.GetDisplayNode().SetSliceProjection(0) 
+      self.meanLandmarkNode.GetDisplayNode().SetSliceProjection(0)
     else:
-      self.meanLandmarkNode.GetDisplayNode().SetSliceProjection(1) 
-      self.meanLandmarkNode.GetDisplayNode().SetSliceProjectionOpacity(1) 
+      self.meanLandmarkNode.GetDisplayNode().SetSliceProjection(1)
+      self.meanLandmarkNode.GetDisplayNode().SetSliceProjectionOpacity(1)
       #refresh color and scale from GUI
-      self.meanLandmarkNode.GetDisplayNode().SetGlyphScale(self.scaleMeanShapeSlider.value)   
+      self.meanLandmarkNode.GetDisplayNode().SetGlyphScale(self.scaleMeanShapeSlider.value)
       color = self.meanShapeColor.color
-      self.meanLandmarkNode.GetDisplayNode().SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255]) 
-      
+      self.meanLandmarkNode.GetDisplayNode().SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
+
   def toggleMeanColor(self):
     color = self.meanShapeColor.color
-    self.meanLandmarkNode.GetDisplayNode().SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255]) 
-    
+    self.meanLandmarkNode.GetDisplayNode().SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
+
   def scaleMeanGlyph(self):
     scaleFactor = self.sampleSizeScaleFactor/10
-    self.meanLandmarkNode.GetDisplayNode().SetGlyphScale(self.scaleMeanShapeSlider.value) 
-    
+    self.meanLandmarkNode.GetDisplayNode().SetGlyphScale(self.scaleMeanShapeSlider.value)
+
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
     self.StyleSheet="font: 12px;  min-height: 20 px ; background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #f6f7fa, stop: 1 #dadbde); border: 1px solid; border-radius: 4px; "
@@ -760,10 +760,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     meanShapeFrame.text="Mean Shape Plot Options"
     meanShapeLayout= qt.QGridLayout(meanShapeFrame)
     self.layout.addWidget(meanShapeFrame)
-    
+
     meanButtonLable=qt.QLabel("Mean shape visibility: ")
     meanShapeLayout.addWidget(meanButtonLable,1,1)
-    
+
     self.plotMeanButton3D = qt.QPushButton("Toggle mean shape visibility")
     self.plotMeanButton3D.checkable = True
     self.plotMeanButton3D.setStyleSheet(self.StyleSheet)
@@ -771,7 +771,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     meanShapeLayout.addWidget(self.plotMeanButton3D,1,2,1,1)
     self.plotMeanButton3D.enabled = False
     self.plotMeanButton3D.connect('clicked(bool)', self.toggleMeanPlot)
-    
+
     self.plotMeanButton2D = qt.QPushButton("Toggle 2D projection")
     self.plotMeanButton2D.checkable = True
     self.plotMeanButton2D.setStyleSheet(self.StyleSheet)
@@ -779,7 +779,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     meanShapeLayout.addWidget(self.plotMeanButton2D,1,3,1,1)
     self.plotMeanButton2D.enabled = False
     self.plotMeanButton2D.connect('clicked(bool)', self.toggleMeanPlot2D)
-    
+
     meanColorLable=qt.QLabel("Mean shape color: ")
     meanShapeLayout.addWidget(meanColorLable,2,1)
     self.meanShapeColor = ctk.ctkColorPickerButton()
@@ -787,8 +787,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.meanShapeColor.color = qt.QColor(255,0,0)
     meanShapeLayout.addWidget(self.meanShapeColor,2,2,1,1)
     self.meanShapeColor.connect('colorChanged(QColor)', self.toggleMeanColor)
-    
-    
+
+
     self.scaleMeanShapeSlider = ctk.ctkSliderWidget()
     self.scaleMeanShapeSlider.singleStep = .1
     self.scaleMeanShapeSlider.minimum = 0
@@ -799,7 +799,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     meanShapeLayout.addWidget(meanShapeSliderLabel,3,1)
     meanShapeLayout.addWidget(self.scaleMeanShapeSlider,3,2,1,2)
     self.scaleMeanShapeSlider.connect('valueChanged(double)', self.scaleMeanGlyph)
-    
+
     #PC plot section
     plotFrame=ctk.ctkCollapsibleButton()
     plotFrame.text="PCA Scatter Plot Options"
@@ -815,14 +815,14 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     Ylabel=qt.QLabel("Y Axis")
     plotLayout.addWidget(Ylabel,2,1)
     plotLayout.addWidget(self.YcomboBox,2,2,1,3)
-    
+
     self.factorNameLabel=qt.QLabel('Factor Name:')
     plotLayout.addWidget(self.factorNameLabel,3,1)
     self.factorName=qt.QLineEdit()
     self.factorName.setToolTip("Enter factor name")
     self.factorName.connect('textChanged(const QString &)', self.factorStringChanged)
     plotLayout.addWidget(self.factorName,3,2)
-    
+
     self.inputFactorButton = qt.QPushButton("Add factor data")
     self.inputFactorButton.checkable = True
     self.inputFactorButton.setStyleSheet(self.StyleSheet)
@@ -830,7 +830,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     plotLayout.addWidget(self.inputFactorButton,3,4)
     self.inputFactorButton.enabled = False
     self.inputFactorButton.connect('clicked(bool)', self.enterFactors)
-    
+
     self.selectFactor=qt.QComboBox()
     self.selectFactor.addItem("No factor data")
     selectFactorLabel=qt.QLabel("Select factor: ")
@@ -870,8 +870,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.TwoDType=qt.QCheckBox()
     self.TwoDType.checked = False
     self.TwoDType.setText("Lollipop 2D Projection")
-    lolliLayout.addWidget(self.TwoDType,4,2)   
-    
+    lolliLayout.addWidget(self.TwoDType,4,2)
+
     self.lolliButton = qt.QPushButton("Lollipop Vector Plot")
     self.lolliButton.checkable = True
     self.lolliButton.setStyleSheet(self.StyleSheet)
@@ -921,7 +921,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     distributionLayout.addWidget(self.plotDistributionButton,7,1,1,4)
     self.plotDistributionButton.enabled = False
     self.plotDistributionButton.connect('clicked(bool)', self.onPlotDistribution)
-    
+
     # 3D view set up tab
     selectTemplatesButton=ctk.ctkCollapsibleButton()
     selectTemplatesButton.text="Setup 3D Visualization"
@@ -967,7 +967,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.selectorButton.connect('clicked(bool)', self.onSelect)
 
     self.layout.addWidget(selectTemplatesButton)
-    
+
     # PC warping
     vis=ctk.ctkCollapsibleButton()
     vis.text='PCA Visualization Parameters'
@@ -1004,7 +1004,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     animateLayout.addWidget(self.stopRecordButton,1,5,1,2)
     self.stopRecordButton.connect('clicked(bool)', self.onStopRecording)
     self.layout.addWidget(animate)
-    
+
     # Reset button
     resetButton = qt.QPushButton("Reset Scene")
     resetButton.checkable = True
@@ -1021,8 +1021,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     modelSequence.SetHideFromEditors(0)
     transformSequence = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSequenceNode","GPATFSequence")
     transformSequence.SetHideFromEditors(0)
-    
-    #Set up a new sequence browser and add sequences 
+
+    #Set up a new sequence browser and add sequences
     browserNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSequenceBrowserNode", "GPASequenceBrowser")
     browserLogic=slicer.modules.sequencebrowser.logic()
     browserLogic.AddSynchronizedNode(modelSequence,self.cloneModelNode,browserNode)
@@ -1038,16 +1038,16 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     GPANodeCollection.AddItem(modelSequence)
     GPANodeCollection.AddItem(transformSequence)
     GPANodeCollection.AddItem(browserNode)
-    
+
     #enable stop recording
     self.stopRecordButton.enabled = True
-  
+
   def onStopRecording(self):
     browserWidget=slicer.modules.sequencebrowser.widgetRepresentation()
     recordWidget = browserWidget.findChild('qMRMLSequenceBrowserPlayWidget')
     recordWidget.setRecordingEnabled(0)
     slicer.util.selectModule(slicer.modules.sequencebrowser)
-    
+
   def cleanup(self):
     pass
 
@@ -1217,7 +1217,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     if modelNode is None:
       modelNode = slicer.vtkMRMLModelNode()
       modelNode.SetName('Landmark Point Cloud')
-      modelNode.SetHideFromEditors(1) #hide from module so these cannot be selected for analysis 
+      modelNode.SetHideFromEditors(1) #hide from module so these cannot be selected for analysis
       slicer.mrmlScene.AddNode(modelNode)
       GPANodeCollection.AddItem(modelNode)
       modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
@@ -1279,7 +1279,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       if modelNode is None:
         modelNode = slicer.vtkMRMLModelNode()
         modelNode.SetName('Landmark Variance Ellipse')
-        modelNode.SetHideFromEditors(1) #hide from module so these cannot be selected for analysis 
+        modelNode.SetHideFromEditors(1) #hide from module so these cannot be selected for analysis
         slicer.mrmlScene.AddNode(modelNode)
         GPANodeCollection.AddItem(modelNode)
         modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
@@ -1299,7 +1299,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         GPANodeCollection.AddItem(modelNode)
         modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
         modelNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
-        
+
         GPANodeCollection.AddItem(modelDisplayNode)
 
     sphereSource = vtk.vtkSphereSource()
@@ -1506,7 +1506,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
           np.delete(landmarksControl,i,axis=2)
 
     return landmarksControl, files
-    
+
   def dist(self, a):
     """
     Computes the euclidean distance matrix for nXK points in a 3D space. So the input matrix is nX3xk
@@ -1539,7 +1539,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
     numPoints = len(data)
     uniqueFactors = np.unique(factors)
     factorNumber = len(uniqueFactors)
-    
+
     #Set up chart
     plotChartNode=slicer.mrmlScene.GetFirstNodeByName("Chart_PCA_cov" + xAxis + "v" +yAxis)
     if plotChartNode is None:
@@ -1547,8 +1547,8 @@ class GPALogic(ScriptedLoadableModuleLogic):
       GPANodeCollection.AddItem(plotChartNode)
     else:
       plotChartNode.RemoveAllPlotSeriesNodeIDs()
-     
-    # Plot all series 
+
+    # Plot all series
     for factor in uniqueFactors:
       tableNode=slicer.mrmlScene.GetFirstNodeByName('PCA Scatter Plot Table Factor ' + factor)
       if tableNode is None:
@@ -1556,27 +1556,27 @@ class GPALogic(ScriptedLoadableModuleLogic):
         GPANodeCollection.AddItem(tableNode)
       else:
         tableNode.RemoveAllColumns()    #clear previous data from columns
-    
-      # Set up columns for X,Y, and labels  
+
+      # Set up columns for X,Y, and labels
       labels=tableNode.AddColumn()
       labels.SetName('Subject ID')
       tableNode.SetColumnType('Subject ID',vtk.VTK_STRING)
-    
+
       for i in range(pcNumber):
         pc=tableNode.AddColumn()
         colName="PC" + str(i+1)
         pc.SetName(colName)
         tableNode.SetColumnType(colName, vtk.VTK_FLOAT)
-      
+
       factorCounter=0
       for i in range(numPoints):
-        if (factors[i] == factor):      
+        if (factors[i] == factor):
           tableNode.AddEmptyRow()
           tableNode.SetCellText(factorCounter, 0,files[i])
           for j in range(pcNumber):
             tableNode.SetCellText(factorCounter, j+1, str(data[i,j]))
           factorCounter+=1
-          
+
       plotSeriesNode=slicer.mrmlScene.GetFirstNodeByName("Series_PCA_" + factor + "_" + xAxis + "v" +yAxis)
       if plotSeriesNode is None:
         plotSeriesNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", factor)
@@ -1592,7 +1592,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
       plotSeriesNode.SetUniqueColor()
       # Add data series to chart
       plotChartNode.AddAndObservePlotSeriesNodeID(plotSeriesNode.GetID())
-    
+
     # Set up view options for chart
     plotChartNode.SetTitle('PCA Scatter Plot with factors')
     plotChartNode.SetXAxisTitle(xAxis)
@@ -1602,7 +1602,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
     plotWidget = layoutManager.plotWidget(0)
     plotViewNode = plotWidget.mrmlPlotViewNode()
     plotViewNode.SetPlotChartNodeID(plotChartNode.GetID())
-      
+
   def makeScatterPlot(self, data, files, title,xAxis,yAxis,pcNumber):
     numPoints = len(data)
     #check if there is a table node has been created
@@ -1711,7 +1711,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
       if modelNode is None:
         modelNode = slicer.vtkMRMLModelNode()
         modelNode.SetName(modelNodeName)
-        modelNode.SetHideFromEditors(1) #hide from module so these cannot be selected for analysis 
+        modelNode.SetHideFromEditors(1) #hide from module so these cannot be selected for analysis
         slicer.mrmlScene.AddNode(modelNode)
         GPANodeCollection.AddItem(modelNode)
         modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
