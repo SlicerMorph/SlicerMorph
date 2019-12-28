@@ -21,11 +21,11 @@ class SlicerMorphSampleData(ScriptedLoadableModule):
     self.parent.contributors = ["Murat Maga & Sara Rolfe"]
     self.parent.helpText = """This module adds sample data for SlicerMorph into the SampleData module"""
     self.parent.acknowledgementText = """
-This work was was funded 
+This work was was funded
 """
 
     # don't show this module - additional data will be shown in SampleData module
-    parent.hidden = True 
+    parent.hidden = True
 
     # Add data sets to SampleData module
     iconsPath = os.path.join(os.path.dirname(self.parent.path), 'Resources/Icons')
@@ -48,7 +48,7 @@ This work was was funded
       nodeNames=['Gor_template_low_res', 'Gorilla_template_LM1'],
       thumbnailFileName=os.path.join(iconsPath, 'gorilla3D.png'),
       loadFileType=['ModelFile', 'MarkupsFiducials'],
-)  
+)
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
       sampleName='Mouse Skull Landmarks Only',
       category='SlicerMorph',
@@ -67,7 +67,7 @@ This work was was funded
       nodeNames=['4074_skull', '4074_S_lm1'],
       thumbnailFileName=os.path.join(iconsPath, 'mouse3D.png'),
       loadFileType=['ModelFile','MarkupsFiducials'],
-)  
+)
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
       sampleName='Bruker/Sykscan mCT Recon sample',
       category='SlicerMorph',

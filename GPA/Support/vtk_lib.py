@@ -44,7 +44,7 @@ transform: vtkAbstractTransform
 
 def createTPS( sourceLM, targetLM):
     """Perform the thin plate transform using the vtkThinPlateSplineTransform class"""
-# 
+#
     thinPlateTransform = vtk.vtkThinPlateSplineTransform()
     thinPlateTransform.SetBasisToR() # for 3D transform
 #
@@ -61,16 +61,16 @@ def convertFudicialToVTKPoint(fnode):
     x=y=z=0
     loc=[x,y,z]
     lmData=np.zeros((numberOfLM,3))
-    # 
+    #
     for i in range(numberOfLM):
         fnode.GetNthFiducialPosition(i,loc)
         lmData[i,:]=np.asarray(loc)
     #return lmData
-    # 
+    #
     points=vtk.vtkPoints()
     for i in range(numberOfLM):
         points.InsertNextPoint(lmData[i,0], lmData[i,1], lmData[i,2])
-# 
+#
     return points
 
 def convertNumpyToVTK(A):
@@ -78,7 +78,7 @@ def convertNumpyToVTK(A):
     points=vtk.vtkPoints()
     for i in range(x):
         points.InsertNextPoint(A[i,0], A[i,1], A[i,2])
-# 
+#
     return points
 
 
@@ -86,16 +86,16 @@ def convertNumpyToVTK(A):
 #     mrml=slicer.mrmlScene
 #     tnode=slicer.vtkMRMLScalarVolumeNode()
 #     mrml.AddNode(tnode)
-# # 
+# #
 #     movingNode=getNode('3958-f_baseline')
 #     movingLM=getNode('3958-f_baseline-landmarks')
-# # 
+# #
 #     fixedNode=getNode('3964-m_baseline')
 #     fixedLM=getNode('3964-m_baseline-landmarks')
-#     # 
+#     #
 #     fixedPoints=convertFudicialToVTKPoint(fixedLM)
 #     movingPoints=convertFudicialToVTKPoint(movingLM)
-#     # 
+#     #
 #     performThinPlateRegistration(movingNode, fixedNode, fixedPoints,movingPoints,movingNode)
 
 
@@ -123,4 +123,4 @@ def convertNumpyToVTK(A):
 # >>> tnode.SetAndObserveTransformToParent(tps3.Inverse())
 # >>> tps3.SetTargetLandmarks(mLM)
 # >>> tps3.SetTargetLandmarks(fLM)
-# >>>  
+# >>>

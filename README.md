@@ -16,7 +16,7 @@ To install SlicerMorph, please first install the Preview Release of [3D-Slicer](
 - **SkyscanReconImport:** Imports an image stack from Bruker/Skyscan reconstruction software (Nrecon) with correct voxel spacing and orientation as a 3D volume.
 
 ## Funding Acknowledgement
-This project is supported by a NSF Advances in Biological Informatics Collaborative grant to Murat Maga (ABI-1759883), Adam Summers (ABI-1759637) and Doug Boyer (ABI-1759839). 
+This project is supported by a NSF Advances in Biological Informatics Collaborative grant to Murat Maga (ABI-1759883), Adam Summers (ABI-1759637) and Doug Boyer (ABI-1759839).
 
 <img src="./NSF_4-Color_bitmap_Logo.png" alt="NSF logo" width="256" height="256">
 
