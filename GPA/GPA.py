@@ -579,7 +579,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         logic.makeScatterPlot(dataAll,self.files,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1),self.pcNumber)
     else:
       logic.makeScatterPlot(dataAll,self.files,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1),self.pcNumber)
-    self.assignLayoutDescription()
 
   def lolliPlot(self):
     pb1=self.vectorOne.currentIndex
@@ -1159,8 +1158,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     #Connect transform to model
     self.transformNode.SetAndObserveTransformToParent( VTKTPS )
     self.cloneModelNode.SetAndObserveTransformNodeID(self.transformNode.GetID())
-    self.assignLayoutDescription()
-
 
   def onPlotDistribution(self):
     if self.NoneType.isChecked():
