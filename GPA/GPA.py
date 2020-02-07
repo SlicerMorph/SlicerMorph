@@ -317,11 +317,17 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     threeDView.resetFocalPoint()
 
     # check for loaded reference model
-    if hasattr(self, 'modelDisplayNode'):
-      # assign each model to a specific view
-      self.modelDisplayNode.SetViewNodeIDs([viewNode1.GetID()])
-      self.cloneModelDisplayNode.SetViewNodeIDs([viewNode2.GetID()])
-      referenceModelNode = self.modelDisplayNode.GetDisplayableNode() #for centering slice view
+    if hasattr(self, 'sourceLMNode'):
+      self.sourceLMNode.GetDisplayNode().SetViewNodeIDs([viewNode1.GetID()])
+      self.cloneLandmarkDisplayNode.SetViewNodeIDs([viewNode2.GetID()])
+      if hasattr(self, 'modelDisplayNode'):
+        # assign each model to a specific view
+        self.modelDisplayNode.SetViewNodeIDs([viewNode1.GetID()])
+        self.cloneModelDisplayNode.SetViewNodeIDs([viewNode2.GetID()])
+        referenceModelNode = self.modelDisplayNode.GetDisplayableNode() #for centering slice view
+      else:
+        referenceModelNode = self.meanLandmarkNode
+      
     else:
       referenceModelNode = self.meanLandmarkNode
     # fit the red slice node to show the plot projections
@@ -377,9 +383,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     except AttributeError:
       self.loadButton.enabled = False
   def onGrayscaleSelect(self):
-    self.selectorButton.enabled = bool (self.grayscaleSelector.currentNode() and self.FudSelect.currentNode())
+    self.selectorButton.enabled = bool (self.FudSelect.currentNode())
   def onFudSelect(self):
-    self.selectorButton.enabled = bool (self.grayscaleSelector.currentNode() and self.FudSelect.currentNode())
+    self.selectorButton.enabled = bool (self.FudSelect.currentNode())
   def updateList(self):
     i,j,k=self.LM.lm.shape
     self.PCList=[]
@@ -471,6 +477,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.plotDistributionButton.enabled = True
     self.plotMeanButton3D.enabled = True
     self.plotMeanButton2D.enabled = True
+    self.showMeanLabelsButton.enabled = True
 
   def populateDistanceTable(self, files):
     sortedArray = np.zeros(len(files), dtype={'names':('filename', 'procdist'),'formats':('U10','f8')})
@@ -665,6 +672,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.plotDistributionButton.enabled = False
     self.plotMeanButton3D.enabled = False
     self.plotMeanButton2D.enabled = False
+    self.showMeanLabelsButton.enabled = False
     self.loadButton.enabled = False
 
     #delete data from previous runs
@@ -700,6 +708,14 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       color = self.meanShapeColor.color
       self.meanLandmarkNode.GetDisplayNode().SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
 
+  def toggleMeanLabels(self):
+    visibility = self.meanLandmarkNode.GetDisplayNode().GetPointLabelsVisibility()
+    if visibility:
+      self.meanLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(0)
+    else:
+      self.meanLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(1)
+    
+    
   def toggleMeanColor(self):
     color = self.meanShapeColor.color
     self.meanLandmarkNode.GetDisplayNode().SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
@@ -767,7 +783,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.plotMeanButton3D.checkable = True
     self.plotMeanButton3D.setStyleSheet(self.StyleSheet)
     self.plotMeanButton3D.toolTip = "Toggle visibility of mean shape plot"
-    meanShapeLayout.addWidget(self.plotMeanButton3D,1,2,1,1)
+    meanShapeLayout.addWidget(self.plotMeanButton3D,1,2)
     self.plotMeanButton3D.enabled = False
     self.plotMeanButton3D.connect('clicked(bool)', self.toggleMeanPlot)
 
@@ -775,16 +791,27 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.plotMeanButton2D.checkable = True
     self.plotMeanButton2D.setStyleSheet(self.StyleSheet)
     self.plotMeanButton2D.toolTip = "Toggle visibility of mean plot in 2D"
-    meanShapeLayout.addWidget(self.plotMeanButton2D,1,3,1,1)
+    meanShapeLayout.addWidget(self.plotMeanButton2D,1,3)
     self.plotMeanButton2D.enabled = False
     self.plotMeanButton2D.connect('clicked(bool)', self.toggleMeanPlot2D)
+    
+    meanButtonLable=qt.QLabel("Mean point label visibility: ")
+    meanShapeLayout.addWidget(meanButtonLable,2,1)
+    
+    self.showMeanLabelsButton = qt.QPushButton("Toggle label visibility")
+    self.showMeanLabelsButton.checkable = True
+    self.showMeanLabelsButton.setStyleSheet(self.StyleSheet)
+    self.showMeanLabelsButton.toolTip = "Toggle visibility of mean point labels"
+    meanShapeLayout.addWidget(self.showMeanLabelsButton,2,2)
+    self.showMeanLabelsButton.enabled = False
+    self.showMeanLabelsButton.connect('clicked(bool)', self.toggleMeanLabels)
 
     meanColorLable=qt.QLabel("Mean shape color: ")
-    meanShapeLayout.addWidget(meanColorLable,2,1)
+    meanShapeLayout.addWidget(meanColorLable,3,1)
     self.meanShapeColor = ctk.ctkColorPickerButton()
     self.meanShapeColor.displayColorName = False
     self.meanShapeColor.color = qt.QColor(255,0,0)
-    meanShapeLayout.addWidget(self.meanShapeColor,2,2,1,1)
+    meanShapeLayout.addWidget(self.meanShapeColor,3,2)
     self.meanShapeColor.connect('colorChanged(QColor)', self.toggleMeanColor)
 
 
@@ -795,8 +822,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.scaleMeanShapeSlider.value = 3
     self.scaleMeanShapeSlider.setToolTip("Set scale for mean shape glyphs")
     meanShapeSliderLabel=qt.QLabel("Mean shape glyph scale")
-    meanShapeLayout.addWidget(meanShapeSliderLabel,3,1)
-    meanShapeLayout.addWidget(self.scaleMeanShapeSlider,3,2,1,2)
+    meanShapeLayout.addWidget(meanShapeSliderLabel,4,1)
+    meanShapeLayout.addWidget(self.scaleMeanShapeSlider,4,2,1,2)
     self.scaleMeanShapeSlider.connect('valueChanged(double)', self.scaleMeanGlyph)
 
     #PC plot section
@@ -1025,6 +1052,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     browserNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSequenceBrowserNode", "GPASequenceBrowser")
     browserLogic=slicer.modules.sequencebrowser.logic()
     browserLogic.AddSynchronizedNode(modelSequence,self.cloneModelNode,browserNode)
+    browserLogic.AddSynchronizedNode(modelSequence,self.cloneLandmarkNode,browserNode)
     browserLogic.AddSynchronizedNode(transformSequence,self.transformNode,browserNode)
     browserNode.SetRecording(transformSequence,'true')
     browserNode.SetRecording(modelSequence,'true')
@@ -1055,10 +1083,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.meanLandmarkNode=slicer.mrmlScene.GetFirstNodeByName('Mean Landmark Node')
     self.meanLandmarkNode.SetDisplayVisibility(0)
 
-    # get model node selected
-    self.modelNode=self.grayscaleSelector.currentNode()
-    self.modelDisplayNode = self.modelNode.GetDisplayNode()
-
     # get landmark node selected
     logic = GPALogic()
     self.sourceLMNode=self.FudSelect.currentNode()
@@ -1081,33 +1105,50 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     VTKTPS.SetSourceLandmarks( sourceLMVTK )
     VTKTPS.SetTargetLandmarks( targetLMVTK )
     VTKTPS.SetBasisToR()  # for 3D transform
-
-    # connect transform to model
-    self.transformMeanNode=slicer.mrmlScene.GetFirstNodeByName('Mean TPS Transform')
-    if self.transformMeanNode is None:
-      self.transformMeanNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', 'Mean TPS Transform')
-      GPANodeCollection.AddItem(self.transformMeanNode)
-    self.transformMeanNode.SetAndObserveTransformToParent( VTKTPS )
-    self.modelNode.SetAndObserveTransformNodeID(self.transformMeanNode.GetID())
-    self.sourceLMNode.SetAndObserveTransformNodeID(self.transformMeanNode.GetID())
-
+    
+    # define a reference lms as clone of selected lms
+    self.cloneLandmarkNode=slicer.mrmlScene.GetFirstNodeByName('GPA Warped Landmarks')
+    if hasattr(self, 'cloneLandmarkNode'):
+      slicer.mrmlScene.RemoveNode(self.cloneLandmarkNode)
+    shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+    itemIDToClone = shNode.GetItemByDataNode(self.sourceLMNode)
+    clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(shNode, itemIDToClone)
+    self.cloneLandmarkNode = shNode.GetItemDataNode(clonedItemID)
+    self.cloneLandmarkNode.SetName('GPA Warped Landmarks')
+    self.cloneLandmarkDisplayNode = self.cloneLandmarkNode.GetDisplayNode()
+    self.cloneLandmarkNode.SetHideFromEditors(1)
+    GPANodeCollection.AddItem(self.cloneLandmarkNode)
+    slicer.vtkSlicerTransformLogic().hardenTransform(self.cloneLandmarkNode)
+    
     # get transformed source landmark array
     self.sourceLMnumpyTransformed=self.rawMeanLandmarks
 
-    # define a reference model as clone of selected volume
-    self.cloneModelNode=slicer.mrmlScene.GetFirstNodeByName('GPA Warped Volume')
-    if self.cloneModelNode: # remove previous versions
-      slicer.mrmlScene.RemoveNode(self.cloneModelNode)
-    shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
-    itemIDToClone = shNode.GetItemByDataNode(self.modelNode)
-    clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(shNode, itemIDToClone)
-    self.cloneModelNode = shNode.GetItemDataNode(clonedItemID)
-    self.cloneModelNode.SetName("GPA Reference Volume")
-    self.cloneModelDisplayNode = self.cloneModelNode.GetDisplayNode()
-    self.cloneModelDisplayNode.SetColor(0,0,1)
-    GPANodeCollection.AddItem(self.cloneModelNode)
-    # permanently apply mean tps transform to cloned node. This will be the node warped by PCs
-    slicer.vtkSlicerTransformLogic().hardenTransform(self.cloneModelNode)
+    if bool(self.grayscaleSelector.currentNode()):
+      # get model node selected
+      self.modelNode=self.grayscaleSelector.currentNode()
+      self.modelDisplayNode = self.modelNode.GetDisplayNode()
+      # connect transform to model
+      self.transformMeanNode=slicer.mrmlScene.GetFirstNodeByName('Mean TPS Transform')
+      if not hasattr(self, 'transformMeanNode'):
+        self.transformMeanNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', 'Mean TPS Transform')
+        GPANodeCollection.AddItem(self.transformMeanNode)
+      self.transformMeanNode.SetAndObserveTransformToParent( VTKTPS )
+      self.modelNode.SetAndObserveTransformNodeID(self.transformMeanNode.GetID())
+      self.sourceLMNode.SetAndObserveTransformNodeID(self.transformMeanNode.GetID())
+      
+      # define a reference model as clone of selected volume
+      self.cloneModelNode=slicer.mrmlScene.GetFirstNodeByName('GPA Warped Volume')
+      if hasattr(self, 'cloneModelNode'):
+        slicer.mrmlScene.RemoveNode(self.cloneModelNode)
+      itemIDToClone = shNode.GetItemByDataNode(self.modelNode)
+      clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(shNode, itemIDToClone)
+      self.cloneModelNode = shNode.GetItemDataNode(clonedItemID)
+      self.cloneModelNode.SetName('GPA Warped Volume')
+      self.cloneModelDisplayNode = self.cloneModelNode.GetDisplayNode()
+      self.cloneModelDisplayNode.SetColor(0,0,1)
+      GPANodeCollection.AddItem(self.cloneModelNode)
+      # permanently apply mean tps transform to cloned node. This will be the node warped by PCs
+      slicer.vtkSlicerTransformLogic().hardenTransform(self.cloneModelNode)
 
 
     #apply custom layout
@@ -1157,7 +1198,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     #Connect transform to model
     self.transformNode.SetAndObserveTransformToParent( VTKTPS )
-    self.cloneModelNode.SetAndObserveTransformNodeID(self.transformNode.GetID())
+    self.cloneLandmarkNode.SetAndObserveTransformNodeID(self.transformNode.GetID())
+    if hasattr(self, 'cloneModelNode'):
+      self.cloneModelNode.SetAndObserveTransformNodeID(self.transformNode.GetID())
+
 
   def onPlotDistribution(self):
     if self.NoneType.isChecked():
@@ -1394,8 +1438,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
 
   def mergeMatchs(self, topDir, lmToRemove, suffix=".fcsv"):
     # initial data array
-    dirs, files=self.walk_dir(topDir)
-    matchList, noMatch=self.createMatchList(topDir, "fcsv")
+    dirs, files, matchList = self.walk_dir_current(topDir)
     landmarks=self.initDataArray(dirs,files[0],len(matchList))
     matchedfiles=[]
     for i in range(len(matchList)):
@@ -1414,9 +1457,9 @@ class GPALogic(ScriptedLoadableModuleLogic):
    #retains data structure in case filtering is required later.
     validFiles=[]
     for root, dirs, files in os.walk(topDir):
-      for name in files:
-        if fnmatch.fnmatch(name,"*"+suffix):
-          validFiles.append(os.path.join(root, name[:-5]))
+      for filename in files:
+        if fnmatch.fnmatch(filename,"*"+suffix):
+          validFiles.append(os.path.join(root, filename[:-5]))
     invalidFiles=[]
     return validFiles, invalidFiles
 
@@ -1455,6 +1498,18 @@ class GPALogic(ScriptedLoadableModuleLogic):
           dir_to_explore.append(path)
           file_to_open.append(filename)
     return dir_to_explore, file_to_open
+    
+  def walk_dir_current(self, top_dir):
+    """
+    Returns a list of all fcsv files in current directory
+    """
+    dirs=[]
+    validFiles=[]
+    files = [f for f in os.listdir(top_dir) if os.path.isfile(os.path.join(top_dir,f))]
+    for filename in files:
+      dirs.append(top_dir)
+      validFiles.append(os.path.join(top_dir, filename[:-5]))
+    return dirs, files, validFiles
 
   def initDataArray(self, dirs, file,k):
     """
@@ -1470,39 +1525,6 @@ class GPALogic(ScriptedLoadableModuleLogic):
     i= len(data)
     landmarks=np.zeros(shape=(i,j,k))
     return landmarks
-
-  def importAllLandmarks(self, inputDirControl, outputFolder):
-    """
-    Import all of the landmarks.
-    Controls are stored first, then experimental landmarks, in a np array
-    Returns the landmark array and the number of experimental and control samples respectively.
-    """
-    # get files and directories
-    dirs, files=self.walk_dir(inputDirControl)
-    with open(outputFolder+os.sep+"filenames.txt",'w') as f:
-      for i in range(len(files)):
-        tmp=files[i]
-        f.write(tmp[:-5]+"\n")
-    # initilize and fill control landmarks
-    landmarksControl=self.initDataArray(dirs,files[0])
-    iD,jD,kD=landmarksControl.shape
-    nControl=kD
-    iD=iD.__int__();jD=jD.__int__();kD=kD.__int__()
-    # fill landmarks
-    for i in range(0,len(files)):
-      tmp=self.importLandMarks(dirs[i]+os.sep+files[i])
-      #  check that landmarks where imported, if not delete zeros matrix
-      if type(tmp) is not 'NoneType':
-        it,at=tmp.shape
-        it=it.__int__(); at=at.__int__()
-        if it == iD and at == jD:
-          landmarksControl[:,:,i]=tmp
-        else:
-          np.delete(landmarksControl,i,axis=2)
-      else:
-          np.delete(landmarksControl,i,axis=2)
-
-    return landmarksControl, files
 
   def dist(self, a):
     """
