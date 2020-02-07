@@ -186,7 +186,8 @@ class SemiLandmarkWidget(ScriptedLoadableModuleWidget):
     logic = SemiLandmarkLogic()
     enableScreenshotsFlag = self.enableScreenshotsFlagCheckBox.checked
     gridLandmarks = [int(self.landmarkGridPoint1.value), int(self.landmarkGridPoint2.value), int(self.landmarkGridPoint3.value)]
-    logic.run(self.meshSelect.currentNode(), self.LMSelect.currentNode(), gridLandmarks, int(self.gridSamplingRate.value)+1)
+    smoothingIterations = 0 #placeholder to allow smoothing of polydata normals later
+    logic.run(self.meshSelect.currentNode(), self.LMSelect.currentNode(), gridLandmarks, int(self.gridSamplingRate.value)+1, smoothingIterations)
   
   def onMergeButton(self):
     logic = SemiLandmarkLogic()
@@ -216,7 +217,24 @@ class SemiLandmarkLogic(ScriptedLoadableModuleLogic):
     Uses ScriptedLoadableModuleLogic base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
-  def run(self, meshNode, LMNode, gridLandmarks, sampleRate):
+  def run(self, meshNode, LMNode, gridLandmarks, sampleRate, smoothingIterations):
+    if(smoothingIterations == 0):
+      normalArray = surfacePolydata.GetPointData().GetArray("Normals")
+      if(not normalArray):
+        normalFilter=vtk.vtkPolyDataNormals()
+        normalFilter.ComputePointNormalsOn()
+        normalFilter.SetInputData(surfacePolydata)
+        normalFilter.Update()
+        normalArray = normalFilter.GetOutput().GetPointData().GetArray("Normals")
+        if(not normalArray):
+          print("Error: no normal array")
+      semiLandmarks = self.applyPatch(self, meshNode, LMNode, gridLandmarks, sampleRate, normalArray)
+    else:
+      print("Error: no normal array")
+    
+    return True 
+    
+  def applyPatch(self, meshNode, LMNode, gridLandmarks, sampleRate, polydataNormalArray): 
     surfacePolydata = meshNode.GetPolyData()
 
     gridPoints = vtk.vtkPoints()
@@ -234,17 +252,14 @@ class SemiLandmarkLogic(ScriptedLoadableModuleLogic):
 
     sourcePoints = vtk.vtkPoints()
     targetPoints = vtk.vtkPoints()
-
-    #sourcePoints.InsertNextPoint(gridPoints.GetPoint(0))
-    #sourcePoints.InsertNextPoint(gridPoints.GetPoint(sampleRate-1))
-    #sourcePoints.InsertNextPoint(gridPoints.GetPoint(gridPoints.GetNumberOfPoints()-1))
+    
     sourcePoints.InsertNextPoint(gridPoints.GetPoint(0))
     sourcePoints.InsertNextPoint(gridPoints.GetPoint(1))
     sourcePoints.InsertNextPoint(gridPoints.GetPoint(2))
 
     point=[0,0,0]
     for gridVertex in gridLandmarks:
-      LMNode.GetMarkupPoint(int(gridVertex-1),0,point)
+      LMNode.GetMarkupPoint(0,int(gridVertex-1),point)
       targetPoints.InsertNextPoint(point)
       
     #transform grid to triangle
@@ -269,20 +284,11 @@ class SemiLandmarkLogic(ScriptedLoadableModuleLogic):
 
     #get surface normal from each landmark point
     rayDirection=[0,0,0]
-    normalArray = surfacePolydata.GetPointData().GetArray("Normals")
-    if(not normalArray):
-      normalFilter=vtk.vtkPolyDataNormals()
-      normalFilter.ComputePointNormalsOn()
-      normalFilter.SetInputData(surfacePolydata)
-      normalFilter.Update()
-      normalArray = normalFilter.GetOutput().GetPointData().GetArray("Normals")
-      if(not normalArray):
-        print("Error: no normal array")
       
     for gridVertex in gridLandmarks:
-      LMNode.GetMarkupPoint(int(gridVertex-1),0,point)
+      LMNode.GetMarkupPoint(0,int(gridVertex-1),point)
       closestPointId = pointLocator.FindClosestPoint(point)
-      tempNormal = normalArray.GetTuple(closestPointId)
+      tempNormal = polydataNormalArray.GetTuple(closestPointId)
       rayDirection[0] += tempNormal[0]
       rayDirection[1] += tempNormal[1]
       rayDirection[2] += tempNormal[2]
@@ -303,11 +309,11 @@ class SemiLandmarkLogic(ScriptedLoadableModuleLogic):
     #get a sample distance for quality control
     m1 = model.GetPolyData().GetPoint(0)
     m2 = model.GetPolyData().GetPoint(1)
-    m3 = model.GetPolyData().GetPoint(1)
+    m3 = model.GetPolyData().GetPoint(2)
     d1 = math.sqrt(vtk.vtkMath().Distance2BetweenPoints(m1, m2))
     d2 = math.sqrt(vtk.vtkMath().Distance2BetweenPoints(m2, m3))
     d3 = math.sqrt(vtk.vtkMath().Distance2BetweenPoints(m1, m3))
-    sampleDistance = (d1 + d2 + d3)
+    sampleDistance = (d1 + d2 + d3)/3
     
     # set initial three grid points
     for index in range(0,3):
@@ -317,12 +323,14 @@ class SemiLandmarkLogic(ScriptedLoadableModuleLogic):
       semilandmarkPoints.AddFiducialFromArray(origLMPoint, landmarkLabel)
     
     # calculate maximum projection distance
-    projectionTolerance = 2
+    projectionTolerance = 1
     boundingBox = vtk.vtkBoundingBox() 
     boundingBox.AddBounds(surfacePolydata.GetBounds())
     diagonalDistance = boundingBox.GetDiagonalLength()
     #rayLength = math.sqrt(diagonalDistance) * projectionTolerance
     rayLength = sampleDistance
+    print("RayLength: ",rayLength)
+    #print("RayLengthAlt: ",rayLengthAlt)
 
     # get normal projection intersections for remaining semi-landmarks
     print("Target number of points: ", resampledPolydata.GetNumberOfPoints())
@@ -337,7 +345,6 @@ class SemiLandmarkLogic(ScriptedLoadableModuleLogic):
       #if there are intersections, update the point to most external one.
       if intersectionPoints.GetNumberOfPoints()>0:
         exteriorPoint = intersectionPoints.GetPoint(intersectionPoints.GetNumberOfPoints()-1)
-        #projectionDistance=math.sqrt(vtk.vtkMath().Distance2BetweenPoints(exteriorPoint, modelPoint))
         semilandmarkPoints.AddFiducialFromArray(exteriorPoint)
       #if there are no intersections, reverse the normal vector
       else: 
@@ -347,16 +354,8 @@ class SemiLandmarkLogic(ScriptedLoadableModuleLogic):
         if intersectionPoints.GetNumberOfPoints()>0:
           exteriorPoint = intersectionPoints.GetPoint(0)
           semilandmarkPoints.AddFiducialFromArray(exteriorPoint)
-          #projectionDistance=math.sqrt(vtk.vtkMath().Distance2BetweenPoints(exteriorPoint, modelPoint))
-          #if projectionDistance < sampleDistance:
-          #  semilandmarkPoints.AddFiducialFromArray(exteriorPoint)
-          #else:
-          #  closestPointId = pointLocator.FindClosestPoint(modelPoint)
-          #  rayOrigin = surfacePolydata.GetPoint(closestPointId)
-          #  semilandmarkPoints.AddFiducialFromArray(rayOrigin)
-  
-        #if none in reverse direction, use closest mesh point
         else:
+          print("No intersection, using closest point")
           closestPointId = pointLocator.FindClosestPoint(modelPoint)
           rayOrigin = surfacePolydata.GetPoint(closestPointId)
           semilandmarkPoints.AddFiducialFromArray(rayOrigin)
@@ -472,10 +471,10 @@ class SemiLandmarkLogic(ScriptedLoadableModuleLogic):
     tempCurve = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsCurveNode', 'temporaryCurve')    
     for segment in lineSegmentList_edit:
       landmarkIndex = int(segment[0])
-      landmarkNode.GetMarkupPoint(int(landmarkIndex-1),0, controlPoint)
+      landmarkNode.GetMarkupPoint(0,int(landmarkIndex-1),controlPoint)
       tempCurve.AddControlPoint(controlPoint)
       landmarkIndex = int(segment[1])
-      landmarkNode.GetMarkupPoint(int(landmarkIndex-1),0, controlPoint)
+      landmarkNode.GetMarkupPoint(0,int(landmarkIndex-1),controlPoint)
       tempCurve.AddControlPoint(controlPoint)
       sampleDist = tempCurve.GetCurveLengthWorld() / (rowColNumber - 1);
       tempCurve.ResampleCurveSurface(sampleDist, modelNode, .99)
@@ -484,11 +483,12 @@ class SemiLandmarkLogic(ScriptedLoadableModuleLogic):
         mergedNode.AddFiducialFromArray(edgePoints.GetPoint(i)) 
       tempCurve.RemoveAllControlPoints()
     
+    # ------ removing manual points from SL set, leaving this as a placeholder while testing
     # add original landmark points
-    for originalLandmarkPoint in pointList_edit:
-      landmarkIndex = int(originalLandmarkPoint)
-      landmarkNode.GetMarkupPoint(int(landmarkIndex-1),0, controlPoint)
-      mergedNode.AddFiducialFromArray(controlPoint)
+    #for originalLandmarkPoint in pointList_edit:
+    #  landmarkIndex = int(originalLandmarkPoint)
+    #  landmarkNode.GetMarkupPoint(0,int(landmarkIndex-1),controlPoint)
+    #  mergedNode.AddFiducialFromArray(controlPoint)
      
     # update lock status and color of merged node    
     mergedNode.SetLocked(True)
@@ -519,7 +519,172 @@ class SemiLandmarkLogic(ScriptedLoadableModuleLogic):
       tableNode.SetCellText(i,2,str(triangle[2]))    
   
     return True
-           
+  
+  def projectPoints(self, sourceMesh, targetMesh, originalPoints, projectedPoints, rayLength):
+    sourcePolydata = sourceMesh.GetPolyData()
+    targetPolydata = targetMesh.GetPolyData()
+    
+    #set up locater for intersection with normal vector rays
+    obbTree = vtk.vtkOBBTree()
+    obbTree.SetDataSet(targetPolydata)
+    obbTree.BuildLocator()
+    
+    #set up point locator for finding surface normals and closest point
+    pointLocator = vtk.vtkPointLocator()
+    pointLocator.SetDataSet(sourcePolydata)
+    pointLocator.BuildLocator()
+    
+    targetPointLocator = vtk.vtkPointLocator()
+    targetPointLocator.SetDataSet(targetPolydata)
+    targetPointLocator.BuildLocator()
+    
+    #get surface normal from each landmark point
+    rayDirection=[0,0,0]
+    normalArray = sourcePolydata.GetPointData().GetArray("Normals")
+    if(not normalArray):
+      normalFilter=vtk.vtkPolyDataNormals()
+      normalFilter.ComputePointNormalsOn()
+      normalFilter.SetInputData(sourcePolydata)
+      normalFilter.Update()
+      normalArray = normalFilter.GetOutput().GetPointData().GetArray("Normals")
+      if(not normalArray):
+        print("Error: no normal array")
+    
+    for index in range(originalPoints.GetNumberOfMarkups()):
+      originalPoint=[0,0,0]
+      originalPoints.GetMarkupPoint(0,index,originalPoint)
+      # get ray direction from closest normal
+      closestPointId = pointLocator.FindClosestPoint(originalPoint)
+      rayDirection = normalArray.GetTuple(closestPointId)
+      rayEndPoint=[0,0,0]
+      for dim in range(len(rayEndPoint)):
+        rayEndPoint[dim] = originalPoint[dim] + rayDirection[dim]* rayLength
+      intersectionIds=vtk.vtkIdList()
+      intersectionPoints=vtk.vtkPoints()
+      obbTree.IntersectWithLine(originalPoint,rayEndPoint,intersectionPoints,intersectionIds)
+      #if there are intersections, update the point to most external one.
+      if intersectionPoints.GetNumberOfPoints() > 0:
+        exteriorPoint = intersectionPoints.GetPoint(intersectionPoints.GetNumberOfPoints()-1)
+        projectedPoints.AddFiducialFromArray(exteriorPoint)
+      #if there are no intersections, reverse the normal vector
+      else: 
+        for dim in range(len(rayEndPoint)):
+          rayEndPoint[dim] = originalPoint[dim] + rayDirection[dim]* -rayLength
+        obbTree.IntersectWithLine(originalPoint,rayEndPoint,intersectionPoints,intersectionIds)
+        if intersectionPoints.GetNumberOfPoints()>0:
+          exteriorPoint = intersectionPoints.GetPoint(0)
+          projectedPoints.AddFiducialFromArray(exteriorPoint)
+        #if none in reverse direction, use closest mesh point
+        else:
+          closestPointId = targetPointLocator.FindClosestPoint(originalPoint)
+          rayOrigin = targetPolydata.GetPoint(closestPointId)
+          projectedPoints.AddFiducialFromArray(rayOrigin)
+    return True
+  
+  def projectPointsOut(self, sourcePolydata, targetPolydata, originalPoints, projectedPoints, rayLength):
+    #sourcePolydata = sourceMesh.GetPolyData()
+    #targetPolydata = targetMesh.GetPolyData()
+    
+    #set up locater for intersection with normal vector rays
+    obbTree = vtk.vtkOBBTree()
+    obbTree.SetDataSet(targetPolydata)
+    obbTree.BuildLocator()
+    
+    #set up point locator for finding surface normals and closest point
+    pointLocator = vtk.vtkPointLocator()
+    pointLocator.SetDataSet(sourcePolydata)
+    pointLocator.BuildLocator()
+    
+    targetPointLocator = vtk.vtkPointLocator()
+    targetPointLocator.SetDataSet(targetPolydata)
+    targetPointLocator.BuildLocator()
+    
+    #get surface normal from each landmark point
+    rayDirection=[0,0,0]
+    normalArray = sourcePolydata.GetPointData().GetArray("Normals")
+    if(not normalArray):
+      normalFilter=vtk.vtkPolyDataNormals()
+      normalFilter.ComputePointNormalsOn()
+      normalFilter.SetInputData(sourcePolydata)
+      normalFilter.Update()
+      normalArray = normalFilter.GetOutput().GetPointData().GetArray("Normals")
+      if(not normalArray):
+        print("Error: no normal array")
+    
+    for index in range(originalPoints.GetNumberOfMarkups()):
+      originalPoint=[0,0,0]
+      originalPoints.GetMarkupPoint(0,index,originalPoint)
+      # get ray direction from closest normal
+      closestPointId = pointLocator.FindClosestPoint(originalPoint)
+      rayDirection = normalArray.GetTuple(closestPointId)
+      rayEndPoint=[0,0,0]
+      for dim in range(len(rayEndPoint)):
+        rayEndPoint[dim] = originalPoint[dim] + rayDirection[dim]* rayLength
+      intersectionIds=vtk.vtkIdList()
+      intersectionPoints=vtk.vtkPoints()
+      obbTree.IntersectWithLine(originalPoint,rayEndPoint,intersectionPoints,intersectionIds)
+      #if there are intersections, update the point to most external one.
+      if intersectionPoints.GetNumberOfPoints() > 0:
+        exteriorPoint = intersectionPoints.GetPoint(intersectionPoints.GetNumberOfPoints()-1)
+        projectedPoints.AddFiducialFromArray(exteriorPoint)
+    return True
+    
+  def projectPointsOutIn(self, sourcePolydata, targetPolydata, originalPoints, projectedPoints, rayLength):
+    #sourcePolydata = sourceMesh.GetPolyData()
+    #targetPolydata = targetMesh.GetPolyData()
+    
+    #set up locater for intersection with normal vector rays
+    obbTree = vtk.vtkOBBTree()
+    obbTree.SetDataSet(targetPolydata)
+    obbTree.BuildLocator()
+    
+    #set up point locator for finding surface normals and closest point
+    pointLocator = vtk.vtkPointLocator()
+    pointLocator.SetDataSet(sourcePolydata)
+    pointLocator.BuildLocator()
+    
+    targetPointLocator = vtk.vtkPointLocator()
+    targetPointLocator.SetDataSet(targetPolydata)
+    targetPointLocator.BuildLocator()
+    
+    #get surface normal from each landmark point
+    rayDirection=[0,0,0]
+    normalArray = sourcePolydata.GetPointData().GetArray("Normals")
+    if(not normalArray):
+      normalFilter=vtk.vtkPolyDataNormals()
+      normalFilter.ComputePointNormalsOn()
+      normalFilter.SetInputData(sourcePolydata)
+      normalFilter.Update()
+      normalArray = normalFilter.GetOutput().GetPointData().GetArray("Normals")
+      if(not normalArray):
+        print("Error: no normal array")
+    
+    for index in range(originalPoints.GetNumberOfMarkups()):
+      originalPoint=[0,0,0]
+      originalPoints.GetMarkupPoint(0,index,originalPoint)
+      # get ray direction from closest normal
+      closestPointId = pointLocator.FindClosestPoint(originalPoint)
+      rayDirection = normalArray.GetTuple(closestPointId)
+      rayEndPoint=[0,0,0]
+      for dim in range(len(rayEndPoint)):
+        rayEndPoint[dim] = originalPoint[dim] + rayDirection[dim]* rayLength
+      intersectionIds=vtk.vtkIdList()
+      intersectionPoints=vtk.vtkPoints()
+      obbTree.IntersectWithLine(originalPoint,rayEndPoint,intersectionPoints,intersectionIds)
+      #if there are intersections, update the point to most external one.
+      if intersectionPoints.GetNumberOfPoints() > 0:
+        exteriorPoint = intersectionPoints.GetPoint(intersectionPoints.GetNumberOfPoints()-1)
+        projectedPoints.AddFiducialFromArray(exteriorPoint)
+      #if there are no intersections, reverse the normal vector
+      else: 
+        for dim in range(len(rayEndPoint)):
+          rayEndPoint[dim] = originalPoint[dim] + rayDirection[dim]* -rayLength
+        obbTree.IntersectWithLine(originalPoint,rayEndPoint,intersectionPoints,intersectionIds)
+        if intersectionPoints.GetNumberOfPoints()>0:
+          exteriorPoint = intersectionPoints.GetPoint(0)
+          projectedPoints.AddFiducialFromArray(exteriorPoint)
+    return True
+    
   def takeScreenshot(self,name,description,type=-1):
     # show the message even if not taking a screen shot
     slicer.util.delayDisplay('Take screenshot: '+description+'.\nResult is available in the Annotations module.', 3000)
@@ -586,19 +751,29 @@ class SemiLandmarkTest(ScriptedLoadableModuleTest):
       module.  For example, if a developer removes a feature that you depend on,
       your test should break so they know that the feature is needed.
       """
+    
     self.delayDisplay("Starting the test")
     #
     # first, get some data
     #
-    import SampleData
-    SampleData.downloadFromURL(
-      nodeNames='FA',
-      fileNames='FA.nrrd',
-      uris='http://slicer.kitware.com/midas3/download?items=5767',
-      checksums='SHA256:12d17fba4f2e1f1a843f0757366f28c3f3e1a8bb38836f0de2a32bb1cd476560')
+    import urllib
+    downloads = (
+                 ('http://slicer.kitware.com/midas3/download?items=5767', 'FA.nrrd', slicer.util.loadVolume),
+                 )
+    for url,name,loader in downloads:
+      filePath = slicer.app.temporaryPath + '/' + name
+      if not os.path.exists(filePath) or os.stat(filePath).st_size == 0:
+        logging.info('Requesting download %s from %s...\n' % (name, url))
+        urllib.urlretrieve(url, filePath)
+      if loader:
+        logging.info('Loading %s...' % (name,))
+        loader(filePath)
     self.delayDisplay('Finished with download and loading')
-
+    
     volumeNode = slicer.util.getNode(pattern="FA")
     logic = SemiLandmarkLogic()
     self.assertIsNotNone( logic.hasImageData(volumeNode) )
     self.delayDisplay('Test passed!')
+
+
+
