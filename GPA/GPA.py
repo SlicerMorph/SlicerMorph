@@ -1108,7 +1108,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     
     # define a reference lms as clone of selected lms
     self.cloneLandmarkNode=slicer.mrmlScene.GetFirstNodeByName('GPA Warped Landmarks')
-    if hasattr(self, 'cloneLandmarkNode'):
+    if self.cloneLandmarkNode is None:
       slicer.mrmlScene.RemoveNode(self.cloneLandmarkNode)
     shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
     itemIDToClone = shNode.GetItemByDataNode(self.sourceLMNode)
@@ -1129,7 +1129,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.modelDisplayNode = self.modelNode.GetDisplayNode()
       # connect transform to model
       self.transformMeanNode=slicer.mrmlScene.GetFirstNodeByName('Mean TPS Transform')
-      if not hasattr(self, 'transformMeanNode'):
+      if self.transformMeanNode is None:
         self.transformMeanNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', 'Mean TPS Transform')
         GPANodeCollection.AddItem(self.transformMeanNode)
       self.transformMeanNode.SetAndObserveTransformToParent( VTKTPS )
@@ -1138,7 +1138,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       
       # define a reference model as clone of selected volume
       self.cloneModelNode=slicer.mrmlScene.GetFirstNodeByName('GPA Warped Volume')
-      if hasattr(self, 'cloneModelNode'):
+      if self.cloneModelNode is None:
         slicer.mrmlScene.RemoveNode(self.cloneModelNode)
       itemIDToClone = shNode.GetItemByDataNode(self.modelNode)
       clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(shNode, itemIDToClone)
