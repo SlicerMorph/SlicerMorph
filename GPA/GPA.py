@@ -1101,10 +1101,19 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     targetLMVTK=logic.convertNumpyToVTK(self.rawMeanLandmarks)
     sourceLMVTK=logic.convertNumpyToVTK(self.sourceLMnumpy)
 
-    VTKTPS = vtk.vtkThinPlateSplineTransform()
-    VTKTPS.SetSourceLandmarks( sourceLMVTK )
-    VTKTPS.SetTargetLandmarks( targetLMVTK )
-    VTKTPS.SetBasisToR()  # for 3D transform
+    VTKTPSMean = vtk.vtkThinPlateSplineTransform()
+    VTKTPSMean.SetSourceLandmarks( sourceLMVTK )
+    VTKTPSMean.SetTargetLandmarks( targetLMVTK )
+    VTKTPSMean.SetBasisToR()  # for 3D transform
+    
+    # connect transform to model
+    self.transformMeanNode=slicer.mrmlScene.GetFirstNodeByName('Mean TPS Transform')
+    if self.transformMeanNode is None:
+      self.transformMeanNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', 'Mean TPS Transform')
+      GPANodeCollection.AddItem(self.transformMeanNode)
+    self.transformMeanNode.SetAndObserveTransformToParent( VTKTPSMean )
+    self.sourceLMNode.SetAndObserveTransformNodeID(self.transformMeanNode.GetID())
+    
     
     # define a reference lms as clone of selected lms
     self.cloneLandmarkNode=slicer.mrmlScene.GetFirstNodeByName('GPA Warped Landmarks')
@@ -1127,14 +1136,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       # get model node selected
       self.modelNode=self.grayscaleSelector.currentNode()
       self.modelDisplayNode = self.modelNode.GetDisplayNode()
-      # connect transform to model
-      self.transformMeanNode=slicer.mrmlScene.GetFirstNodeByName('Mean TPS Transform')
-      if self.transformMeanNode is None:
-        self.transformMeanNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', 'Mean TPS Transform')
-        GPANodeCollection.AddItem(self.transformMeanNode)
-      self.transformMeanNode.SetAndObserveTransformToParent( VTKTPS )
       self.modelNode.SetAndObserveTransformNodeID(self.transformMeanNode.GetID())
-      self.sourceLMNode.SetAndObserveTransformNodeID(self.transformMeanNode.GetID())
       
       # define a reference model as clone of selected volume
       self.cloneModelNode=slicer.mrmlScene.GetFirstNodeByName('GPA Warped Volume')
