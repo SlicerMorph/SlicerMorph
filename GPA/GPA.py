@@ -5,7 +5,6 @@ from slicer.ScriptedLoadableModule import *
 import logging
 import math
 
-
 import re
 import csv
 import glob
@@ -1509,8 +1508,9 @@ class GPALogic(ScriptedLoadableModuleLogic):
     validFiles=[]
     files = [f for f in os.listdir(top_dir) if os.path.isfile(os.path.join(top_dir,f))]
     for filename in files:
-      dirs.append(top_dir)
-      validFiles.append(os.path.join(top_dir, filename[:-5]))
+      if fnmatch.fnmatch(filename,"*.fcsv"):
+        dirs.append(top_dir)
+        validFiles.append(os.path.join(top_dir, filename[:-5]))
     return dirs, files, validFiles
 
   def initDataArray(self, dirs, file,k):
