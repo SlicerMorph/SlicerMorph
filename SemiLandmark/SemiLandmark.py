@@ -9,7 +9,6 @@ import  numpy as np
 import random
 import math
 
-
 #
 # SemiLandmark
 #
@@ -197,13 +196,6 @@ class SemiLandmarkWidget(ScriptedLoadableModuleWidget):
   def updateMergeButton(self):
     nodes=self.fiducialView.selectedIndexes()
     self.mergeButton.enabled = bool (nodes and self.LMSelect.currentNode() and self.meshSelect.currentNode())
-
-      
-      
-
-      
-  
-
 #
 # SemiLandmarkLogic
 #
@@ -219,6 +211,7 @@ class SemiLandmarkLogic(ScriptedLoadableModuleLogic):
     """
   def run(self, meshNode, LMNode, gridLandmarks, sampleRate, smoothingIterations):
     if(smoothingIterations == 0):
+      surfacePolydata = meshNode.GetPolyData()
       normalArray = surfacePolydata.GetPointData().GetArray("Normals")
       if(not normalArray):
         normalFilter=vtk.vtkPolyDataNormals()
@@ -228,7 +221,7 @@ class SemiLandmarkLogic(ScriptedLoadableModuleLogic):
         normalArray = normalFilter.GetOutput().GetPointData().GetArray("Normals")
         if(not normalArray):
           print("Error: no normal array")
-      semiLandmarks = self.applyPatch(self, meshNode, LMNode, gridLandmarks, sampleRate, normalArray)
+      semiLandmarks = self.applyPatch(meshNode, LMNode, gridLandmarks, sampleRate, normalArray)
     else:
       print("Error: no normal array")
     
