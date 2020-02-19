@@ -16,7 +16,7 @@ class VolumeToMesh(ScriptedLoadableModule):
   """Uses ScriptedLoadableModule base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
-
+  
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "VolumeToMesh" # TODO make this more human readable by adding spaces
@@ -24,7 +24,7 @@ class VolumeToMesh(ScriptedLoadableModule):
     self.parent.dependencies = []
     self.parent.contributors = ["Sara Rolfe (UW), Murat Maga (UW)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """
-      This module takes a directory of volumes and segments them using a user-supplied threshold value. The output segments are converted to models and saved in the
+      This module takes a directory of volumes and segments them using a user-supplied threshold value. The output segments are converted to models and saved in the 
       output directory.
       """
     self.parent.helpText += self.getDefaultModuleDocumentationLink()
@@ -44,25 +44,25 @@ class VolumeToMeshWidget(ScriptedLoadableModuleWidget):
     """
   def onSelectInput(self):
     self.applyButton.enabled = bool (self.inputDirectory.currentPath and self.outputDirectory.currentPath)
-
+  
   def onSelectOutput(self):
     self.applyButton.enabled = bool (self.inputDirectory.currentPath and self.outputDirectory.currentPath)
-
+        
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
-
+    
     # Instantiate and connect widgets ...
-
+    
     #
     # Parameters Area
     #
     parametersCollapsibleButton = ctk.ctkCollapsibleButton()
     parametersCollapsibleButton.text = "Parameters"
     self.layout.addWidget(parametersCollapsibleButton)
-
+    
     # Layout within the dummy collapsible button
     parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
-
+    
     self.inputDirectory=ctk.ctkPathLineEdit()
     self.inputDirectory.filters = ctk.ctkPathLineEdit.Dirs
     self.inputDirectory.setToolTip( "Select directory containing volumes" )
@@ -79,8 +79,8 @@ class VolumeToMeshWidget(ScriptedLoadableModuleWidget):
     #
     self.extensionOptionGZ = qt.QRadioButton(".nii.gz")
     self.extensionOptionGZ.setChecked(True)
-    parametersFormLayout.addRow("Select extension type: ", self.extensionOptionGZ)
-
+    parametersFormLayout.addRow("Select input extension: ", self.extensionOptionGZ)
+    
     #
     # set threshold value
     #
@@ -99,7 +99,7 @@ class VolumeToMeshWidget(ScriptedLoadableModuleWidget):
     self.applyButton.toolTip = "Generate VolumeToMeshs."
     self.applyButton.enabled = False
     parametersFormLayout.addRow(self.applyButton)
-
+    
     #
     # check box to trigger taking screen shots for later use in tutorials
     #
@@ -107,30 +107,30 @@ class VolumeToMeshWidget(ScriptedLoadableModuleWidget):
     self.enableScreenshotsFlagCheckBox.checked = 0
     self.enableScreenshotsFlagCheckBox.setToolTip("If checked, take screen shots for tutorials. Use Save Data to write them to disk.")
     parametersFormLayout.addRow("Enable Screenshots", self.enableScreenshotsFlagCheckBox)
+    
 
-
-
+    
     # connections
     self.inputDirectory.connect('validInputChanged(bool)', self.onSelectInput)
     self.outputDirectory.connect('validInputChanged(bool)', self.onSelectOutput)
     self.applyButton.connect('clicked(bool)', self.onApplyButton)
-
+    
     # Add vertical spacer
     self.layout.addStretch(1)
-
+  
   def cleanup(self):
     pass
-
-
+  
+  
   def onApplyButton(self):
     logic = VolumeToMeshLogic()
     enableScreenshotsFlag = self.enableScreenshotsFlagCheckBox.checked
     extension =""
     if self.extensionOptionGZ.checked:
       extension = ".nii.gz"
-
+    
     logic.run(self.inputDirectory.currentPath, self.outputDirectory.currentPath, extension, int(self.threshold.value))
-
+    
 #
 # VolumeToMeshLogic
 #
@@ -171,18 +171,18 @@ class VolumeToMeshLogic(ScriptedLoadableModuleLogic):
         modelNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode',imageName)
         modelNode.CreateDefaultDisplayNodes()
         modelNode.SetAndObservePolyData(polydataFlip)
-        outputFilename = os.path.join(outputDirectory, imageName + '.vtk')
-        slicer.util.saveNode(modelNode, outputFilename)
+        outputFilename = os.path.join(outputDirectory, imageName + '.ply')
+        slicer.util.saveNode(modelNode, outputFilename) 
         slicer.mrmlScene.RemoveNode(labelVolumeNode)
         slicer.mrmlScene.RemoveNode(volumeNode)
         slicer.mrmlScene.RemoveNode(segmentationNode)
-        slicer.mrmlScene.RemoveNode(modelNode)
-
+        slicer.mrmlScene.RemoveNode(modelNode)    
+  
 
   def takeScreenshot(self,name,description,type=-1):
     # show the message even if not taking a screen shot
     slicer.util.delayDisplay('Take screenshot: '+description+'.\nResult is available in the Annotations module.', 3000)
-
+    
     lm = slicer.app.layoutManager()
     # switch on the type to get the requested window
     widget = 0
@@ -206,12 +206,12 @@ class VolumeToMeshLogic(ScriptedLoadableModuleLogic):
       widget = slicer.util.mainWindow()
       # reset the type so that the node is set correctly
       type = slicer.qMRMLScreenShotDialog.FullLayout
-
+    
     # grab and convert to vtk image data
     qimage = ctk.ctkWidgetsUtils.grabWidget(widget)
     imageData = vtk.vtkImageData()
     slicer.qMRMLUtils().qImageToVtkImageData(qimage,imageData)
-
+    
     annotationLogic = slicer.modules.annotations.logic()
     annotationLogic.CreateSnapShot(name, description, type, 1, imageData)
 
@@ -222,18 +222,18 @@ class VolumeToMeshTest(ScriptedLoadableModuleTest):
     Uses ScriptedLoadableModuleTest base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
-
+  
   def setUp(self):
     """ Do whatever is needed to reset the state - typically a scene clear will be enough.
       """
     slicer.mrmlScene.Clear(0)
-
+  
   def runTest(self):
     """Run as few or as many tests as needed here.
       """
     self.setUp()
     self.test_VolumeToMesh1()
-
+  
   def test_VolumeToMesh1(self):
     """ Ideally you should have several levels of tests.  At the lowest level
       tests should exercise the functionality of the logic with different inputs
@@ -245,19 +245,29 @@ class VolumeToMeshTest(ScriptedLoadableModuleTest):
       module.  For example, if a developer removes a feature that you depend on,
       your test should break so they know that the feature is needed.
       """
+    
     self.delayDisplay("Starting the test")
     #
     # first, get some data
     #
-    import SampleData
-    SampleData.downloadFromURL(
-      nodeNames='FA',
-      fileNames='FA.nrrd',
-      uris='http://slicer.kitware.com/midas3/download?items=5767',
-      checksums='SHA256:12d17fba4f2e1f1a843f0757366f28c3f3e1a8bb38836f0de2a32bb1cd476560')
+    import urllib
+    downloads = (
+                 ('http://slicer.kitware.com/midas3/download?items=5767', 'FA.nrrd', slicer.util.loadVolume),
+                 )
+    for url,name,loader in downloads:
+      filePath = slicer.app.temporaryPath + '/' + name
+      if not os.path.exists(filePath) or os.stat(filePath).st_size == 0:
+        logging.info('Requesting download %s from %s...\n' % (name, url))
+        urllib.urlretrieve(url, filePath)
+      if loader:
+        logging.info('Loading %s...' % (name,))
+        loader(filePath)
     self.delayDisplay('Finished with download and loading')
-
+    
     volumeNode = slicer.util.getNode(pattern="FA")
     logic = VolumeToMeshLogic()
     self.assertIsNotNone( logic.hasImageData(volumeNode) )
     self.delayDisplay('Test passed!')
+
+
+
