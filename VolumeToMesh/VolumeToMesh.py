@@ -171,7 +171,7 @@ class VolumeToMeshLogic(ScriptedLoadableModuleLogic):
         modelNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode',imageName)
         modelNode.CreateDefaultDisplayNodes()
         modelNode.SetAndObservePolyData(polydataFlip)
-        outputFilename = os.path.join(outputDirectory, imageName + '.vtk')
+        outputFilename = os.path.join(outputDirectory, imageName + '.ply')
         slicer.util.saveNode(modelNode, outputFilename)
         slicer.mrmlScene.RemoveNode(labelVolumeNode)
         slicer.mrmlScene.RemoveNode(volumeNode)
