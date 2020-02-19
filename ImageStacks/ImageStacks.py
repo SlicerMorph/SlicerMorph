@@ -188,12 +188,11 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget):
   def addByBrowsing(self):
     filePaths = qt.QFileDialog().getOpenFileNames()
     for filePath in filePaths:
-      print(filePath)
-      #item = qt.QStandardItem()
-      #item.setText(filePath)
-      #self.fileModel.setItem(self.fileModel.rowCount(), 0, item)
-    #properties = self.logic.calculateProperties(filePaths)
-    #self.updateFileProperties(properties)
+      item = qt.QStandardItem()
+      item.setText(filePath)
+      self.fileModel.setItem(self.fileModel.rowCount(), 0, item)
+    properties = self.logic.calculateProperties(filePaths)
+    self.updateFileProperties(properties)
 
   def currentNode(self):
     # TODO: this should be moved to qMRMLSubjectHierarchyComboBox::currentNode()
