@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Mesh Viewer</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+    <!--<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r73/three.js"></script>-->
+    <!--<script type="text/javascript" src="https://code.jquery.com/jquery-1.9.0.js"></script>-->
+    <script type="text/javascript" src="js/libs/three.min.js"></script>
+    <script type="text/javascript" src="js/libs/jquery-2.1.4.min.js"></script>
+    <script src="js/Detector.js"></script>
+    <script src="js/loaders/OBJLoader.js"></script>
+    <script src="js/loaders/PLYLoader.js"></script>
+    <script src="js/controls/TrackballControls.js"></script>
+    <style>
+     * {
+       box-sizing: border-box;
+       -moz-box-sizing: border-box;
+     }
+     
+     body {
+       color: #000;
+       font-family:Monospace;
+       font-size:13px;
+       
+       background-color: #fff;
+       margin: 0px;
+     }
+     
+     #content {
+       position: absolute;
+       top: 0px;
+       width: 80%;
+       // width: 1200px;
+       // z-index: 1;
+       /* padding: 3em 0 0 0; */
+       text-align: center;
+       left: 10%;
+       right: 10%;
+       // margin: 0 10em 0 10em;
+       //margin: 0 auto;
+     }
+     
+     a {
+       color: #0080ff;
+     }
+     
+     #tccanvas {
+       position: fixed;
+       left: 0px;
+       width: 100%;
+       height: 100%;
+     }
+     
+     .list-item {
+       display: inline-block;
+       margin: 1em;
+       /* margin: 0 auto; */
+       padding: 1em;
+       box-shadow: 1px 2px 4px 0px rgba(0,0,0,0.25);
+     }
+     
+     .list-item .scene {
+       width: 250px;
+       height: 250px;
+     }
+     
+     .list-item .description {
+       color: #888;
+       font-family: sans-serif;
+       font-size: large;
+       width: 200px;
+       margin: 0.5em auto;
+     }
+    </style>
+  </head>
+  
+  <body>
+    <!-- Div which will hold the Output -->
+    <canvas id="tccanvas"></canvas>
+    <div id="content">
+    </div>
+    <!-- Javascript code that runs our Three.js examples -->
+    <script id="template" type="notjs">
+     <div class="scene"></div>
+     <div class="description">$</div>
+    </script>
+    <script type="text/javascript">
+     if ( ! Detector.webgl ) Detector.addGetWebGLMessage();
+     
+     var canvas;
+     scenes = [];
+     var camera, control, renderer, dist;
+     var meshDir = "mesh/";
+     
+     function loadSubDirinDir(callback) {
+       $.ajax({
+         url: meshDir,
+         success: function(data){
+          console.log($(data).find("a:contains()"));
+           $(data).find("a:contains()").each(function(){
+             var subdirName = $(this).attr("href");
+             callback(meshDir + subdirName);
+           });
+         }
+       });
+     }
+
+      function getSubDirinDir(callback) {
+        var subDirArray = [];
+        $.ajax({
+          url: meshDir,
+          success: function(data){
+          console.log($(data).find("a:contains()"));
+          $(data).find("a:contains()").each(function(){
+            var subdirName = $(this).attr("href");
+            subDirArray.push(meshDir + subdirName);
+            });
+          },
+          complete: function() {
+            callback(subDirArray);
+          }
+        });
+     }
+
+      function getMeshInDir(dir, callback) {
+        var meshArray = [];
+        $.ajax({
+          url: dir,
+          success: function(data){
+            $(data).find("a:contains(.ply)").each(function(){
+            console.log('jquery find');
+            var meshName = $(this).attr("href");
+            meshArray.push(dir + meshName);
+            });
+          },
+          complete: function() {
+            callback(dir, meshArray);
+          }
+       });
+     }
+
+    function geomMerge(newg, oldg) {
+      console.log(newg);
+      oldg.merge(newg);
+    }
+
+    function geomComplete(newg, oldg, scene) {
+      console.log(oldg);
+      oldg.center();
+      var toothMaterial = new THREE.MeshPhongMaterial( { color: 0xCCCCCC, specular: 0x000000, shininess: 100, emissive: 0x000000, side: THREE.DoubleSide, shading: THREE.FlatShading}); // using THREE.FlatShading will render much faster than THREE.SmoothShading
+      var m = new THREE.Mesh(oldg, toothMaterial);
+      scene.add(m);
+      if (dist == undefined) {
+        var bbox = new THREE.BoundingBoxHelper(m, 0xff0000 );
+        var bbox = new THREE.BoundingBoxHelper(m);
+        bbox.update();
+        // scene.add( bbox )
+        var diameterVec = new THREE.Vector3();
+        diameterVec.subVectors(bbox.box.max, bbox.box.min);
+        var center = new THREE.Vector3();
+        center.addVectors(bbox.box.max, bbox.box.min);
+        center.divideScalar(2.0);
+        var cameraSceneCenter = new THREE.Vector3();
+        cameraSceneCenter.subVectors(camera.position, center);
+        // camera.position.addVectors(center, cameraSceneCenter.normalize().multiplyScalar(diameterVec.length()))
+        // camera.fov = 2 * Math.atan( diameterVec.length() / ( 2.0 * cameraSceneCenter.length() ) ) * ( 180.0 / Math.PI )
+        dist = diameterVec.length() / (2.0 * Math.tan(Math.PI / 8.0));
+        camera.position.addVectors(center, cameraSceneCenter.normalize().multiplyScalar(dist));
+        camera.lookAt(center);
+        camera.updateProjectionMatrix();
+        camera.lookAt(scene.position);
+      }
+      scenes.push( scene );
+      console.log(scenes);
+    }
+
+    function loaderWrapper(loader, inputArray, j, geom, scene, stepFunc, completeFunc) {
+      loader.load(inputArray[j], function (g) {
+        stepFunc(g, geom);
+        if (j == inputArray.length - 1) {
+          completeFunc(g, geom, scene);
+        } else {
+          loaderWrapper(loader, inputArray, j+1, geom, scene, stepFunc, completeFunc);
+        }
+      });
+    }
+
+     function loadMeshInDir(dir, callback, onComplete) {
+       $.ajax({
+         url: dir,
+         success: function(data){
+           $(data).find("a:contains(.ply)").each(function(){
+            console.log('jquery find');
+             var meshName = $(this).attr("href");
+             callback(dir + meshName);
+           });
+           onComplete();
+         }
+       });
+     }
+     
+     init();
+     animate();
+     
+     function init() {
+       canvas = document.getElementById( "tccanvas" );
+       
+       renderer = new THREE.WebGLRenderer( { canvas: canvas, antialias: true } );
+       renderer.setClearColor( 0xFFFFFF );
+       
+       var template = document.getElementById("template").text;
+       var content = document.getElementById("content");
+       
+       var toothMaterial = new THREE.MeshPhongMaterial( { color: 0xCCCCCC, specular: 0x000000, shininess: 100, emissive: 0x000000, side: THREE.DoubleSide, shading: THREE.FlatShading}); // using THREE.FlatShading will render much faster than THREE.SmoothShading
+       
+       var manager = new THREE.LoadingManager();
+       manager.onProgress = function ( item, loaded, total ) {
+         // console.log( item, loaded, total );
+         console.log(item + " loading complete");
+       };
+       // var texture = new THREE.Texture();
+       
+       var onProgress = function ( xhr ) {
+         // if ( xhr.lengthComputable ) {
+         // var percentComplete = xhr.loaded / xhr.total * 100;
+         // console.log( Math.round(percentComplete, 2) + '% loaded' );
+         // }
+       };
+       
+       var onError = function ( xhr ) {
+       };
+       
+       camera = new THREE.PerspectiveCamera( 45, 1, 0.01, 100 );
+       // camera = new THREE.OrthographicCamera( window.innerWidth / -2, window.innerWidth / 2, window.innerHeight / 2, window.innerHeight / -2, 0.01, 10 );
+       camera.position.z = -0.5;
+       
+       // add camera controls
+       control = new THREE.TrackballControls( camera, content );
+       control.rotateSpeed = 6.0;
+       control.zoomSpeed = 3.0;
+       control.panSpeed = 0.8;
+       control.noRotate = false;
+       control.noZoom = false;
+       control.noPan = false;
+       control.staticMoving = true;
+       control.dynamicDampingFactor = 0.3;
+       control.addEventListener( 'change', render );
+       
+       geomArray = [];
+       var loader = new THREE.PLYLoader( manager );
+       getSubDirinDir(
+        function(subdirs) { 
+          console.log(subdirs);
+          for (var i = 0; i < subdirs.length; i++) {
+            
+            
+            getMeshInDir(subdirs[i], function(subDirPath, meshArray) {
+              console.log(meshArray);
+
+              // Scene
+              console.log('making new scene');
+              var scene = new THREE.Scene();
+           
+              // make a list item
+              var element = document.createElement( "div" );
+              element.className = "list-item";
+              console.log(subDirPath);
+              var tmpSplit = subDirPath.split('/');
+              console.log(tmpSplit);
+              //element.innerHTML = template.replace( '$', tmpSplit[tmpSplit.length-1].split(".")[0] );
+              element.innerHTML = template.replace( '$', tmpSplit[tmpSplit.length-2] );
+              console.log(element.innerHTML);
+           
+              // Look up the element that represents the area
+              // we want to render the scene
+              scene.element = element.querySelector(".scene");
+              content.appendChild( element );
+           
+              var ambient = new THREE.AmbientLight( 0x333333 );
+              var pointLight1 = new THREE.PointLight( 0xffffff );
+              pointLight1.position.set( 100, 100, 100 );
+              var pointLight2 = new THREE.PointLight( 0xffffff );
+              pointLight2.position.set( -100, -100, -100 );
+              scene.add( ambient );
+              scene.add( pointLight1 );
+              scene.add( pointLight2 );
+
+              var testgeo = new THREE.Geometry();
+              loaderWrapper(loader, meshArray, 0, testgeo, scene, geomMerge, geomComplete);
+              });
+          }
+        });
+
+       // loadSubDirinDir(function(subDirPath) {
+       //   // Scene
+       //   console.log('making new scene');
+       //   var scene = new THREE.Scene();
+         
+       //   // make a list item
+       //   var element = document.createElement( "div" );
+       //   element.className = "list-item";
+       //   var tmpSplit = subDirPath.split('/');
+       //   element.innerHTML = template.replace( '$', tmpSplit[tmpSplit.length-1].split(".")[0] );
+         
+       //   // Look up the element that represents the area
+       //   // we want to render the scene
+       //   scene.element = element.querySelector(".scene");
+       //   content.appendChild( element );
+         
+       //   var ambient = new THREE.AmbientLight( 0x333333 );
+       //   var pointLight1 = new THREE.PointLight( 0xffffff );
+       //   pointLight1.position.set( 100, 100, 100 );
+       //   var pointLight2 = new THREE.PointLight( 0xffffff );
+       //   pointLight2.position.set( -100, -100, -100 );
+       //   scene.add( ambient );
+       //   scene.add( pointLight1 );
+       //   scene.add( pointLight2 );
+         
+
+       //   // model
+       //   var geometry = new THREE.Geometry();
+       //   var loader = new THREE.PLYLoader( manager );
+       //   loadMeshInDir(subDirPath, 
+       //    function (meshPath) {
+       //        loader.load( meshPath, function ( newGeom ) {
+       //            console.log('In loader.load');
+       //            geometry.merge(newGeom);
+       //            geometry.center();
+       //            var m = new THREE.Mesh(geometry, toothMaterial);
+       //            scene.add(m);
+       //            if (dist == undefined) {
+       //                var bbox = new THREE.BoundingBoxHelper(m, 0xff0000 );
+       //                var bbox = new THREE.BoundingBoxHelper(m);
+       //                bbox.update();
+       //                // scene.add( bbox )
+       //                var diameterVec = new THREE.Vector3();
+       //                diameterVec.subVectors(bbox.box.max, bbox.box.min);
+       //                var center = new THREE.Vector3();
+       //                center.addVectors(bbox.box.max, bbox.box.min);
+       //                center.divideScalar(2.0);
+       //                var cameraSceneCenter = new THREE.Vector3();
+       //                cameraSceneCenter.subVectors(camera.position, center);
+       //                // camera.position.addVectors(center, cameraSceneCenter.normalize().multiplyScalar(diameterVec.length()))
+       //                // camera.fov = 2 * Math.atan( diameterVec.length() / ( 2.0 * cameraSceneCenter.length() ) ) * ( 180.0 / Math.PI )
+       //                dist = diameterVec.length() / (2.0 * Math.tan(Math.PI / 8.0));
+       //                camera.position.addVectors(center, cameraSceneCenter.normalize().multiplyScalar(dist));
+       //                camera.lookAt(center);
+       //                camera.updateProjectionMatrix();
+       //                camera.lookAt(scene.position);
+       //            }
+       //            console.log(scenes);
+       //            scenes.push( scene );
+       //        }, onProgress, onError );
+       //    },
+       //    function() {
+              
+       //    });
+       // });
+       
+       render();
+     }
+     
+     function updateSize() {
+       var width = canvas.clientWidth;
+       var height = canvas.clientHeight;
+       
+       if ( canvas.width !== width || canvas.height != height ) {
+         renderer.setSize ( width, height, false );
+       }
+       
+       control.handleResize();
+     }
+     
+     function animate() {
+       render();
+       requestAnimationFrame( animate );
+       control.update();  
+     }
+     
+     function render() {
+       updateSize();
+       
+       renderer.setClearColor( 0xFFFFFF );
+       renderer.clear( true );
+       renderer.setClearColor( 0xE0E0E0 );
+       
+       renderer.enableScissorTest( true );
+       scenes.forEach( function( scene, index ) {
+         // get the element that is a place holder for where we want to
+         // draw the scene
+         var element = scene.element;
+         
+         // get its position relative to the page's viewport
+         var rect = element.getBoundingClientRect();
+         
+         // check if it's offscreen. If so skip it
+         if ( rect.bottom < 0 || rect.top  > renderer.domElement.clientHeight ||
+              rect.right  < 0 || rect.left > renderer.domElement.clientWidth ) {
+           return;  // it's off screen
+         }
+         
+         // set the viewport
+         var width  = rect.right - rect.left;
+         var height = rect.bottom - rect.top;
+         var left   = rect.left;
+         var bottom = renderer.domElement.clientHeight - rect.bottom;
+         
+         camera.aspect = width / height;
+         camera.updateProjectionMatrix();
+         renderer.setViewport( left, bottom, width, height );
+         renderer.setScissor( left, bottom, width, height );
+         renderer.render( scene, camera );
+       } );
+       renderer.enableScissorTest( false );
+     }
+    </script>
+  </body>
+</html>

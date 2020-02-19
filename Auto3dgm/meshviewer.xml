@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<executable>
+  <category>Informatics</category>
+  <title>meshviewer</title>
+  <description><![CDATA[Command line module for viewing meshes in a web browser.\n]]></description>
+  <version>0.0.1</version>
+  <documentation-url/>
+  <license/>
+  <contributor>Julie Winchester</contributor>
+  <acknowledgements/>
+  <parameters>
+    <label>Settings</label>
+    <string>
+      <name>MeshDirectory</name>
+      <label>Mesh Directory</label>
+      <longflag>--meshdirectory</longflag>
+      <description><![CDATA[Mesh directory]]></description>
+    </string>
+  </parameters>
+</executable>
