@@ -7,12 +7,12 @@
 # This is source code manager (i.e. svn)
 scm git
 scmurl https://github.com/SlicerMorph/SlicerMorph.git
-scmrevision master
+scmrevision master  
 
 # list dependencies
 # - These should be names of other modules that have .s4ext files
 # - The dependencies will be built first
-depends     NA
+depends     SegmentEditorExtraEffects Sequences Sandbox SlicerIGT RawImageGuess
 
 # Inner build directory (default is .)
 build_subdirectory .
@@ -28,14 +28,14 @@ contributors Sara Rolfe (UW), Murat Maga (SCRI)
 category    SlicerMorph
 
 # url to icon (png, size 128x128 pixels)
-iconurl     https://github.com/SlicerMorph/SlicerMorph/blob/master/SlicerMorph_Color.png
+iconurl     https://raw.githubusercontent.com/SlicerMorph/SlicerMorph/master/SlicerMorph_Color.png
 
 # Give people an idea what to expect from this code
 #  - Is it just a test or something you stand behind?
 status      Beta
 
 # One line stating what the module does
-description This toolkit enables retrieval, visualization, measurement and annotatation of high-resolution specimen data from volumetric scans (CTs and MRs) or 3D surface scans within 3D-Slicer.
+description This extension enables retrieval, visualization, measurement and annotation of high-resolution specimen data from volumetric scans (CTs and MRs) or 3D surface scans. 
 
 # Space separated list of urls
 screenshoturls https://na-mic.github.io/ProjectWeek/PW30_2019_GranCanaria/Projects/SlicerMorphGeometricMorphometricToolset/SM_screen.png https://na-mic.github.io/ProjectWeek/PW30_2019_GranCanaria/Projects/SlicerMorphGeometricMorphometricToolset/SM2.png
