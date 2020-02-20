@@ -19,14 +19,19 @@ include(${Slicer_USE_FILE})
 
 #-----------------------------------------------------------------------------
 # Extension modules
+add_subdirectory(Animator)
+add_subdirectory(Auto3dgm)
 add_subdirectory(ConvertMorphologikaLandmarks)
 add_subdirectory(GPA)
+add_subdirectory(ImageStacks)
 add_subdirectory(ImportSurfaceToSegment)
-add_subdirectory(ReadLandmarkFile)
-add_subdirectory(SkyscanReconImport)
 add_subdirectory(MorphoSource)
-add_subdirectory(SlicerMorphSampleData)
+add_subdirectory(ReadLandmarkFile)
 add_subdirectory(ResampleCurves)
+add_subdirectory(SemiLandmark)
+add_subdirectory(SkyscanReconImport)
+add_subdirectory(SlicerMorphSampleData)
+add_subdirectory(VolumeToMesh)
 
 ## NEXT_MODULE
 
