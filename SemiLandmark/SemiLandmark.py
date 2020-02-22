@@ -9,6 +9,7 @@ import  numpy as np
 import random
 import math
 
+
 #
 # SemiLandmark
 #
@@ -142,6 +143,28 @@ class SemiLandmarkWidget(ScriptedLoadableModuleWidget):
     parametersFormLayout.addRow("Enable Screenshots", self.enableScreenshotsFlagCheckBox)
     
     #
+    # Advanced menu
+    #
+    advancedCollapsibleButton = ctk.ctkCollapsibleButton()
+    advancedCollapsibleButton.text = "Advanced"
+    advancedCollapsibleButton.collapsed = True
+    parametersFormLayout.addRow(advancedCollapsibleButton)
+    
+    # Layout within the dummy collapsible button
+    advancedFormLayout = qt.QFormLayout(advancedCollapsibleButton)
+    
+    #
+    # Maximum projection slider
+    #
+    self.projectionDistanceSlider = ctk.ctkSliderWidget()
+    self.projectionDistanceSlider.singleStep = 1
+    self.projectionDistanceSlider.minimum = 0
+    self.projectionDistanceSlider.maximum = 100
+    self.projectionDistanceSlider.value = 25
+    self.projectionDistanceSlider.setToolTip("Set maximum projection distance as a percentage of image size")
+    advancedFormLayout.addRow("Set maximum projection distance: ", self.projectionDistanceSlider)
+    
+    #
     # Apply Button
     #
     self.applyButton = qt.QPushButton("Apply")
@@ -180,13 +203,13 @@ class SemiLandmarkWidget(ScriptedLoadableModuleWidget):
   def cleanup(self):
     pass
   
-  
   def onApplyButton(self):
     logic = SemiLandmarkLogic()
     enableScreenshotsFlag = self.enableScreenshotsFlagCheckBox.checked
     gridLandmarks = [int(self.landmarkGridPoint1.value), int(self.landmarkGridPoint2.value), int(self.landmarkGridPoint3.value)]
     smoothingIterations = 0 #placeholder to allow smoothing of polydata normals later
-    logic.run(self.meshSelect.currentNode(), self.LMSelect.currentNode(), gridLandmarks, int(self.gridSamplingRate.value)+1, smoothingIterations)
+    projectionRayTolerance = self.projectionDistanceSlider.value/100
+    logic.run(self.meshSelect.currentNode(), self.LMSelect.currentNode(), gridLandmarks, int(self.gridSamplingRate.value)+1, smoothingIterations, projectionRayTolerance)
   
   def onMergeButton(self):
     logic = SemiLandmarkLogic()
@@ -196,6 +219,7 @@ class SemiLandmarkWidget(ScriptedLoadableModuleWidget):
   def updateMergeButton(self):
     nodes=self.fiducialView.selectedIndexes()
     self.mergeButton.enabled = bool (nodes and self.LMSelect.currentNode() and self.meshSelect.currentNode())
+
 #
 # SemiLandmarkLogic
 #
@@ -209,7 +233,7 @@ class SemiLandmarkLogic(ScriptedLoadableModuleLogic):
     Uses ScriptedLoadableModuleLogic base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
-  def run(self, meshNode, LMNode, gridLandmarks, sampleRate, smoothingIterations):
+  def run(self, meshNode, LMNode, gridLandmarks, sampleRate, smoothingIterations, maximumProjectionDistance=.25):
     if(smoothingIterations == 0):
       surfacePolydata = meshNode.GetPolyData()
       normalArray = surfacePolydata.GetPointData().GetArray("Normals")
@@ -221,13 +245,13 @@ class SemiLandmarkLogic(ScriptedLoadableModuleLogic):
         normalArray = normalFilter.GetOutput().GetPointData().GetArray("Normals")
         if(not normalArray):
           print("Error: no normal array")
-      semiLandmarks = self.applyPatch(meshNode, LMNode, gridLandmarks, sampleRate, normalArray)
+      semiLandmarks = self.applyPatch(meshNode, LMNode, gridLandmarks, sampleRate, normalArray, maximumProjectionDistance)
     else:
       print("Error: no normal array")
     
     return True 
     
-  def applyPatch(self, meshNode, LMNode, gridLandmarks, sampleRate, polydataNormalArray): 
+  def applyPatch(self, meshNode, LMNode, gridLandmarks, sampleRate, polydataNormalArray, maximumProjectionDistance=.25):
     surfacePolydata = meshNode.GetPolyData()
 
     gridPoints = vtk.vtkPoints()
@@ -316,17 +340,14 @@ class SemiLandmarkLogic(ScriptedLoadableModuleLogic):
       semilandmarkPoints.AddFiducialFromArray(origLMPoint, landmarkLabel)
     
     # calculate maximum projection distance
-    projectionTolerance = 1
+    projectionTolerance = maximumProjectionDistance/.25
     boundingBox = vtk.vtkBoundingBox() 
     boundingBox.AddBounds(surfacePolydata.GetBounds())
     diagonalDistance = boundingBox.GetDiagonalLength()
     #rayLength = math.sqrt(diagonalDistance) * projectionTolerance
-    rayLength = sampleDistance
-    print("RayLength: ",rayLength)
-    #print("RayLengthAlt: ",rayLengthAlt)
+    rayLength = sampleDistance * projectionTolerance
 
     # get normal projection intersections for remaining semi-landmarks
-    print("Target number of points: ", resampledPolydata.GetNumberOfPoints())
     for index in range(3,resampledPolydata.GetNumberOfPoints()):
       modelPoint=resampledPolydata.GetPoint(index)
       rayEndPoint=[0,0,0]
@@ -767,6 +788,3 @@ class SemiLandmarkTest(ScriptedLoadableModuleTest):
     logic = SemiLandmarkLogic()
     self.assertIsNotNone( logic.hasImageData(volumeNode) )
     self.delayDisplay('Test passed!')
-
-
-
