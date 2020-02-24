@@ -31,6 +31,8 @@ add_subdirectory(ResampleCurves)
 add_subdirectory(SemiLandmark)
 add_subdirectory(SkyscanReconImport)
 add_subdirectory(SlicerMorphSampleData)
+add_subdirectory(TransferSemiLandmarks)
+add_subdirectory(TransferSemiLandmarksWarp)
 add_subdirectory(VolumeToMesh)
 
 ## NEXT_MODULE
