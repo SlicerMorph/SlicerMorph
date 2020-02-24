@@ -1,5 +1,5 @@
 #-----------------------------------------------------------------------------
-set(MODULE_NAME Auto3dgm)
+set(MODULE_NAME MeshDistanceMeasurement)
 
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS
