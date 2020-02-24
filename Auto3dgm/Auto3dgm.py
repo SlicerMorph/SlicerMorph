@@ -40,9 +40,21 @@ It performs a simple thresholding on the input volume and optionally captures a 
 This file was originally developed by Jean-Christophe Fillion-Robin, Kitware Inc.
 and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR013218-12S1.
 """ # replace with organization, grant and thanks.
-
+    slicer.app.connect("startupCompleted()", self.checkPythonPackages) 
+    
+  def checkPythonPackages(self):
+    print('Checking for required python packages')
+    try:
+      import scipy
+    except:
+      slicer.util.pip_install('scipy')
+      import scipy
+    try:
+      import mosek
+    except:
+      slicer.util.pip_install('mosek')
+      import mosek
     # module level data
-
 #
 # Auto3dgmModuleData
 #
