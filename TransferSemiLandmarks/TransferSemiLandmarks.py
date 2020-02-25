@@ -159,7 +159,8 @@ class TransferSemiLandmarksLogic(ScriptedLoadableModuleLogic):
             for n in range(landmarkNumber):
               landmarkNode.SetNthControlPointLabel(n, str(n+1))
             for triangle in gridVertices:
-              newNode = SLLogic.run(meshNode, landmarkNode, triangle, sampleRate)
+              smoothingIterations = 0
+              newNode = SLLogic.run(meshNode, landmarkNode, triangle, sampleRate, smoothingIterations)
             nodeList = slicer.mrmlScene.GetNodesByClass("vtkMRMLMarkupsFiducialNode")
             mergedLandmarkNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode', meshFileName+'_merged')
             success = SLLogic.mergeList(nodeList, landmarkNode, meshNode, sampleRate, mergedLandmarkNode)
