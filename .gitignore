@@ -9,6 +9,9 @@
 # except for .gitignore
 !.gitignore
 
+# and .gitmodules
+!.gitmodules
+
 # ... and .circleci
 !.circleci
 
