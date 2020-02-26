@@ -1,0 +1,6 @@
+[submodule "Auto3dgm/auto3dgm_nazar"]
+	path = Auto3dgm/auto3dgm_nazar
+	url = https://github.com/ToothAndClaw/auto3dgm_nazar.git
+[submodule "meshviewer/web_view_mesh"]
+	path = meshviewer/web_view_mesh
+	url = https://github.com/JuliaWinchester/web_view_mesh.git
