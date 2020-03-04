@@ -116,6 +116,12 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget):
     self.downsample.toolTip = "Reduces data size by half in each dimension by skipping every other pixel and slice (uses about 1/8 memory)"
     outputFormLayout.addRow("Downsample: ", self.downsample)
 
+    self.sliceSkip = ctk.ctkDoubleSpinBox()
+    self.sliceSkip.decimals = 0
+    self.sliceSkip.minimum = 0
+    self.sliceSkip.toolTip = "Skips the selected number of slices (use, for example, on long thin samples with more slices than in-plane resolution)"
+    outputFormLayout.addRow("Slice skip: ", self.sliceSkip)
+
     self.loadButton = qt.QPushButton("Load files")
     outputFormLayout.addRow(self.loadButton)
 
@@ -203,6 +209,13 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget):
     else:
       return self.outputSelector.currentNode()
 
+  def setCurrentNode(self, node):
+    if self.outputSelector.className() == "qMRMLSubjectHierarchyComboBox":
+      # not sure how to select in the subject hierarychy
+      pass
+    else:
+      self.outputSelector.setCurrentNode(node)
+
   def validateInput(self):
     self.indexRange.enabled = len(self.archetypePathEdit.currentPath)
     self.generateNamesButton.enabled = len(self.archetypePathEdit.currentPath) and len(self.archetypeFormat.text)
@@ -232,7 +245,9 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget):
     spacingString = self.spacing.coordinates
     properties['spacing'] = [float(element) for element in spacingString.split(",")]
     properties['downsample'] = self.downsample.checked
-    self.logic.loadByPaths(paths, self.currentNode(), properties)
+    properties['sliceSkip'] = self.sliceSkip.value
+    outputNode = self.logic.loadByPaths(paths, self.currentNode(), properties)
+    self.setCurrentNode(outputNode)
 
 #
 # ImageStacksLogic
@@ -305,6 +320,12 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
     if 'spacing' in properties:
       spacing = properties['spacing']
 
+    sliceSkip = 0
+    if 'sliceSkip' in properties:
+      sliceSkip = int(properties['sliceSkip'])
+    spacing[2] *= 1+sliceSkip
+    paths = paths[::1+sliceSkip]
+
     downsample = 'downsample' in properties and properties['downsample']
     if downsample:
       paths = paths[::2]
@@ -323,7 +344,7 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
       if volumeArray is None:
         sliceShape = sliceArray.shape
         if downsample:
-          sliceShape = [math.floor(element/2) for element in sliceShape]
+          sliceShape = [math.ceil(element/2) for element in sliceShape]
         shape = (len(paths), *sliceShape)
         volumeArray = numpy.zeros(shape, dtype=sliceArray.dtype)
       if downsample:
@@ -334,6 +355,10 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
     if not outputNode:
       outputNode = slicer.vtkMRMLScalarVolumeNode()
       slicer.mrmlScene.AddNode(outputNode)
+      path = paths[0]
+      fileName = os.path.basename(path)
+      name = os.path.splitext(fileName)[0]
+      outputNode.SetName(name)
 
     ijkToRAS = vtk.vtkMatrix4x4()
     ijkToRAS.Identity()
@@ -346,6 +371,7 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
 
     slicer.util.updateVolumeFromArray(outputNode, volumeArray)
     slicer.util.setSliceViewerLayers(background=outputNode, fit=True)
+    return outputNode
 
 
 class ImageStacksTest(ScriptedLoadableModuleTest):
