@@ -165,6 +165,17 @@ class SemiLandmarkWidget(ScriptedLoadableModuleWidget):
     advancedFormLayout.addRow("Set maximum projection distance: ", self.projectionDistanceSlider)
     
     #
+    # Normal smoothing slider
+    #
+    self.smoothingSlider = ctk.ctkSliderWidget()
+    self.smoothingSlider.singleStep = 1
+    self.smoothingSlider.minimum = 0
+    self.smoothingSlider.maximum = 100
+    self.smoothingSlider.value = 0
+    self.smoothingSlider.setToolTip("Set smothing of normal vectors for projection")
+    advancedFormLayout.addRow("Set smoothing of projection vectors: ", self.smoothingSlider)
+    
+    #
     # Apply Button
     #
     self.applyButton = qt.QPushButton("Apply")
@@ -207,7 +218,7 @@ class SemiLandmarkWidget(ScriptedLoadableModuleWidget):
     logic = SemiLandmarkLogic()
     enableScreenshotsFlag = self.enableScreenshotsFlagCheckBox.checked
     gridLandmarks = [int(self.landmarkGridPoint1.value), int(self.landmarkGridPoint2.value), int(self.landmarkGridPoint3.value)]
-    smoothingIterations = 0 #placeholder to allow smoothing of polydata normals later
+    smoothingIterations =  int(self.smoothingSlider.value)
     projectionRayTolerance = self.projectionDistanceSlider.value/100
     logic.run(self.meshSelect.currentNode(), self.LMSelect.currentNode(), gridLandmarks, int(self.gridSamplingRate.value)+1, smoothingIterations, projectionRayTolerance)
   
@@ -245,9 +256,11 @@ class SemiLandmarkLogic(ScriptedLoadableModuleLogic):
         normalArray = normalFilter.GetOutput().GetPointData().GetArray("Normals")
         if(not normalArray):
           print("Error: no normal array")
-      semiLandmarks = self.applyPatch(meshNode, LMNode, gridLandmarks, sampleRate, normalArray, maximumProjectionDistance)
-    else:
-      print("Error: no normal array")
+    else:  
+      print('smoothing normals')
+      normalArray = self.getSmoothNormals(meshNode,smoothingIterations)     
+    semiLandmarks = self.applyPatch(meshNode, LMNode, gridLandmarks, sampleRate, normalArray, maximumProjectionDistance)
+
     
     return True 
     
@@ -309,11 +322,23 @@ class SemiLandmarkLogic(ScriptedLoadableModuleLogic):
       rayDirection[0] += tempNormal[0]
       rayDirection[1] += tempNormal[1]
       rayDirection[2] += tempNormal[2]
-
-    #calculate average
-    for dim in range(len(rayDirection)):
-      rayDirection[dim]=rayDirection[dim]/4
-
+    
+    #normalize
+    vtk.vtkMath().Normalize(rayDirection)
+      
+    # # get normal at each grid point  
+    # gridNormals = np.zeros((3,3))
+    # gridIndex=0
+    # for gridVertex in gridLandmarks:
+      # print(gridVertex)
+      # LMNode.GetMarkupPoint(0,int(gridVertex-1),point)
+      # closestPointId = pointLocator.FindClosestPoint(point)
+      # tempNormal = polydataNormalArray.GetTuple(closestPointId)
+      # print(tempNormal)
+      # gridNormals[gridIndex] = tempNormal
+      # gridIndex+=1
+    # print(gridNormals)
+    
     #set up locater for intersection with normal vector rays
     obbTree = vtk.vtkOBBTree()
     obbTree.SetDataSet(surfacePolydata)
@@ -330,7 +355,7 @@ class SemiLandmarkLogic(ScriptedLoadableModuleLogic):
     d1 = math.sqrt(vtk.vtkMath().Distance2BetweenPoints(m1, m2))
     d2 = math.sqrt(vtk.vtkMath().Distance2BetweenPoints(m2, m3))
     d3 = math.sqrt(vtk.vtkMath().Distance2BetweenPoints(m1, m3))
-    sampleDistance = (d1 + d2 + d3)/3
+    sampleDistance = (d1 + d2 + d3)
     
     # set initial three grid points
     for index in range(0,3):
@@ -341,15 +366,29 @@ class SemiLandmarkLogic(ScriptedLoadableModuleLogic):
     
     # calculate maximum projection distance
     projectionTolerance = maximumProjectionDistance/.25
-    boundingBox = vtk.vtkBoundingBox() 
-    boundingBox.AddBounds(surfacePolydata.GetBounds())
-    diagonalDistance = boundingBox.GetDiagonalLength()
+    #boundingBox = vtk.vtkBoundingBox() 
+    #boundingBox.AddBounds(surfacePolydata.GetBounds())
+    #diagonalDistance = boundingBox.GetDiagonalLength()
     #rayLength = math.sqrt(diagonalDistance) * projectionTolerance
     rayLength = sampleDistance * projectionTolerance
 
     # get normal projection intersections for remaining semi-landmarks
     for index in range(3,resampledPolydata.GetNumberOfPoints()):
       modelPoint=resampledPolydata.GetPoint(index)
+      
+      # ## get estimated normal vector
+      # rayDirection = [0,0,0]
+      # distance1=math.sqrt(vtk.vtkMath().Distance2BetweenPoints(modelPoint,resampledPolydata.GetPoint(0)))
+      # distance2=math.sqrt(vtk.vtkMath().Distance2BetweenPoints(modelPoint,resampledPolydata.GetPoint(1)))
+      # distance3=math.sqrt(vtk.vtkMath().Distance2BetweenPoints(modelPoint,resampledPolydata.GetPoint(2)))
+      # distanceTotal = distance1 + distance2 + distance3
+      # weights=[(distance3+distance2)/distanceTotal, (distance1+distance3)/distanceTotal,(distance1+distance2)/distanceTotal]
+      
+      # for gridIndex in range(0,3):
+        # rayDirection+=(weights[gridIndex]*gridNormals[gridIndex])
+      # vtk.vtkMath().Normalize(rayDirection)
+      # ##
+      
       rayEndPoint=[0,0,0]
       for dim in range(len(rayEndPoint)):
         rayEndPoint[dim] = modelPoint[dim] + rayDirection[dim]* rayLength
@@ -385,6 +424,21 @@ class SemiLandmarkLogic(ScriptedLoadableModuleLogic):
     print("Total points:", semilandmarkPoints.GetNumberOfFiducials() )
     return semilandmarkPoints
   
+  def getSmoothNormals(self, surfaceNode,iterations):
+    smoothFilter = vtk.vtkSmoothPolyDataFilter()
+    smoothFilter.SetInputData(surfaceNode.GetPolyData())
+    smoothFilter.FeatureEdgeSmoothingOff()
+    smoothFilter.BoundarySmoothingOn()
+    smoothFilter.SetNumberOfIterations(iterations)
+    smoothFilter.SetRelaxationFactor(1)
+    smoothFilter.Update()
+    normalGenerator = vtk.vtkPolyDataNormals()
+    normalGenerator.ComputePointNormalsOn()
+    normalGenerator.SetInputData(smoothFilter.GetOutput())
+    normalGenerator.Update()
+    normalArray = normalGenerator.GetOutput().GetPointData().GetArray("Normals")
+    return normalArray
+    
   def getLandmarks(self, landmarkDirectory):
     files_to_open=[]
     for path, dir, files in os.walk(landmarkDirectory):
