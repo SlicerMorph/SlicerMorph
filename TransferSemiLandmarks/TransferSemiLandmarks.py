@@ -92,8 +92,8 @@ class TransferSemiLandmarksWidget(ScriptedLoadableModuleWidget):
     self.sampleRate.maximum = 100
     self.sampleRate.setDecimals(0)
     self.sampleRate.value = 10
-    self.sampleRate.setToolTip("Select sample rate for semi-landmark interpolarion")
-    parametersFormLayout.addRow("Sample rate for segmentation:", self.sampleRate)
+    self.sampleRate.setToolTip("Select sample rate for semi-landmark interpolation")
+    parametersFormLayout.addRow("Sample rate for interpolation:", self.sampleRate)
     #
     # Apply Button
     #
@@ -135,6 +135,8 @@ class TransferSemiLandmarksLogic(ScriptedLoadableModuleLogic):
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
   def run(self, meshDirectory, lmDirectory, gridFileName, ouputDirectory, sampleRate):
+    smoothingIterations = 75
+    maximumProjectionDistance = .75
     SLLogic=SemiLandmark.SemiLandmarkLogic()
     gridVertices = []
     with open(gridFileName) as gridFile:
@@ -153,14 +155,14 @@ class TransferSemiLandmarksLogic(ScriptedLoadableModuleLogic):
         for lmFileName in lmFileList:
           if str(subjectID) in lmFileName:
             meshNode =slicer.util.loadModel(meshFilePath)
+            smoothNormalArray = SLLogic.getSmoothNormals(meshNode,smoothingIterations) 
             lmFilePath = os.path.join(lmDirectory, lmFileName)
             landmarkNode = slicer.util.loadMarkupsFiducialList(lmFilePath)
             landmarkNumber=landmarkNode.GetNumberOfControlPoints()
             for n in range(landmarkNumber):
               landmarkNode.SetNthControlPointLabel(n, str(n+1))
             for triangle in gridVertices:
-              smoothingIterations = 0
-              newNode = SLLogic.run(meshNode, landmarkNode, triangle, sampleRate, smoothingIterations)
+              newNode = SLLogic.applyPatch(meshNode, landmarkNode, triangle, sampleRate, smoothNormalArray, maximumProjectionDistance)
             nodeList = slicer.mrmlScene.GetNodesByClass("vtkMRMLMarkupsFiducialNode")
             mergedLandmarkNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode', meshFileName+'_merged')
             success = SLLogic.mergeList(nodeList, landmarkNode, meshNode, sampleRate, mergedLandmarkNode)
@@ -171,7 +173,7 @@ class TransferSemiLandmarksLogic(ScriptedLoadableModuleLogic):
             outputFilePath = os.path.join(ouputDirectory, outputFileName)
             slicer.util.saveNode(mergedLandmarkNode, outputFilePath)
             slicer.mrmlScene.Clear(0)
-
+    
   def takeScreenshot(self,name,description,type=-1):
     # show the message even if not taking a screen shot
     slicer.util.delayDisplay('Take screenshot: '+description+'.\nResult is available in the Annotations module.', 3000)
