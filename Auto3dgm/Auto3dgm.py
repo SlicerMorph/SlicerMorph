@@ -45,11 +45,6 @@ and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR0132
   def checkPythonPackages(self):
     print('Checking for required python packages')
     try:
-      import scipy
-    except:
-      slicer.util.pip_install('scipy')
-      import scipy
-    try:
       import mosek
     except:
       slicer.util.pip_install('mosek')
