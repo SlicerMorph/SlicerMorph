@@ -34,7 +34,7 @@ add_subdirectory(SlicerMorphSampleData)
 add_subdirectory(TransferSemiLandmarks)
 add_subdirectory(TransferSemiLandmarksWarp)
 add_subdirectory(VolumeToMesh)
-
+add_subdirectory(SegmentEndocranium)
 ## NEXT_MODULE
 
 #-----------------------------------------------------------------------------
