@@ -316,8 +316,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     threeDView.resetFocalPoint()
     
     # check for loaded reference model
-    if hasattr(self, 'sourceLMNode'):
-      self.sourceLMNode.GetDisplayNode().SetViewNodeIDs([viewNode1.GetID()])
+    if hasattr(self, 'cloneLandmarkNode'):
       self.cloneLandmarkDisplayNode.SetViewNodeIDs([viewNode2.GetID()])
       if hasattr(self, 'modelDisplayNode'):
         # assign each model to a specific view
@@ -382,10 +381,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.loadButton.enabled = bool (self.LM_dir_name and self.outputDirectory)
     except AttributeError:
       self.loadButton.enabled = False
-  def onGrayscaleSelect(self):
-    self.selectorButton.enabled = bool (self.FudSelect.currentNode())
-  def onFudSelect(self):
-    self.selectorButton.enabled = bool (self.FudSelect.currentNode())
   def updateList(self):
     i,j,k=self.LM.lm.shape
     self.PCList=[]
@@ -443,7 +438,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     if self.meanLandmarkNode is None:
       self.meanLandmarkNode = slicer.vtkMRMLMarkupsFiducialNode()
       self.meanLandmarkNode.SetName('Mean Landmark Node')
-      self.meanLandmarkNode.SetHideFromEditors(1) #hide from module so these cannot be selected for analysis
       slicer.mrmlScene.AddNode(self.meanLandmarkNode)
       GPANodeCollection.AddItem(self.meanLandmarkNode)
       modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
@@ -455,6 +449,17 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.meanLandmarkNode.SetDisplayVisibility(0) #no display needed yet
     self.meanLandmarkNode.LockedOn() #lock position so when displayed they cannot be moved
 
+    #Set up cloned mean landmark node for pc warping
+    shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+    itemIDToClone = shNode.GetItemByDataNode(self.meanLandmarkNode)
+    print(itemIDToClone)
+    clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(shNode, itemIDToClone)
+    self.cloneLandmarkNode = shNode.GetItemDataNode(clonedItemID)
+    GPANodeCollection.AddItem(self.cloneLandmarkNode)
+    self.cloneLandmarkNode.SetName('PCA Warped Landmarks')
+    self.cloneLandmarkDisplayNode = self.cloneLandmarkNode.GetDisplayNode()
+    self.cloneLandmarkNode.SetDisplayVisibility(0)
+    
     # calculate scale factor using mean of raw landmarks
     logic = GPALogic()
     self.sampleSizeScaleFactor = logic.dist2(self.rawMeanLandmarks).max()
@@ -478,7 +483,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.plotMeanButton3D.enabled = True
     self.plotMeanButton2D.enabled = True
     self.showMeanLabelsButton.enabled = True
-
+    self.selectorButton.enabled = True
+    
   def populateDistanceTable(self, files):
     sortedArray = np.zeros(len(files), dtype={'names':('filename', 'procdist'),'formats':('U10','f8')})
     sortedArray['filename']=files
@@ -594,34 +600,19 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     pcList=[pb1,pb2,pb3]
     logic = GPALogic()
-    #check if reference landmarks are loaded, otherwise use mean landmark positions to plot lollipops
-    #later may update this to if self.sourceLMnumpy array is empty
-    try:
-      referenceLandmarks = self.sourceLMnumpyTransformed
-      if self.TwoDLM.isChecked():
-        if self.modelDisplayNode is not None:
-          self.modelDisplayNode.SetSliceProjection(1)
-          self.modelDisplayNode.SetSliceProjectionOpacity(1)
-        else:
-          self.modelDisplayNode.SetSliceProjection(0)
-    except AttributeError:
-      referenceLandmarks = self.rawMeanLandmarks
-      # get fiducial node for mean landmarks
-      self.meanLandmarkNode=slicer.mrmlScene.GetFirstNodeByName('Mean Landmark Node')
-      self.meanLandmarkNode.SetDisplayVisibility(1)
-
-      print("No reference landmarks loaded, plotting lollipop vectors at mean landmarks points.")
-
+      
+    meanLandmarkNode=slicer.mrmlScene.GetFirstNodeByName('Mean Landmark Node')
+    meanLandmarkNode.SetDisplayVisibility(1)
     componentNumber = 1
     for pc in pcList:
-      logic.lollipopGraph(self.LM, referenceLandmarks, pc, self.sampleSizeScaleFactor, componentNumber, self.TwoDType.isChecked())
+      logic.lollipopGraph(self.LM, self.rawMeanLandmarks, pc, self.sampleSizeScaleFactor, componentNumber, self.TwoDType.isChecked())
       componentNumber+=1
 
   def initializeOnLoad(self):
   # clear rest of module when starting GPA analysis
 
-    self.grayscaleSelector.setCurrentNode(None)
-    self.FudSelect.setCurrentNode(None)
+    self.grayscaleSelector.setCurrentPath(None)
+    self.FudSelect.setCurrentPath(None)
 
     self.slider1.clear()
     self.slider2.clear()
@@ -647,8 +638,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.LM_dir_name=None
     self.LMText.setText(" ")
 
-    self.grayscaleSelector.setCurrentNode(None)
-    self.FudSelect.setCurrentNode(None)
+    self.grayscaleSelector.setCurrentPath(None)
+    self.FudSelect.setCurrentPath(None)
 
     self.slider1.clear()
     self.slider2.clear()
@@ -674,6 +665,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.plotMeanButton2D.enabled = False
     self.showMeanLabelsButton.enabled = False
     self.loadButton.enabled = False
+    self.selectorButton.enabled = False
 
     #delete data from previous runs
     self.nodeCleanUp()
@@ -689,12 +681,19 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     visibility = self.meanLandmarkNode.GetDisplayVisibility()
     if visibility:
       visibility = self.meanLandmarkNode.SetDisplayVisibility(False)
+      if hasattr(self, 'cloneLandmarkNode'):
+        self.cloneLandmarkNode.SetDisplayVisibility(False)
     else:
       visibility = self.meanLandmarkNode.SetDisplayVisibility(True)
       #refresh color and scale from GUI
       self.meanLandmarkNode.GetDisplayNode().SetGlyphScale(self.scaleMeanShapeSlider.value)
       color = self.meanShapeColor.color
       self.meanLandmarkNode.GetDisplayNode().SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
+      #refresh PC warped mean node
+      if hasattr(self, 'cloneLandmarkNode'):
+        self.cloneLandmarkNode.SetDisplayVisibility(True)
+        self.cloneLandmarkDisplayNode.SetGlyphScale(self.scaleMeanShapeSlider.value)
+        self.cloneLandmarkDisplayNode.SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
   
   def toggleMeanPlot2D(self):
     visibility = self.meanLandmarkNode.GetDisplayNode().GetSliceProjection()
@@ -712,17 +711,25 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     visibility = self.meanLandmarkNode.GetDisplayNode().GetPointLabelsVisibility()
     if visibility:
       self.meanLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(0)
+      if hasattr(self, 'cloneLandmarkNode'):
+        self.cloneLandmarkDisplayNode.SetPointLabelsVisibility(0)
     else:
       self.meanLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(1)
+      if hasattr(self, 'cloneLandmarkNode'):
+        self.cloneLandmarkDisplayNode.SetPointLabelsVisibility(1)
     
   def toggleMeanColor(self):
     color = self.meanShapeColor.color
     self.meanLandmarkNode.GetDisplayNode().SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
-
+    if hasattr(self, 'cloneLandmarkNode'):
+      self.cloneLandmarkDisplayNode.SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
+    
   def scaleMeanGlyph(self):
     scaleFactor = self.sampleSizeScaleFactor/10
     self.meanLandmarkNode.GetDisplayNode().SetGlyphScale(self.scaleMeanShapeSlider.value)
-
+    if hasattr(self, 'cloneLandmarkNode'):
+      self.cloneLandmarkDisplayNode.SetGlyphScale(self.scaleMeanShapeSlider.value)
+    
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
     self.StyleSheet="font: 12px;  min-height: 20 px ; background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #f6f7fa, stop: 1 #dadbde); border: 1px solid; border-radius: 4px; "
@@ -956,29 +963,14 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.grayscaleSelectorLabel.setToolTip( "Select the model node for display")
     selectTemplatesLayout.addWidget(self.grayscaleSelectorLabel,1,1)
 
-    self.grayscaleSelector = slicer.qMRMLNodeComboBox()
-    self.grayscaleSelector.nodeTypes = ( ("vtkMRMLModelNode"), "" )
-    self.grayscaleSelector.selectNodeUponCreation = False
-    self.grayscaleSelector.addEnabled = False
-    self.grayscaleSelector.removeEnabled = False
-    self.grayscaleSelector.noneEnabled = True
-    self.grayscaleSelector.showHidden = False
-    self.grayscaleSelector.setMRMLScene( slicer.mrmlScene )
-    self.grayscaleSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onGrayscaleSelect)
+    self.grayscaleSelector = ctk.ctkPathLineEdit()
+    self.grayscaleSelector.nameFilters=["*.vtk","*.vtp","*.ply"]
     selectTemplatesLayout.addWidget(self.grayscaleSelector,1,2,1,3)
 
     self.FudSelectLabel = qt.QLabel("Specify LM set for the selected model: ")
     self.FudSelectLabel.setToolTip( "Select the landmark set that corresponds to the reference model")
-    self.FudSelect = slicer.qMRMLNodeComboBox()
-    self.FudSelect.nodeTypes = ( ('vtkMRMLMarkupsFiducialNode'), "" )
-    self.FudSelect.selectNodeUponCreation = False
-    self.FudSelect.addEnabled = False
-    self.FudSelect.removeEnabled = False
-    self.FudSelect.noneEnabled = True
-    self.FudSelect.showHidden = False
-    self.FudSelect.showChildNodeTypes = False
-    self.FudSelect.setMRMLScene( slicer.mrmlScene )
-    self.FudSelect.connect("currentNodeChanged(vtkMRMLNode*)", self.onFudSelect)
+    self.FudSelect = ctk.ctkPathLineEdit()
+    self.FudSelect.nameFilters=["*.fcsv"]
     selectTemplatesLayout.addWidget(self.FudSelectLabel,2,1)
     selectTemplatesLayout.addWidget(self.FudSelect,2,2,1,3)
 
@@ -1082,11 +1074,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       GPANodeCollection.RemoveItem(temporaryNode)
       slicer.mrmlScene.RemoveNode(temporaryNode)
     
-    temporaryNode=slicer.mrmlScene.GetFirstNodeByName('GPA Warped Landmarks')
-    if(temporaryNode):
-      GPANodeCollection.RemoveItem(temporaryNode)
-      slicer.mrmlScene.RemoveNode(temporaryNode)
-    
     temporaryNode=slicer.mrmlScene.GetFirstNodeByName('GPA Warped Volume')
     if(temporaryNode):
       GPANodeCollection.RemoveItem(temporaryNode)
@@ -1098,78 +1085,62 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       slicer.mrmlScene.RemoveNode(temporaryNode)
     
   def onSelect(self):
-    # turn off visibility of mean landmarks that may have been used in previous plots
     self.initializeOnSelect()
-    self.meanLandmarkNode.SetDisplayVisibility(0)
+    if bool((self.FudSelect.currentPath != 'None') and (self.grayscaleSelector.currentPath != 'None')):
+      # turn off visibility of mean landmarks that may have been used in previous plots
+      self.meanLandmarkNode.SetDisplayVisibility(0)
 
-    # get landmark node selected
-    logic = GPALogic()
-    self.sourceLMNode=self.FudSelect.currentNode()
-    self.sourceLMnumpy=logic.convertFudicialToNP(self.sourceLMNode)
+      # get landmark node selected
+      logic = GPALogic()
+      self.sourceLMNode= slicer.util.loadMarkupsFiducialList(self.FudSelect.currentPath)
+      GPANodeCollection.AddItem(self.sourceLMNode)
+      self.sourceLMnumpy=logic.convertFudicialToNP(self.sourceLMNode)
 
-    # remove any excluded landmarks
-    j=len(self.LMExclusionList)
-    if (j != 0):
-      indexToRemove=np.zeros(j)
-      for i in range(j):
-        indexToRemove[i]=self.LMExclusionList[i]-1
-        print("removing",  indexToRemove[i])
-      self.sourceLMnumpy=np.delete(self.sourceLMnumpy,indexToRemove,axis=0)
+      # remove any excluded landmarks
+      j=len(self.LMExclusionList)
+      if (j != 0):
+        indexToRemove=np.zeros(j)
+        for i in range(j):
+          indexToRemove[i]=self.LMExclusionList[i]-1
+          print("removing",  indexToRemove[i])
+        self.sourceLMnumpy=np.delete(self.sourceLMnumpy,indexToRemove,axis=0)
 
-    # set up transform
-    targetLMVTK=logic.convertNumpyToVTK(self.rawMeanLandmarks)
-    sourceLMVTK=logic.convertNumpyToVTK(self.sourceLMnumpy)
-
-    VTKTPSMean = vtk.vtkThinPlateSplineTransform()
-    VTKTPSMean.SetSourceLandmarks( sourceLMVTK )
-    VTKTPSMean.SetTargetLandmarks( targetLMVTK )
-    VTKTPSMean.SetBasisToR()  # for 3D transform
+      # set up transform
+      targetLMVTK=logic.convertNumpyToVTK(self.rawMeanLandmarks)
+      sourceLMVTK=logic.convertNumpyToVTK(self.sourceLMnumpy)
+      VTKTPSMean = vtk.vtkThinPlateSplineTransform()
+      VTKTPSMean.SetSourceLandmarks( sourceLMVTK )
+      VTKTPSMean.SetTargetLandmarks( targetLMVTK )
+      VTKTPSMean.SetBasisToR()  # for 3D transform
     
-    # connect transform to model
-    self.transformMeanNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', 'Mean TPS Transform')
-    GPANodeCollection.AddItem(self.transformMeanNode)
-    self.transformMeanNode.SetAndObserveTransformToParent( VTKTPSMean )
-    self.sourceLMNode.SetAndObserveTransformNodeID(self.transformMeanNode.GetID())
-    
-    # define a reference lms as clone of selected lms
-    shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
-    itemIDToClone = shNode.GetItemByDataNode(self.sourceLMNode)
-    clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(shNode, itemIDToClone)
-    self.cloneLandmarkNode = shNode.GetItemDataNode(clonedItemID)
-    GPANodeCollection.AddItem(self.cloneLandmarkNode)
-    self.cloneLandmarkNode.SetName('GPA Warped Landmarks')
-    self.cloneLandmarkDisplayNode = self.cloneLandmarkNode.GetDisplayNode()
-    
-    # Initialize visibility settings
-    self.cloneLandmarkNode.SetDisplayVisibility(1)
-    self.cloneLandmarkDisplayNode.SetPointLabelsVisibility(0)
-    glyphSize = self.sourceLMNode.GetDisplayNode().GetGlyphScale()
-    self.cloneLandmarkDisplayNode.SetGlyphScale(glyphSize)
-    glyphColor = self.sourceLMNode.GetDisplayNode().GetSelectedColor()
-    self.cloneLandmarkDisplayNode.SetSelectedColor(glyphColor)
-    slicer.vtkSlicerTransformLogic().hardenTransform(self.cloneLandmarkNode)
-    
-    # get transformed source landmark array
-    self.sourceLMnumpyTransformed=self.rawMeanLandmarks
+      # transform from selected to mean
+      self.transformMeanNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', 'Mean TPS Transform')
+      GPANodeCollection.AddItem(self.transformMeanNode)
+      self.transformMeanNode.SetAndObserveTransformToParent( VTKTPSMean )
 
-    # if present, define a reference model as clone of selected volume
-    if bool(self.grayscaleSelector.currentNode()):
-      # get model node selected
-      self.modelNode=self.grayscaleSelector.currentNode()
+      # load model node
+      self.modelNode=slicer.util.loadModel(self.grayscaleSelector.currentPath)
+      GPANodeCollection.AddItem(self.modelNode)
       self.modelDisplayNode = self.modelNode.GetDisplayNode()
       self.modelNode.SetAndObserveTransformNodeID(self.transformMeanNode.GetID())
-      
+      slicer.vtkSlicerTransformLogic().hardenTransform(self.modelNode)
+
+      # create a PC warped model as clone of the selected model node
+      shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
       itemIDToClone = shNode.GetItemByDataNode(self.modelNode)
       clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(shNode, itemIDToClone)
       self.cloneModelNode = shNode.GetItemDataNode(clonedItemID)
-      self.cloneModelNode.SetName('GPA Warped Volume')
+      self.cloneModelNode.SetName('PCA Warped Volume')
       self.cloneModelDisplayNode = self.cloneModelNode.GetDisplayNode()
       self.cloneModelDisplayNode.SetColor(0,0,1)
       GPANodeCollection.AddItem(self.cloneModelNode)
-      # permanently apply mean tps transform to cloned node. This will be the node warped by PCs
-      slicer.vtkSlicerTransformLogic().hardenTransform(self.cloneModelNode)
-
-
+      
+      #Clean up
+      GPANodeCollection.RemoveItem(self.sourceLMNode)
+      slicer.mrmlScene.RemoveNode(self.sourceLMNode)
+    
+    #else:
+      #self.sourceLMnumpy = self.rawMeanLandmarks
     #apply custom layout
     self.assignLayoutDescription()
 
@@ -1180,7 +1151,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     # Enable PCA warping and recording
     self.applyEnabled = True
     self.startRecordButton.enabled = True
-
+    
   def onApply(self):
     pc1=self.slider1.boxValue()
     pc2=self.slider2.boxValue()
@@ -1202,9 +1173,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     logic = GPALogic()
     #get target landmarks
     self.LM.ExpandAlongPCs(pcSelected,scaleFactors, self.sampleSizeScaleFactor)
-    target=self.sourceLMnumpyTransformed+self.LM.shift
+    target=self.rawMeanLandmarks+self.LM.shift
     targetLMVTK=logic.convertNumpyToVTK(target)
-    sourceLMVTK=logic.convertNumpyToVTK(self.sourceLMnumpyTransformed)
+    sourceLMVTK=logic.convertNumpyToVTK(self.rawMeanLandmarks)
 
     #Set up TPS
     VTKTPS = vtk.vtkThinPlateSplineTransform()
@@ -1306,18 +1277,13 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     tensors.SetNumberOfComponents(9)
     tensors.SetName("Tensors")
 
-    #check if reference landmarks are loaded. otherwise plot at mean landmarks
-    try:
-      referenceLandmarks = self.sourceLMnumpyTransformed
-    except AttributeError:
-      referenceLandmarks = self.rawMeanLandmarks
-      # get fiducial node for mean landmarks, make just labels visible
-      self.meanLandmarkNode=slicer.mrmlScene.GetFirstNodeByName('Mean Landmark Node')
-      self.meanLandmarkNode.SetDisplayVisibility(1)
-      self.scaleMeanShapeSlider.value=0
-      print("No reference landmarks loaded. Plotting distributions at mean landmark points.")
+    # get fiducial node for mean landmarks, make just labels visible
+    self.meanLandmarkNode=slicer.mrmlScene.GetFirstNodeByName('Mean Landmark Node')
+    self.meanLandmarkNode.SetDisplayVisibility(1)
+    self.scaleMeanShapeSlider.value=0
+    print("No reference landmarks loaded. Plotting distributions at mean landmark points.")
     for landmark in range(i):
-      pt=referenceLandmarks[landmark,:]
+      pt=self.rawMeanLandmarks[landmark,:]
       points.SetPoint(landmark,pt)
       scales.InsertNextValue(sliderScale*(varianceMat[landmark,0]+varianceMat[landmark,1]+varianceMat[landmark,2])/3)
       tensors.InsertTuple9(landmark,sliderScale*varianceMat[landmark,0],0,0,0,sliderScale*varianceMat[landmark,1],0,0,0,sliderScale*varianceMat[landmark,2])
