@@ -42,6 +42,70 @@ This module was developed by Sara Rolfe and Murat Maga, through a NSF ABI Develo
 https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
 """ # replace with organization, grant and thanks.
 
+# Define custom layouts for GPA modules in slicer global namespace
+    slicer.customLayoutSM = """
+      <layout type=\"vertical\" split=\"true\" >
+       <item splitSize=\"500\">
+         <layout type=\"horizontal\">
+           <item>
+            <view class=\"vtkMRMLViewNode\" singletontag=\"1\">
+             <property name=\"viewlabel\" action=\"default\">1</property>
+            </view>
+           </item>
+           <item>
+            <view class=\"vtkMRMLViewNode\" singletontag=\"2\" type=\"secondary\">"
+             <property name=\"viewlabel\" action=\"default\">2</property>"
+            </view>
+          </item>
+         </layout>
+       </item>
+       <item splitSize=\"500\">
+        <layout type=\"horizontal\">
+         <item>
+          <view class=\"vtkMRMLSliceNode\" singletontag=\"Red\">
+           <property name=\"orientation\" action=\"default\">Axial</property>
+           <property name=\"viewlabel\" action=\"default\">R</property>
+           <property name=\"viewcolor\" action=\"default\">#F34A33</property>
+          </view>
+         </item>
+           <item>
+            <view class=\"vtkMRMLPlotViewNode\" singletontag=\"PlotViewerWindow_1\">
+             <property name=\"viewlabel\" action=\"default\">1</property>
+            </view>
+           </item>
+         <item>
+          <view class=\"vtkMRMLTableViewNode\" singletontag=\"TableViewerWindow_1\">"
+           <property name=\"viewlabel\" action=\"default\">T</property>"
+          </view>"
+         </item>"
+        </layout>
+       </item>
+      </layout>
+  """
+
+    slicer.customLayoutTableOnly = """
+      <layout type=\"horizontal\" >
+       <item>
+        <view class=\"vtkMRMLTableViewNode\" singletontag=\"TableViewerWindow_1\">"
+         <property name=\"viewlabel\" action=\"default\">T</property>"
+        </view>"
+       </item>"
+      </layout>
+  """
+  
+    slicer.customLayoutPlotOnly = """
+      <layout type=\"horizontal\" >
+       <item>
+        <view class=\"vtkMRMLPlotViewNode\" singletontag=\"PlotViewerWindow_1\">
+         <property name=\"viewlabel\" action=\"default\">1</property>
+        </view>"
+       </item>"
+      </layout>
+  """
+
+
+
+
 #
 # GPAWidget
 #
@@ -104,10 +168,6 @@ class sliderGroup(qt.QGroupBox):
     slidersLayout.addWidget(self.comboBox,1,1)
     slidersLayout.addWidget(self.spinBox,1,3)
     self.setLayout(slidersLayout)
-
-
-
-
 
 class LMData:
   def __init__(self):
@@ -255,48 +315,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
   def assignLayoutDescription(self):
-    customLayout1 = """
-      <layout type=\"vertical\" split=\"true\" >
-       <item splitSize=\"500\">
-         <layout type=\"horizontal\">
-           <item>
-            <view class=\"vtkMRMLViewNode\" singletontag=\"1\">
-             <property name=\"viewlabel\" action=\"default\">1</property>
-            </view>
-           </item>
-           <item>
-            <view class=\"vtkMRMLViewNode\" singletontag=\"2\" type=\"secondary\">"
-             <property name=\"viewlabel\" action=\"default\">2</property>"
-            </view>
-          </item>
-         </layout>
-       </item>
-       <item splitSize=\"500\">
-        <layout type=\"horizontal\">
-         <item>
-          <view class=\"vtkMRMLSliceNode\" singletontag=\"Red\">
-           <property name=\"orientation\" action=\"default\">Axial</property>
-           <property name=\"viewlabel\" action=\"default\">R</property>
-           <property name=\"viewcolor\" action=\"default\">#F34A33</property>
-          </view>
-         </item>
-           <item>
-            <view class=\"vtkMRMLPlotViewNode\" singletontag=\"PlotViewerWindow_1\">
-             <property name=\"viewlabel\" action=\"default\">1</property>
-            </view>
-           </item>
-         <item>
-          <view class=\"vtkMRMLTableViewNode\" singletontag=\"TableViewerWindow_1\">"
-           <property name=\"viewlabel\" action=\"default\">T</property>"
-          </view>"
-         </item>"
-        </layout>
-       </item>
-      </layout>
-     """
-    customLayoutId1=5489
+   
+    customLayoutId1=500
     layoutManager = slicer.app.layoutManager()
-    layoutManager.layoutLogic().GetLayoutNode().AddLayoutDescription(customLayoutId1, customLayout1)
     layoutManager.setLayout(customLayoutId1)
 
     #link whatever is in the 3D views
@@ -1029,7 +1050,31 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     resetButton.connect('clicked(bool)', self.reset)
 
     self.layout.addStretch(1)
-
+    
+    # Add menu buttons
+    self.addLayoutButton(500, 'GPA Module View', 'Custom layout for GPA module', 'LayoutSlicerMorphView.png', slicer.customLayoutSM)
+    self.addLayoutButton(501, 'Table Only View', 'Custom layout for GPA module', 'LayoutTableOnlyView.png', slicer.customLayoutTableOnly)
+    self.addLayoutButton(502, 'Plot Only View', 'Custom layout for GPA module', 'LayoutPlotOnlyView.png', slicer.customLayoutPlotOnly)
+    
+    
+  def addLayoutButton(self, layoutID, buttonAction, toolTip, imageFileName, layoutDiscription):
+    layoutManager = slicer.app.layoutManager()
+    layoutManager.layoutLogic().GetLayoutNode().AddLayoutDescription(layoutID, layoutDiscription)
+    
+    viewToolBar = slicer.util.mainWindow().findChild('QToolBar', 'ViewToolBar')
+    layoutMenu = viewToolBar.widgetForAction(viewToolBar.actions()[0]).menu()
+    layoutSwitchActionParent = layoutMenu
+    # use `layoutMenu` to add inside layout list, use `viewToolBar` to add next the standard layout list
+    layoutSwitchAction = layoutSwitchActionParent.addAction(buttonAction) # add inside layout list
+    
+    moduleDir = os.path.dirname(slicer.util.modulePath(self.__module__))
+    iconPath = os.path.join(moduleDir, 'Resources/Icons', imageFileName)
+    layoutSwitchAction.setIcon(qt.QIcon(iconPath))
+    layoutSwitchAction.setToolTip(toolTip)
+    layoutSwitchAction.connect('triggered()', lambda layoutId = layoutID: slicer.app.layoutManager().setLayout(layoutId))
+    layoutSwitchAction.setData(layoutID)
+  
+    
   def onStartRecording(self):
     #set up sequences for template model and PC TPS transform
     modelSequence=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSequenceNode","GPAModelSequence")
