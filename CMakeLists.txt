@@ -20,7 +20,6 @@ include(${Slicer_USE_FILE})
 #-----------------------------------------------------------------------------
 # Extension modules
 add_subdirectory(Animator)
-add_subdirectory(Auto3dgm)
 add_subdirectory(ConvertMorphologikaLandmarks)
 add_subdirectory(GPA)
 add_subdirectory(ImageStacks)
