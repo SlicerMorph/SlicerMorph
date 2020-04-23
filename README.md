@@ -10,7 +10,8 @@ To install SlicerMorph, please first install the Preview Release of [3D-Slicer](
 ## Module Descriptions
 - **GPA:** Performs generalized Procrustes analysis (GPA) with or without scaling and principle component analysis (PCA) of shape from landmark data and provides visualizations of statistical output.
 - **SemiLandmarks:** Provides patch-based resampling of semi-landmarks from a 3D model with associated landmarks. 
-- **Transfer SemiLandmarks:** A utility to apply the generated connectivity map from the semiLandmarks module to other 3D models with the same set of landmarks. Input a directory with 3D models and fcsv (same filename prefix). 
+- **Transfer SemiLandmarks:** A utility to apply the generated connectivity table from the semiLandmarks module to other 3D models with the same set of landmarks. A new set of semiLandmarks are sampled directly from the new models using the specified connectivity map. Inputs: a directory with 3D models and fcsv (same filename prefix). 
+- **Transfer SemiLandmarks Warp:** A utility to transfer a template of semiLandmarks to new 3D models using Thin Plate Splines (TPS) warp. Requires existence identical set of landmarks in the template and new models. 
 - **Segment EndoCranium:** Automatically segments the endocranial space in a 3D volume of a vertebrate skull. 
 - **Image Stacks:** A general purpose tool to import non-DICOM image sequences (png/jpg/bmp/tiff) into Slicer. Provides option to choose to choose a partial range, downsample along all axis, load every Nth slice (skip a slice). Resultant volume is always a scalar volume (single channel image). 
 - **SkyscanReconImport:** Imports an image stack from Bruker/Skyscan reconstruction software (Nrecon) with correct voxel spacing and orientation as a 3D volume.
