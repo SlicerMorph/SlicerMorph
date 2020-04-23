@@ -12,7 +12,7 @@ scmrevision master
 # list dependencies
 # - These should be names of other modules that have .s4ext files
 # - The dependencies will be built first
-depends     SegmentEditorExtraEffects Sequences Sandbox SlicerIGT RawImageGuess SlicerDcm2nii SurfaceWrapSolidify
+depends     SegmentEditorExtraEffects Sandbox SlicerIGT RawImageGuess SlicerDcm2nii SurfaceWrapSolidify
 
 # Inner build directory (default is .)
 build_subdirectory .
