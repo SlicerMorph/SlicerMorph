@@ -18,7 +18,7 @@ depends     SegmentEditorExtraEffects Sandbox SlicerIGT RawImageGuess SlicerDcm2
 build_subdirectory .
 
 # homepage
-homepage    https://slicermorph.github.io/
+homepage    http://slicermorph.org/
 
 # Firstname1 Lastname1 ([SubOrg1, ]Org1), Firstname2 Lastname2 ([SubOrg2, ]Org2)
 # For example: Jane Roe (Superware), John Doe (Lab1, Nowhere), Joe Bloggs (Noware)
