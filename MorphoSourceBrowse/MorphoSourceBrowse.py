@@ -5,17 +5,17 @@ from slicer.ScriptedLoadableModule import *
 import logging
 
 #
-# MorphoSource
+# MorphoSourceBrowse
 #
 
-class MorphoSource(ScriptedLoadableModule):
+class MorphoSourceBrowse(ScriptedLoadableModule):
   """Uses ScriptedLoadableModule base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
 
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
-    self.parent.title = "MorphoSource" # TODO make this more human readable by adding spaces
+    self.parent.title = "MorphoSourceBrowse" # TODO make this more human readable by adding spaces
     self.parent.categories = ["SlicerMorph"]
     self.parent.dependencies = []
     self.parent.contributors = ["Steve Pieper (Isomics, Inc.)"] # replace with "Firstname Lastname (Organization)"
@@ -30,10 +30,10 @@ https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
 """ # replace with organization, grant and thanks.
 
 #
-# MorphoSourceWidget
+# MorphoSourceBrowseWidget
 #
 
-class MorphoSourceWidget(ScriptedLoadableModuleWidget):
+class MorphoSourceBrowseWidget(ScriptedLoadableModuleWidget):
   """Uses ScriptedLoadableModuleWidget base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
@@ -43,11 +43,11 @@ class MorphoSourceWidget(ScriptedLoadableModuleWidget):
 
     # Instantiate and connect widgets ...
     self.webWidget = None
-    self.logic = MorphoSourceLogic()
+    self.logic = MorphoSourceBrowseLogic()
 
     # Collapsible button
     self.loginCollapsibleButton = ctk.ctkCollapsibleButton()
-    self.loginCollapsibleButton.text = "MorphoSource Login"
+    self.loginCollapsibleButton.text = "MorphoSourceBrowse Login"
     self.layout.addWidget(self.loginCollapsibleButton)
     self.formLayout = qt.QFormLayout(self.loginCollapsibleButton)
 
@@ -66,7 +66,7 @@ class MorphoSourceWidget(ScriptedLoadableModuleWidget):
     #
     # Open Button
     #
-    self.applyButton = qt.QPushButton("Open MorphoSource")
+    self.applyButton = qt.QPushButton("Open MorphoSource Browser")
     self.applyButton.toolTip = "Open the MorphoSource site."
     self.formLayout.addWidget(self.applyButton)
 
@@ -86,10 +86,10 @@ class MorphoSourceWidget(ScriptedLoadableModuleWidget):
     self.webWidget = self.logic.open(username, password)
 
 #
-# MorphoSourceLogic
+# MorphoSourceBrowseLogic
 #
 
-class MorphoSourceLogic(ScriptedLoadableModuleLogic):
+class MorphoSourceBrowseLogic(ScriptedLoadableModuleLogic):
   """This class should implement all the actual
   computation done by your module.  The interface
   should be such that other python code can import
@@ -153,7 +153,7 @@ class MorphoSourceLogic(ScriptedLoadableModuleLogic):
 
     return self.webWidget
 
-class MorphoSourceTest(ScriptedLoadableModuleTest):
+class MorphoSourceBrowseTest(ScriptedLoadableModuleTest):
   """
   This is the test case for your scripted module.
   Uses ScriptedLoadableModuleTest base class, available at:
@@ -169,9 +169,9 @@ class MorphoSourceTest(ScriptedLoadableModuleTest):
     """Run as few or as many tests as needed here.
     """
     self.setUp()
-    self.test_MorphoSource1()
+    self.test_MorphoSourceBrowse1()
 
-  def test_MorphoSource1(self):
+  def test_MorphoSourceBrowse1(self):
     """ Ideally you should have several levels of tests.  At the lowest level
     tests should exercise the functionality of the logic with different inputs
     (both valid and invalid).  At higher levels your tests should emulate the
@@ -185,7 +185,7 @@ class MorphoSourceTest(ScriptedLoadableModuleTest):
 
     self.delayDisplay("Starting the test")
 
-    logic = MorphoSourceLogic()
+    logic = MorphoSourceBrowseLogic()
     webWidget = logic.open()
 
     self.delayDisplay('Test passed!')

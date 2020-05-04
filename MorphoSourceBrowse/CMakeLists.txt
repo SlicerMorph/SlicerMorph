@@ -1,5 +1,5 @@
 #-----------------------------------------------------------------------------
-set(MODULE_NAME MorphoSource)
+set(MODULE_NAME MorphoSourceBrowse)
 
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS
