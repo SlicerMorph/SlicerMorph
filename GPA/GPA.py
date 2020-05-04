@@ -223,11 +223,11 @@ class LMData:
     self.vec=np.real(self.vec)
     # scale eigenvector
     for y in range(len(numVec)):
-        if numVec[y] is not 0:
-          pcComponent = numVec[y] - 1
-          tmp[:,0]=tmp[:,0]+float(scaleFactor[y])*self.vec[0:i,pcComponent]*SampleScaleFactor
-          tmp[:,1]=tmp[:,1]+float(scaleFactor[y])*self.vec[i:2*i,pcComponent]*SampleScaleFactor
-          tmp[:,2]=tmp[:,2]+float(scaleFactor[y])*self.vec[2*i:3*i,pcComponent]*SampleScaleFactor
+      if numVec[y] is not 0:
+        pcComponent = numVec[y] - 1
+        tmp[:,0]=tmp[:,0]+float(scaleFactor[y])*self.vec[0:i,pcComponent]*SampleScaleFactor/3
+        tmp[:,1]=tmp[:,1]+float(scaleFactor[y])*self.vec[i:2*i,pcComponent]*SampleScaleFactor/3
+        tmp[:,2]=tmp[:,2]+float(scaleFactor[y])*self.vec[2*i:3*i,pcComponent]*SampleScaleFactor/3
 
     self.shift=tmp
 
@@ -323,6 +323,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     #link whatever is in the 3D views
     viewNode1 = slicer.mrmlScene.GetFirstNodeByName("View1") #name = "View"+ singletonTag
     viewNode2 = slicer.mrmlScene.GetFirstNodeByName("View2")
+    viewNode1.SetAxisLabelsVisible(False)
+    viewNode2.SetAxisLabelsVisible(False)
     viewNode1.SetLinkedControl(True)
     viewNode2.SetLinkedControl(True)
 
@@ -333,7 +335,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     threeDView.resetFocalPoint()
     threeDWidget = layoutManager.threeDWidget(1)
     threeDView = threeDWidget.threeDView()
-    threeDView.resetCamera()
+    #threeDView.resetCamera()
     threeDView.resetFocalPoint()
     
     # check for loaded reference model
@@ -354,7 +356,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     redNode = layoutManager.sliceWidget('Red').sliceView().mrmlSliceNode()
 
     rasBounds = [0,]*6
-    referenceModelNode.GetRASBounds(rasBounds)
+    if hasattr(self, 'referenceModelNode'):
+      referenceModelNode.GetRASBounds(rasBounds)
+      
     redNode.GetSliceToRAS().SetElement(0, 3, (rasBounds[1]+rasBounds[0]) / 2.)
     redNode.GetSliceToRAS().SetElement(1, 3, (rasBounds[3]+rasBounds[2]) / 2.)
     redNode.GetSliceToRAS().SetElement(2, 3, (rasBounds[5]+rasBounds[4]) / 2.)
@@ -452,8 +456,18 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.LM.lmRaw, self.files = logic.mergeMatchs(self.LM_dir_name, self.LMExclusionList)
     shape = self.LM.lmOrig.shape
     print('Loaded ' + str(shape[2]) + ' subjects with ' + str(shape[0]) + ' landmark points.')
+    
+    # Do GPA
+    self.LM.doGpa(self.skipScalingCheckBox.checked)
+    self.LM.calcEigen()
+    self.updateList()
+    
     #set scaling factor using mean of raw landmarks
-    self.rawMeanLandmarks = self.LM.lmOrig.mean(2)
+    self.rawMeanLandmarks = self.LM.lmRaw.mean(2)
+    logic = GPALogic()
+    self.sampleSizeScaleFactor = logic.dist2(self.rawMeanLandmarks).max()
+    print("Scale Factor: " + str(self.sampleSizeScaleFactor))
+
     # get mean landmarks as a fiducial node
     self.meanLandmarkNode=slicer.mrmlScene.GetFirstNodeByName('Mean Landmark Node')
     if self.meanLandmarkNode is None:
@@ -467,28 +481,21 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     for landmarkNumber in range (shape[0]):
       name = str(landmarkNumber+1) #start numbering at 1
       self.meanLandmarkNode.AddFiducialFromArray(self.rawMeanLandmarks[landmarkNumber,:], name)
-    self.meanLandmarkNode.SetDisplayVisibility(0) #no display needed yet
+    self.meanLandmarkNode.SetDisplayVisibility(1) 
     self.meanLandmarkNode.LockedOn() #lock position so when displayed they cannot be moved
 
-    #Set up cloned mean landmark node for pc warping
+    # Set up cloned mean landmark node for pc warping
     shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
     itemIDToClone = shNode.GetItemByDataNode(self.meanLandmarkNode)
     print(itemIDToClone)
     clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(shNode, itemIDToClone)
     self.cloneLandmarkNode = shNode.GetItemDataNode(clonedItemID)
     GPANodeCollection.AddItem(self.cloneLandmarkNode)
-    self.cloneLandmarkNode.SetName('PCA Warped Landmarks')
+    self.cloneLandmarkNode.SetName('PC Warped Landmarks')
     self.cloneLandmarkDisplayNode = self.cloneLandmarkNode.GetDisplayNode()
     self.cloneLandmarkNode.SetDisplayVisibility(0)
     
-    # calculate scale factor using mean of raw landmarks
-    logic = GPALogic()
-    self.sampleSizeScaleFactor = logic.dist2(self.rawMeanLandmarks).max()
-    print("Scale Factor: " + str(self.sampleSizeScaleFactor))
-
-    self.LM.doGpa(self.skipScalingCheckBox.checked)
-    self.LM.calcEigen()
-    self.updateList()
+    # Set up output
     dateTimeStamp = datetime.now().strftime('%Y-%m-%d_%H_%M_%S')
     self.outputFolder = os.path.join(self.outputDirectory, dateTimeStamp)
     os.makedirs(self.outputFolder)
@@ -496,7 +503,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     filename=self.LM.closestSample(self.files)
     self.populateDistanceTable(self.files)
     print("Closest sample to mean:" + filename)
-
+    
+    # Set up layout
+    self.assignLayoutDescription()
+    
     # Enable buttons for workflow
     self.plotButton.enabled = True
     self.lolliButton.enabled = True
@@ -1132,9 +1142,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
   def onSelect(self):
     self.initializeOnSelect()
     if bool((self.FudSelect.currentPath != 'None') and (self.grayscaleSelector.currentPath != 'None')):
-      # turn off visibility of mean landmarks that may have been used in previous plots
-      self.meanLandmarkNode.SetDisplayVisibility(0)
-
       # get landmark node selected
       logic = GPALogic()
       self.sourceLMNode= slicer.util.loadMarkupsFiducialList(self.FudSelect.currentPath)
@@ -1184,8 +1191,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       GPANodeCollection.RemoveItem(self.sourceLMNode)
       slicer.mrmlScene.RemoveNode(self.sourceLMNode)
     
-    #else:
-      #self.sourceLMnumpy = self.rawMeanLandmarks
+    else:
+      self.cloneLandmarkNode.SetDisplayVisibility(1)
+      self.meanLandmarkNode.SetDisplayVisibility(1)
     #apply custom layout
     self.assignLayoutDescription()
 
@@ -1266,7 +1274,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     for subject in range(0,k):
       for landmark in range(0,i):
-        pt=self.LM.lmOrig[landmark,:,subject]
+        pt=self.LM.lmRaw[landmark,:,subject]
         points.SetPoint(pointCounter,pt)
         indexes.InsertNextValue(landmark+1)
         pointCounter+=1
@@ -1616,12 +1624,13 @@ class GPALogic(ScriptedLoadableModuleLogic):
         tableNode.SetColumnType(colName, vtk.VTK_FLOAT)
 
       factorCounter=0
+      table = tableNode.GetTable()
+      table.SetNumberOfRows(numPoints)
       for i in range(numPoints):
         if (factors[i] == factor):
-          tableNode.AddEmptyRow()
-          tableNode.SetCellText(factorCounter, 0,files[i])
+          tableNode.SetValue(factorCounter, 0,files[i])
           for j in range(pcNumber):
-            tableNode.SetCellText(factorCounter, j+1, str(data[i,j]))
+            tableNode.SetValue(factorCounter, j+1, data[i,j])
           factorCounter+=1
 
       plotSeriesNode=slicer.mrmlScene.GetFirstNodeByName("Series_PCA_" + factor + "_" + xAxis + "v" +yAxis)
@@ -1668,13 +1677,13 @@ class GPALogic(ScriptedLoadableModuleLogic):
         colName="PC" + str(i+1)
         pc.SetName(colName)
         tableNode.SetColumnType(colName, vtk.VTK_FLOAT)
-
+      
+      table = tableNode.GetTable()
+      table.SetNumberOfRows(numPoints)
       for i in range(numPoints):
-        tableNode.AddEmptyRow()
-        tableNode.SetCellText(i, 0,files[i])
+        table.SetValue(i, 0,files[i])
         for j in range(pcNumber):
-            tableNode.SetCellText(i, j+1, str(data[i,j]))
-
+            table.SetValue(i, j+1, data[i,j])
 
     plotSeriesNode1=slicer.mrmlScene.GetFirstNodeByName("Series_PCA" + xAxis + "v" +yAxis)
     if plotSeriesNode1 is None:
