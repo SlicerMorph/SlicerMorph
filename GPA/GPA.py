@@ -697,6 +697,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.showMeanLabelsButton.enabled = False
     self.loadButton.enabled = False
     self.selectorButton.enabled = False
+    self.stopRecordButton.enabled = False
+    self.startRecordButton.enabled = False
 
     #delete data from previous runs
     self.nodeCleanUp()
@@ -1087,37 +1089,42 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     
   def onStartRecording(self):
     #set up sequences for template model and PC TPS transform
-    modelSequence=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSequenceNode","GPAModelSequence")
-    modelSequence.SetHideFromEditors(0)
-    transformSequence = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSequenceNode","GPATFSequence")
-    transformSequence.SetHideFromEditors(0)
+    self.modelSequence=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSequenceNode","GPAModelSequence")
+    self.modelSequence.SetHideFromEditors(0)
+    GPANodeCollection.AddItem(self.modelSequence)
+    self.transformSequence = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSequenceNode","GPATFSequence")
+    self.transformSequence.SetHideFromEditors(0)
+    GPANodeCollection.AddItem(self.transformSequence)
 
     #Set up a new sequence browser and add sequences
     browserNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSequenceBrowserNode", "GPASequenceBrowser")
-    browserLogic=slicer.modules.sequencebrowser.logic()
-    browserLogic.AddSynchronizedNode(modelSequence,self.cloneModelNode,browserNode)
-    browserLogic.AddSynchronizedNode(modelSequence,self.cloneLandmarkNode,browserNode)
-    browserLogic.AddSynchronizedNode(transformSequence,self.transformNode,browserNode)
-    browserNode.SetRecording(transformSequence,'true')
-    browserNode.SetRecording(modelSequence,'true')
+    browserLogic=slicer.modules.sequences.logic()
+    browserLogic.AddSynchronizedNode(self.modelSequence,self.cloneModelNode,browserNode)
+    browserLogic.AddSynchronizedNode(self.modelSequence,self.cloneLandmarkNode,browserNode)
+    browserLogic.AddSynchronizedNode(self.transformSequence,self.transformNode,browserNode)
+    browserNode.SetRecording(self.transformSequence,'true')
+    browserNode.SetRecording(self.modelSequence,'true')
 
     #Set up widget to record
-    browserWidget=slicer.modules.sequencebrowser.widgetRepresentation()
+    browserWidget=slicer.modules.sequences.widgetRepresentation()
     browserWidget.setActiveBrowserNode(browserNode)
     recordWidget = browserWidget.findChild('qMRMLSequenceBrowserPlayWidget')
     recordWidget.setRecordingEnabled(1)
-    GPANodeCollection.AddItem(modelSequence)
-    GPANodeCollection.AddItem(transformSequence)
+    GPANodeCollection.AddItem(self.modelSequence)
+    GPANodeCollection.AddItem(self.transformSequence)
     GPANodeCollection.AddItem(browserNode)
 
     #enable stop recording
     self.stopRecordButton.enabled = True
+    self.startRecordButton.enabled = False
 
   def onStopRecording(self):
-    browserWidget=slicer.modules.sequencebrowser.widgetRepresentation()
+    browserWidget=slicer.modules.sequences.widgetRepresentation()
     recordWidget = browserWidget.findChild('qMRMLSequenceBrowserPlayWidget')
     recordWidget.setRecordingEnabled(0)
-    slicer.util.selectModule(slicer.modules.sequencebrowser)
+    slicer.util.selectModule(slicer.modules.sequences)
+    self.stopRecordButton.enabled = False
+    self.startRecordButton.enabled = True
 
   def cleanup(self):
     pass
