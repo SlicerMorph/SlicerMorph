@@ -1784,12 +1784,12 @@ class GPALogic(ScriptedLoadableModuleLogic):
       modelDisplayNode = modelNode.GetDisplayNode()
 
       modelDisplayNode.SetColor(color)
-      modelDisplayNode.SetSliceIntersectionVisibility(False)
+      modelDisplayNode.SetVisibility2D(False)
       modelNode.SetDisplayVisibility(1)
       modelNode.SetAndObservePolyData(tubeFilter.GetOutput())
       if TwoDOption:
         modelDisplayNode.SetSliceDisplayModeToProjection()
-        modelDisplayNode.SetSliceIntersectionVisibility(True)
+        modelDisplayNode.SetVisibility2D(True)
     else:
       modelNode=slicer.mrmlScene.GetFirstNodeByName(modelNodeName)
       if modelNode is not None:
