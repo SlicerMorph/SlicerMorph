@@ -103,9 +103,6 @@ https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
       </layout>
   """
 
-
-
-
 #
 # GPAWidget
 #
@@ -232,10 +229,7 @@ class LMData:
     self.shift=tmp
 
   def writeOutData(self,outputFolder,files):
-
-
-
-    # make headers for eigenvector matrix
+ # make headers for eigenvector matrix
     headerPC=[]
     headerLM=[""]
     for i in range(self.vec.shape[0]):
@@ -311,8 +305,7 @@ class LMData:
     return LM+tmp*scaleFactor/3.0
 
 class GPAWidget(ScriptedLoadableModuleWidget):
-  """Uses ScriptedLoadableModuleWidget base class, available at:
-  https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
+  """Uses ScriptedLoadableModuleWidget base class, available at: https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
   def assignLayoutDescription(self):
    
@@ -327,53 +320,46 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     viewNode2.SetAxisLabelsVisible(False)
     viewNode1.SetLinkedControl(True)
     viewNode2.SetLinkedControl(True)
-
-    #make sure both views are centered on focal point - not working
-    threeDWidget = layoutManager.threeDWidget(0)
-    threeDView = threeDWidget.threeDView()
-    threeDView.resetCamera()
-    threeDView.resetFocalPoint()
-    threeDWidget = layoutManager.threeDWidget(1)
-    threeDView = threeDWidget.threeDView()
-    #threeDView.resetCamera()
-    threeDView.resetFocalPoint()
+    
+    # Assign nodes to appropriate views
+    redNode = layoutManager.sliceWidget('Red').sliceView().mrmlSliceNode()
+    self.meanLandmarkNode.GetDisplayNode().SetViewNodeIDs([viewNode1.GetID(),redNode.GetID()])
+    if hasattr(self, 'cloneLandmarkNode'):
+      self.cloneLandmarkNode.GetDisplayNode().SetViewNodeIDs([viewNode2.GetID()])
     
     # check for loaded reference model
-    if hasattr(self, 'cloneLandmarkNode'):
-      self.cloneLandmarkDisplayNode.SetViewNodeIDs([viewNode2.GetID()])
-      if hasattr(self, 'modelDisplayNode'):
-        # assign each model to a specific view
-        self.modelDisplayNode.SetViewNodeIDs([viewNode1.GetID()])
-        self.cloneModelDisplayNode.SetViewNodeIDs([viewNode2.GetID()])
-        referenceModelNode = self.modelDisplayNode.GetDisplayableNode() #for centering slice view
-      else:
-        referenceModelNode = self.meanLandmarkNode
-    else:
-      referenceModelNode = self.meanLandmarkNode
-    #constrain mean node
-    self.meanLandmarkNode.GetDisplayNode().SetViewNodeIDs([viewNode1.GetID()])
+    if hasattr(self, 'modelDisplayNode'):
+      self.modelDisplayNode.SetViewNodeIDs([viewNode1.GetID()])
+      self.cloneModel.GetDisplayNode().SetViewNodeIDs([viewNode2.GetID()])
+    
     # fit the red slice node to show the plot projections
-    redNode = layoutManager.sliceWidget('Red').sliceView().mrmlSliceNode()
-
     rasBounds = [0,]*6
-    if hasattr(self, 'referenceModelNode'):
-      referenceModelNode.GetRASBounds(rasBounds)
+    self.meanLandmarkNode.GetRASBounds(rasBounds)
       
     redNode.GetSliceToRAS().SetElement(0, 3, (rasBounds[1]+rasBounds[0]) / 2.)
     redNode.GetSliceToRAS().SetElement(1, 3, (rasBounds[3]+rasBounds[2]) / 2.)
     redNode.GetSliceToRAS().SetElement(2, 3, (rasBounds[5]+rasBounds[4]) / 2.)
-    rSize = rasBounds[1]+rasBounds[0]
-    aSize = rasBounds[3]+rasBounds[2]
-    if False:
-        # TODO: if needed fit the size of the slice view to match the data
-        # (didn't seem necessary for the gorilla but may be for other data)
-        dimensions = redNode.GetDimensions()
-        aspectRatio = float(dimensions[0]) / float(dimensions[1])
-        if rSize > aSize:
-          redNode.SetFieldOfView(rSize, rSize/aspectRatio, 1.)
-        else:
-          redNode.SetFieldOfView(aSize*aspectRatio, aSize, 1.)
+    rSize = rasBounds[1]-rasBounds[0]
+    aSize = rasBounds[3]-rasBounds[2]
+    dimensions = redNode.GetDimensions()
+    aspectRatio = float(dimensions[0]) / float(dimensions[1])
+    if rSize > aSize:
+      redNode.SetFieldOfView(rSize, rSize/aspectRatio, 1.)
+    else:
+      redNode.SetFieldOfView(aSize*aspectRatio, aSize, 1.)
     redNode.UpdateMatrices()
+    
+    # reset 3D cameras
+    threeDWidget = layoutManager.threeDWidget(0)
+    if bool(threeDWidget.name == 'ThreeDWidget1'):
+      threeDView = threeDWidget.threeDView()
+      threeDView.resetFocalPoint()
+      threeDView.resetCamera()
+    else:
+      threeDWidget  = layoutManager.threeDWidget(1)
+      threeDView = threeDWidget.threeDView()
+      threeDView.resetFocalPoint()
+      threeDView.resetCamera()
 
   def textIn(self,label, dispText, toolTip):
     """ a function to set up the appearnce of a QlineEdit widget.
@@ -489,11 +475,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     itemIDToClone = shNode.GetItemByDataNode(self.meanLandmarkNode)
     print(itemIDToClone)
     clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(shNode, itemIDToClone)
-    self.cloneLandmarkNode = shNode.GetItemDataNode(clonedItemID)
-    GPANodeCollection.AddItem(self.cloneLandmarkNode)
-    self.cloneLandmarkNode.SetName('PC Warped Landmarks')
-    self.cloneLandmarkDisplayNode = self.cloneLandmarkNode.GetDisplayNode()
-    self.cloneLandmarkNode.SetDisplayVisibility(0)
+    self.copyLandmarkNode = shNode.GetItemDataNode(clonedItemID)
+    GPANodeCollection.AddItem(self.copyLandmarkNode)
+    self.copyLandmarkNode.SetName('PC Warped Landmarks')
+    self.copyLandmarkNode.SetDisplayVisibility(0)
     
     # Set up output
     dateTimeStamp = datetime.now().strftime('%Y-%m-%d_%H_%M_%S')
@@ -512,7 +497,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.lolliButton.enabled = True
     self.plotDistributionButton.enabled = True
     self.plotMeanButton3D.enabled = True
-    self.plotMeanButton2D.enabled = True
     self.showMeanLabelsButton.enabled = True
     self.selectorButton.enabled = True
     
@@ -656,7 +640,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     self.scaleSlider.value=3
     self.scaleMeanShapeSlider.value=3
-    self.meanShapeColor.color=qt.QColor(255,0,0)
+    self.meanShapeColor.color=qt.QColor(250,128,114)
 
     self.nodeCleanUp()
 
@@ -685,7 +669,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.scaleSlider.value=3
 
     self.scaleMeanShapeSlider.value=3
-    self.meanShapeColor.color=qt.QColor(255,0,0)
+    self.meanShapeColor.color=qt.QColor(250,128,114)
 
     # Disable buttons for workflow
     self.plotButton.enabled = False
@@ -693,7 +677,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.lolliButton.enabled = False
     self.plotDistributionButton.enabled = False
     self.plotMeanButton3D.enabled = False
-    self.plotMeanButton2D.enabled = False
     self.showMeanLabelsButton.enabled = False
     self.loadButton.enabled = False
     self.selectorButton.enabled = False
@@ -718,50 +701,38 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         self.cloneLandmarkNode.SetDisplayVisibility(False)
     else:
       visibility = self.meanLandmarkNode.SetDisplayVisibility(True)
-      #refresh color and scale from GUI
+      # refresh color and scale from GUI
       self.meanLandmarkNode.GetDisplayNode().SetGlyphScale(self.scaleMeanShapeSlider.value)
       color = self.meanShapeColor.color
       self.meanLandmarkNode.GetDisplayNode().SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
-      #refresh PC warped mean node
+      # refresh PC warped mean node
       if hasattr(self, 'cloneLandmarkNode'):
         self.cloneLandmarkNode.SetDisplayVisibility(True)
-        self.cloneLandmarkDisplayNode.SetGlyphScale(self.scaleMeanShapeSlider.value)
-        self.cloneLandmarkDisplayNode.SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
+        self.cloneLandmarkNode.GetDisplayNode().SetGlyphScale(self.scaleMeanShapeSlider.value)
+        self.cloneLandmarkNode.GetDisplayNode().SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
   
-  def toggleMeanPlot2D(self):
-    visibility = self.meanLandmarkNode.GetDisplayNode().GetSliceProjection()
-    if visibility:
-      self.meanLandmarkNode.GetDisplayNode().SetSliceProjection(0)
-    else:
-      self.meanLandmarkNode.GetDisplayNode().SetSliceProjection(1)
-      self.meanLandmarkNode.GetDisplayNode().SetSliceProjectionOpacity(1)
-      #refresh color and scale from GUI
-      self.meanLandmarkNode.GetDisplayNode().SetGlyphScale(self.scaleMeanShapeSlider.value)
-      color = self.meanShapeColor.color
-      self.meanLandmarkNode.GetDisplayNode().SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
-
   def toggleMeanLabels(self):
     visibility = self.meanLandmarkNode.GetDisplayNode().GetPointLabelsVisibility()
     if visibility:
       self.meanLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(0)
       if hasattr(self, 'cloneLandmarkNode'):
-        self.cloneLandmarkDisplayNode.SetPointLabelsVisibility(0)
+        self.cloneLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(0)
     else:
       self.meanLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(1)
       if hasattr(self, 'cloneLandmarkNode'):
-        self.cloneLandmarkDisplayNode.SetPointLabelsVisibility(1)
+        self.cloneLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(1)
     
   def toggleMeanColor(self):
     color = self.meanShapeColor.color
     self.meanLandmarkNode.GetDisplayNode().SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
     if hasattr(self, 'cloneLandmarkNode'):
-      self.cloneLandmarkDisplayNode.SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
+      self.cloneLandmarkNode.GetDisplayNode().SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
     
   def scaleMeanGlyph(self):
     scaleFactor = self.sampleSizeScaleFactor/10
     self.meanLandmarkNode.GetDisplayNode().SetGlyphScale(self.scaleMeanShapeSlider.value)
     if hasattr(self, 'cloneLandmarkNode'):
-      self.cloneLandmarkDisplayNode.SetGlyphScale(self.scaleMeanShapeSlider.value)
+      self.cloneLandmarkNode.GetDisplayNode().SetGlyphScale(self.scaleMeanShapeSlider.value)
     
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
@@ -799,7 +770,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.skipScalingCheckBox.setToolTip("If checked, GPA will skip scaling.")
     inputLayout.addWidget(self.skipScalingCheckBox, 4,2)
 
-
     #Load Button
     self.loadButton = qt.QPushButton("Execute GPA + PCA")
     self.loadButton.checkable = True
@@ -826,14 +796,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.plotMeanButton3D.enabled = False
     self.plotMeanButton3D.connect('clicked(bool)', self.toggleMeanPlot)
 
-    self.plotMeanButton2D = qt.QPushButton("Toggle 2D projection")
-    self.plotMeanButton2D.checkable = True
-    self.plotMeanButton2D.setStyleSheet(self.StyleSheet)
-    self.plotMeanButton2D.toolTip = "Toggle visibility of mean plot in 2D"
-    meanShapeLayout.addWidget(self.plotMeanButton2D,1,3)
-    self.plotMeanButton2D.enabled = False
-    self.plotMeanButton2D.connect('clicked(bool)', self.toggleMeanPlot2D)
-    
     meanButtonLable=qt.QLabel("Mean point label visibility: ")
     meanShapeLayout.addWidget(meanButtonLable,2,1)
     
@@ -849,7 +811,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     meanShapeLayout.addWidget(meanColorLable,3,1)
     self.meanShapeColor = ctk.ctkColorPickerButton()
     self.meanShapeColor.displayColorName = False
-    self.meanShapeColor.color = qt.QColor(255,0,0)
+    self.meanShapeColor.color = qt.QColor(250,128,114)
     meanShapeLayout.addWidget(self.meanShapeColor,3,2)
     self.meanShapeColor.connect('colorChanged(QColor)', self.toggleMeanColor)
 
@@ -862,7 +824,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.scaleMeanShapeSlider.setToolTip("Set scale for mean shape glyphs")
     meanShapeSliderLabel=qt.QLabel("Mean shape glyph scale")
     meanShapeLayout.addWidget(meanShapeSliderLabel,4,1)
-    meanShapeLayout.addWidget(self.scaleMeanShapeSlider,4,2,1,2)
+    meanShapeLayout.addWidget(self.scaleMeanShapeSlider,4,2)
     self.scaleMeanShapeSlider.connect('valueChanged(double)', self.scaleMeanGlyph)
 
     #PC plot section
@@ -978,6 +940,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     sliderLabel=qt.QLabel("Scale Glyphs")
     distributionLayout.addWidget(sliderLabel,6,1)
     distributionLayout.addWidget(self.scaleSlider,6,2,1,2)
+    self.scaleSlider.connect('valueChanged(double)', self.onPlotDistribution)
 
     self.plotDistributionButton = qt.QPushButton("Plot LM variance")
     self.plotDistributionButton.checkable = True
@@ -1148,6 +1111,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     
   def onSelect(self):
     self.initializeOnSelect()
+    self.cloneLandmarkNode = self.copyLandmarkNode
     if bool((self.FudSelect.currentPath != 'None') and (self.grayscaleSelector.currentPath != 'None')):
       # get landmark node selected
       logic = GPALogic()
@@ -1190,8 +1154,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(shNode, itemIDToClone)
       self.cloneModelNode = shNode.GetItemDataNode(clonedItemID)
       self.cloneModelNode.SetName('PCA Warped Volume')
-      self.cloneModelDisplayNode = self.cloneModelNode.GetDisplayNode()
-      self.cloneModelDisplayNode.SetColor(0,0,1)
+      #set color and scale from GUI
+      color = self.meanShapeColor.color
+      self.cloneModelNode.GetDisplayNode().SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
+      self.cloneModelNode.GetDisplayNode().SetGlyphScale(self.scaleMeanShapeSlider.value)
       GPANodeCollection.AddItem(self.cloneModelNode)
       
       #Clean up
@@ -1311,6 +1277,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
       GPANodeCollection.AddItem(modelDisplayNode)
       modelNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
+      viewNode1 = slicer.mrmlScene.GetFirstNodeByName("View1") #name = "View"+ singletonTag
+      modelDisplayNode.SetViewNodeIDs([viewNode1.GetID()])
 
     modelDisplayNode = modelNode.GetDisplayNode()
     modelDisplayNode.SetScalarVisibility(True)
@@ -1338,7 +1306,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     tensors.SetName("Tensors")
 
     # get fiducial node for mean landmarks, make just labels visible
-    self.meanLandmarkNode=slicer.mrmlScene.GetFirstNodeByName('Mean Landmark Node')
     self.meanLandmarkNode.SetDisplayVisibility(1)
     self.scaleMeanShapeSlider.value=0
     print("No reference landmarks loaded. Plotting distributions at mean landmark points.")
@@ -1367,6 +1334,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         GPANodeCollection.AddItem(modelNode)
         modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
         modelNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
+        viewNode1 = slicer.mrmlScene.GetFirstNodeByName("View1") #name = "View"+ singletonTag
+        modelDisplayNode.SetViewNodeIDs([viewNode1.GetID()])
         GPANodeCollection.AddItem(modelDisplayNode)
 
     else:
@@ -1382,7 +1351,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         GPANodeCollection.AddItem(modelNode)
         modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
         modelNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
-
+        viewNode1 = slicer.mrmlScene.GetFirstNodeByName("View1") #name = "View"+ singletonTag
+        modelDisplayNode.SetViewNodeIDs([viewNode1.GetID()])
         GPANodeCollection.AddItem(modelDisplayNode)
 
     sphereSource = vtk.vtkSphereSource()
@@ -1778,6 +1748,8 @@ class GPALogic(ScriptedLoadableModuleLogic):
         slicer.mrmlScene.AddNode(modelNode)
         GPANodeCollection.AddItem(modelNode)
         modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
+        viewNode1 = slicer.mrmlScene.GetFirstNodeByName("View1") #name = "View"+ singletonTag
+        modelDisplayNode.SetViewNodeIDs([viewNode1.GetID()])
         GPANodeCollection.AddItem(modelDisplayNode)
         modelNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
 
