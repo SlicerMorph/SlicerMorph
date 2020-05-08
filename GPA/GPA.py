@@ -587,8 +587,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     # get data to plot
     shape = self.LM.lm.shape
-    dataAll= np.zeros(shape=(shape[2],25))
-    for i in range(25):
+    dataAll= np.zeros(shape=(shape[2],self.pcNumber))
+    for i in range(self.pcNumber):
       data=gpa_lib.plotTanProj(self.LM.lm,i,1)
       dataAll[:,i] = data[:,0]
 
