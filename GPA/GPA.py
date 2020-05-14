@@ -330,7 +330,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     # check for loaded reference model
     if hasattr(self, 'modelDisplayNode'):
       self.modelDisplayNode.SetViewNodeIDs([viewNode1.GetID()])
-      self.cloneModel.GetDisplayNode().SetViewNodeIDs([viewNode2.GetID()])
+      self.cloneModelNode.GetDisplayNode().SetViewNodeIDs([viewNode2.GetID()])
     
     # fit the red slice node to show the plot projections
     rasBounds = [0,]*6
@@ -1155,11 +1155,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(shNode, itemIDToClone)
       self.cloneModelNode = shNode.GetItemDataNode(clonedItemID)
       self.cloneModelNode.SetName('PCA Warped Volume')
-      #set color and scale from GUI
-      color = self.meanShapeColor.color
-      self.cloneModelNode.GetDisplayNode().SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
-      self.cloneModelNode.GetDisplayNode().SetGlyphScale(self.scaleMeanShapeSlider.value)
+      self.cloneModelNode.GetDisplayNode().SetColor([0,0,1])
       GPANodeCollection.AddItem(self.cloneModelNode)
+      visibility = self.meanLandmarkNode.GetDisplayVisibility()
+      self.cloneLandmarkNode.SetDisplayVisibility(visibility)
       
       #Clean up
       GPANodeCollection.RemoveItem(self.sourceLMNode)
@@ -1168,6 +1167,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     else:
       self.cloneLandmarkNode.SetDisplayVisibility(1)
       self.meanLandmarkNode.SetDisplayVisibility(1)
+      #set color and scale from GUI
+      color = self.meanShapeColor.color
+      self.cloneLandmarkNode.GetDisplayNode().SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
+      self.cloneLandmarkNode.GetDisplayNode().SetGlyphScale(self.scaleMeanShapeSlider.value)
+      
     #apply custom layout
     self.assignLayoutDescription()
 
