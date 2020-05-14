@@ -489,6 +489,13 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.populateDistanceTable(self.files)
     print("Closest sample to mean:" + filename)
     
+    #Setup for scatter plots 
+    shape = self.LM.lm.shape
+    self.scatterDataAll= np.zeros(shape=(shape[2],self.pcNumber))    
+    for i in range(self.pcNumber):
+      data=gpa_lib.plotTanProj(self.LM.lm,i,1)
+      self.scatterDataAll[:,i] = data[:,0]
+
     # Set up layout
     self.assignLayoutDescription()
     
@@ -578,19 +585,13 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     #reset text field for names
     self.factorName.setText("")
     self.inputFactorButton.enabled = False
-
+  
   def plot(self):
     logic = GPALogic()
     # get values from boxs
     xValue=self.XcomboBox.currentIndex
     yValue=self.YcomboBox.currentIndex
-
-    # get data to plot
     shape = self.LM.lm.shape
-    dataAll= np.zeros(shape=(shape[2],self.pcNumber))
-    for i in range(self.pcNumber):
-      data=gpa_lib.plotTanProj(self.LM.lm,i,1)
-      dataAll[:,i] = data[:,0]
 
     factorIndex = self.selectFactor.currentIndex
     if (factorIndex > 0) and hasattr(self, 'factorTableNode') and (self.factorTableNode.GetNumberOfColumns()>factorIndex):
@@ -600,13 +601,13 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         factorArray.append(factorCol.GetValue(i))
       factorArrayNP = np.array(factorArray)
       if(len(np.unique(factorArrayNP))>1 ): #check values of factors for scatter plot
-        logic.makeScatterPlotWithFactors(dataAll,self.files,factorArrayNP,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1),self.pcNumber)
+        logic.makeScatterPlotWithFactors(self.scatterDataAll,self.files,factorArrayNP,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1),self.pcNumber)
       else:   #if the user input a factor requiring more than 3 groups, do not use factor
         qt.QMessageBox.critical(slicer.util.mainWindow(),
         'Error', 'Please use factors with 3 discrete values or less')
-        logic.makeScatterPlot(dataAll,self.files,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1),self.pcNumber)
+        logic.makeScatterPlot(self.scatterDataAll,self.files,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1),self.pcNumber)
     else:
-      logic.makeScatterPlot(dataAll,self.files,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1),self.pcNumber)
+      logic.makeScatterPlot(self.scatterDataAll,self.files,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1),self.pcNumber)
 
   def lolliPlot(self):
     pb1=self.vectorOne.currentIndex
