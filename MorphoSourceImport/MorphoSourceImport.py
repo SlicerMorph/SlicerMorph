@@ -189,23 +189,31 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
     self.loginButton.enabled = bool(self.userNameInput.text is not "") and bool(self.passwordInput.text is not "")
 
   def onQueryStringChanged(self):
-    self.submitQueryButton.enabled = bool(self.orderInput.text is not "") and bool(self.elementInput.text is not "")
+    if hasattr(self, 'session'):
+      self.submitQueryButton.enabled = bool(self.orderInput.text is not "") and bool(self.elementInput.text is not "")
 
   def onLogin(self):
     logic = MorphoSourceImportLogic()
     self.session = logic.runLogin(self.userNameInput.text, self.passwordInput.text)
+    # Allow query submission if parameters not empty
+    self.submitQueryButton.enabled = bool(self.orderInput.text is not "") and bool(self.elementInput.text is not "")
 
   def onSubmitQuery(self):
       self.resultsTable.model().clear() # clear result from any previous run
-      queryDictionary =  {
-        "order": self.orderInput.text,
-        "element": self.elementInput.text
-      }
-      logic = MorphoSourceImportLogic()
-      self.result_dataframe = logic.runQuery(queryDictionary, self.session)
-      if not self.result_dataframe.empty:
-        self.populateTable()
-        self.loadResultsButton.enabled = True
+      if hasattr(self, 'session'):
+        queryDictionary =  {
+          "order": self.orderInput.text,
+          "element": self.elementInput.text
+        }
+        logic = MorphoSourceImportLogic()
+      
+        self.result_dataframe = logic.runQuery(queryDictionary, self.session)
+        if not self.result_dataframe.empty:
+          self.populateTable()
+          self.loadResultsButton.enabled = True
+      else:
+        print("Error: No session exists. Please log-in first.")
+        
 
   def populateTable(self):
     self.resultsTable.horizontalHeader().visible = True
