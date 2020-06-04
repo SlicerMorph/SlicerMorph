@@ -333,13 +333,12 @@ class MorphoSourceImportLogic(ScriptedLoadableModuleLogic):
     """
     print('Beginning scraping for download links')
     download_list = self.findDownload(dictionary, session)
-    if download_list == None:
-      print(f"No links found for query {str(id)}")
-      return pandas.DataFrame()
-    else:
+    if bool(download_list):
       validResults = self.checkValidResults(pandas.DataFrame(download_list))
       return validResults
-
+    else:
+      print(f"No download links found for query")
+      return pandas.DataFrame()
 
   def checkValidResults(self, dataFrame):
     # only return meshes with a download link
