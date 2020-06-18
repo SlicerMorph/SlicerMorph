@@ -961,7 +961,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     selectTemplatesLayout.addWidget(self.grayscaleSelectorLabel,1,1)
 
     self.grayscaleSelector = ctk.ctkPathLineEdit()
-    self.grayscaleSelector.nameFilters=["*.vtk","*.vtp","*.ply"]
+    self.grayscaleSelector.nameFilters=["*.ply","*.stl","*.obj","*.vtp","*.vtk", "*.orig", "*.g", "*.byu"]
     selectTemplatesLayout.addWidget(self.grayscaleSelector,1,2,1,3)
 
     self.FudSelectLabel = qt.QLabel("Specify LM set for the selected model: ")
