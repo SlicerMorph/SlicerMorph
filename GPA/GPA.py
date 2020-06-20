@@ -410,7 +410,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.vectorOne.addItem('None')
     self.vectorTwo.addItem('None')
     self.vectorThree.addItem('None')
-    self.pcNumber=25
     if len(percentVar)<self.pcNumber:
       self.pcNumber=len(percentVar)
     for x in range(self.pcNumber):
@@ -422,8 +421,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.vectorOne.addItem(string)
       self.vectorTwo.addItem(string)
       self.vectorThree.addItem(string)
-    self.slider1.populateComboBox(self.PCList)
-    self.slider2.populateComboBox(self.PCList)
 
   def onLoad(self):
     self.initializeOnLoad() #clean up module from previous runs
@@ -446,6 +443,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     # Do GPA
     self.LM.doGpa(self.skipScalingCheckBox.checked)
     self.LM.calcEigen()
+    self.pcNumber=25
     self.updateList()
     
     #set scaling factor using mean of raw landmarks
@@ -816,7 +814,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     meanShapeLayout.addWidget(self.meanShapeColor,3,2)
     self.meanShapeColor.connect('colorChanged(QColor)', self.toggleMeanColor)
 
-
     self.scaleMeanShapeSlider = ctk.ctkSliderWidget()
     self.scaleMeanShapeSlider.singleStep = .1
     self.scaleMeanShapeSlider.minimum = 0
@@ -961,7 +958,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     selectTemplatesLayout.addWidget(self.grayscaleSelectorLabel,1,1)
 
     self.grayscaleSelector = ctk.ctkPathLineEdit()
-    self.grayscaleSelector.nameFilters=["*.ply","*.stl","*.obj","*.vtp","*.vtk", "*.orig", "*.g", "*.byu"]
+    self.grayscaleSelector.nameFilters= ["*.ply","*.stl","*.obj","*.vtp","*.vtk", "*.orig", "*.g", "*.byu"]
     selectTemplatesLayout.addWidget(self.grayscaleSelector,1,2,1,3)
 
     self.FudSelectLabel = qt.QLabel("Specify LM set for the selected model: ")
@@ -1116,7 +1113,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     if bool((self.FudSelect.currentPath != 'None') and (self.grayscaleSelector.currentPath != 'None')):
       # get landmark node selected
       logic = GPALogic()
-      self.sourceLMNode= slicer.util.loadMarkupsFiducialList(self.FudSelect.currentPath)
+      self.sourceLMNode= slicer.util.loadMarkups(self.FudSelect.currentPath)
       GPANodeCollection.AddItem(self.sourceLMNode)
       self.sourceLMnumpy=logic.convertFudicialToNP(self.sourceLMNode)
 
@@ -1170,6 +1167,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       #set color and scale from GUI
       color = self.meanShapeColor.color
       self.cloneLandmarkNode.GetDisplayNode().SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
+      if self.scaleMeanShapeSlider.value == 0:  # If the scale is set to 0, reset to default scale 
+        self.scaleMeanShapeSlider.value = 3
+     
       self.cloneLandmarkNode.GetDisplayNode().SetGlyphScale(self.scaleMeanShapeSlider.value)
       
     #apply custom layout
@@ -1180,6 +1180,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     GPANodeCollection.AddItem(self.transformNode)
 
     # Enable PCA warping and recording
+    self.slider1.populateComboBox(self.PCList)
+    self.slider2.populateComboBox(self.PCList)
     self.applyEnabled = True
     self.startRecordButton.enabled = True
     
