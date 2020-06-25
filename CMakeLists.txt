@@ -35,6 +35,7 @@ add_subdirectory(TransferSemiLandmarks)
 add_subdirectory(TransferSemiLandmarksWarp)
 add_subdirectory(VolumeToMesh)
 add_subdirectory(SegmentEndocranium)
+add_subdirectory(ExportAs)
 ## NEXT_MODULE
 
 #-----------------------------------------------------------------------------
