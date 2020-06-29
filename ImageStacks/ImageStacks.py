@@ -106,7 +106,14 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget):
     self.outputSelector.setToolTip( "Pick the output volume to populate or None to autogenerate." )
     outputFormLayout.addRow("Output Volume: ", self.outputSelector)
 
-    self.spacing = ctk.ctkCoordinatesWidget()
+    self.spacing = slicer.qMRMLCoordinatesWidget()
+
+    self.spacing.decimalsOption  = ctk.ctkDoubleSpinBox.DecimalsByKey | ctk.ctkDoubleSpinBox.DecimalsByShortcuts | ctk.ctkDoubleSpinBox.DecimalsByValue
+    self.spacing.minimum = 0.0
+    self.spacing.maximum = 1000000000.0
+    self.spacing.quantity = "length"
+    self.spacing.unitAwareProperties = slicer.qMRMLCoordinatesWidget.Precision | slicer.qMRMLCoordinatesWidget.Prefix | slicer.qMRMLCoordinatesWidget.Scaling | slicer.qMRMLCoordinatesWidget.Suffix
+
     self.spacing.decimals = 8
     self.spacing.coordinates = "1,1,1"
     self.spacing.toolTip = "Set the colunm, row, slice spacing in mm; original spacing not including downsample"
