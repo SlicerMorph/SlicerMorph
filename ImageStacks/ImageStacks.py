@@ -23,13 +23,16 @@ class ImageStacks(ScriptedLoadableModule):
     self.parent.dependencies = []
     self.parent.contributors = ["Steve Pieper (Isomics, Inc.)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """
-This is an example of scripted loadable module bundled in an extension.
-It performs a simple thresholding on the input volume and optionally captures a screenshot.
+This module allows you to import stacks of images, such as png, jpg, or tiff, as Slicer scalar
+volumes by resampling slice by slice during the input process.  This can allow you to import
+much larger volumes because you don't need to load the whole volume before downsampling.
+In addition, this provides a convenient spot to input volume spacing information.
 """
     self.parent.helpText += self.getDefaultModuleDocumentationLink()
     self.parent.acknowledgementText = """
-This file was originally developed by Jean-Christophe Fillion-Robin, Kitware Inc.
-and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR013218-12S1.
+This module was developed by Steve Pieper, Sara Rolfe and Murat Maga, through a NSF ABI Development grant, "An Integrated Platform for Retrieval, Visualization and Analysis of
+3D Morphology From Digital Biological Collections" (Award Numbers: 1759883 (Murat Maga), 1759637 (Adam Summers), 1759839 (Douglas Boyer)).
+https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
 """ # replace with organization, grant and thanks.
 
 #
@@ -122,6 +125,10 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget):
     self.downsample = qt.QCheckBox()
     self.downsample.toolTip = "Reduces data size by half in each dimension by skipping every other pixel and slice (uses about 1/8 memory)"
     outputFormLayout.addRow("Downsample: ", self.downsample)
+
+    self.reverse = qt.QCheckBox()
+    self.reverse.toolTip = "Read the images in reverse order"
+    outputFormLayout.addRow("Reverse: ", self.reverse)
 
     self.sliceSkip = ctk.ctkDoubleSpinBox()
     self.sliceSkip.decimals = 0
@@ -252,6 +259,7 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget):
     spacingString = self.spacing.coordinates
     properties['spacing'] = [float(element) for element in spacingString.split(",")]
     properties['downsample'] = self.downsample.checked
+    properties['reverse'] = self.reverse.checked
     properties['sliceSkip'] = self.sliceSkip.value
     outputNode = self.logic.loadByPaths(paths, self.currentNode(), properties)
     self.setCurrentNode(outputNode)
@@ -332,6 +340,10 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
       sliceSkip = int(properties['sliceSkip'])
     spacing[2] *= 1+sliceSkip
     paths = paths[::1+sliceSkip]
+
+    reverse = 'reverse' in properties and properties['reverse']
+    if reverse:
+      paths.reverse()
 
     downsample = 'downsample' in properties and properties['downsample']
     if downsample:
