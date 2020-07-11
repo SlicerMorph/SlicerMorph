@@ -8,6 +8,8 @@ import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 
+from SubjectHierarchyPlugins import AbstractScriptedSubjectHierarchyPlugin
+
 #
 # MarkupEditor
 #
@@ -19,20 +21,95 @@ class MarkupEditor(ScriptedLoadableModule):
 
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
-    self.parent.title = "MarkupEditor"  # TODO: make this more human readable by adding spaces
-    self.parent.categories = ["SlicerMorph", "Labs"]  # TODO: set categories (folders where the module shows up in the module selector)
-    self.parent.dependencies = []  # TODO: add here list of module names that this module requires
-    self.parent.contributors = ["Steve Pieper (Isomics, Inc.)"]  # TODO: replace with "Firstname Lastname (Organization)"
+    self.parent.title = "Markup Editor"
+    self.parent.categories = ["SlicerMorph", "Labs"]
+    self.parent.dependencies = []
+    self.parent.contributors = ["Steve Pieper (Isomics, Inc.)"]
     self.parent.helpText = """
 A tool to manipulate Markups using the Segment Editor as a geometry backend
-"""  # TODO: update with short description of the module
-    self.parent.helpText += self.getDefaultModuleDocumentationLink()  # TODO: verify that the default URL is correct or change it to the actual documentation
+"""
+    self.parent.helpText += self.getDefaultModuleDocumentationLink()
     self.parent.acknowledgementText = """
-This module was developed by Steve Pieper, Sara Rolfe and Murat Maga, through a NSF ABI Development grant, "An Integrated Platform for Retrieval, Visualization and Analysis of
-3D Morphology From Digital Biological Collections" (Award Numbers: 1759883 (Murat Maga), 1759637 (Adam Summers), 1759839 (Douglas Boyer)).
-This file was originally developed by Jean-Christophe Fillion-Robin, Kitware Inc., Andras Lasso, PerkLab,
-and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR013218-12S1.
-"""  # TODO: replace with organization, grant and thanks.
+This module was developed by Steve Pieper, Sara Rolfe and Murat Maga,
+through a NSF ABI Development grant, "An Integrated Platform for Retrieval,
+Visualization and Analysis of 3D Morphology From Digital Biological Collections"
+(Award Numbers: 1759883 (Murat Maga), 1759637 (Adam Summers), 1759839 (Douglas Boyer)).
+This file was originally developed by Jean-Christophe Fillion-Robin, Kitware Inc.,
+Andras Lasso, PerkLab, and Steve Pieper, Isomics, Inc.
+and was partially funded by NIH grant 3P41RR013218-12S1.
+"""
+
+    #
+    # register subject hierarchy plugin once app is initialized
+    #
+    def onStartupCompleted():
+        import SubjectHierarchyPlugins
+        from MarkupEditor import MarkupEditorSubjectHierarchyPlugin
+        scriptedPlugin = slicer.qSlicerSubjectHierarchyScriptedPlugin(None)
+        scriptedPlugin.setPythonSource(MarkupEditorSubjectHierarchyPlugin.filePath)
+        pluginHandler = slicer.qSlicerSubjectHierarchyPluginHandler.instance()
+        pluginHandler.registerPlugin(scriptedPlugin)
+    slicer.app.connect("startupCompleted()", onStartupCompleted)
+
+
+class MarkupEditorSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin):
+
+    # Necessary static member to be able to set python source to scripted subject hierarchy plugin
+    filePath = __file__
+
+    def __init__(self, scriptedPlugin):
+        self.logic = MarkupEditorLogic()
+        self.viewAction = qt.QAction(f"Select points with curve...", scriptedPlugin)
+        self.viewAction.objectName = 'CustomViewAction'
+        self.viewAction.connect("triggered()", self.onViewAction)
+        self.reset()
+
+    def reset(self):
+        self.closedCurveNode = None
+        self.fiducialNodeFromEvent = None
+        self.viewNodeFromEvent = None
+
+    def onCurveInteractionEnded(self, caller, event):
+        self.logic.editMarkups(self.fiducialNodeFromEvent,
+                               self.closedCurveNode,
+                               self.viewNodeFromEvent)
+        slicer.app.applicationLogic().GetInteractionNode().RemoveObserver(self.observerTag)
+        slicer.mrmlScene.RemoveNode(self.closedCurveNode)
+        self.reset()
+
+    def onViewAction(self):
+        interactionNode = slicer.app.applicationLogic().GetInteractionNode()
+        selectionNode = slicer.app.applicationLogic().GetSelectionNode()
+        self.closedCurveNode = slicer.vtkMRMLMarkupsClosedCurveNode()
+        slicer.mrmlScene.AddNode(self.closedCurveNode)
+        self.closedCurveNode.CreateDefaultDisplayNodes()
+        self.closedCurveNode.SetName("Enclose points to delete")
+        interactionNode.SetCurrentInteractionMode(interactionNode.Place)
+        eventID = interactionNode.EndPlacementEvent
+        self.observerTag = interactionNode.AddObserver(eventID, self.onCurveInteractionEnded)
+
+    def viewContextMenuActions(self):
+        return [self.viewAction]
+
+    def showViewContextMenuActionsForItem(self, itemID, eventData=None):
+        pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler.instance()
+        shNode = pluginHandlerSingleton.subjectHierarchyNode()
+        associatedNode = shNode.GetItemDataNode(itemID)
+        viewNode = slicer.mrmlScene.GetNodeByID(eventData['ViewNodeID'])
+        if (associatedNode is not None and
+                associatedNode.IsA("vtkMRMLMarkupsFiducialNode") and
+                viewNode.IsA("vtkMRMLViewNode")):
+            pluginHandler = slicer.qSlicerSubjectHierarchyPluginHandler.instance()
+            pluginLogic = pluginHandler.pluginLogic()
+            menuActions = list(pluginLogic.availableViewMenuActionNames())
+            menuActions.append('CustomViewAction')
+            pluginLogic.setDisplayedViewMenuActionNames(menuActions)
+            self.viewAction.visible = True
+            self.viewNodeFromEvent = viewNode
+            self.fiducialNodeFromEvent = associatedNode
+        else:
+            self.reset()
+
 
 #
 # MarkupEditorWidget
@@ -188,8 +265,10 @@ class MarkupEditorLogic(ScriptedLoadableModuleLogic):
       ras = [0]*3
       fiducialsNode.GetNthControlPointPositionWorld(index, ras)
       column, row = rasToColumnRow(ras)
-      pickColor = pickImage.pixelColor(column, row)
-      fiducialsNode.SetNthControlPointSelected(index, pickColor != backgroundColor)
+      if (column >= 0 and column < pickImage.width
+              and row >= 0 and row < pickImage.height):
+          pickColor = pickImage.pixelColor(column, row)
+          fiducialsNode.SetNthControlPointSelected(index, pickColor != backgroundColor)
 
 
 #
@@ -239,8 +318,6 @@ class MarkupEditorTest(ScriptedLoadableModuleTest):
     self.delayDisplay("reading")
     markups = slicer.util.loadMarkupsFiducialList(filePath)
 
-    slicer.vtkSlicerMarkupsLogic().SetAllMarkupsSelected(markups, False)
-
     slicer.app.layoutManager().threeDWidget(0).threeDView().resetCamera()
 
     self.delayDisplay('Finished with download and loading')
@@ -250,8 +327,8 @@ class MarkupEditorTest(ScriptedLoadableModuleTest):
     logic = MarkupEditorLogic()
 
     # Test algorithm with non-inverted threshold
-    self.delayDisplay("editing")
-    logic.editMarkups(markups, curve, view)
+    self.delayDisplay("now you can edit by right clicking a fiducial")
+    #logic.editMarkups(markups, curve, view)
 
     self.assertEqual(markups, markups)
 
