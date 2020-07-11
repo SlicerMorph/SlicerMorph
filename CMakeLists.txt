@@ -37,6 +37,7 @@ add_subdirectory(VolumeToMesh)
 add_subdirectory(SegmentEndocranium)
 add_subdirectory(ExportAs)
 add_subdirectory(MarkupsFcsv)
+add_subdirectory(MarkupEditor)
 ## NEXT_MODULE
 
 #-----------------------------------------------------------------------------
