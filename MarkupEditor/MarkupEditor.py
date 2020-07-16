@@ -59,9 +59,15 @@ class MarkupEditorSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin)
 
     def __init__(self, scriptedPlugin):
         self.logic = MarkupEditorLogic()
-        self.viewAction = qt.QAction(f"Select points with curve...", scriptedPlugin)
-        self.viewAction.objectName = 'CustomViewAction'
-        self.viewAction.connect("triggered()", self.onViewAction)
+
+        self.selectViewAction = qt.QAction(f"Select points with curve...", scriptedPlugin)
+        self.selectViewAction.objectName = 'SelectViewAction'
+        self.selectViewAction.connect("triggered()", self.onSelectViewAction)
+
+        self.deleteViewAction = qt.QAction(f"Delete selected points...", scriptedPlugin)
+        self.deleteViewAction.objectName = 'DeleteViewAction'
+        self.deleteViewAction.connect("triggered()", self.onDeleteViewAction)
+
         self.reset()
 
     def reset(self):
@@ -77,7 +83,7 @@ class MarkupEditorSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin)
         slicer.mrmlScene.RemoveNode(self.closedCurveNode)
         self.reset()
 
-    def onViewAction(self):
+    def onSelectViewAction(self):
         interactionNode = slicer.app.applicationLogic().GetInteractionNode()
         selectionNode = slicer.app.applicationLogic().GetSelectionNode()
         self.closedCurveNode = slicer.vtkMRMLMarkupsClosedCurveNode()
@@ -88,8 +94,16 @@ class MarkupEditorSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin)
         eventID = interactionNode.EndPlacementEvent
         self.observerTag = interactionNode.AddObserver(eventID, self.onCurveInteractionEnded)
 
+    def onDeleteViewAction(self):
+        fiducialsNode = self.fiducialNodeFromEvent
+        pointRange = list(range(fiducialsNode.GetNumberOfControlPoints()))
+        pointRange.reverse()
+        for index in pointRange:
+            if fiducialsNode.GetNthControlPointSelected(index):
+                fiducialsNode.RemoveNthControlPoint(index)
+
     def viewContextMenuActions(self):
-        return [self.viewAction]
+        return [self.selectViewAction, self.deleteViewAction]
 
     def showViewContextMenuActionsForItem(self, itemID, eventData=None):
         pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler.instance()
@@ -102,9 +116,11 @@ class MarkupEditorSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin)
             pluginHandler = slicer.qSlicerSubjectHierarchyPluginHandler.instance()
             pluginLogic = pluginHandler.pluginLogic()
             menuActions = list(pluginLogic.availableViewMenuActionNames())
-            menuActions.append('CustomViewAction')
+            menuActions.append('SelectViewAction')
+            menuActions.append('DeleteViewAction')
             pluginLogic.setDisplayedViewMenuActionNames(menuActions)
-            self.viewAction.visible = True
+            self.selectViewAction.visible = True
+            self.deleteViewAction.visible = True
             self.viewNodeFromEvent = viewNode
             self.fiducialNodeFromEvent = associatedNode
         else:
