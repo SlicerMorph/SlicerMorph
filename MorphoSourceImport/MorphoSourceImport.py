@@ -318,7 +318,7 @@ class MorphoSourceImportLogic(ScriptedLoadableModuleLogic):
     query_string=f"{base_url}media?q=taxonomy_names.ht_order:{query['order']} AND specimen.element:{query['element']}{end_url}&limit=1"
     response = session.get(query_string)
     totalResults = response.json()['totalResults']
-    page_number = math.ceil(totalResults/25) #current page limit is 25
+    page_number = math.ceil(totalResults/1000) #current page limit is 25
 
     #Initializing database as a list
     database=[]
