@@ -24,6 +24,11 @@ To install SlicerMorph, please first install the Preview Release of [3D-Slicer](
 - **ExportAs:** A generic export utility that can be used to save selected nodes in specific formats. It can also be used to save open and closedcurve Markup types in the older fcsv format (instead of default mrk.json) which makes easier to export semi-landmarks derived from them. 
 - **LandmarkEditor:** A module that enables to select and edit subsets of dense semi-landmarks by drawing an arbitrary closedcurve in the 3D viewer. Selected landmarks can be removed from the current node or copied into a new fiducial node. Useful to quickly identify and remove outliers from spherical sampling procedure, or group landmarks into anatomical regions for downstream analyses. 
 
+## Dependencies
+SlicerMorph automatically installs these additional extensions as dependencies. 
+- [**Auto3Dgm:** Auto3dgm allows for comparative analysis of 3D digital models representing biological surfaces.][https://github.com/toothandclaw/SlicerAuto3Dgm] 
+- [**SegmentEditorExtraEffects:** Provides additional segmentation effects and utilities.](https://github.com/lassoan/SlicerSegmentEditorExtraEffects)
+- [**SlicerIGT:** Provides landmark driven registration (affine and deformable) of volumes and models.](https://github.com/SlicerIGT/SlicerIGT)
 
 ## Funding Acknowledgement
 This project is supported by a NSF Advances in Biological Informatics Collaborative grant to Murat Maga (ABI-1759883), Adam Summers (ABI-1759637) and Doug Boyer (ABI-1759839).
