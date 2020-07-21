@@ -25,10 +25,14 @@ To install SlicerMorph, please first install the Preview Release of [3D-Slicer](
 - **LandmarkEditor:** A module that enables to select and edit subsets of dense semi-landmarks by drawing an arbitrary closedcurve in the 3D viewer. Selected landmarks can be removed from the current node or copied into a new fiducial node. Useful to quickly identify and remove outliers from spherical sampling procedure, or group landmarks into anatomical regions for downstream analyses. 
 
 ## Dependencies
-SlicerMorph automatically installs these additional extensions as dependencies. 
-- [**Auto3Dgm:** Auto3dgm allows for comparative analysis of 3D digital models representing biological surfaces.][https://github.com/toothandclaw/SlicerAuto3Dgm] 
+SlicerMorph automatically installs these additional extensions as dependencies. Click on the links to get more information about these extensions.
+- [**Auto3Dgm:** Auto3dgm allows for comparative analysis of 3D digital models representing biological surfaces.](https://github.com/toothandclaw/SlicerAuto3Dgm) 
 - [**SegmentEditorExtraEffects:** Provides additional segmentation effects and utilities.](https://github.com/lassoan/SlicerSegmentEditorExtraEffects)
 - [**SlicerIGT:** Provides landmark driven registration (affine and deformable) of volumes and models.](https://github.com/SlicerIGT/SlicerIGT)
+- [**Sandbox:** Provides utilities like Cross-sectional Area from segments, Lights module for more in-depth lighting control and CurvePlanarReformat module for straightening of curved structures (e.g., coiled snake scans.](https://github.com/PerkLab/SlicerSandbox/)
+- [**DCM2NIIX:** Provides a user-interface for the DICOM to NIFTI converter DCM2NIIX. Ideal for stripping metadata from DICOM datasets.](https://github.com/rordenlab/dcm2niix)
+- [**SurfaceWrapSolidy:** A segment editor effect useful to extract endocasts of cranial and other spaces.](https://github.com/sebastianandress/Slicer-SurfaceWrapSolidify)
+- [**RawImageGuess:** A module that enables the user to import proprietory imaging formats by specifying data type, image dimensions and endiness.](https://github.com/acetylsalicyl/SlicerRawImageGuess)
 
 ## Funding Acknowledgement
 This project is supported by a NSF Advances in Biological Informatics Collaborative grant to Murat Maga (ABI-1759883), Adam Summers (ABI-1759637) and Doug Boyer (ABI-1759839).
