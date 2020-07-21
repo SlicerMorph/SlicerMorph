@@ -244,7 +244,9 @@ class MarkupEditorLogic(ScriptedLoadableModuleLogic):
     def rasToColumnRow(ras):
       rasw = *ras,1
       xyzw = raswToXYZW.MultiplyPoint(rasw)
-      x,y = [xyzw[0] / xyzw[3], xyzw[1] / xyzw[3]]
+      x,y = [xyzw[0], xyzw[1]]
+      if viewNode.GetRenderMode() == viewNode.Perspective:
+        x,y = [x / xyzw[3], y / xyzw[3]]
       column = (x + 1)/2  * threeDWidget.width
       row = (1 - (y + 1)/2) * threeDWidget.height
       return column, row
