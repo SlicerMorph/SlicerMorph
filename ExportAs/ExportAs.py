@@ -22,6 +22,7 @@ class ExportAs(ScriptedLoadableModule):
             import SubjectHierarchyPlugins
             from ExportAs import ExportAsSubjectHierarchyPlugin
             scriptedPlugin = slicer.qSlicerSubjectHierarchyScriptedPlugin(None)
+            scriptedPlugin.name = "ExportAs"
             scriptedPlugin.setPythonSource(ExportAsSubjectHierarchyPlugin.filePath)
         slicer.app.connect("startupCompleted()", onStartupCompleted)
 
