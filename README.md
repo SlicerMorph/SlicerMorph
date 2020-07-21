@@ -8,7 +8,7 @@ SlicerMorph enable biologists to retrieve, visualize, measure and annotate high-
 To install SlicerMorph, please first install the Preview Release of [3D-Slicer](https://download.slicer.org/). Open the application and use the [Extensions Manager module](https://www.slicer.org/wiki/Documentation/Nightly/SlicerApplication/ExtensionsManager) to install the SlicerMorph extension. After restarting 3D-Slicer, all SlicerMorph modules will be available in the application.
 
 ## Module Descriptions
-- **GPA:** Performs generalized Procrustes analysis (GPA) with or without scaling and principle component analysis (PCA) of shape from landmark data and provides visualizations of statistical output.
+- **GPA:** Performs generalized Procrustes analysis (GPA) with or without scaling and principle component analysis (PCA) of shape from landmark data and provides visualizations of statistical output (identification of outliers, PC score plots, real-time 3D visualization of PC warps either through mean shape coordinates, or using a reference model).
 - **SemiLandmarks:** Provides patch-based resampling of semi-landmarks from a 3D model with associated landmarks. 
 - **Transfer SemiLandmarks:** A utility to apply the generated connectivity table from the semiLandmarks module to other 3D models with the same set of landmarks. A new set of semiLandmarks are sampled directly from the new models using the specified connectivity map. Inputs: a directory with 3D models and fcsv (same filename prefix). 
 - **Transfer SemiLandmarks Warp:** A utility to transfer a template of semiLandmarks to new 3D models using Thin Plate Splines (TPS) warp. Requires existence identical set of landmarks in the template and new models. 
