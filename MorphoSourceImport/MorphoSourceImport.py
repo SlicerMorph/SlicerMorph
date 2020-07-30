@@ -148,7 +148,7 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
     self.resultsTable = qt.QTableView()
     self.resultsTable.horizontalHeader().stretchLastSection = True
     self.resultsTable.horizontalHeader().visible = False
-    self.resultsTable.verticalHeader().visible = False
+    self.resultsTable.verticalHeader().visible = True
     self.resultsTable.setSelectionBehavior(qt.QAbstractItemView().SelectRows)
     self.resultsTable.setModel(self.resultsModel)
     resultsFormLayout.addRow(self.resultsTable)

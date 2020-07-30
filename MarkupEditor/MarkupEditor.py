@@ -22,6 +22,7 @@ class MarkupEditor(ScriptedLoadableModule):
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "Markup Editor"
+    self.parent.hidden = True
     self.parent.categories = ["SlicerMorph", "Labs"]
     self.parent.dependencies = []
     self.parent.contributors = ["Steve Pieper (Isomics, Inc.)"]
@@ -46,6 +47,8 @@ and was partially funded by NIH grant 3P41RR013218-12S1.
         import SubjectHierarchyPlugins
         from MarkupEditor import MarkupEditorSubjectHierarchyPlugin
         scriptedPlugin = slicer.qSlicerSubjectHierarchyScriptedPlugin(None)
+        scriptedPlugin.name = "MarkupEditor"
+
         scriptedPlugin.setPythonSource(MarkupEditorSubjectHierarchyPlugin.filePath)
         pluginHandler = slicer.qSlicerSubjectHierarchyPluginHandler.instance()
         pluginHandler.registerPlugin(scriptedPlugin)
@@ -88,6 +91,7 @@ class MarkupEditorSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin)
         selectionNode = slicer.app.applicationLogic().GetSelectionNode()
         self.closedCurveNode = slicer.vtkMRMLMarkupsClosedCurveNode()
         slicer.mrmlScene.AddNode(self.closedCurveNode)
+        self.closedCurveNode.SetCurveTypeToLinear()
         self.closedCurveNode.CreateDefaultDisplayNodes()
         self.closedCurveNode.SetName("Enclose points to delete")
         interactionNode.SetCurrentInteractionMode(interactionNode.Place)
@@ -242,7 +246,9 @@ class MarkupEditorLogic(ScriptedLoadableModuleLogic):
     def rasToColumnRow(ras):
       rasw = *ras,1
       xyzw = raswToXYZW.MultiplyPoint(rasw)
-      x,y = [xyzw[0] / xyzw[3], xyzw[1] / xyzw[3]]
+      x,y = [xyzw[0], xyzw[1]]
+      if viewNode.GetRenderMode() == viewNode.Perspective:
+        x,y = [x / xyzw[3], y / xyzw[3]]
       column = (x + 1)/2  * threeDWidget.width
       row = (1 - (y + 1)/2) * threeDWidget.height
       return column, row
