@@ -19,6 +19,7 @@ include(${Slicer_USE_FILE})
 
 #-----------------------------------------------------------------------------
 # Extension modules
+add_subdirectory(ALPACA)
 add_subdirectory(Animator)
 add_subdirectory(ConvertMorphologikaLandmarks)
 add_subdirectory(GPA)
