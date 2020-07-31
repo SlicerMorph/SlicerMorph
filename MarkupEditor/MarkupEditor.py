@@ -48,7 +48,6 @@ and was partially funded by NIH grant 3P41RR013218-12S1.
         from MarkupEditor import MarkupEditorSubjectHierarchyPlugin
         scriptedPlugin = slicer.qSlicerSubjectHierarchyScriptedPlugin(None)
         scriptedPlugin.name = "MarkupEditor"
-
         scriptedPlugin.setPythonSource(MarkupEditorSubjectHierarchyPlugin.filePath)
         pluginHandler = slicer.qSlicerSubjectHierarchyPluginHandler.instance()
         pluginHandler.registerPlugin(scriptedPlugin)
@@ -66,6 +65,10 @@ class MarkupEditorSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin)
         self.selectViewAction = qt.QAction(f"Select points with curve...", scriptedPlugin)
         self.selectViewAction.objectName = 'SelectViewAction'
         self.selectViewAction.connect("triggered()", self.onSelectViewAction)
+
+        self.editViewAction = qt.QAction(f"Edit selected points", scriptedPlugin)
+        self.editViewAction.objectName = 'EditViewAction'
+        self.editViewAction.connect("triggered()", self.onEditViewAction)
 
         self.deleteViewAction = qt.QAction(f"Delete selected points...", scriptedPlugin)
         self.deleteViewAction.objectName = 'DeleteViewAction'
@@ -98,6 +101,20 @@ class MarkupEditorSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin)
         eventID = interactionNode.EndPlacementEvent
         self.observerTag = interactionNode.AddObserver(eventID, self.onCurveInteractionEnded)
 
+    def onEditViewAction(self):
+        slicer.util.selectModule("Markups")
+        markupsWidget = slicer.modules.markups.widgetRepresentation()
+        treeView = slicer.util.findChild(markupsWidget, "activeMarkupTreeView")
+        treeView.setCurrentNode(self.fiducialNodeFromEvent)
+        collapsibleButton = slicer.util.findChild(markupsWidget, "controlPointsCollapsibleButton")
+        collapsibleButton.collapsed = False
+        markupTable = slicer.util.findChild(collapsibleButton, "activeMarkupTableWidget")
+        fiducialsNode = self.fiducialNodeFromEvent
+        pointRange = list(range(fiducialsNode.GetNumberOfControlPoints()))
+        for index in pointRange:
+            if fiducialsNode.GetNthControlPointSelected(index):
+                markupTable.setCurrentCell(index, 0, qt.QItemSelectionModel.Select | qt.QItemSelectionModel.Rows)
+
     def onDeleteViewAction(self):
         fiducialsNode = self.fiducialNodeFromEvent
         pointRange = list(range(fiducialsNode.GetNumberOfControlPoints()))
@@ -107,7 +124,7 @@ class MarkupEditorSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin)
                 fiducialsNode.RemoveNthControlPoint(index)
 
     def viewContextMenuActions(self):
-        return [self.selectViewAction, self.deleteViewAction]
+        return [self.selectViewAction, self.editViewAction, self.deleteViewAction]
 
     def showViewContextMenuActionsForItem(self, itemID, eventData=None):
         pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler.instance()
@@ -121,9 +138,11 @@ class MarkupEditorSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin)
             pluginLogic = pluginHandler.pluginLogic()
             menuActions = list(pluginLogic.availableViewMenuActionNames())
             menuActions.append('SelectViewAction')
+            menuActions.append('EditViewAction')
             menuActions.append('DeleteViewAction')
             pluginLogic.setDisplayedViewMenuActionNames(menuActions)
             self.selectViewAction.visible = True
+            self.editViewAction.visible = True
             self.deleteViewAction.visible = True
             self.viewNodeFromEvent = viewNode
             self.fiducialNodeFromEvent = associatedNode
