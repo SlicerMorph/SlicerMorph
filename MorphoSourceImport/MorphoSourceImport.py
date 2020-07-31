@@ -48,8 +48,7 @@ class MorphoSourceImport(ScriptedLoadableModule):
 This module provides a keyword search to query and load 3D models from the MorphoSource database into the 3D Slicer scene.
 """
     self.parent.acknowledgementText = """
-This module was developed by Sara Rolfe and  Murat Maga, for the NSF HDR  grant, "Biology Guided Neural Networks" (Award Number: 1939505).
-https://www.nsf.gov/awardsearch/showAward?AWD_ID=1939505&HistoricalAwards=false
+This module was developed by Sara Rolfe and  Arthur Porto with guidance from Julie Winchester (MorphoSource), for the NSF ABI  grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections". https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
 """
 
 #
