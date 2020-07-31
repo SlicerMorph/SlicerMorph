@@ -50,7 +50,7 @@ class ALPACA(ScriptedLoadableModule):
     self.parent.dependencies = []
     self.parent.contributors = ["Arthur Porto, Sara Rolfe (UW), Murat Maga (UW)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """
-      This module automatically transfers landmarks on a reference 3D model (mesh) to a target 3D model using dense correspondence and deformable registration. First optimize the parameters in pairwise analysis, then use the batch mode to apply to all 3D models
+      This module automatically transfers landmarks on a reference 3D model (mesh) to a target 3D model using dense correspondence and deformable registration. First optimize the parameters in single alignment analysis, then use them in batch mode to apply to all 3D models
       """
     self.parent.helpText += self.getDefaultModuleDocumentationLink()
     self.parent.acknowledgementText = """
@@ -84,7 +84,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
 
 
     tabsWidget.addTab(alignSingleTab, "Single Alignment")
-    tabsWidget.addTab(alignMultiTab, "Multiprocessing")
+    tabsWidget.addTab(alignMultiTab, "Batch processing")
     self.layout.addWidget(tabsWidget)
     
     # Layout within the tab
