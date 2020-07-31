@@ -82,7 +82,7 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
     self.userNameInput = qt.QLineEdit()
     self.userNameInput.setText(slicer.userNameDefault)
     self.userNameInput.setToolTip( "Input MorphoSource account username" )
-    IOFormLayout.addRow("MorphSource Username: ", self.userNameInput)
+    IOFormLayout.addRow("MorphoSource Username: ", self.userNameInput)
 
     #
     # Password input
@@ -91,7 +91,7 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
     self.passwordInput = qt.QLineEdit()
     self.passwordInput.setText(slicer.passwordDefault)
     self.passwordInput.setToolTip( "Input MorphoSource account password" )
-    IOFormLayout.addRow("MorphSource Password: ", self.passwordInput)
+    IOFormLayout.addRow("MorphoSource Password: ", self.passwordInput)
 
     #
     # Login button
