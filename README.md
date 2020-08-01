@@ -27,7 +27,7 @@ To install SlicerMorph, please first install the Preview Release of [3D Slicer](
 ## Dependencies
 SlicerMorph automatically installs these additional extensions as dependencies. Click on the links to get more information about these extensions.
 - [**Auto3Dgm:** Auto3dgm allows for comparative analysis of 3D digital models representing biological surfaces.](https://github.com/toothandclaw/SlicerAuto3Dgm) 
-- [**SegmentEditorExtraEffects:** Provides additional segmentation effects and utilities.](https://github.com/lassoan/SlicerSegmentEditorExtraEffects)
+- [**SegmentEditorExtraEffects:** Provides additional segmentation effects and utilities, such as our SplitSegment function that allows saving the 3D volume  into multiple smaller, individual volumes using the provided segmentation.](https://github.com/lassoan/SlicerSegmentEditorExtraEffects)
 - [**SlicerIGT:** Provides landmark driven registration (affine and deformable) of volumes and models.](https://github.com/SlicerIGT/SlicerIGT)
 - [**Sandbox:** Provides utilities like Cross-sectional Area from segments, Lights module for more in-depth lighting control and CurvePlanarReformat module for straightening of curved structures (e.g., coiled snake scans.](https://github.com/PerkLab/SlicerSandbox/)
 - [**DCM2NIIX:** Provides a user-interface for the DICOM to NIFTI converter DCM2NIIX. Ideal for stripping metadata from DICOM datasets.](https://github.com/rordenlab/dcm2niix)
