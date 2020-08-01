@@ -17,9 +17,6 @@ To install SlicerMorph, please first install the Preview Release of [3D Slicer](
 - **ImageStacks:** A general purpose tool to import non-DICOM image sequences (png/jpg/bmp/tiff) into Slicer. Provides options to specify voxel size, select partial range, downsample (50%) along all three axes, load every Nth slice (skip a slice), or reverse stack order (to deal with mirroring of the specimen). Resultant volume is always a scalar volume (single channel image) that can be immediately processed in Slicer. If new Volume is not created, default file prefix in the image stack is used. 
 - **SkyscanReconImport:** Imports an image stack from Bruker/Skyscan reconstruction software (Nrecon) with correct voxel spacing and orientation as a 3D volume. Use just needs to point out to the *_Rec.log* file that is outputed by the Nrecon software.
 - **SlicerAnimator:** A prototype of a keyframe-based animation of 3D volumes. Supports interpolation of VOIs, transfer functions and rotations. 
-
-~~- **MorphoSource Browser:** A built-in web browser that provides convenient access to MorphoSource website directly within Slicer (deprecated).  ~~
-
 - **MorphoSourceImport:** A utility to query and download open-access 3D models (ply/stl/object) from MorphoSource. The complete list of 3D models released under free access model can be found at [here](https://docs.google.com/spreadsheets/d/1fhdVv2JwvUJAC4dvSgKZi2pwSl7dPGaB-ksYsB64k4U/edit#gid=0).
 - **ConvertMorphologikaLandmarks:** Imports a Morphologika formatted landmark file that may contain multiple subjects and exports a Slicer .FCSV landmark file for each individual to a directory specified by the user.
 - **ImportSurfaceToSegment:** Imports a 3D surface model as a segmentation and prompts the user to edit it using the Segment Editor module.
