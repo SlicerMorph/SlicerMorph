@@ -244,6 +244,7 @@ class SphericalSamplingWidget(ScriptedLoadableModuleWidget):
     
     # update visualization
     self.projectedLM.SetDisplayVisibility(False)
+    self.sphericalSemiLandmarks.SetLocked(True)
     self.sphericalSemiLandmarks.GetDisplayNode().SetPointLabelsVisibility(False)
     green=[0,1,0]
     self.sphericalSemiLandmarks.GetDisplayNode().SetSelectedColor(green)
