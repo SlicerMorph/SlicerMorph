@@ -1120,10 +1120,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       # remove any excluded landmarks
       j=len(self.LMExclusionList)
       if (j != 0):
-        indexToRemove=np.zeros(j)
+        indexToRemove=[]
         for i in range(j):
-          indexToRemove[i]=self.LMExclusionList[i]-1
-          print("removing",  indexToRemove[i])
+          indexToRemove.append(LMExclusionList[i]-1)
         self.sourceLMnumpy=np.delete(self.sourceLMnumpy,indexToRemove,axis=0)
 
       # set up transform
@@ -1469,7 +1468,6 @@ class GPALogic(ScriptedLoadableModuleLogic):
       indexToRemove=[]
       for i in range(len(lmToRemove)):
         indexToRemove.append(lmToRemove[i]-1)
-        print("removing: ", indexToRemove[i])
       landmarks=np.delete(landmarks,indexToRemove,axis=0)
     
     return landmarks, matchedfiles
