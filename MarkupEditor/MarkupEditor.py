@@ -61,16 +61,29 @@ class MarkupEditorSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin)
 
     def __init__(self, scriptedPlugin):
         self.logic = MarkupEditorLogic()
+        self.selectOptions = {
+          "set": "Set selection",
+          "add": "Add to selection",
+          "unset": "Remove from selection"
+        }
 
-        self.selectViewAction = qt.QAction(f"Select points with curve...", scriptedPlugin)
+        self.selectViewAction = qt.QAction(f"Pick points with curve...", scriptedPlugin)
         self.selectViewAction.objectName = 'SelectViewAction'
         self.selectViewAction.connect("triggered()", self.onSelectViewAction)
+
+        self.selectMenu = qt.QMenu("Select Menu")
+        self.selectViewAction.setMenu(self.selectMenu)
+
+        for selectOption in self.selectOptions.keys():
+          action = self.selectMenu.addAction(self.selectOptions[selectOption])
+          slot = lambda selectOption=selectOption : self.onSelectViewAction(selectOption)
+          action.connect("triggered()", slot)
 
         self.editViewAction = qt.QAction(f"Edit selected points", scriptedPlugin)
         self.editViewAction.objectName = 'EditViewAction'
         self.editViewAction.connect("triggered()", self.onEditViewAction)
 
-        self.deleteViewAction = qt.QAction(f"Delete selected points...", scriptedPlugin)
+        self.deleteViewAction = qt.QAction(f"Delete selected points", scriptedPlugin)
         self.deleteViewAction.objectName = 'DeleteViewAction'
         self.deleteViewAction.connect("triggered()", self.onDeleteViewAction)
 
@@ -82,14 +95,15 @@ class MarkupEditorSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin)
         self.viewNodeFromEvent = None
 
     def onCurveInteractionEnded(self, caller, event):
-        self.logic.editMarkups(self.fiducialNodeFromEvent,
+        slicer.app.applicationLogic().GetInteractionNode().RemoveObserver(self.observerTag)
+        self.logic.editMarkups(self.currentSelectOption,
+                               self.fiducialNodeFromEvent,
                                self.closedCurveNode,
                                self.viewNodeFromEvent)
-        slicer.app.applicationLogic().GetInteractionNode().RemoveObserver(self.observerTag)
         slicer.mrmlScene.RemoveNode(self.closedCurveNode)
         self.reset()
 
-    def onSelectViewAction(self):
+    def onSelectViewAction(self, selectOption):
         interactionNode = slicer.app.applicationLogic().GetInteractionNode()
         selectionNode = slicer.app.applicationLogic().GetSelectionNode()
         self.closedCurveNode = slicer.vtkMRMLMarkupsClosedCurveNode()
@@ -100,6 +114,7 @@ class MarkupEditorSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin)
         interactionNode.SetCurrentInteractionMode(interactionNode.Place)
         eventID = interactionNode.EndPlacementEvent
         self.observerTag = interactionNode.AddObserver(eventID, self.onCurveInteractionEnded)
+        self.currentSelectOption = selectOption
 
     def onEditViewAction(self):
         slicer.util.selectModule("Markups")
@@ -222,7 +237,7 @@ class MarkupEditorWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     try:
       viewNode = self.viewSelector.currentNode()
       layoutManager = slicer.app.layoutManager()
-      self.logic.editMarkups(self.fiducialsSelector.currentNode(),
+      self.logic.editMarkups("set", self.fiducialsSelector.currentNode(),
                              self.curveSelector.currentNode(),
                              self.viewSelector.currentNode())
     except Exception as e:
@@ -249,7 +264,7 @@ class MarkupEditorLogic(ScriptedLoadableModuleLogic):
     ScriptedLoadableModuleLogic.__init__(self)
     self.observerTags = {}
 
-  def editMarkups(self, fiducialsNode, curveNode, viewNode):
+  def editMarkups(self, selectOption, fiducialsNode, curveNode, viewNode):
 
     layoutManager = slicer.app.layoutManager()
     threeDWidget = layoutManager.viewWidget(viewNode)
@@ -309,7 +324,17 @@ class MarkupEditorLogic(ScriptedLoadableModuleLogic):
       if (column >= 0 and column < pickImage.width
               and row >= 0 and row < pickImage.height):
           pickColor = pickImage.pixelColor(column, row)
-          fiducialsNode.SetNthControlPointSelected(index, pickColor != backgroundColor)
+          picked = (pickColor != backgroundColor)
+          if selectOption == "set":
+            fiducialsNode.SetNthControlPointSelected(index, picked)
+          elif selectOption == "add":
+            if picked:
+              fiducialsNode.SetNthControlPointSelected(index, True)
+          elif selectOption == "unset":
+            if picked:
+              fiducialsNode.SetNthControlPointSelected(index, False)
+          else:
+            print(f"Unknown selectOption {selectOption}")
 
 
 #
