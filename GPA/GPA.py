@@ -1464,11 +1464,14 @@ class GPALogic(ScriptedLoadableModuleLogic):
       tmp1=self.importLandMarks(matchList[i]+".fcsv")
       landmarks[:,:,i]=tmp1
       matchedfiles.append(os.path.basename(matchList[i]))
-    indexToRemove=np.zeros(len(lmToRemove))
-    for i in range(len(lmToRemove)):
-      indexToRemove[i]=lmToRemove[i]-1
-
-    landmarks=np.delete(landmarks,indexToRemove,axis=0)
+    
+    if len(lmToRemove)>0:
+      indexToRemove=[]
+      for i in range(len(lmToRemove)):
+        indexToRemove.append(lmToRemove[i]-1)
+        print("removing: ", indexToRemove[i])
+      landmarks=np.delete(landmarks,indexToRemove,axis=0)
+    
     return landmarks, matchedfiles
 
   def createMatchList(self, topDir,suffix):
