@@ -15,24 +15,8 @@ import vtk.util.numpy_support as vtk_np
 import numpy as np
 
 ## OTHER UTILS
-import Open3D_utils
+import Support.Open3D_utils
 #import Support.DBALib as DECA_Lib
-
-## EXTERNAL LIBRARIES - NOT PART OF BASE PYTHON
-try:
-  import open3d as o3d
-  print('o3d installed')
-except ImportError:
-  slicer.util.pip_install('open3d==0.9.0')
-  import open3d as o3d
-  print('trying to install o3d')
-try:
-  from pycpd import DeformableRegistration
-  print('pycpd installed')
-except ImportError:
-  slicer.util.pip_install('pycpd')
-  print('trying to install pycpd')
-  from pycpd import DeformableRegistration
 
 #
 # ALPACA
@@ -67,6 +51,25 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
   """Uses ScriptedLoadableModuleWidget base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
+  def __init__(self, parent=None):
+    ScriptedLoadableModuleWidget.__init__(self, parent)   
+    ## EXTERNAL LIBRARIES - NOT PART OF BASE PYTHON
+    try:
+      import open3d as o3d
+      print('o3d installed')
+    except ImportError:
+      slicer.util.pip_install('notebook==6.0.3')
+      slicer.util.pip_install('open3d==0.9.0')
+      import open3d as o3d
+      print('attempting to install o3d')
+    try:
+      from pycpd import DeformableRegistration
+      print('pycpd installed')
+    except ImportError:
+      slicer.util.pip_install('pycpd')
+      print('trying to install pycpd')
+      from pycpd import DeformableRegistration
+    
   def onSelect(self):
     self.applyButton.enabled = bool (self.meshDirectory.currentPath and self.landmarkDirectory.currentPath and 
       self.sourceModelSelector.currentNode() and self.baseLMSelector.currentNode() and self.baseSLMSelect.currentNode() 
