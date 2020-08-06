@@ -11,14 +11,7 @@ import copy
 import csv
 import os
 import re
-
-try:
-  import open3d as o3d
-  print('o3d installed')
-except ImportError:
-  slicer.util.pip_install('open3d')
-  import open3d as o3d
-  print('installing o3d')
+import open3d as o3d
   
 def draw_registration_result(source, target, transformation):
     source_temp = copy.deepcopy(source)
