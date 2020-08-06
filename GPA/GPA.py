@@ -506,7 +506,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.selectorButton.enabled = True
     
   def populateDistanceTable(self, files):
-    sortedArray = np.zeros(len(files), dtype={'names':('filename', 'procdist'),'formats':('U10','f8')})
+    sortedArray = np.zeros(len(files), dtype={'names':('filename', 'procdist'),'formats':('U50','f8')})
     sortedArray['filename']=files
     sortedArray['procdist']=self.LM.procdist[:,0]
     sortedArray.sort(order='procdist')
