@@ -287,8 +287,6 @@ class MarkupEditorLogic(ScriptedLoadableModuleLogic):
       row = (1 - (y + 1)/2) * threeDWidget.height
       return column, row
 
-    curveNode.ResampleCurveWorld(5)
-
     selectionPolygon = qt.QPolygonF()
     for index in range(curveNode.GetNumberOfControlPoints()):
       ras = [0]*3
@@ -334,7 +332,7 @@ class MarkupEditorLogic(ScriptedLoadableModuleLogic):
             if picked:
               fiducialsNode.SetNthControlPointSelected(index, False)
           else:
-            print(f"Unknown selectOption {selectOption}")
+            logging.error(f"Unknown selectOption {selectOption}")
 
 
 #
