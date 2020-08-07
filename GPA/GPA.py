@@ -558,7 +558,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.inputFactorButton.enabled = False
 
   def enterFactors(self):
-    sortedArray = np.zeros(len(self.files), dtype={'names':('filename', 'procdist'),'formats':('U10','f8')})
+    sortedArray = np.zeros(len(self.files), dtype={'names':('filename', 'procdist'),'formats':('U50','f8')})
     sortedArray['filename']=self.files
 
     #check for an existing factor table
@@ -1625,9 +1625,9 @@ class GPALogic(ScriptedLoadableModuleLogic):
       table.SetNumberOfRows(numPoints)
       for i in range(numPoints):
         if (factors[i] == factor):
-          tableNode.SetValue(factorCounter, 0,files[i])
+          table.SetValue(factorCounter, 0,files[i])
           for j in range(pcNumber):
-            tableNode.SetValue(factorCounter, j+1, data[i,j])
+            table.SetValue(factorCounter, j+1, data[i,j])
           factorCounter+=1
 
       plotSeriesNode=slicer.mrmlScene.GetFirstNodeByName("Series_PCA_" + factor + "_" + xAxis + "v" +yAxis)
