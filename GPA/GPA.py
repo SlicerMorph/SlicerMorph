@@ -158,6 +158,7 @@ class sliderGroup(qt.QGroupBox):
     self.spinBox.valueChanged.connect(self.slider.setValue)
     if onChanged:
       self.slider.valueChanged.connect(onChanged)
+      self.comboBox.currentIndexChanged.connect(onChanged)
 
     # layout
     slidersLayout = qt.QGridLayout()
@@ -983,16 +984,20 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     visLayout= qt.QGridLayout(vis)
     self.applyEnabled=False
 
-    def warpOnChange(value):
-      if self.applyEnabled:
+    def warpOnChangePC1(value):
+      if self.applyEnabled and self.slider1.boxValue() is not 'None':
+        self.onApply()
+   
+    def warpOnChangePC2(value):
+      if self.applyEnabled and self.slider2.boxValue() is not 'None':
         self.onApply()
 
     self.PCList=[]
-    self.slider1=sliderGroup(onChanged = warpOnChange)
+    self.slider1=sliderGroup(onChanged = warpOnChangePC1)
     self.slider1.connectList(self.PCList)
     visLayout.addWidget(self.slider1,3,1,1,2)
 
-    self.slider2=sliderGroup(onChanged = warpOnChange)
+    self.slider2=sliderGroup(onChanged = warpOnChangePC2)
     self.slider2.connectList(self.PCList)
     visLayout.addWidget(self.slider2,4,1,1,2)
 
@@ -1110,6 +1115,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
   def onSelect(self):
     self.initializeOnSelect()
     self.cloneLandmarkNode = self.copyLandmarkNode
+    self.cloneLandmarkNode.CreateDefaultDisplayNodes()
     if bool((self.FudSelect.currentPath != 'None') and (self.grayscaleSelector.currentPath != 'None')):
       # get landmark node selected
       logic = GPALogic()
@@ -1188,7 +1194,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     pc1=self.slider1.boxValue()
     pc2=self.slider2.boxValue()
     pcSelected=[pc1,pc2]
-
+    
     # get scale values for each pc.
     sf1=self.slider1.sliderValue()
     sf2=self.slider2.sliderValue()
@@ -1206,22 +1212,28 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     #get target landmarks
     self.LM.ExpandAlongPCs(pcSelected,scaleFactors, self.sampleSizeScaleFactor)
     target=self.rawMeanLandmarks+self.LM.shift
-    targetLMVTK=logic.convertNumpyToVTK(target)
-    sourceLMVTK=logic.convertNumpyToVTK(self.rawMeanLandmarks)
-
-    #Set up TPS
-    VTKTPS = vtk.vtkThinPlateSplineTransform()
-    VTKTPS.SetSourceLandmarks( sourceLMVTK )
-    VTKTPS.SetTargetLandmarks( targetLMVTK )
-    VTKTPS.SetBasisToR()  # for 3D transform
-
-    #Connect transform to model
-    self.transformNode.SetAndObserveTransformToParent( VTKTPS )
-    self.cloneLandmarkNode.SetAndObserveTransformNodeID(self.transformNode.GetID())
+    
     if hasattr(self, 'cloneModelNode'):
-      self.cloneModelNode.SetAndObserveTransformNodeID(self.transformNode.GetID())
+      targetLMVTK=logic.convertNumpyToVTK(target)
+      sourceLMVTK=logic.convertNumpyToVTK(self.rawMeanLandmarks)
+      
+      #Set up TPS
+      VTKTPS = vtk.vtkThinPlateSplineTransform()
+      VTKTPS.SetSourceLandmarks( sourceLMVTK )
+      VTKTPS.SetTargetLandmarks( targetLMVTK )
+      VTKTPS.SetBasisToR()  # for 3D transform
 
-
+      #Connect transform to model
+      self.transformNode.SetAndObserveTransformToParent( VTKTPS )
+      self.cloneLandmarkNode.SetAndObserveTransformNodeID(self.transformNode.GetID())
+      self.cloneModelNode.SetAndObserveTransformNodeID(self.transformNode.GetID()) 
+    
+    else:
+      index = 0    
+      for targetLandmark in target:
+        self.cloneLandmarkNode.SetNthControlPointPositionFromArray(index,targetLandmark)  
+        index+=1
+            
   def onPlotDistribution(self):
     if self.NoneType.isChecked():
       self.unplotDistributions()
