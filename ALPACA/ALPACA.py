@@ -10,6 +10,7 @@ import copy
 import multiprocessing
 import vtk.util.numpy_support as vtk_np
 import numpy as np
+
 #
 # ALPACA
 #
@@ -694,6 +695,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     sourceArrayCombined = np.float32(sourceArrayCombined)
     targetArray = np.float32(targetArray)    
     registrationOutput = self.cpd_registration(targetArray, sourceArrayCombined, parameters["CPDIterations"], parameters["CPDTolerence"], parameters["alpha"], parameters["beta"])
+
     deformed_array, _ = registrationOutput.register()
     poi_prediction = deformed_array[-len(sourceLM):]
     return poi_prediction
