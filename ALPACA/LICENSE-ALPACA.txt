@@ -1,4 +1,4 @@
-Open3d_utils contains a set of external functions that are used in ALPACA.
+ALPACA contains a small set of utilities from open3d
 
 
 --------------------------------------------------------------------------------
