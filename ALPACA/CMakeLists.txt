@@ -4,8 +4,6 @@ set(MODULE_NAME ALPACA)
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}.py
-  Support/__init__.py
-  Support/Open3D_utils.py
   )
 
 set(MODULE_PYTHON_RESOURCES

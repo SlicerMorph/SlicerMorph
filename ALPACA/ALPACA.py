@@ -5,19 +5,11 @@ import logging
 import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
-
 import glob
 import copy
 import multiprocessing
-
 import vtk.util.numpy_support as vtk_np
-
 import numpy as np
-
-## OTHER UTILS
-import Support.Open3D_utils as pythonUtils
-#import Support.DBALib as DECA_Lib
-
 #
 # ALPACA
 #
@@ -51,21 +43,21 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
   """Uses ScriptedLoadableModuleWidget base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
+
   def __init__(self, parent=None):
-    ScriptedLoadableModuleWidget.__init__(self, parent)   
-    ## EXTERNAL LIBRARIES - NOT PART OF BASE PYTHON
+    ScriptedLoadableModuleWidget.__init__(self, parent)
     try:
       import open3d as o3d
       print('o3d installed')
-    except ImportError:
-      slicer.util.pip_install('notebook==6.0.3')
-      slicer.util.pip_install('open3d==0.9.0')
-      import open3d as o3d
-      print('attempting to install o3d')
+    except ModuleNotFoundError as e:
+      if slicer.util.confirmOkCancelDisplay("ALPACA requires the open3d library. Installation may take a few minutes"):
+        slicer.util.pip_install('notebook==6.0.3')
+        slicer.util.pip_install('open3d==0.9.0')
+        import open3d as o3d
     try:
       from pycpd import DeformableRegistration
       print('pycpd installed')
-    except ImportError:
+    except ModuleNotFoundError as e:
       slicer.util.pip_install('pycpd')
       print('trying to install pycpd')
       from pycpd import DeformableRegistration
@@ -463,8 +455,8 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
   def updateParameterDictionary(self):    
     # update the parameter dictionary from single run parameters
     if hasattr(self, 'parameterDictionary'):
-      self.parameterDictionary["normalSearchRadius"] = self.normalSearchRadius.value
-      self.parameterDictionary["FPFHSearchRadius"] = self.FPFHSearchRadius.value
+      self.parameterDictionary["normalSearchRadius"] = int(self.normalSearchRadius.value)
+      self.parameterDictionary["FPFHSearchRadius"] = int(self.FPFHSearchRadius.value)
       self.parameterDictionary["distanceThreshold"] = self.distanceThreshold.value
       self.parameterDictionary["maxRANSAC"] = int(self.maxRANSAC.value)
       self.parameterDictionary["maxRANSACValidation"] = int(self.maxRANSACValidation.value)
@@ -476,8 +468,8 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     
     # update the parameter dictionary from multi run parameters
     if hasattr(self, 'parameterDictionaryMulti'):
-      self.parameterDictionaryMulti["normalSearchRadius"] = self.normalSearchRadiusMulti.value
-      self.parameterDictionaryMulti["FPFHSearchRadius"] = self.FPFHSearchRadiusMulti.value
+      self.parameterDictionaryMulti["normalSearchRadius"] = int(self.normalSearchRadiusMulti.value)
+      self.parameterDictionaryMulti["FPFHSearchRadius"] = int(self.FPFHSearchRadiusMulti.value)
       self.parameterDictionaryMulti["distanceThreshold"] = self.distanceThresholdMulti.value
       self.parameterDictionaryMulti["maxRANSAC"] = int(self.maxRANSACMulti.value)
       self.parameterDictionaryMulti["maxRANSACValidation"] = int(self.maxRANSACValidationMulti.value)
@@ -623,6 +615,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     Uses ScriptedLoadableModuleLogic base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
+ 
   def runLandmarkMultiprocess(self, sourceModelPath, sourceLandmarkPath, targetModelDirectory, outputDirectory, voxelSize, parameters):
     extensionModel = ".ply"
     
@@ -700,7 +693,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     #Convert to float32 to increase speed (if selected)
     sourceArrayCombined = np.float32(sourceArrayCombined)
     targetArray = np.float32(targetArray)    
-    registrationOutput = pythonUtils.cdp_registration(targetArray, sourceArrayCombined, parameters["CPDIterations"], parameters["CPDTolerence"], parameters["alpha"], parameters["beta"])
+    registrationOutput = self.cpd_registration(targetArray, sourceArrayCombined, parameters["CPDIterations"], parameters["CPDTolerence"], parameters["alpha"], parameters["beta"])
     deformed_array, _ = registrationOutput.register()
     poi_prediction = deformed_array[-len(sourceLM):]
     return poi_prediction
@@ -788,20 +781,20 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     return modelNode
     
   def estimateTransform(self, sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, parameters):
-    ransac = pythonUtils.execute_global_registration(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize * 2.5, 
+    ransac = self.execute_global_registration(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize * 2.5, 
       parameters["distanceThreshold"], parameters["maxRANSAC"], parameters["maxRANSACValidation"])
     
     # Refine the initial registration using an Iterative Closest Point (ICP) registration
-    icp = pythonUtils.refine_registration(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize * 2.5, ransac, parameters["ICPDistanceThreshold"]) 
+    icp = self.refine_registration(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize * 2.5, ransac, parameters["ICPDistanceThreshold"]) 
     return icp.transformation                                     
   
   def runSubsample(self, sourcePath, targetPath, voxelSize, parameters):
     source, source_down, source_fpfh = \
-        pythonUtils.prepare_source_dataset(voxelSize, sourcePath, parameters["normalSearchRadius"], parameters["FPFHSearchRadius"])
+      self.prepare_source_dataset(voxelSize, sourcePath, parameters["normalSearchRadius"], parameters["FPFHSearchRadius"])
     source.estimate_normals()
     
     target, target_down, target_fpfh = \
-        pythonUtils.prepare_target_dataset(voxelSize, targetPath, parameters["normalSearchRadius"], parameters["FPFHSearchRadius"])
+      self.prepare_target_dataset(voxelSize, targetPath, parameters["normalSearchRadius"], parameters["FPFHSearchRadius"])
     target.estimate_normals()
     return source, target, source_down, target_down, source_fpfh, target_fpfh
           
@@ -816,6 +809,69 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     dy=fnx(a[:,1])
     dz=fnx(a[:,2])
     return (dx**2.0+dy**2.0+dz**2.0)**0.5
+    
+  def preprocess_point_cloud(self, pcd, voxel_size, radius_normal_factor, radius_feature_factor):
+    from open3d import geometry
+    from open3d import registration
+    print(":: Downsample with a voxel size %.3f." % voxel_size)
+    pcd_down = pcd.voxel_down_sample(voxel_size)
+    radius_normal = voxel_size * radius_normal_factor
+    print(":: Estimate normal with search radius %.3f." % radius_normal)
+    pcd_down.estimate_normals(
+        geometry.KDTreeSearchParamHybrid(radius=radius_normal, max_nn=30))
+    radius_feature = voxel_size * radius_feature_factor
+    print(":: Compute FPFH feature with search radius %.3f." % radius_feature)
+    pcd_fpfh = registration.compute_fpfh_feature(
+        pcd_down,
+        geometry.KDTreeSearchParamHybrid(radius=radius_feature, max_nn=100))
+    return pcd_down, pcd_fpfh
+
+  def prepare_target_dataset(self, voxel_size, filepath, radius_normal_factor, radius_feature_factor):
+    from open3d import io
+    print(":: Load target point cloud and preprocess")
+    target = io.read_point_cloud(filepath)
+    target_down, target_fpfh = self.preprocess_point_cloud(target, voxel_size, radius_normal_factor, radius_feature_factor)
+    return target, target_down, target_fpfh
+
+  def prepare_source_dataset(self, voxel_size, filepath, radius_normal_factor, radius_feature_factor):
+    print(":: Load source point cloud and preprocess")
+    from open3d import io
+    source = io.read_point_cloud(filepath)
+    source_down, source_fpfh = self.preprocess_point_cloud(source, voxel_size, radius_normal_factor, radius_feature_factor)
+    return source, source_down, source_fpfh
+
+  def execute_global_registration(self, source_down, target_down, source_fpfh,
+                                target_fpfh, voxel_size, distance_threshold_factor, maxIter, maxValidation):
+    from open3d import registration
+    distance_threshold = voxel_size * distance_threshold_factor
+    print(":: RANSAC registration on downsampled point clouds.")
+    print("   Since the downsampling voxel size is %.3f," % voxel_size)
+    print("   we use a liberal distance threshold %.3f." % distance_threshold)
+    result = registration.registration_ransac_based_on_feature_matching(
+        source_down, target_down, source_fpfh, target_fpfh, distance_threshold,
+        registration.TransformationEstimationPointToPoint(False), 4, [
+            registration.CorrespondenceCheckerBasedOnEdgeLength(0.9),
+            registration.CorrespondenceCheckerBasedOnDistance(
+                distance_threshold)
+        ], registration.RANSACConvergenceCriteria(maxIter, maxValidation))
+    return result
+
+
+  def refine_registration(self, source, target, source_fpfh, target_fpfh, voxel_size, result_ransac, ICPThreshold_factor):
+    from open3d import registration
+    distance_threshold = voxel_size * ICPThreshold_factor
+    print(":: Point-to-plane ICP registration is applied on original point")
+    print("   clouds to refine the alignment. This time we use a strict")
+    print("   distance threshold %.3f." % distance_threshold)
+    result = registration.registration_icp(
+        source, target, distance_threshold, result_ransac.transformation,
+        registration.TransformationEstimationPointToPlane())
+    return result
+    
+  def cpd_registration(self, targetArray, sourceArray, CPDIterations, CPDTolerence, alpha_parameter, beta_parameter):
+    from pycpd import DeformableRegistration
+    output = DeformableRegistration(**{'X': targetArray, 'Y': sourceArray,'max_iterations': CPDIterations, 'tolerance': CPDTolerence}, alpha = alpha_parameter, beta  = beta_parameter)
+    return output
     
   def takeScreenshot(self,name,description,type=-1):
     # show the message even if not taking a screen shot
