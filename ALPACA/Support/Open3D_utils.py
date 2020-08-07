@@ -11,14 +11,8 @@ import copy
 import csv
 import os
 import re
-
-try:
-  import open3d as o3d
-  print('o3d installed')
-except ImportError:
-  slicer.util.pip_install('open3d')
-  import open3d as o3d
-  print('installing o3d')
+import open3d as o3d
+from pycpd import DeformableRegistration
   
 def draw_registration_result(source, target, transformation):
     source_temp = copy.deepcopy(source)
@@ -81,4 +75,7 @@ def refine_registration(source, target, source_fpfh, target_fpfh, voxel_size, re
         o3d.registration.TransformationEstimationPointToPlane())
     return result
 
+def cdp_registration(targetArray, sourceArray, CPDIterations, CPDTolerence, alpha_parameter, beta_parameter):
+  output = DeformableRegistration(**{'X': targetArray, 'Y': sourceArray,'max_iterations': CPDIterations, 'tolerance': CPDTolerence}, alpha = alpha_parameter, beta  = beta_parameter)
+  return output
 

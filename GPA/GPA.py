@@ -158,6 +158,7 @@ class sliderGroup(qt.QGroupBox):
     self.spinBox.valueChanged.connect(self.slider.setValue)
     if onChanged:
       self.slider.valueChanged.connect(onChanged)
+      self.comboBox.currentIndexChanged.connect(onChanged)
 
     # layout
     slidersLayout = qt.QGridLayout()
@@ -506,7 +507,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.selectorButton.enabled = True
     
   def populateDistanceTable(self, files):
-    sortedArray = np.zeros(len(files), dtype={'names':('filename', 'procdist'),'formats':('U10','f8')})
+    sortedArray = np.zeros(len(files), dtype={'names':('filename', 'procdist'),'formats':('U50','f8')})
     sortedArray['filename']=files
     sortedArray['procdist']=self.LM.procdist[:,0]
     sortedArray.sort(order='procdist')
@@ -557,7 +558,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.inputFactorButton.enabled = False
 
   def enterFactors(self):
-    sortedArray = np.zeros(len(self.files), dtype={'names':('filename', 'procdist'),'formats':('U10','f8')})
+    sortedArray = np.zeros(len(self.files), dtype={'names':('filename', 'procdist'),'formats':('U50','f8')})
     sortedArray['filename']=self.files
 
     #check for an existing factor table
@@ -983,16 +984,20 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     visLayout= qt.QGridLayout(vis)
     self.applyEnabled=False
 
-    def warpOnChange(value):
-      if self.applyEnabled:
+    def warpOnChangePC1(value):
+      if self.applyEnabled and self.slider1.boxValue() is not 'None':
+        self.onApply()
+   
+    def warpOnChangePC2(value):
+      if self.applyEnabled and self.slider2.boxValue() is not 'None':
         self.onApply()
 
     self.PCList=[]
-    self.slider1=sliderGroup(onChanged = warpOnChange)
+    self.slider1=sliderGroup(onChanged = warpOnChangePC1)
     self.slider1.connectList(self.PCList)
     visLayout.addWidget(self.slider1,3,1,1,2)
 
-    self.slider2=sliderGroup(onChanged = warpOnChange)
+    self.slider2=sliderGroup(onChanged = warpOnChangePC2)
     self.slider2.connectList(self.PCList)
     visLayout.addWidget(self.slider2,4,1,1,2)
 
@@ -1110,6 +1115,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
   def onSelect(self):
     self.initializeOnSelect()
     self.cloneLandmarkNode = self.copyLandmarkNode
+    self.cloneLandmarkNode.CreateDefaultDisplayNodes()
     if bool((self.FudSelect.currentPath != 'None') and (self.grayscaleSelector.currentPath != 'None')):
       # get landmark node selected
       logic = GPALogic()
@@ -1120,10 +1126,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       # remove any excluded landmarks
       j=len(self.LMExclusionList)
       if (j != 0):
-        indexToRemove=np.zeros(j)
+        indexToRemove=[]
         for i in range(j):
-          indexToRemove[i]=self.LMExclusionList[i]-1
-          print("removing",  indexToRemove[i])
+          indexToRemove.append(LMExclusionList[i]-1)
         self.sourceLMnumpy=np.delete(self.sourceLMnumpy,indexToRemove,axis=0)
 
       # set up transform
@@ -1189,7 +1194,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     pc1=self.slider1.boxValue()
     pc2=self.slider2.boxValue()
     pcSelected=[pc1,pc2]
-
+    
     # get scale values for each pc.
     sf1=self.slider1.sliderValue()
     sf2=self.slider2.sliderValue()
@@ -1207,22 +1212,28 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     #get target landmarks
     self.LM.ExpandAlongPCs(pcSelected,scaleFactors, self.sampleSizeScaleFactor)
     target=self.rawMeanLandmarks+self.LM.shift
-    targetLMVTK=logic.convertNumpyToVTK(target)
-    sourceLMVTK=logic.convertNumpyToVTK(self.rawMeanLandmarks)
-
-    #Set up TPS
-    VTKTPS = vtk.vtkThinPlateSplineTransform()
-    VTKTPS.SetSourceLandmarks( sourceLMVTK )
-    VTKTPS.SetTargetLandmarks( targetLMVTK )
-    VTKTPS.SetBasisToR()  # for 3D transform
-
-    #Connect transform to model
-    self.transformNode.SetAndObserveTransformToParent( VTKTPS )
-    self.cloneLandmarkNode.SetAndObserveTransformNodeID(self.transformNode.GetID())
+    
     if hasattr(self, 'cloneModelNode'):
-      self.cloneModelNode.SetAndObserveTransformNodeID(self.transformNode.GetID())
+      targetLMVTK=logic.convertNumpyToVTK(target)
+      sourceLMVTK=logic.convertNumpyToVTK(self.rawMeanLandmarks)
+      
+      #Set up TPS
+      VTKTPS = vtk.vtkThinPlateSplineTransform()
+      VTKTPS.SetSourceLandmarks( sourceLMVTK )
+      VTKTPS.SetTargetLandmarks( targetLMVTK )
+      VTKTPS.SetBasisToR()  # for 3D transform
 
-
+      #Connect transform to model
+      self.transformNode.SetAndObserveTransformToParent( VTKTPS )
+      self.cloneLandmarkNode.SetAndObserveTransformNodeID(self.transformNode.GetID())
+      self.cloneModelNode.SetAndObserveTransformNodeID(self.transformNode.GetID()) 
+    
+    else:
+      index = 0    
+      for targetLandmark in target:
+        self.cloneLandmarkNode.SetNthControlPointPositionFromArray(index,targetLandmark)  
+        index+=1
+            
   def onPlotDistribution(self):
     if self.NoneType.isChecked():
       self.unplotDistributions()
@@ -1464,11 +1475,13 @@ class GPALogic(ScriptedLoadableModuleLogic):
       tmp1=self.importLandMarks(matchList[i]+".fcsv")
       landmarks[:,:,i]=tmp1
       matchedfiles.append(os.path.basename(matchList[i]))
-    indexToRemove=np.zeros(len(lmToRemove))
-    for i in range(len(lmToRemove)):
-      indexToRemove[i]=lmToRemove[i]-1
-
-    landmarks=np.delete(landmarks,indexToRemove,axis=0)
+    
+    if len(lmToRemove)>0:
+      indexToRemove=[]
+      for i in range(len(lmToRemove)):
+        indexToRemove.append(lmToRemove[i]-1)
+      landmarks=np.delete(landmarks,indexToRemove,axis=0)
+    
     return landmarks, matchedfiles
 
   def createMatchList(self, topDir,suffix):
@@ -1612,9 +1625,9 @@ class GPALogic(ScriptedLoadableModuleLogic):
       table.SetNumberOfRows(numPoints)
       for i in range(numPoints):
         if (factors[i] == factor):
-          tableNode.SetValue(factorCounter, 0,files[i])
+          table.SetValue(factorCounter, 0,files[i])
           for j in range(pcNumber):
-            tableNode.SetValue(factorCounter, j+1, data[i,j])
+            table.SetValue(factorCounter, j+1, data[i,j])
           factorCounter+=1
 
       plotSeriesNode=slicer.mrmlScene.GetFirstNodeByName("Series_PCA_" + factor + "_" + xAxis + "v" +yAxis)

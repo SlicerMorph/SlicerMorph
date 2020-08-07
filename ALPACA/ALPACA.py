@@ -15,24 +15,8 @@ import vtk.util.numpy_support as vtk_np
 import numpy as np
 
 ## OTHER UTILS
-import Open3D_utils
+import Support.Open3D_utils as pythonUtils
 #import Support.DBALib as DECA_Lib
-
-## EXTERNAL LIBRARIES - NOT PART OF BASE PYTHON
-try:
-  import open3d as o3d
-  print('o3d installed')
-except ImportError:
-  slicer.util.pip_install('open3d==0.9.0')
-  import open3d as o3d
-  print('trying to install o3d')
-try:
-  from pycpd import DeformableRegistration
-  print('pycpd installed')
-except ImportError:
-  slicer.util.pip_install('pycpd')
-  print('trying to install pycpd')
-  from pycpd import DeformableRegistration
 
 #
 # ALPACA
@@ -50,7 +34,7 @@ class ALPACA(ScriptedLoadableModule):
     self.parent.dependencies = []
     self.parent.contributors = ["Arthur Porto, Sara Rolfe (UW), Murat Maga (UW)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """
-      This module transfers landmarks from one image to a directory of images.
+      This module automatically transfers landmarks on a reference 3D model (mesh) to a target 3D model using dense correspondence and deformable registration. First optimize the parameters in single alignment analysis, then use them in batch mode to apply to all 3D models
       """
     self.parent.helpText += self.getDefaultModuleDocumentationLink()
     self.parent.acknowledgementText = """
@@ -67,6 +51,25 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
   """Uses ScriptedLoadableModuleWidget base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
+  def __init__(self, parent=None):
+    ScriptedLoadableModuleWidget.__init__(self, parent)   
+    ## EXTERNAL LIBRARIES - NOT PART OF BASE PYTHON
+    try:
+      import open3d as o3d
+      print('o3d installed')
+    except ImportError:
+      slicer.util.pip_install('notebook==6.0.3')
+      slicer.util.pip_install('open3d==0.9.0')
+      import open3d as o3d
+      print('attempting to install o3d')
+    try:
+      from pycpd import DeformableRegistration
+      print('pycpd installed')
+    except ImportError:
+      slicer.util.pip_install('pycpd')
+      print('trying to install pycpd')
+      from pycpd import DeformableRegistration
+    
   def onSelect(self):
     self.applyButton.enabled = bool (self.meshDirectory.currentPath and self.landmarkDirectory.currentPath and 
       self.sourceModelSelector.currentNode() and self.baseLMSelector.currentNode() and self.baseSLMSelect.currentNode() 
@@ -84,7 +87,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
 
 
     tabsWidget.addTab(alignSingleTab, "Single Alignment")
-    tabsWidget.addTab(alignMultiTab, "Multiprocessing")
+    tabsWidget.addTab(alignMultiTab, "Batch processing")
     self.layout.addWidget(tabsWidget)
     
     # Layout within the tab
@@ -697,7 +700,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     #Convert to float32 to increase speed (if selected)
     sourceArrayCombined = np.float32(sourceArrayCombined)
     targetArray = np.float32(targetArray)    
-    registrationOutput = DeformableRegistration(**{'X': targetArray, 'Y': sourceArrayCombined,'max_iterations': parameters["CPDIterations"], 'tolerance':parameters["CPDTolerence"]}, alpha = parameters["alpha"], beta  = parameters["beta"])
+    registrationOutput = pythonUtils.cdp_registration(targetArray, sourceArrayCombined, parameters["CPDIterations"], parameters["CPDTolerence"], parameters["alpha"], parameters["beta"])
     deformed_array, _ = registrationOutput.register()
     poi_prediction = deformed_array[-len(sourceLM):]
     return poi_prediction
@@ -785,20 +788,20 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     return modelNode
     
   def estimateTransform(self, sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, parameters):
-    ransac = Open3D_utils.execute_global_registration(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize * 2.5, 
+    ransac = pythonUtils.execute_global_registration(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize * 2.5, 
       parameters["distanceThreshold"], parameters["maxRANSAC"], parameters["maxRANSACValidation"])
     
     # Refine the initial registration using an Iterative Closest Point (ICP) registration
-    icp = Open3D_utils.refine_registration(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize * 2.5, ransac, parameters["ICPDistanceThreshold"]) 
+    icp = pythonUtils.refine_registration(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize * 2.5, ransac, parameters["ICPDistanceThreshold"]) 
     return icp.transformation                                     
   
   def runSubsample(self, sourcePath, targetPath, voxelSize, parameters):
     source, source_down, source_fpfh = \
-        Open3D_utils.prepare_source_dataset(voxelSize, sourcePath, parameters["normalSearchRadius"], parameters["FPFHSearchRadius"])
+        pythonUtils.prepare_source_dataset(voxelSize, sourcePath, parameters["normalSearchRadius"], parameters["FPFHSearchRadius"])
     source.estimate_normals()
     
     target, target_down, target_fpfh = \
-        Open3D_utils.prepare_target_dataset(voxelSize, targetPath, parameters["normalSearchRadius"], parameters["FPFHSearchRadius"])
+        pythonUtils.prepare_target_dataset(voxelSize, targetPath, parameters["normalSearchRadius"], parameters["FPFHSearchRadius"])
     target.estimate_normals()
     return source, target, source_down, target_down, source_fpfh, target_fpfh
           

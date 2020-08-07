@@ -48,7 +48,6 @@ and was partially funded by NIH grant 3P41RR013218-12S1.
         from MarkupEditor import MarkupEditorSubjectHierarchyPlugin
         scriptedPlugin = slicer.qSlicerSubjectHierarchyScriptedPlugin(None)
         scriptedPlugin.name = "MarkupEditor"
-
         scriptedPlugin.setPythonSource(MarkupEditorSubjectHierarchyPlugin.filePath)
         pluginHandler = slicer.qSlicerSubjectHierarchyPluginHandler.instance()
         pluginHandler.registerPlugin(scriptedPlugin)
@@ -62,12 +61,29 @@ class MarkupEditorSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin)
 
     def __init__(self, scriptedPlugin):
         self.logic = MarkupEditorLogic()
+        self.selectOptions = {
+          "set": "Set selection",
+          "add": "Add to selection",
+          "unset": "Remove from selection"
+        }
 
-        self.selectViewAction = qt.QAction(f"Select points with curve...", scriptedPlugin)
+        self.selectViewAction = qt.QAction(f"Pick points with curve...", scriptedPlugin)
         self.selectViewAction.objectName = 'SelectViewAction'
         self.selectViewAction.connect("triggered()", self.onSelectViewAction)
 
-        self.deleteViewAction = qt.QAction(f"Delete selected points...", scriptedPlugin)
+        self.selectMenu = qt.QMenu("Select Menu")
+        self.selectViewAction.setMenu(self.selectMenu)
+
+        for selectOption in self.selectOptions.keys():
+          action = self.selectMenu.addAction(self.selectOptions[selectOption])
+          slot = lambda selectOption=selectOption : self.onSelectViewAction(selectOption)
+          action.connect("triggered()", slot)
+
+        self.editViewAction = qt.QAction(f"Edit selected points", scriptedPlugin)
+        self.editViewAction.objectName = 'EditViewAction'
+        self.editViewAction.connect("triggered()", self.onEditViewAction)
+
+        self.deleteViewAction = qt.QAction(f"Delete selected points", scriptedPlugin)
         self.deleteViewAction.objectName = 'DeleteViewAction'
         self.deleteViewAction.connect("triggered()", self.onDeleteViewAction)
 
@@ -79,14 +95,15 @@ class MarkupEditorSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin)
         self.viewNodeFromEvent = None
 
     def onCurveInteractionEnded(self, caller, event):
-        self.logic.editMarkups(self.fiducialNodeFromEvent,
+        slicer.app.applicationLogic().GetInteractionNode().RemoveObserver(self.observerTag)
+        self.logic.editMarkups(self.currentSelectOption,
+                               self.fiducialNodeFromEvent,
                                self.closedCurveNode,
                                self.viewNodeFromEvent)
-        slicer.app.applicationLogic().GetInteractionNode().RemoveObserver(self.observerTag)
         slicer.mrmlScene.RemoveNode(self.closedCurveNode)
         self.reset()
 
-    def onSelectViewAction(self):
+    def onSelectViewAction(self, selectOption):
         interactionNode = slicer.app.applicationLogic().GetInteractionNode()
         selectionNode = slicer.app.applicationLogic().GetSelectionNode()
         self.closedCurveNode = slicer.vtkMRMLMarkupsClosedCurveNode()
@@ -97,6 +114,21 @@ class MarkupEditorSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin)
         interactionNode.SetCurrentInteractionMode(interactionNode.Place)
         eventID = interactionNode.EndPlacementEvent
         self.observerTag = interactionNode.AddObserver(eventID, self.onCurveInteractionEnded)
+        self.currentSelectOption = selectOption
+
+    def onEditViewAction(self):
+        slicer.util.selectModule("Markups")
+        markupsWidget = slicer.modules.markups.widgetRepresentation()
+        treeView = slicer.util.findChild(markupsWidget, "activeMarkupTreeView")
+        treeView.setCurrentNode(self.fiducialNodeFromEvent)
+        collapsibleButton = slicer.util.findChild(markupsWidget, "controlPointsCollapsibleButton")
+        collapsibleButton.collapsed = False
+        markupTable = slicer.util.findChild(collapsibleButton, "activeMarkupTableWidget")
+        fiducialsNode = self.fiducialNodeFromEvent
+        pointRange = list(range(fiducialsNode.GetNumberOfControlPoints()))
+        for index in pointRange:
+            if fiducialsNode.GetNthControlPointSelected(index):
+                markupTable.setCurrentCell(index, 0, qt.QItemSelectionModel.Select | qt.QItemSelectionModel.Rows)
 
     def onDeleteViewAction(self):
         fiducialsNode = self.fiducialNodeFromEvent
@@ -107,7 +139,7 @@ class MarkupEditorSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin)
                 fiducialsNode.RemoveNthControlPoint(index)
 
     def viewContextMenuActions(self):
-        return [self.selectViewAction, self.deleteViewAction]
+        return [self.selectViewAction, self.editViewAction, self.deleteViewAction]
 
     def showViewContextMenuActionsForItem(self, itemID, eventData=None):
         pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler.instance()
@@ -121,9 +153,11 @@ class MarkupEditorSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin)
             pluginLogic = pluginHandler.pluginLogic()
             menuActions = list(pluginLogic.availableViewMenuActionNames())
             menuActions.append('SelectViewAction')
+            menuActions.append('EditViewAction')
             menuActions.append('DeleteViewAction')
             pluginLogic.setDisplayedViewMenuActionNames(menuActions)
             self.selectViewAction.visible = True
+            self.editViewAction.visible = True
             self.deleteViewAction.visible = True
             self.viewNodeFromEvent = viewNode
             self.fiducialNodeFromEvent = associatedNode
@@ -203,7 +237,7 @@ class MarkupEditorWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     try:
       viewNode = self.viewSelector.currentNode()
       layoutManager = slicer.app.layoutManager()
-      self.logic.editMarkups(self.fiducialsSelector.currentNode(),
+      self.logic.editMarkups("set", self.fiducialsSelector.currentNode(),
                              self.curveSelector.currentNode(),
                              self.viewSelector.currentNode())
     except Exception as e:
@@ -230,7 +264,7 @@ class MarkupEditorLogic(ScriptedLoadableModuleLogic):
     ScriptedLoadableModuleLogic.__init__(self)
     self.observerTags = {}
 
-  def editMarkups(self, fiducialsNode, curveNode, viewNode):
+  def editMarkups(self, selectOption, fiducialsNode, curveNode, viewNode):
 
     layoutManager = slicer.app.layoutManager()
     threeDWidget = layoutManager.viewWidget(viewNode)
@@ -252,8 +286,6 @@ class MarkupEditorLogic(ScriptedLoadableModuleLogic):
       column = (x + 1)/2  * threeDWidget.width
       row = (1 - (y + 1)/2) * threeDWidget.height
       return column, row
-
-    curveNode.ResampleCurveWorld(5)
 
     selectionPolygon = qt.QPolygonF()
     for index in range(curveNode.GetNumberOfControlPoints()):
@@ -290,7 +322,17 @@ class MarkupEditorLogic(ScriptedLoadableModuleLogic):
       if (column >= 0 and column < pickImage.width
               and row >= 0 and row < pickImage.height):
           pickColor = pickImage.pixelColor(column, row)
-          fiducialsNode.SetNthControlPointSelected(index, pickColor != backgroundColor)
+          picked = (pickColor != backgroundColor)
+          if selectOption == "set":
+            fiducialsNode.SetNthControlPointSelected(index, picked)
+          elif selectOption == "add":
+            if picked:
+              fiducialsNode.SetNthControlPointSelected(index, True)
+          elif selectOption == "unset":
+            if picked:
+              fiducialsNode.SetNthControlPointSelected(index, False)
+          else:
+            logging.error(f"Unknown selectOption {selectOption}")
 
 
 #
