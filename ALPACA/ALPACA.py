@@ -15,7 +15,7 @@ import vtk.util.numpy_support as vtk_np
 import numpy as np
 
 ## OTHER UTILS
-import Support.Open3D_utils as pythonUtils
+import Support
 #import Support.DBALib as DECA_Lib
 
 #
@@ -700,7 +700,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     #Convert to float32 to increase speed (if selected)
     sourceArrayCombined = np.float32(sourceArrayCombined)
     targetArray = np.float32(targetArray)    
-    registrationOutput = pythonUtils.cdp_registration(targetArray, sourceArrayCombined, parameters["CPDIterations"], parameters["CPDTolerence"], parameters["alpha"], parameters["beta"])
+    registrationOutput = Support.Open3D_utils.cdp_registration(targetArray, sourceArrayCombined, parameters["CPDIterations"], parameters["CPDTolerence"], parameters["alpha"], parameters["beta"])
     deformed_array, _ = registrationOutput.register()
     poi_prediction = deformed_array[-len(sourceLM):]
     return poi_prediction
@@ -788,20 +788,20 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     return modelNode
     
   def estimateTransform(self, sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, parameters):
-    ransac = pythonUtils.execute_global_registration(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize * 2.5, 
+    ransac = Support.Open3D_utils.execute_global_registration(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize * 2.5, 
       parameters["distanceThreshold"], parameters["maxRANSAC"], parameters["maxRANSACValidation"])
     
     # Refine the initial registration using an Iterative Closest Point (ICP) registration
-    icp = pythonUtils.refine_registration(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize * 2.5, ransac, parameters["ICPDistanceThreshold"]) 
+    icp = Support.Open3D_utils.refine_registration(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize * 2.5, ransac, parameters["ICPDistanceThreshold"]) 
     return icp.transformation                                     
   
   def runSubsample(self, sourcePath, targetPath, voxelSize, parameters):
     source, source_down, source_fpfh = \
-        pythonUtils.prepare_source_dataset(voxelSize, sourcePath, parameters["normalSearchRadius"], parameters["FPFHSearchRadius"])
+        Support.Open3D_utils.prepare_source_dataset(voxelSize, sourcePath, parameters["normalSearchRadius"], parameters["FPFHSearchRadius"])
     source.estimate_normals()
     
     target, target_down, target_fpfh = \
-        pythonUtils.prepare_target_dataset(voxelSize, targetPath, parameters["normalSearchRadius"], parameters["FPFHSearchRadius"])
+        Support.Open3D_utils.prepare_target_dataset(voxelSize, targetPath, parameters["normalSearchRadius"], parameters["FPFHSearchRadius"])
     target.estimate_normals()
     return source, target, source_down, target_down, source_fpfh, target_fpfh
           
