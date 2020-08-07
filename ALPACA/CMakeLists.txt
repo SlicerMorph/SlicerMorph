@@ -4,8 +4,6 @@ set(MODULE_NAME ALPACA)
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}.py
-  Support/__init__.py
-  Support/Open3D_utils.py
   )
 
 set(MODULE_PYTHON_RESOURCES
@@ -19,6 +17,12 @@ slicerMacroBuildScriptedModule(
   SCRIPTS ${MODULE_PYTHON_SCRIPTS}
   RESOURCES ${MODULE_PYTHON_RESOURCES}
   WITH_GENERIC_TESTS
+  )
+  
+install(DIRECTORY "Support"
+  DESTINATION "${Slicer_INSTALL_QTSCRIPTEDMODULES_BIN_DIR}"
+  COMPONENT Runtime
+  USE_SOURCE_PERMISSIONS
   )
 
 #-----------------------------------------------------------------------------
