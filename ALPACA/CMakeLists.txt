@@ -18,12 +18,6 @@ slicerMacroBuildScriptedModule(
   RESOURCES ${MODULE_PYTHON_RESOURCES}
   WITH_GENERIC_TESTS
   )
-  
-install(DIRECTORY "Support"
-  DESTINATION "${Slicer_INSTALL_QTSCRIPTEDMODULES_BIN_DIR}"
-  COMPONENT Runtime
-  USE_SOURCE_PERMISSIONS
-  )
 
 #-----------------------------------------------------------------------------
 if(BUILD_TESTING)
