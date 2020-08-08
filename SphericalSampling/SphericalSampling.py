@@ -46,6 +46,7 @@ class SphericalSamplingWidget(ScriptedLoadableModuleWidget):
     """
   def onSelect(self):
     self.getPointNumberButton.enabled = bool ( self.modelSelector.currentNode() )
+    self.projectionFactor.enabled = True
           
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
@@ -117,6 +118,18 @@ class SphericalSamplingWidget(ScriptedLoadableModuleWidget):
     self.scaleFactor.value = 110
     self.scaleFactor.setToolTip("Set  template scale factor as a percentage of the image diagonal")
     templateFormLayout.addRow("Template scale factor : ", self.scaleFactor)
+    
+    #
+    # Set max projection factor
+    #
+    self.projectionFactor = ctk.ctkSliderWidget()
+    self.projectionFactor.enabled = False
+    self.projectionFactor.singleStep = 1
+    self.projectionFactor.minimum = 1
+    self.projectionFactor.maximum = 100
+    self.projectionFactor.value = 50
+    self.projectionFactor.setToolTip("Set maximum projection as a percentage of the image diagonal")
+    templateFormLayout.addRow("Maximum projection factor : ", self.projectionFactor)
     
     #
     # Run Area
@@ -218,10 +231,11 @@ class SphericalSamplingWidget(ScriptedLoadableModuleWidget):
   def onProjectPointsButton(self):
     logic = SphericalSamplingLogic()
     isOriginalGeometry = self.OriginalType.isChecked()
+    maxProjection = self.projectionFactor.value/100
     if isOriginalGeometry:
-      self.projectedLM = logic.runPointProjection(self.modelSelector.currentNode(), self.modelSelector.currentNode(), self.templateNode.GetPolyData().GetPoints(), isOriginalGeometry)
+      self.projectedLM = logic.runPointProjection(self.modelSelector.currentNode(), self.modelSelector.currentNode(), self.templateNode.GetPolyData().GetPoints(), maxProjection, isOriginalGeometry)
     else:    
-      self.projectedLM = logic.runPointProjection(self.templateNode, self.modelSelector.currentNode(), self.templateNode.GetPolyData().GetPoints(), isOriginalGeometry)
+      self.projectedLM = logic.runPointProjection(self.templateNode, self.modelSelector.currentNode(), self.templateNode.GetPolyData().GetPoints(), maxProjection, isOriginalGeometry)
     
     if self.projectedLM.GetNumberOfFiducials() == self.templateNode.GetPolyData().GetNumberOfPoints():
       # update visualization
@@ -330,10 +344,16 @@ class SphericalSamplingLogic(ScriptedLoadableModuleLogic):
     
     return sphereSampleLMNode
     
-  def runPointProjection(self, sphere, model, spherePoints, isOriginalGeometry):
+  def runPointProjection(self, sphere, model, spherePoints, maxProjectionFactor, isOriginalGeometry):
     print("template points", spherePoints.GetNumberOfPoints())
+    [x1,x2,y1,y2,z1,z2] = model.GetPolyData().GetBounds()
+    lengthX = abs(x2-x1)
+    lengthY = abs(y2-y1)
+    lengthZ = abs(z2-z1)
+    totalLength = lengthX +lengthY + lengthZ
+    maxProjection = maxProjectionFactor*(totalLength/3)
     # project landmarks from template to model
-    projectedPoints = self.projectPointsPolydata(sphere.GetPolyData(), model.GetPolyData(), spherePoints, 1000)
+    projectedPoints = self.projectPointsPolydata(sphere.GetPolyData(), model.GetPolyData(), spherePoints, maxProjection)
     print("Points found 1st:", projectedPoints.GetNumberOfPoints())
     projectedLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"projectedLM")
     if(isOriginalGeometry):
@@ -343,7 +363,7 @@ class SphericalSamplingLogic(ScriptedLoadableModuleLogic):
       return projectedLMNode
     else:    
       #project landmarks from model to model external surface
-      projectedPointsExternal = self.projectPointsPolydata(model.GetPolyData(), model.GetPolyData(), projectedPoints, 1000)
+      projectedPointsExternal = self.projectPointsPolydata(model.GetPolyData(), model.GetPolyData(), projectedPoints, maxProjection)
       print("Points found 2nd:", projectedPointsExternal.GetNumberOfPoints())
       for i in range(projectedPointsExternal.GetNumberOfPoints()):
         point = projectedPointsExternal.GetPoint(i)
