@@ -561,16 +561,18 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     sortedArray = np.zeros(len(self.files), dtype={'names':('filename', 'procdist'),'formats':('U50','f8')})
     sortedArray['filename']=self.files
 
-    #check for an existing factor table
-    if not hasattr(self, 'factorTableNode'):
-      print("No table yet, creating now:")
-      self.factorTableNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTableNode', 'Factor Table')
-      GPANodeCollection.AddItem(self.factorTableNode)
-      col1=self.factorTableNode.AddColumn()
-      col1.SetName('ID')
-      for i in range(len(self.files)):
-       self.factorTableNode.AddEmptyRow()
-       self.factorTableNode.SetCellText(i,0,sortedArray['filename'][i])
+    #check for an existing factor table, if so remove
+    if hasattr(self, 'factorTableNode'):
+      GPANodeCollection.RemoveItem(self.factorTableNode)
+      slicer.mrmlScene.RemoveNode(self.factorTableNode)
+      
+    self.factorTableNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTableNode', 'Factor Table')
+    GPANodeCollection.AddItem(self.factorTableNode)
+    col1=self.factorTableNode.AddColumn()
+    col1.SetName('ID')
+    for i in range(len(self.files)):
+      self.factorTableNode.AddEmptyRow()
+      self.factorTableNode.SetCellText(i,0,sortedArray['filename'][i])
 
     col2=self.factorTableNode.AddColumn()
     col2.SetName(self.factorName.text)
@@ -1589,7 +1591,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
     #create two tables for the first two factors and then check for a third
     #check if there is a table node has been created
     numPoints = len(data)
-    uniqueFactors = np.unique(factors)
+    uniqueFactors, factorCounts = np.unique(factors, return_counts=True)
     factorNumber = len(uniqueFactors)
 
     #Set up chart
@@ -1601,7 +1603,8 @@ class GPALogic(ScriptedLoadableModuleLogic):
       plotChartNode.RemoveAllPlotSeriesNodeIDs()
 
     # Plot all series
-    for factor in uniqueFactors:
+    for factorIndex in range(len(uniqueFactors)):
+      factor = uniqueFactors[factorIndex]
       tableNode=slicer.mrmlScene.GetFirstNodeByName('PCA Scatter Plot Table Factor ' + factor)
       if tableNode is None:
         tableNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", 'PCA Scatter Plot Table Factor ' + factor)
@@ -1622,7 +1625,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
 
       factorCounter=0
       table = tableNode.GetTable()
-      table.SetNumberOfRows(numPoints)
+      table.SetNumberOfRows(factorCounts[factorIndex])
       for i in range(numPoints):
         if (factors[i] == factor):
           table.SetValue(factorCounter, 0,files[i])
