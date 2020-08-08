@@ -89,6 +89,7 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
     #
 
     self.passwordInput = qt.QLineEdit()
+    self.passwordInput.setEchoMode(qt.QLineEdit().Password)
     self.passwordInput.setText(slicer.passwordDefault)
     self.passwordInput.setToolTip( "Input MorphoSource account password" )
     IOFormLayout.addRow("MorphoSource Password: ", self.passwordInput)
