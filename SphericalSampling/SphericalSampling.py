@@ -126,8 +126,8 @@ class SphericalSamplingWidget(ScriptedLoadableModuleWidget):
     self.projectionFactor.enabled = False
     self.projectionFactor.singleStep = 1
     self.projectionFactor.minimum = 1
-    self.projectionFactor.maximum = 100
-    self.projectionFactor.value = 50
+    self.projectionFactor.maximum = 200
+    self.projectionFactor.value = 200
     self.projectionFactor.setToolTip("Set maximum projection as a percentage of the image diagonal")
     templateFormLayout.addRow("Maximum projection factor : ", self.projectionFactor)
     
@@ -258,7 +258,8 @@ class SphericalSamplingWidget(ScriptedLoadableModuleWidget):
     
     # update visualization
     self.projectedLM.SetDisplayVisibility(False)
-    self.sphericalSemiLandmarks.SetLocked(True)
+    for i in range(self.sphericalSemiLandmarks.GetNumberOfFiducials()):
+      self.sphericalSemiLandmarks.SetNthFiducialLocked(i,True)
     self.sphericalSemiLandmarks.GetDisplayNode().SetPointLabelsVisibility(False)
     green=[0,1,0]
     self.sphericalSemiLandmarks.GetDisplayNode().SetSelectedColor(green)
@@ -345,16 +346,9 @@ class SphericalSamplingLogic(ScriptedLoadableModuleLogic):
     return sphereSampleLMNode
     
   def runPointProjection(self, sphere, model, spherePoints, maxProjectionFactor, isOriginalGeometry):
-    print("template points", spherePoints.GetNumberOfPoints())
-    [x1,x2,y1,y2,z1,z2] = model.GetPolyData().GetBounds()
-    lengthX = abs(x2-x1)
-    lengthY = abs(y2-y1)
-    lengthZ = abs(z2-z1)
-    totalLength = lengthX +lengthY + lengthZ
-    maxProjection = maxProjectionFactor*(totalLength/3)
+    maxProjection = (model.GetPolyData().GetLength()) * maxProjectionFactor
     # project landmarks from template to model
     projectedPoints = self.projectPointsPolydata(sphere.GetPolyData(), model.GetPolyData(), spherePoints, maxProjection)
-    print("Points found 1st:", projectedPoints.GetNumberOfPoints())
     projectedLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"projectedLM")
     if(isOriginalGeometry):
       for i in range(projectedPoints.GetNumberOfPoints()):
@@ -364,7 +358,6 @@ class SphericalSamplingLogic(ScriptedLoadableModuleLogic):
     else:    
       #project landmarks from model to model external surface
       projectedPointsExternal = self.projectPointsPolydata(model.GetPolyData(), model.GetPolyData(), projectedPoints, maxProjection)
-      print("Points found 2nd:", projectedPointsExternal.GetNumberOfPoints())
       for i in range(projectedPointsExternal.GetNumberOfPoints()):
         point = projectedPointsExternal.GetPoint(i)
         projectedLMNode.AddFiducialFromArray(point)
