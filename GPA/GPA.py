@@ -1130,7 +1130,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       if (j != 0):
         indexToRemove=[]
         for i in range(j):
-          indexToRemove.append(LMExclusionList[i]-1)
+          indexToRemove.append(self.LMExclusionList[i]-1)
         self.sourceLMnumpy=np.delete(self.sourceLMnumpy,indexToRemove,axis=0)
 
       # set up transform
