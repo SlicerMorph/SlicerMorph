@@ -42,9 +42,9 @@ This work was was funded
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
       sampleName='Gorilla Skull Reference Model',
       category='SlicerMorph',
-      uris=['https://github.com/SlicerMorph/SampleData/blob/master/Gor_template_low_res.vtk?raw=true','https://raw.githubusercontent.com/SlicerMorph/SampleData/master/Gorilla_template_LM1.fcsv?raw=true'],
+      uris=['https://github.com/SlicerMorph/SampleData/blob/master/Gor_template_low_res.ply?raw=true','https://raw.githubusercontent.com/SlicerMorph/SampleData/master/Gorilla_template_LM1.fcsv?raw=true'],
       loadFiles=[False, False],
-      fileNames=['Gor_template_low_res.vtk', 'Gorilla_template_LM1.fcsv'],
+      fileNames=['Gor_template_low_res.ply', 'Gorilla_template_LM1.fcsv'],
       nodeNames=['Gor_template_low_res', 'Gorilla_template_LM1'],
       thumbnailFileName=os.path.join(iconsPath, 'gorilla3D.png'),
       loadFileType=['ModelFile', 'MarkupsFiducials'],
