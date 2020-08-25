@@ -108,23 +108,17 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.targetModelSelector = ctk.ctkPathLineEdit()
     self.targetModelSelector.nameFilters=["*.ply"]
     alignSingleWidgetLayout.addRow("Target mesh: ", self.targetModelSelector)
-    
-    #
-    # set voxel size used for subsampling
-    #
-    self.voxelSize = ctk.ctkDoubleSpinBox()
-    self.voxelSize.minimum = 0
-    self.voxelSize.maximum = 100
-    self.voxelSize.singleStep = .1
-    self.voxelSize.setDecimals(2)
-    self.voxelSize.value = 0.7
-    self.voxelSize.setToolTip("Choose the voxel size( in mm) to be used to subsample the source and target meshes")
-    alignSingleWidgetLayout.addRow("Select subsampling voxel size:", self.voxelSize)
 
-    [self.normalSearchRadius, self.FPFHSearchRadius, self.distanceThreshold, self.maxRANSAC, self.maxRANSACValidation, 
+    self.skipScalingCheckBox = qt.QCheckBox()
+    self.skipScalingCheckBox.checked = 0
+    self.skipScalingCheckBox.setToolTip("If checked, ALPACA will skip scaling during the alignment (Not recommended).")
+    alignSingleWidgetLayout.addRow("Skip scaling", self.skipScalingCheckBox)
+
+    [self.pointDensity, self.normalSearchRadius, self.FPFHSearchRadius, self.distanceThreshold, self.maxRANSAC, self.maxRANSACValidation, 
     self.ICPDistanceThreshold, self.alpha, self.beta, self.CPDIterations, self.CPDTolerence] = self.addAdvancedMenu(alignSingleWidgetLayout)
     
     # Advanced tab connections
+    self.pointDensity.connect('valueChanged(double)', self.onChangeAdvanced)
     self.normalSearchRadius.connect('valueChanged(double)', self.onChangeAdvanced)
     self.FPFHSearchRadius.connect('valueChanged(double)', self.onChangeAdvanced)
     self.distanceThreshold.connect('valueChanged(double)', self.onChangeAdvanced)
@@ -196,7 +190,6 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.sourceModelSelector.connect('validInputChanged(bool)', self.onSelect)
     self.sourceFiducialSelector.connect('validInputChanged(bool)', self.onSelect)
     self.targetModelSelector.connect('validInputChanged(bool)', self.onSelect)
-    self.voxelSize.connect('validInputChanged(bool)', self.onVoxelSizeChange)
     self.subsampleButton.connect('clicked(bool)', self.onSubsampleButton)
     self.alignButton.connect('clicked(bool)', self.onAlignButton)
     self.displayMeshButton.connect('clicked(bool)', self.onDisplayMeshButton)
@@ -240,19 +233,12 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.landmarkOutputSelector.toolTip = "Select the output directory where the landmarks will be saved"
     alignMultiWidgetLayout.addRow("Target output landmark directory: ", self.landmarkOutputSelector)
     
-    #
-    # set voxel size used for subsampling
-    #
-    self.voxelSizeMulti = ctk.ctkDoubleSpinBox()
-    self.voxelSizeMulti.minimum = 0
-    self.voxelSizeMulti.maximum = 100
-    self.voxelSizeMulti.singleStep = .1
-    self.voxelSizeMulti.setDecimals(2)
-    self.voxelSizeMulti.value = 0.7
-    self.voxelSizeMulti.setToolTip("Choose the voxel size( in mm) to be used to subsample the source and target meshes")
-    alignMultiWidgetLayout.addRow("Select subsampling voxel size:", self.voxelSizeMulti)
-    
-    [self.normalSearchRadiusMulti, self.FPFHSearchRadiusMulti, self.distanceThresholdMulti, self.maxRANSACMulti, self.maxRANSACValidationMulti, 
+    self.skipScalingMultiCheckBox = qt.QCheckBox()
+    self.skipScalingMultiCheckBox.checked = 0
+    self.skipScalingMultiCheckBox.setToolTip("If checked, ALPACA will skip scaling during the alignment.")
+    alignMultiWidgetLayout.addRow("Skip scaling", self.skipScalingMultiCheckBox)    
+
+    [self.pointDensityMulti, self.normalSearchRadiusMulti, self.FPFHSearchRadiusMulti, self.distanceThresholdMulti, self.maxRANSACMulti, self.maxRANSACValidationMulti, 
     self.ICPDistanceThresholdMulti, self.alphaMulti, self.betaMulti, self.CPDIterationsMulti, self.CPDTolerenceMulti] = self.addAdvancedMenu(alignMultiWidgetLayout)
         
     #
@@ -269,12 +255,14 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.sourceFiducialMultiSelector.connect('validInputChanged(bool)', self.onSelectMultiProcess)
     self.targetModelMultiSelector.connect('validInputChanged(bool)', self.onSelectMultiProcess)
     self.landmarkOutputSelector.connect('validInputChanged(bool)', self.onSelectMultiProcess)
+    self.skipScalingMultiCheckBox.connect('validInputChanged(bool)', self.onSelectMultiProcess)
     self.applyLandmarkMultiButton.connect('clicked(bool)', self.onApplyLandmarkMulti)
     
     # Add vertical spacer
     self.layout.addStretch(1)
       
     # Advanced tab connections
+    self.pointDensityMulti.connect('valueChanged(double)', self.updateParameterDictionary)
     self.normalSearchRadiusMulti.connect('valueChanged(double)', self.updateParameterDictionary)
     self.FPFHSearchRadiusMulti.connect('valueChanged(double)', self.updateParameterDictionary)
     self.distanceThresholdMulti.connect('valueChanged(double)', self.updateParameterDictionary)
@@ -288,6 +276,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     
     # initialize the parameter dictionary from single run parameters
     self.parameterDictionary = {
+      "pointDensity": self.pointDensity.value,
       "normalSearchRadius" : self.normalSearchRadius.value,
       "FPFHSearchRadius" : self.FPFHSearchRadius.value,
       "distanceThreshold" : self.distanceThreshold.value,
@@ -301,6 +290,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       }
     # initialize the parameter dictionary from multi run parameters
     self.parameterDictionaryMulti = {
+      "pointDensity": self.pointDensityMulti.value,
       "normalSearchRadius" : self.normalSearchRadiusMulti.value,
       "FPFHSearchRadius" : self.FPFHSearchRadiusMulti.value,
       "distanceThreshold" : self.distanceThresholdMulti.value,
@@ -325,26 +315,25 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     if bool(self.targetModelSelector.currentPath):
       path = os.path.dirname(self.targetModelSelector.currentPath) 
       self.targetModelMultiSelector.currentPath = path
+    if self.skipScalingCheckBox.checked != 0:
+      self.skipScalingMultiCheckBox.checked = self.skipScalingCheckBox.checked
 
-  def onVoxelSizeChange(self):
-    self.voxelSizeMulti.value = self.voxelSize.value
-  
   def onSelectMultiProcess(self):
     self.applyLandmarkMultiButton.enabled = bool ( self.sourceModelMultiSelector.currentPath and self.sourceFiducialMultiSelector.currentPath 
-    and self.targetModelMultiSelector.currentPath and self.landmarkOutputSelector.currentPath and self.voxelSizeMulti.value)
+    and self.targetModelMultiSelector.currentPath and self.landmarkOutputSelector.currentPath)
       
   def onSubsampleButton(self):
     logic = ALPACALogic()
-    self.sourceData, self.targetData, self.sourcePoints, self.targetPoints, self.sourceFeatures, self.targetFeatures = logic.runSubsample(self.sourceModelSelector.currentPath, 
-                                                                   self.targetModelSelector.currentPath, self.voxelSize.value, self.parameterDictionary)
-    
-    # Convert to VTK points
+    self.sourceData, self.targetData, self.sourcePoints, self.targetPoints, self.sourceFeatures, \
+      self.targetFeatures, self.voxelSize, self.scaling = logic.runSubsample(self.sourceModelSelector.currentPath, 
+                                                                              self.targetModelSelector.currentPath, self.skipScalingCheckBox.checked, self.parameterDictionary)
+    # Convert to VTK points 
     self.sourceSLM_vtk = logic.convertPointsToVTK(self.sourcePoints.points)
     self.targetSLM_vtk = logic.convertPointsToVTK(self.targetPoints.points)
     
     # Display target points
     blue=[0,0,1]
-    targetCloudNode = logic.displayPointCloud(self.targetSLM_vtk, self.voxelSize.value/10, 'Target Points', blue)
+    targetCloudNode = logic.displayPointCloud(self.targetSLM_vtk, self.voxelSize/10, 'Target Pointcloud', blue)
     self.updateLayout()
     
     # Enable next step of analysis
@@ -357,8 +346,8 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     
   def onAlignButton(self):
     logic = ALPACALogic()
-    self.transformMatrix = logic.estimateTransform(self.sourcePoints, self.targetPoints, self.sourceFeatures, self.targetFeatures, self.voxelSize.value, self.parameterDictionary)
-    self.ICPTransformNode = logic.convertMatrixToTransformNode(self.transformMatrix, 'ICP Transform')
+    self.transformMatrix = logic.estimateTransform(self.sourcePoints, self.targetPoints, self.sourceFeatures, self.targetFeatures, self.voxelSize, self.parameterDictionary)
+    self.ICPTransformNode = logic.convertMatrixToTransformNode(self.transformMatrix, 'Rigid Transformation Matrix')
 
     # For later analysis, apply transform to VTK arrays directly
     transform_vtk = self.ICPTransformNode.GetMatrixTransformToParent()
@@ -366,7 +355,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     
     # Display aligned source points using transorm that can be viewed/edited in the scene
     red=[1,0,0]
-    sourceCloudNode = logic.displayPointCloud(self.sourceSLM_vtk, self.voxelSize.value/10, 'Aligned Source Points', red)
+    sourceCloudNode = logic.displayPointCloud(self.sourceSLM_vtk, self.voxelSize/10, 'Source Pointcloud', red)
     sourceCloudNode.SetAndObserveTransformNodeID(self.ICPTransformNode.GetID())
     slicer.vtkSlicerTransformLogic().hardenTransform(sourceCloudNode)
     self.updateLayout()
@@ -386,7 +375,10 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     
     # Display aligned source points
     self.sourceModelNode = slicer.util.loadModel(self.sourceModelSelector.currentPath)
-    logic.RAS2LPSTransform(self.sourceModelNode)
+    #logic.RAS2LPSTransform(self.sourceModelNode) 
+    points = slicer.util.arrayFromModelPoints(self.sourceModelNode)
+    points[:] = np.asarray(self.sourceData.points)
+    self.sourceModelNode.GetPolyData().GetPoints().GetData().Modified()
     self.sourceModelNode.SetAndObserveTransformNodeID(self.ICPTransformNode.GetID())
     slicer.vtkSlicerTransformLogic().hardenTransform(self.sourceModelNode)
     red=[1,0,0]
@@ -395,26 +387,20 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
   def onCPDRegistration(self):
     logic = ALPACALogic()
     # Get source landmarks from file
-    sourceLandmarkNode =  slicer.util.loadMarkups(self.sourceFiducialSelector.currentPath)
-    logic.RAS2LPSTransform(sourceLandmarkNode)
-    sourceLandmarkNode.SetAndObserveTransformNodeID(self.ICPTransformNode.GetID())
-    slicer.vtkSlicerTransformLogic().hardenTransform(sourceLandmarkNode)
-    point = [0,0,0]
-    self.sourceLandmarks_np=np.zeros(shape=(sourceLandmarkNode.GetNumberOfFiducials(),3))
-    for i in range(sourceLandmarkNode.GetNumberOfFiducials()):
-      sourceLandmarkNode.GetMarkupPoint(0,i,point)
-      self.sourceLandmarks_np[i,:]=point
-    slicer.mrmlScene.RemoveNode(sourceLandmarkNode)
+    sourceLM_vtk =  logic.loadAndScaleFiducials(self.sourceFiducialSelector.currentPath, self.scaling)
+    transform_vtk = self.ICPTransformNode.GetMatrixTransformToParent()
+    self.alignedSourceLM_vtk = logic.applyTransform(transform_vtk, sourceLM_vtk)
     
     # Registration
     self.alignedSourceSLM_np = vtk_np.vtk_to_numpy(self.alignedSourceSLM_vtk.GetPoints().GetData())
-    self.registeredSourceArray = logic.runCPDRegistration(self.sourceLandmarks_np, self.alignedSourceSLM_np, self.targetPoints.points, self.parameterDictionary)
+    self.alignedSourceLM_np = vtk_np.vtk_to_numpy(self.alignedSourceLM_vtk.GetPoints().GetData())
+    self.registeredSourceArray = logic.runCPDRegistration(self.alignedSourceLM_np, self.alignedSourceSLM_np, self.targetPoints.points, self.parameterDictionary)
     outputPoints = logic.exportPointCloud(self.registeredSourceArray)
     
     # Display point cloud of registered points
     self.registeredSourceLM_vtk = logic.convertPointsToVTK(self.registeredSourceArray)
     green=[0,1,0]
-    self.registeredSourceLMNode = logic.displayPointCloud(self.registeredSourceLM_vtk, self.voxelSize.value/10, 'Warped Source Points', green)
+    #self.registeredSourceLMNode = logic.displayPointCloud(self.registeredSourceLM_vtk, self.voxelSize/10, 'Warped Source Points', green)
     self.displayWarpedModelButton.enabled = True
     
   #def onDECARegistration(self):
@@ -422,16 +408,15 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
         
   def onDisplayWarpedModel(self):    
     logic = ALPACALogic()
-    ouputPoints = logic.exportPointCloud(self.registeredSourceArray)
-    self.alignedSourceLM_vtk = logic.convertPointsToVTK(self.sourceLandmarks_np)
-    self.warpedSourceNode = logic.applyTPSTransform(self.alignedSourceLM_vtk, self.registeredSourceLM_vtk, self.sourceModelNode, 'Warped Source Model')
+    #ouputPoints = logic.exportPointCloud(self.registeredSourceArray)
+    self.warpedSourceNode = logic.applyTPSTransform(self.alignedSourceLM_vtk, self.registeredSourceLM_vtk, self.sourceModelNode, 'Warped Source Mesh')
     green=[0,1,0]
     self.warpedSourceNode.GetDisplayNode().SetColor(green)
     
   def onApplyLandmarkMulti(self):
     logic = ALPACALogic()
     logic.runLandmarkMultiprocess(self.sourceModelMultiSelector.currentPath,self.sourceFiducialMultiSelector.currentPath, 
-    self.targetModelMultiSelector.currentPath, self.landmarkOutputSelector.currentPath, self.voxelSizeMulti.value, self.parameterDictionaryMulti )
+    self.targetModelMultiSelector.currentPath, self.landmarkOutputSelector.currentPath, self.skipScalingMultiCheckBox.checked, self.parameterDictionaryMulti )
     
     
   def updateLayout(self):
@@ -441,6 +426,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     layoutManager.threeDWidget(0).threeDView().resetCamera()
     
   def onChangeAdvanced(self):
+    self.pointDensityMulti.value = self.pointDensity.value  
     self.normalSearchRadiusMulti.value = self.normalSearchRadius.value
     self.FPFHSearchRadiusMulti.value = self.FPFHSearchRadius.value
     self.distanceThresholdMulti.value = self.distanceThreshold.value
@@ -456,6 +442,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
   def updateParameterDictionary(self):    
     # update the parameter dictionary from single run parameters
     if hasattr(self, 'parameterDictionary'):
+      self.parameterDictionary["pointDensity"] = self.pointDensity.value
       self.parameterDictionary["normalSearchRadius"] = int(self.normalSearchRadius.value)
       self.parameterDictionary["FPFHSearchRadius"] = int(self.FPFHSearchRadius.value)
       self.parameterDictionary["distanceThreshold"] = self.distanceThreshold.value
@@ -469,6 +456,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     
     # update the parameter dictionary from multi run parameters
     if hasattr(self, 'parameterDictionaryMulti'):
+      self.parameterDictionary["pointDensity"] = self.pointDensityMulti.value
       self.parameterDictionaryMulti["normalSearchRadius"] = int(self.normalSearchRadiusMulti.value)
       self.parameterDictionaryMulti["FPFHSearchRadius"] = int(self.FPFHSearchRadiusMulti.value)
       self.parameterDictionaryMulti["distanceThreshold"] = self.distanceThresholdMulti.value
@@ -491,7 +479,13 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     advancedCollapsibleButton.collapsed = True
     currentWidgetLayout.addRow(advancedCollapsibleButton)
     advancedFormLayout = qt.QFormLayout(advancedCollapsibleButton)
-    
+
+    # Point density label
+    pointDensityCollapsibleButton=ctk.ctkCollapsibleButton()
+    pointDensityCollapsibleButton.text = "Point density adjustment"
+    advancedFormLayout.addRow(pointDensityCollapsibleButton)
+    pointDensityFormLayout = qt.QFormLayout(pointDensityCollapsibleButton)
+
     # Rigid registration label
     rigidRegistrationCollapsibleButton=ctk.ctkCollapsibleButton()
     rigidRegistrationCollapsibleButton.text = "Rigid registration"
@@ -504,7 +498,16 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     advancedFormLayout.addRow(deformableRegistrationCollapsibleButton)
     deformableRegistrationFormLayout = qt.QFormLayout(deformableRegistrationCollapsibleButton)
     
+    # Point Density slider
     
+    pointDensity = ctk.ctkSliderWidget()
+    pointDensity.singleStep = 0.1
+    pointDensity.minimum = 0.1
+    pointDensity.maximum = 3
+    pointDensity.value = 1
+    pointDensity.setToolTip("Adjust the density of the pointclouds")
+    pointDensityFormLayout.addRow("Point Density Adjustment: ", pointDensity)
+
     # Normal search radius slider
     
     normalSearchRadius = ctk.ctkSliderWidget()
@@ -566,21 +569,22 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     # Alpha slider
     alpha = ctk.ctkDoubleSpinBox()
     alpha.singleStep = .1
-    alpha.minimum = 0
-    alpha.maximum = 100
+    alpha.setDecimals(1)
+    alpha.minimum = 0.1
+    alpha.maximum = 10
     alpha.value = 2
-    alpha.setToolTip("Parameter specifying trade-off between fit (low) and smoothness (high)")
-    deformableRegistrationFormLayout.addRow("Alpha: ", alpha)
+    alpha.setToolTip("Parameter specifying trade-off between fit and smoothness. Low values induce fluidity, while higher values impose rigidity")
+    deformableRegistrationFormLayout.addRow("Rigidity (alpha): ", alpha)
 
     # Beta slider
     beta = ctk.ctkDoubleSpinBox()
-    beta.singleStep = 1
-    beta.setDecimals(0)
-    beta.minimum = 0
-    beta.maximum = 100
+    beta.singleStep = 0.1
+    beta.setDecimals(1)
+    beta.minimum = 0.1
+    beta.maximum = 10
     beta.value = 2
     beta.setToolTip("Width of gaussian filter used when applying smoothness constraint")
-    deformableRegistrationFormLayout.addRow("Beta: ", beta)
+    deformableRegistrationFormLayout.addRow("Motion coherence (beta): ", beta)
 
     # # CPD iterations slider
     CPDIterations = ctk.ctkSliderWidget()
@@ -601,7 +605,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     CPDTolerence.setToolTip("Tolerance used to assess CPD convergence")
     deformableRegistrationFormLayout.addRow("CPD tolerance: ", CPDTolerence)
 
-    return normalSearchRadius, FPFHSearchRadius, distanceThreshold, maxRANSAC, maxRANSACValidation, ICPDistanceThreshold, alpha, beta, CPDIterations, CPDTolerence
+    return pointDensity, normalSearchRadius, FPFHSearchRadius, distanceThreshold, maxRANSAC, maxRANSACValidation, ICPDistanceThreshold, alpha, beta, CPDIterations, CPDTolerence
     
 #
 # ALPACALogic
@@ -617,29 +621,17 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
  
-  def runLandmarkMultiprocess(self, sourceModelPath, sourceLandmarkPath, targetModelDirectory, outputDirectory, voxelSize, parameters):
+  def runLandmarkMultiprocess(self, sourceModelPath, sourceLandmarkPath, targetModelDirectory, outputDirectory, skipScaling, parameters):
     extensionModel = ".ply"
-    
-    # Get source landmarks from file
-    sourceLandmarkNode =  slicer.util.loadMarkups(sourceLandmarkPath)
-    self.RAS2LPSTransform(sourceLandmarkNode)
-    point = [0,0,0]
-    sourcePoints = vtk.vtkPoints()
-    for i in range(sourceLandmarkNode.GetNumberOfFiducials()):
-      sourceLandmarkNode.GetMarkupPoint(0,i,point)
-      sourcePoints.InsertNextPoint(point)
-    
-    sourceLM_vtk = vtk.vtkPolyData()
-    sourceLM_vtk.SetPoints(sourcePoints)
-    slicer.mrmlScene.RemoveNode(sourceLandmarkNode)
-    
     # Iterate through target models
     for targetFileName in os.listdir(targetModelDirectory):
       if targetFileName.endswith(extensionModel):
         targetFilePath = os.path.join(targetModelDirectory, targetFileName)
         # Subsample source and target models
-        sourceData, targetData, sourcePoints, targetPoints, sourceFeatures, targetFeatures = self.runSubsample(sourceModelPath, targetFilePath, voxelSize, parameters)
+        sourceData, targetData, sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, scaling = self.runSubsample(sourceModelPath, 
+        	targetFilePath, skipScaling, parameters)
         # Rigid registration of source sampled points and landmarks
+        sourceLM_vtk = self.loadAndScaleFiducials(sourceLandmarkPath, scaling)
         ICPTransform = self.estimateTransform(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, parameters)
         ICPTransform_vtk = self.convertMatrixToVTK(ICPTransform)
         sourceSLM_vtk = self.convertPointsToVTK(sourcePoints.points)
@@ -661,12 +653,12 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         
      
   def exportPointCloud(self, pointCloud):
-    fiducialNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode','outputFiducials')
+    fiducialNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode','PredictedLandmarks')
     for point in pointCloud:
       fiducialNode.AddFiducialFromArray(point) 
     return fiducialNode
 
-    node.AddFiducialFromArray(point)
+    #node.AddFiducialFromArray(point)
   def applyTPSTransform(self, sourcePoints, targetPoints, modelNode, nodeName):
     transform=vtk.vtkThinPlateSplineTransform()  
     transform.SetSourceLandmarks( sourcePoints.GetPoints() )
@@ -686,21 +678,30 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     return warpedModelNode
       
   def runCPDRegistration(self, sourceLM, sourceSLM, targetSLM, parameters):
+    from open3d import geometry
+    from open3d import utility
     sourceArrayCombined = np.append(sourceSLM, sourceLM, axis=0)
-
-    #Convert target to numpy arrays for deformable registration
     targetArray = np.asarray(targetSLM)
-
-    #Convert to float32 to increase speed (if selected)
-    sourceArrayCombined = np.float32(sourceArrayCombined)
-    targetArray = np.float32(targetArray)    
+    #Convert to pointcloud for scaling
+    sourceCloud = geometry.PointCloud()
+    sourceCloud.points = utility.Vector3dVector(sourceArrayCombined)
+    targetCloud = geometry.PointCloud()
+    targetCloud.points = utility.Vector3dVector(targetArray)
+    cloudSize = np.max(targetCloud.get_max_bound() - targetCloud.get_min_bound())
+    targetCloud.scale(25 / cloudSize, center = False)
+    sourceCloud.scale(25 / cloudSize, center = False)
+    #Convert back to numpy for cpd
+    sourceArrayCombined = np.asarray(sourceCloud.points,dtype=np.float32)
+    targetArray = np.asarray(targetCloud.points,dtype=np.float32)
     registrationOutput = self.cpd_registration(targetArray, sourceArrayCombined, parameters["CPDIterations"], parameters["CPDTolerence"], parameters["alpha"], parameters["beta"])
-
     deformed_array, _ = registrationOutput.register()
-    poi_prediction = deformed_array[-len(sourceLM):]
-    return poi_prediction
-      
-  
+    #Capture output landmarks from source pointcloud
+    fiducial_prediction = deformed_array[-len(sourceLM):]
+    fiducialCloud = geometry.PointCloud()
+    fiducialCloud.points = utility.Vector3dVector(fiducial_prediction)
+    fiducialCloud.scale(cloudSize/25, center = False)
+    return np.asarray(fiducialCloud.points)
+    
   def RAS2LPSTransform(self, modelNode):
     matrix=vtk.vtkMatrix4x4()
     matrix.Identity()
@@ -790,16 +791,39 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     icp = self.refine_registration(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize * 2.5, ransac, parameters["ICPDistanceThreshold"]) 
     return icp.transformation                                     
   
-  def runSubsample(self, sourcePath, targetPath, voxelSize, parameters):
-    source, source_down, source_fpfh = \
-      self.prepare_source_dataset(voxelSize, sourcePath, parameters["normalSearchRadius"], parameters["FPFHSearchRadius"])
-    source.estimate_normals()
-    
-    target, target_down, target_fpfh = \
-      self.prepare_target_dataset(voxelSize, targetPath, parameters["normalSearchRadius"], parameters["FPFHSearchRadius"])
-    target.estimate_normals()
-    return source, target, source_down, target_down, source_fpfh, target_fpfh
-          
+  def runSubsample(self, sourcePath, targetPath, skipScaling, parameters):
+    from open3d import io
+    print(":: Loading point clouds and downsampling")
+    source = io.read_point_cloud(sourcePath)
+    sourceSize = np.linalg.norm(np.asarray(source.get_max_bound()) - np.asarray(source.get_min_bound()))
+    target = io.read_point_cloud(targetPath)
+    targetSize = np.linalg.norm(np.asarray(target.get_max_bound()) - np.asarray(target.get_min_bound()))
+    voxel_size = targetSize/(55*parameters["pointDensity"])
+    scaling = (targetSize)/sourceSize
+    if skipScaling != 0:
+        scaling = 1
+    source.scale(scaling, center=False)    
+    source_down, source_fpfh = self.preprocess_point_cloud(source, voxel_size, parameters["normalSearchRadius"], parameters["FPFHSearchRadius"])
+    target_down, target_fpfh = self.preprocess_point_cloud(target, voxel_size, parameters["normalSearchRadius"], parameters["FPFHSearchRadius"])
+    return source, target, source_down, target_down, source_fpfh, target_fpfh, voxel_size, scaling
+  
+  def loadAndScaleFiducials (self, fiducialPath, scaling): 
+    from open3d import geometry
+    from open3d import utility
+    sourceLandmarkNode =  slicer.util.loadMarkups(fiducialPath)
+    self.RAS2LPSTransform(sourceLandmarkNode)
+    point = [0,0,0]
+    sourceLandmarks_np=np.zeros(shape=(sourceLandmarkNode.GetNumberOfFiducials(),3))
+    for i in range(sourceLandmarkNode.GetNumberOfFiducials()):
+      sourceLandmarkNode.GetMarkupPoint(0,i,point)
+      sourceLandmarks_np[i,:]=point
+    slicer.mrmlScene.RemoveNode(sourceLandmarkNode)
+    cloud = geometry.PointCloud()
+    cloud.points = utility.Vector3dVector(sourceLandmarks_np)
+    cloud.scale(scaling, center=False)
+    fiducialVTK = self.convertPointsToVTK (cloud.points)
+    return fiducialVTK
+
   def distanceMatrix(self, a):
     """
     Computes the euclidean distance matrix for n points in a 3D space
@@ -828,19 +852,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         geometry.KDTreeSearchParamHybrid(radius=radius_feature, max_nn=100))
     return pcd_down, pcd_fpfh
 
-  def prepare_target_dataset(self, voxel_size, filepath, radius_normal_factor, radius_feature_factor):
-    from open3d import io
-    print(":: Load target point cloud and preprocess")
-    target = io.read_point_cloud(filepath)
-    target_down, target_fpfh = self.preprocess_point_cloud(target, voxel_size, radius_normal_factor, radius_feature_factor)
-    return target, target_down, target_fpfh
 
-  def prepare_source_dataset(self, voxel_size, filepath, radius_normal_factor, radius_feature_factor):
-    print(":: Load source point cloud and preprocess")
-    from open3d import io
-    source = io.read_point_cloud(filepath)
-    source_down, source_fpfh = self.preprocess_point_cloud(source, voxel_size, radius_normal_factor, radius_feature_factor)
-    return source, source_down, source_fpfh
 
   def execute_global_registration(self, source_down, target_down, source_fpfh,
                                 target_fpfh, voxel_size, distance_threshold_factor, maxIter, maxValidation):
@@ -851,7 +863,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     print("   we use a liberal distance threshold %.3f." % distance_threshold)
     result = registration.registration_ransac_based_on_feature_matching(
         source_down, target_down, source_fpfh, target_fpfh, distance_threshold,
-        registration.TransformationEstimationPointToPoint(False), 4, [
+        registration.TransformationEstimationPointToPoint(True), 4, [
             registration.CorrespondenceCheckerBasedOnEdgeLength(0.9),
             registration.CorrespondenceCheckerBasedOnDistance(
                 distance_threshold)
