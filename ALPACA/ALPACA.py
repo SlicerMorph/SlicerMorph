@@ -113,6 +113,23 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.skipScalingCheckBox.checked = 0
     self.skipScalingCheckBox.setToolTip("If checked, ALPACA will skip scaling during the alignment (Not recommended).")
     alignSingleWidgetLayout.addRow("Skip scaling", self.skipScalingCheckBox)
+    
+    self.skipProjectionCheckBox = qt.QCheckBox()
+    self.skipProjectionCheckBox.checked = 0
+    self.skipProjectionCheckBox.setToolTip("If checked, ALPACA will skip final refinement step placing landmarks on the target suface.")
+    alignSingleWidgetLayout.addRow("Skip projection", self.skipProjectionCheckBox)
+    
+    #
+    # Set max projection factor
+    #
+    self.projectionFactor = ctk.ctkSliderWidget()
+    self.projectionFactor.enabled = True
+    self.projectionFactor.singleStep = 1
+    self.projectionFactor.minimum = 0
+    self.projectionFactor.maximum = 10
+    self.projectionFactor.value = 1
+    self.projectionFactor.setToolTip("Set maximum projection as a percentage of the image diagonal")
+    alignSingleWidgetLayout.addRow("Maximum projection factor : ", self.projectionFactor)
 
     [self.pointDensity, self.normalSearchRadius, self.FPFHSearchRadius, self.distanceThreshold, self.maxRANSAC, self.maxRANSACValidation, 
     self.ICPDistanceThreshold, self.alpha, self.beta, self.CPDIterations, self.CPDTolerence] = self.addAdvancedMenu(alignSingleWidgetLayout)
@@ -190,6 +207,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.sourceModelSelector.connect('validInputChanged(bool)', self.onSelect)
     self.sourceFiducialSelector.connect('validInputChanged(bool)', self.onSelect)
     self.targetModelSelector.connect('validInputChanged(bool)', self.onSelect)
+    self.projectionFactor.connect('valueChanged(double)', self.onSelect)
     self.subsampleButton.connect('clicked(bool)', self.onSubsampleButton)
     self.alignButton.connect('clicked(bool)', self.onAlignButton)
     self.displayMeshButton.connect('clicked(bool)', self.onDisplayMeshButton)
@@ -237,7 +255,24 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.skipScalingMultiCheckBox.checked = 0
     self.skipScalingMultiCheckBox.setToolTip("If checked, ALPACA will skip scaling during the alignment.")
     alignMultiWidgetLayout.addRow("Skip scaling", self.skipScalingMultiCheckBox)    
-
+    
+    self.skipProjectionCheckBoxMulti = qt.QCheckBox()
+    self.skipProjectionCheckBoxMulti.checked = 0
+    self.skipProjectionCheckBoxMulti.setToolTip("If checked, ALPACA will skip final refinement step placing landmarks on the target suface.")
+    alignMultiWidgetLayout.addRow("Skip projection", self.skipProjectionCheckBoxMulti)
+    
+    #
+    # Set maximum projection factor
+    #
+    self.projectionFactorMulti = ctk.ctkSliderWidget()
+    self.projectionFactorMulti.enabled = True
+    self.projectionFactorMulti.singleStep = 1
+    self.projectionFactorMulti.minimum = 0
+    self.projectionFactorMulti.maximum = 10
+    self.projectionFactorMulti.value = 1
+    self.projectionFactorMulti.setToolTip("Set maximum projection as a percentage of the image diagonal")
+    alignMultiWidgetLayout.addRow("Maximum projection factor : ", self.projectionFactorMulti)
+    
     [self.pointDensityMulti, self.normalSearchRadiusMulti, self.FPFHSearchRadiusMulti, self.distanceThresholdMulti, self.maxRANSACMulti, self.maxRANSACValidationMulti, 
     self.ICPDistanceThresholdMulti, self.alphaMulti, self.betaMulti, self.CPDIterationsMulti, self.CPDTolerenceMulti] = self.addAdvancedMenu(alignMultiWidgetLayout)
         
@@ -317,6 +352,10 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       self.targetModelMultiSelector.currentPath = path
     if self.skipScalingCheckBox.checked != 0:
       self.skipScalingMultiCheckBox.checked = self.skipScalingCheckBox.checked
+    
+    self.skipScalingMultiCheckBox.checked = self.skipScalingCheckBox.checked
+    self.projectionFactorMulti.value = self.projectionFactor.value
+    
 
   def onSelectMultiProcess(self):
     self.applyLandmarkMultiButton.enabled = bool ( self.sourceModelMultiSelector.currentPath and self.sourceFiducialMultiSelector.currentPath 
@@ -333,7 +372,8 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     
     # Display target points
     blue=[0,0,1]
-    targetCloudNode = logic.displayPointCloud(self.targetSLM_vtk, self.voxelSize/10, 'Target Pointcloud', blue)
+    self.targetCloudNode = logic.displayPointCloud(self.targetSLM_vtk, self.voxelSize/10, 'Target Pointcloud', blue)
+    logic.RAS2LPSTransform(self.targetCloudNode)
     self.updateLayout()
     
     # Enable next step of analysis
@@ -353,36 +393,40 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     transform_vtk = self.ICPTransformNode.GetMatrixTransformToParent()
     self.alignedSourceSLM_vtk = logic.applyTransform(transform_vtk, self.sourceSLM_vtk)
     
-    # Display aligned source points using transorm that can be viewed/edited in the scene
+    # Display aligned source points using transform that can be viewed/edited in the scene
     red=[1,0,0]
-    sourceCloudNode = logic.displayPointCloud(self.sourceSLM_vtk, self.voxelSize/10, 'Source Pointcloud', red)
-    sourceCloudNode.SetAndObserveTransformNodeID(self.ICPTransformNode.GetID())
-    slicer.vtkSlicerTransformLogic().hardenTransform(sourceCloudNode)
+    self.sourceCloudNode = logic.displayPointCloud(self.sourceSLM_vtk, self.voxelSize/10, 'Source Pointcloud', red)
+    self.sourceCloudNode.SetAndObserveTransformNodeID(self.ICPTransformNode.GetID())
+    slicer.vtkSlicerTransformLogic().hardenTransform(self.sourceCloudNode)
+    logic.RAS2LPSTransform(self.sourceCloudNode)
     self.updateLayout()
     
     # Enable next step of analysis
     self.displayMeshButton.enabled = True
-    self.CPDRegistrationButton.enabled = True
-    #self.DECAButton.enabled = True
     
   def onDisplayMeshButton(self):
     logic = ALPACALogic()
     # Display target points
-    targetModelNode = slicer.util.loadModel(self.targetModelSelector.currentPath)
-    logic.RAS2LPSTransform(targetModelNode)
+    self.targetModelNode = slicer.util.loadModel(self.targetModelSelector.currentPath)
     blue=[0,0,1]
-    targetModelNode.GetDisplayNode().SetColor(blue)
+    self.targetModelNode.GetDisplayNode().SetColor(blue)
     
     # Display aligned source points
     self.sourceModelNode = slicer.util.loadModel(self.sourceModelSelector.currentPath)
-    #logic.RAS2LPSTransform(self.sourceModelNode) 
     points = slicer.util.arrayFromModelPoints(self.sourceModelNode)
     points[:] = np.asarray(self.sourceData.points)
     self.sourceModelNode.GetPolyData().GetPoints().GetData().Modified()
     self.sourceModelNode.SetAndObserveTransformNodeID(self.ICPTransformNode.GetID())
     slicer.vtkSlicerTransformLogic().hardenTransform(self.sourceModelNode)
+    logic.RAS2LPSTransform(self.sourceModelNode)
     red=[1,0,0]
     self.sourceModelNode.GetDisplayNode().SetColor(red)
+    
+    self.sourceCloudNode.GetDisplayNode().SetVisibility(False)
+    self.targetCloudNode.GetDisplayNode().SetVisibility(False)
+   
+    # Enable next step of analysis
+    self.CPDRegistrationButton.enabled = True
     
   def onCPDRegistration(self):
     logic = ALPACALogic()
@@ -395,28 +439,48 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.alignedSourceSLM_np = vtk_np.vtk_to_numpy(self.alignedSourceSLM_vtk.GetPoints().GetData())
     self.alignedSourceLM_np = vtk_np.vtk_to_numpy(self.alignedSourceLM_vtk.GetPoints().GetData())
     self.registeredSourceArray = logic.runCPDRegistration(self.alignedSourceLM_np, self.alignedSourceSLM_np, self.targetPoints.points, self.parameterDictionary)
-    outputPoints = logic.exportPointCloud(self.registeredSourceArray)
-    
-    # Display point cloud of registered points
-    self.registeredSourceLM_vtk = logic.convertPointsToVTK(self.registeredSourceArray)
+    outputPoints = logic.exportPointCloud(self.registeredSourceArray, "Initial Predicted Landmarks")
+    inputPoints = logic.exportPointCloud(self.alignedSourceLM_np, "Original Landmarks")
     green=[0,1,0]
-    #self.registeredSourceLMNode = logic.displayPointCloud(self.registeredSourceLM_vtk, self.voxelSize/10, 'Warped Source Points', green)
-    self.displayWarpedModelButton.enabled = True
+    outputPoints.GetDisplayNode().SetColor(green)
+    logic.RAS2LPSTransform(outputPoints)
+    logic.RAS2LPSTransform(inputPoints)
+    self.registeredSourceLM_vtk = logic.convertPointsToVTK(self.registeredSourceArray)
     
-  #def onDECARegistration(self):
-    #print("TBD")
+    outputPoints_vtk = logic.getFiducialPoints(outputPoints)
+    inputPoints_vtk = logic.getFiducialPoints(inputPoints)
+    
+    # Get warped source model
+    #self.warpedSourceNode = logic.applyTPSTransform(self.alignedSourceLM_vtk, self.registeredSourceLM_vtk, self.sourceModelNode, 'Warped Source Mesh')
+    self.warpedSourceNode = logic.applyTPSTransform(inputPoints_vtk, outputPoints_vtk, self.sourceModelNode, 'Warped Source Mesh')
+    self.warpedSourceNode.GetDisplayNode().SetVisibility(False)
+    outputPoints.GetDisplayNode().SetVisibility(False)
+    slicer.mrmlScene.RemoveNode(inputPoints)
+    
+    # Projection
+    if not self.skipProjectionCheckBox.checked:
+      print(":: Projecting landmarks to external surface")
+      projectionFactor = self.projectionFactor.value/100
+      projectedLandmarks = logic.runPointProjection(self.warpedSourceNode, self.targetModelNode, outputPoints, projectionFactor)
+    
+    # Enable next step of analysis  
+    self.displayWarpedModelButton.enabled = True
         
   def onDisplayWarpedModel(self):    
     logic = ALPACALogic()
     #ouputPoints = logic.exportPointCloud(self.registeredSourceArray)
-    self.warpedSourceNode = logic.applyTPSTransform(self.alignedSourceLM_vtk, self.registeredSourceLM_vtk, self.sourceModelNode, 'Warped Source Mesh')
     green=[0,1,0]
     self.warpedSourceNode.GetDisplayNode().SetColor(green)
     
   def onApplyLandmarkMulti(self):
     logic = ALPACALogic()
+    if self.skipProjectionCheckBox.checked:
+      projectionFactor = 0
+    else:  
+      projectionFactor = self.projectionFactor.value/100
+      
     logic.runLandmarkMultiprocess(self.sourceModelMultiSelector.currentPath,self.sourceFiducialMultiSelector.currentPath, 
-    self.targetModelMultiSelector.currentPath, self.landmarkOutputSelector.currentPath, self.skipScalingMultiCheckBox.checked, self.parameterDictionaryMulti )
+    self.targetModelMultiSelector.currentPath, self.landmarkOutputSelector.currentPath, self.skipScalingMultiCheckBox.checked, projectionFactor,self.parameterDictionaryMulti )
     
     
   def updateLayout(self):
@@ -621,7 +685,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
  
-  def runLandmarkMultiprocess(self, sourceModelPath, sourceLandmarkPath, targetModelDirectory, outputDirectory, skipScaling, parameters):
+  def runLandmarkMultiprocess(self, sourceModelPath, sourceLandmarkPath, targetModelDirectory, outputDirectory, skipScaling, projectionFactor, parameters):
     extensionModel = ".ply"
     # Iterate through target models
     for targetFileName in os.listdir(targetModelDirectory):
@@ -644,6 +708,11 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         registeredSourceLM_np = self.runCPDRegistration(alignedSourceLM_np, alignedSourceSLM_np, targetPoints.points, parameters)
         outputFiducialNode = self.exportPointCloud(registeredSourceLM_np)
         
+        # Projection
+        #if projectionFactor > 0
+        #  projectionFactor = self.projectionFactor.value/100
+        #  projectedLandmarks = logic.runPointProjection(self.warpedSourceNode, self.targetModelNode, outputPoints, projectionFactor)
+        
         # Save output landmarks
         self.RAS2LPSTransform(outputFiducialNode)
         rootName = os.path.splitext(targetFileName)[0]
@@ -652,8 +721,8 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         slicer.mrmlScene.RemoveNode(outputFiducialNode)
         
      
-  def exportPointCloud(self, pointCloud):
-    fiducialNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode','PredictedLandmarks')
+  def exportPointCloud(self, pointCloud, nodeName):
+    fiducialNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',nodeName)
     for point in pointCloud:
       fiducialNode.AddFiducialFromArray(point) 
     return fiducialNode
@@ -661,8 +730,8 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     #node.AddFiducialFromArray(point)
   def applyTPSTransform(self, sourcePoints, targetPoints, modelNode, nodeName):
     transform=vtk.vtkThinPlateSplineTransform()  
-    transform.SetSourceLandmarks( sourcePoints.GetPoints() )
-    transform.SetTargetLandmarks( targetPoints.GetPoints() )
+    transform.SetSourceLandmarks( sourcePoints)
+    transform.SetTargetLandmarks( targetPoints )
     transform.SetBasisToR() # for 3D transform
     
     transformFilter = vtk.vtkTransformPolyDataFilter()
@@ -674,7 +743,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     warpedModelNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode', nodeName)
     warpedModelNode.CreateDefaultDisplayNodes()
     warpedModelNode.SetAndObservePolyData(warpedPolyData)
-    
+    #self.RAS2LPSTransform(warpedModelNode)
     return warpedModelNode
       
   def runCPDRegistration(self, sourceLM, sourceSLM, targetSLM, parameters):
@@ -886,6 +955,92 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     from pycpd import DeformableRegistration
     output = DeformableRegistration(**{'X': targetArray, 'Y': sourceArray,'max_iterations': CPDIterations, 'tolerance': CPDTolerence}, alpha = alpha_parameter, beta  = beta_parameter)
     return output
+    
+  def getFiducialPoints(self,fiducialNode):
+    points = vtk.vtkPoints()
+    point=[0,0,0]
+    for i in range(fiducialNode.GetNumberOfFiducials()):
+      fiducialNode.GetNthFiducialPosition(i,point)
+      points.InsertNextPoint(point)
+    
+    return points
+    
+  def runPointProjection(self, template, model, templateLandmarks, maxProjectionFactor):
+    maxProjection = (model.GetPolyData().GetLength()) * maxProjectionFactor
+    print("Max projection: ", maxProjection)
+    templatePoints = self.getFiducialPoints(templateLandmarks)
+      
+    # project landmarks from template to model
+    projectedPoints = self.projectPointsPolydata(template.GetPolyData(), model.GetPolyData(), templatePoints, maxProjection)
+    projectedLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"Refined Predicted Landmarks")
+    for i in range(projectedPoints.GetNumberOfPoints()):
+      point = projectedPoints.GetPoint(i)
+      projectedLMNode.AddFiducialFromArray(point)
+    return projectedLMNode
+  
+  def projectPointsPolydata(self, sourcePolydata, targetPolydata, originalPoints, rayLength):
+    print("original points: ", originalPoints.GetNumberOfPoints())
+    #set up polydata for projected points to return
+    projectedPointData = vtk.vtkPolyData()
+    projectedPoints = vtk.vtkPoints()
+    projectedPointData.SetPoints(projectedPoints)
+    
+    #set up locater for intersection with normal vector rays
+    obbTree = vtk.vtkOBBTree()
+    obbTree.SetDataSet(targetPolydata)
+    obbTree.BuildLocator()
+    
+    #set up point locator for finding surface normals and closest point
+    pointLocator = vtk.vtkPointLocator()
+    pointLocator.SetDataSet(sourcePolydata)
+    pointLocator.BuildLocator()
+    
+    targetPointLocator = vtk.vtkPointLocator()
+    targetPointLocator.SetDataSet(targetPolydata)
+    targetPointLocator.BuildLocator()
+    
+    #get surface normal from each landmark point
+    rayDirection=[0,0,0]
+    normalArray = sourcePolydata.GetPointData().GetArray("Normals")
+    if(not normalArray):
+      print("no normal array, calculating....")
+      normalFilter=vtk.vtkPolyDataNormals()
+      normalFilter.ComputePointNormalsOn()
+      normalFilter.SetInputData(sourcePolydata)
+      normalFilter.Update()
+      normalArray = normalFilter.GetOutput().GetPointData().GetArray("Normals")
+      if(not normalArray):
+        print("Error: no normal array")
+        return projectedPointData
+    for index in range(originalPoints.GetNumberOfPoints()):
+      originalPoint= originalPoints.GetPoint(index)
+      # get ray direction from closest normal
+      closestPointId = pointLocator.FindClosestPoint(originalPoint)
+      rayDirection = normalArray.GetTuple(closestPointId)
+      rayEndPoint=[0,0,0]
+      for dim in range(len(rayEndPoint)):
+        rayEndPoint[dim] = originalPoint[dim] + rayDirection[dim]* rayLength
+      intersectionIds=vtk.vtkIdList()
+      intersectionPoints=vtk.vtkPoints()
+      obbTree.IntersectWithLine(originalPoint,rayEndPoint,intersectionPoints,intersectionIds)
+      #if there are intersections, update the point to most external one.
+      if intersectionPoints.GetNumberOfPoints() > 0:
+        exteriorPoint = intersectionPoints.GetPoint(intersectionPoints.GetNumberOfPoints()-1)
+        projectedPoints.InsertNextPoint(exteriorPoint)
+      #if there are no intersections, reverse the normal vector
+      else: 
+        for dim in range(len(rayEndPoint)):
+          rayEndPoint[dim] = originalPoint[dim] + rayDirection[dim]* -rayLength
+        obbTree.IntersectWithLine(originalPoint,rayEndPoint,intersectionPoints,intersectionIds)
+        if intersectionPoints.GetNumberOfPoints()>0:
+          exteriorPoint = intersectionPoints.GetPoint(0)
+          projectedPoints.InsertNextPoint(exteriorPoint)
+        #if none in reverse direction, use closest mesh point
+        else:
+          closestPointId = targetPointLocator.FindClosestPoint(originalPoint)
+          rayOrigin = targetPolydata.GetPoint(closestPointId)
+          projectedPoints.InsertNextPoint(rayOrigin)
+    return projectedPointData
     
   def takeScreenshot(self,name,description,type=-1):
     # show the message even if not taking a screen shot
