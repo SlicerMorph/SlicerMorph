@@ -451,10 +451,9 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     inputPoints_vtk = logic.getFiducialPoints(inputPoints)
     
     # Get warped source model
-    #self.warpedSourceNode = logic.applyTPSTransform(self.alignedSourceLM_vtk, self.registeredSourceLM_vtk, self.sourceModelNode, 'Warped Source Mesh')
     self.warpedSourceNode = logic.applyTPSTransform(inputPoints_vtk, outputPoints_vtk, self.sourceModelNode, 'Warped Source Mesh')
     self.warpedSourceNode.GetDisplayNode().SetVisibility(False)
-    outputPoints.GetDisplayNode().SetVisibility(False)
+    outputPoints.GetDisplayNode().SetPointLabelsVisibility(False)
     slicer.mrmlScene.RemoveNode(inputPoints)
     
     # Projection
@@ -462,15 +461,17 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       print(":: Projecting landmarks to external surface")
       projectionFactor = self.projectionFactor.value/100
       projectedLandmarks = logic.runPointProjection(self.warpedSourceNode, self.targetModelNode, outputPoints, projectionFactor)
-    
+      projectedLandmarks.GetDisplayNode().SetPointLabelsVisibility(False)
+      outputPoints.GetDisplayNode().SetVisibility(False)
+      
     # Enable next step of analysis  
     self.displayWarpedModelButton.enabled = True
         
   def onDisplayWarpedModel(self):    
     logic = ALPACALogic()
-    #ouputPoints = logic.exportPointCloud(self.registeredSourceArray)
     green=[0,1,0]
     self.warpedSourceNode.GetDisplayNode().SetColor(green)
+    self.warpedSourceNode.GetDisplayNode().SetVisibility(True)
     
   def onApplyLandmarkMulti(self):
     logic = ALPACALogic()
@@ -706,21 +707,42 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         alignedSourceSLM_np = vtk_np.vtk_to_numpy(alignedSourceSLM_vtk.GetPoints().GetData())
         alignedSourceLM_np = vtk_np.vtk_to_numpy(alignedSourceLM_vtk.GetPoints().GetData())
         registeredSourceLM_np = self.runCPDRegistration(alignedSourceLM_np, alignedSourceSLM_np, targetPoints.points, parameters)
-        outputFiducialNode = self.exportPointCloud(registeredSourceLM_np)
-        
-        # Projection
-        #if projectionFactor > 0
-        #  projectionFactor = self.projectionFactor.value/100
-        #  projectedLandmarks = logic.runPointProjection(self.warpedSourceNode, self.targetModelNode, outputPoints, projectionFactor)
-        
-        # Save output landmarks
+        outputFiducialNode = self.exportPointCloud(registeredSourceLM_np, "Initial Predicted Landmarks")
         self.RAS2LPSTransform(outputFiducialNode)
-        rootName = os.path.splitext(targetFileName)[0]
-        outputFilePath = os.path.join(outputDirectory, rootName + ".fcsv")
-        slicer.util.saveNode(outputFiducialNode, outputFilePath)
-        slicer.mrmlScene.RemoveNode(outputFiducialNode)
-        
-     
+        # Projection
+        if projectionFactor == 0:
+          # Save output landmarks
+          rootName = os.path.splitext(targetFileName)[0]
+          outputFilePath = os.path.join(outputDirectory, rootName + ".fcsv")
+          slicer.util.saveNode(outputFiducialNode, outputFilePath)
+          slicer.mrmlScene.RemoveNode(outputFiducialNode)
+        else: 
+          outputPoints_vtk = self.getFiducialPoints(outputFiducialNode)
+          targetModelNode = slicer.util.loadModel(targetFilePath)
+          sourceModelNode = slicer.util.loadModel(sourceModelPath)
+          sourcePoints = slicer.util.arrayFromModelPoints(sourceModelNode)
+          sourcePoints[:] = np.asarray(sourceData.points)
+          sourceModelNode.GetPolyData().GetPoints().GetData().Modified()
+          sourceModelNode_warped = self.applyTPSTransform(sourceLM_vtk.GetPoints(), outputPoints_vtk, sourceModelNode, 'Warped Source Mesh')
+          
+          # project landmarks from template to model
+          projectedPoints = self.projectPointsPolydata(sourceModelNode_warped.GetPolyData(), targetModelNode.GetPolyData(), outputPoints_vtk, projectionFactor)
+          projectedLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"Refined Predicted Landmarks")
+          for i in range(projectedPoints.GetNumberOfPoints()):
+            point = projectedPoints.GetPoint(i)
+            projectedLMNode.AddFiducialFromArray(point)
+            
+          # Save output landmarks
+          rootName = os.path.splitext(targetFileName)[0]
+          outputFilePath = os.path.join(outputDirectory, rootName + ".fcsv")
+          slicer.util.saveNode(projectedLMNode, outputFilePath)
+          slicer.mrmlScene.RemoveNode(outputFiducialNode)
+          slicer.mrmlScene.RemoveNode(projectedLMNode)
+          slicer.mrmlScene.RemoveNode(sourceModelNode)
+          slicer.mrmlScene.RemoveNode(targetModelNode)
+          slicer.mrmlScene.RemoveNode(sourceModelNode_warped)
+          
+
   def exportPointCloud(self, pointCloud, nodeName):
     fiducialNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',nodeName)
     for point in pointCloud:
