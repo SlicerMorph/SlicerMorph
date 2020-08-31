@@ -57,6 +57,7 @@ class ConvertMorphologikaLandmarksWidget(ScriptedLoadableModuleWidget):
     # Select landmark file to import
     #
     self.inputFileSelector = ctk.ctkPathLineEdit()
+    self.inputFileSelector.filters  = ctk.ctkPathLineEdit().Files
     self.inputFileSelector.setToolTip( "Select Morphologika landmark file for conversion" )
     parametersFormLayout.addRow("Select file containing landmark names and coordinates to load:", self.inputFileSelector)
 
