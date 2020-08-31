@@ -58,6 +58,7 @@ class ImportSurfaceToSegmentWidget(ScriptedLoadableModuleWidget):
     # Select landmark file to import
     #
     self.inputFileSelector = ctk.ctkPathLineEdit()
+    self.inputFileSelector.filters  = ctk.ctkPathLineEdit().Files
     self.inputFileSelector.setToolTip( "Select surface image that will be imported as a segment for editing" )
     parametersFormLayout.addRow("Select surface file to edit:", self.inputFileSelector)
 
