@@ -156,6 +156,7 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget):
     """
 
     self.archetypePathEdit = ctk.ctkPathLineEdit()
+    self.archetypePathEdit.filters  = ctk.ctkPathLineEdit().Files
     addByNameFormLayout.addRow("Archetype file", self.archetypePathEdit)
 
     self.archetypeFormat = qt.QLineEdit()
