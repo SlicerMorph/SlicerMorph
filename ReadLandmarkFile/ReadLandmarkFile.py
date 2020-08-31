@@ -58,6 +58,7 @@ class ReadLandmarkFileWidget(ScriptedLoadableModuleWidget):
     # Select landmark file to import
     #
     self.inputFileSelector = ctk.ctkPathLineEdit()
+    self.inputFileSelector.filters  = ctk.ctkPathLineEdit().Files
     self.inputFileSelector.setToolTip( "Select landmark file for import" )
     parametersFormLayout.addRow("Select file containing landmark names and coordinates to load:", self.inputFileSelector)
 
