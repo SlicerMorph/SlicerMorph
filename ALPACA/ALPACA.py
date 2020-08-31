@@ -93,6 +93,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     # Select source mesh
     #
     self.sourceModelSelector = ctk.ctkPathLineEdit()
+    self.sourceModelSelector.filters  = ctk.ctkPathLineEdit().Files
     self.sourceModelSelector.nameFilters=["*.ply"]
     alignSingleWidgetLayout.addRow("Source mesh: ", self.sourceModelSelector)
     
@@ -100,12 +101,14 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     # Select source landmarks
     #
     self.sourceFiducialSelector = ctk.ctkPathLineEdit()
+    self.sourceFiducialSelector.filters  = ctk.ctkPathLineEdit().Files
     self.sourceFiducialSelector.nameFilters=["*.fcsv"]
     alignSingleWidgetLayout.addRow("Source landmarks: ", self.sourceFiducialSelector)
     
     # Select target mesh
     #
     self.targetModelSelector = ctk.ctkPathLineEdit()
+    self.targetModelSelector.filters  = ctk.ctkPathLineEdit().Files
     self.targetModelSelector.nameFilters=["*.ply"]
     alignSingleWidgetLayout.addRow("Target mesh: ", self.targetModelSelector)
 
@@ -225,6 +228,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     # Select source mesh
     #
     self.sourceModelMultiSelector = ctk.ctkPathLineEdit()
+    self.sourceModelMultiSelector.filters  = ctk.ctkPathLineEdit().Files
     self.sourceModelMultiSelector.nameFilters=["*.ply"]
     self.sourceModelMultiSelector.toolTip = "Select the source mesh"
     alignMultiWidgetLayout.addRow("Source mesh: ", self.sourceModelMultiSelector)
@@ -233,6 +237,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     # Select source landmark file
     #
     self.sourceFiducialMultiSelector = ctk.ctkPathLineEdit()
+    self.sourceFiducialMultiSelector.filters  = ctk.ctkPathLineEdit().Files
     self.sourceFiducialMultiSelector.nameFilters=["*.fcsv"]
     self.sourceFiducialMultiSelector.toolTip = "Select the source landmarks"
     alignMultiWidgetLayout.addRow("Source landmarks: ", self.sourceFiducialMultiSelector)
