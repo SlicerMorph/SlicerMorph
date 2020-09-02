@@ -61,6 +61,7 @@ class SkyscanReconImportWidget(ScriptedLoadableModuleWidget):
 
     # File dialog to select a file template for series
     self.inputFileSelector = ctk.ctkPathLineEdit()
+    self.inputFileSelector.filters  = ctk.ctkPathLineEdit().Files
     self.inputFileSelector.setToolTip( "Select log file from a directory of images." )
     parametersFormLayout.addRow("Select log file from image series:", self.inputFileSelector)
 

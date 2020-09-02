@@ -74,6 +74,7 @@ class TransferSemiLandmarksWidget(ScriptedLoadableModuleWidget):
     parametersFormLayout.addRow("Landmark directory: ", self.landmarkDirectory)
 
     self.gridFile=ctk.ctkPathLineEdit()
+    self.gridFile.filters  = ctk.ctkPathLineEdit().Files
     self.gridFile.setToolTip( "Select file specifying semi-landmark connectivity" )
     parametersFormLayout.addRow("Grid connectivity file: ", self.gridFile)
 

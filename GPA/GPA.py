@@ -961,12 +961,14 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     selectTemplatesLayout.addWidget(self.grayscaleSelectorLabel,1,1)
 
     self.grayscaleSelector = ctk.ctkPathLineEdit()
+    self.grayscaleSelector.filters  = ctk.ctkPathLineEdit().Files
     self.grayscaleSelector.nameFilters= ["*.ply","*.stl","*.obj","*.vtp","*.vtk", "*.orig", "*.g", "*.byu"]
     selectTemplatesLayout.addWidget(self.grayscaleSelector,1,2,1,3)
 
     self.FudSelectLabel = qt.QLabel("Specify LM set for the selected model: ")
     self.FudSelectLabel.setToolTip( "Select the landmark set that corresponds to the reference model")
     self.FudSelect = ctk.ctkPathLineEdit()
+    self.FudSelect.filters  = ctk.ctkPathLineEdit().Files
     self.FudSelect.nameFilters=["*.fcsv"]
     selectTemplatesLayout.addWidget(self.FudSelectLabel,2,1)
     selectTemplatesLayout.addWidget(self.FudSelect,2,2,1,3)
