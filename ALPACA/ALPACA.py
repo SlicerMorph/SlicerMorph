@@ -731,12 +731,12 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
           # Save output landmarks
           rootName = os.path.splitext(targetFileName)[0]
           outputFilePath = os.path.join(outputDirectory, rootName + ".fcsv")
-          #slicer.util.saveNode(projectedLMNode, outputFilePath)
-          #slicer.mrmlScene.RemoveNode(outputFiducialNode)
-          #slicer.mrmlScene.RemoveNode(projectedLMNode)
-          #slicer.mrmlScene.RemoveNode(sourceModelNode)
-          #slicer.mrmlScene.RemoveNode(targetModelNode)
-          #slicer.mrmlScene.RemoveNode(sourceModelNode_warped)
+          slicer.util.saveNode(projectedLMNode, outputFilePath)
+          slicer.mrmlScene.RemoveNode(outputFiducialNode)
+          slicer.mrmlScene.RemoveNode(projectedLMNode)
+          slicer.mrmlScene.RemoveNode(sourceModelNode)
+          slicer.mrmlScene.RemoveNode(targetModelNode)
+          slicer.mrmlScene.RemoveNode(sourceModelNode_warped)
           
 
   def exportPointCloud(self, pointCloud, nodeName):
