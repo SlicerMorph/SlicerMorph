@@ -122,22 +122,12 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.skipProjectionCheckBox.setToolTip("If checked, ALPACA will skip final refinement step placing landmarks on the target suface.")
     alignSingleWidgetLayout.addRow("Skip projection", self.skipProjectionCheckBox)
     
-    #
-    # Set max projection factor
-    #
-    self.projectionFactor = ctk.ctkSliderWidget()
-    self.projectionFactor.enabled = True
-    self.projectionFactor.singleStep = 1
-    self.projectionFactor.minimum = 0
-    self.projectionFactor.maximum = 10
-    self.projectionFactor.value = 1
-    self.projectionFactor.setToolTip("Set maximum projection as a percentage of the image diagonal")
-    alignSingleWidgetLayout.addRow("Maximum projection factor : ", self.projectionFactor)
 
-    [self.pointDensity, self.normalSearchRadius, self.FPFHSearchRadius, self.distanceThreshold, self.maxRANSAC, self.maxRANSACValidation, 
+    [self.projectionFactor,self.pointDensity, self.normalSearchRadius, self.FPFHSearchRadius, self.distanceThreshold, self.maxRANSAC, self.maxRANSACValidation, 
     self.ICPDistanceThreshold, self.alpha, self.beta, self.CPDIterations, self.CPDTolerence] = self.addAdvancedMenu(alignSingleWidgetLayout)
     
     # Advanced tab connections
+
     self.pointDensity.connect('valueChanged(double)', self.onChangeAdvanced)
     self.normalSearchRadius.connect('valueChanged(double)', self.onChangeAdvanced)
     self.FPFHSearchRadius.connect('valueChanged(double)', self.onChangeAdvanced)
@@ -266,19 +256,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.skipProjectionCheckBoxMulti.setToolTip("If checked, ALPACA will skip final refinement step placing landmarks on the target suface.")
     alignMultiWidgetLayout.addRow("Skip projection", self.skipProjectionCheckBoxMulti)
     
-    #
-    # Set maximum projection factor
-    #
-    self.projectionFactorMulti = ctk.ctkSliderWidget()
-    self.projectionFactorMulti.enabled = True
-    self.projectionFactorMulti.singleStep = 1
-    self.projectionFactorMulti.minimum = 0
-    self.projectionFactorMulti.maximum = 10
-    self.projectionFactorMulti.value = 1
-    self.projectionFactorMulti.setToolTip("Set maximum projection as a percentage of the image diagonal")
-    alignMultiWidgetLayout.addRow("Maximum projection factor : ", self.projectionFactorMulti)
-    
-    [self.pointDensityMulti, self.normalSearchRadiusMulti, self.FPFHSearchRadiusMulti, self.distanceThresholdMulti, self.maxRANSACMulti, self.maxRANSACValidationMulti, 
+    [self.projectionFactorMulti, self.pointDensityMulti, self.normalSearchRadiusMulti, self.FPFHSearchRadiusMulti, self.distanceThresholdMulti, self.maxRANSACMulti, self.maxRANSACValidationMulti, 
     self.ICPDistanceThresholdMulti, self.alphaMulti, self.betaMulti, self.CPDIterationsMulti, self.CPDTolerenceMulti] = self.addAdvancedMenu(alignMultiWidgetLayout)
         
     #
@@ -302,6 +280,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.layout.addStretch(1)
       
     # Advanced tab connections
+    self.projectionFactorMulti.connect('valueChanged(double)', self.updateParameterDictionary)
     self.pointDensityMulti.connect('valueChanged(double)', self.updateParameterDictionary)
     self.normalSearchRadiusMulti.connect('valueChanged(double)', self.updateParameterDictionary)
     self.FPFHSearchRadiusMulti.connect('valueChanged(double)', self.updateParameterDictionary)
@@ -316,6 +295,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     
     # initialize the parameter dictionary from single run parameters
     self.parameterDictionary = {
+      "projectionFactor": self.projectionFactor.value,
       "pointDensity": self.pointDensity.value,
       "normalSearchRadius" : self.normalSearchRadius.value,
       "FPFHSearchRadius" : self.FPFHSearchRadius.value,
@@ -330,6 +310,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       }
     # initialize the parameter dictionary from multi run parameters
     self.parameterDictionaryMulti = {
+      "projectionFactor": self.projectionFactorMulti.value,
       "pointDensity": self.pointDensityMulti.value,
       "normalSearchRadius" : self.normalSearchRadiusMulti.value,
       "FPFHSearchRadius" : self.FPFHSearchRadiusMulti.value,
@@ -355,10 +336,8 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     if bool(self.targetModelSelector.currentPath):
       path = os.path.dirname(self.targetModelSelector.currentPath) 
       self.targetModelMultiSelector.currentPath = path
-    if self.skipScalingCheckBox.checked != 0:
-      self.skipScalingMultiCheckBox.checked = self.skipScalingCheckBox.checked
-    
     self.skipScalingMultiCheckBox.checked = self.skipScalingCheckBox.checked
+    self.skipProjectionCheckBoxMulti.checked = self.skipProjectionCheckBox.checked
     self.projectionFactorMulti.value = self.projectionFactor.value
     
 
@@ -480,7 +459,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     
   def onApplyLandmarkMulti(self):
     logic = ALPACALogic()
-    if self.skipProjectionCheckBox.checked:
+    if self.skipProjectionCheckBoxMulti.checked != 0:
       projectionFactor = 0
     else:  
       projectionFactor = self.projectionFactor.value/100
@@ -512,6 +491,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
   def updateParameterDictionary(self):    
     # update the parameter dictionary from single run parameters
     if hasattr(self, 'parameterDictionary'):
+      self.parameterDictionary["projectionFactor"] = self.projectionFactor.value
       self.parameterDictionary["pointDensity"] = self.pointDensity.value
       self.parameterDictionary["normalSearchRadius"] = int(self.normalSearchRadius.value)
       self.parameterDictionary["FPFHSearchRadius"] = int(self.FPFHSearchRadius.value)
@@ -526,6 +506,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     
     # update the parameter dictionary from multi run parameters
     if hasattr(self, 'parameterDictionaryMulti'):
+      self.parameterDictionary["projectionFactor"] = self.projectionFactorMulti.value
       self.parameterDictionary["pointDensity"] = self.pointDensityMulti.value
       self.parameterDictionaryMulti["normalSearchRadius"] = int(self.normalSearchRadiusMulti.value)
       self.parameterDictionaryMulti["FPFHSearchRadius"] = int(self.FPFHSearchRadiusMulti.value)
@@ -552,7 +533,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
 
     # Point density label
     pointDensityCollapsibleButton=ctk.ctkCollapsibleButton()
-    pointDensityCollapsibleButton.text = "Point density adjustment"
+    pointDensityCollapsibleButton.text = "Point density and max projection"
     advancedFormLayout.addRow(pointDensityCollapsibleButton)
     pointDensityFormLayout = qt.QFormLayout(pointDensityCollapsibleButton)
 
@@ -569,14 +550,23 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     deformableRegistrationFormLayout = qt.QFormLayout(deformableRegistrationCollapsibleButton)
     
     # Point Density slider
-    
     pointDensity = ctk.ctkSliderWidget()
     pointDensity.singleStep = 0.1
     pointDensity.minimum = 0.1
     pointDensity.maximum = 3
     pointDensity.value = 1
-    pointDensity.setToolTip("Adjust the density of the pointclouds")
+    pointDensity.setToolTip("Adjust the density of the pointclouds. Larger values increase the number of points, and vice versa.")
     pointDensityFormLayout.addRow("Point Density Adjustment: ", pointDensity)
+
+    # Set max projection factor
+    projectionFactor = ctk.ctkSliderWidget()
+    projectionFactor.enabled = True
+    projectionFactor.singleStep = 1
+    projectionFactor.minimum = 0
+    projectionFactor.maximum = 10
+    projectionFactor.value = 1
+    projectionFactor.setToolTip("Set maximum point projection as a percentage of the image diagonal. Point projection is used to make sure predicted landmarks are placed on the target mesh.")
+    pointDensityFormLayout.addRow("Maximum projection factor : ", projectionFactor)
 
     # Normal search radius slider
     
@@ -675,7 +665,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     CPDTolerence.setToolTip("Tolerance used to assess CPD convergence")
     deformableRegistrationFormLayout.addRow("CPD tolerance: ", CPDTolerence)
 
-    return pointDensity, normalSearchRadius, FPFHSearchRadius, distanceThreshold, maxRANSAC, maxRANSACValidation, ICPDistanceThreshold, alpha, beta, CPDIterations, CPDTolerence
+    return projectionFactor, pointDensity, normalSearchRadius, FPFHSearchRadius, distanceThreshold, maxRANSAC, maxRANSACValidation, ICPDistanceThreshold, alpha, beta, CPDIterations, CPDTolerence
     
 #
 # ALPACALogic
@@ -731,7 +721,8 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
           sourceModelNode_warped = self.applyTPSTransform(sourceLM_vtk.GetPoints(), outputPoints_vtk, sourceModelNode, 'Warped Source Mesh')
           
           # project landmarks from template to model
-          projectedPoints = self.projectPointsPolydata(sourceModelNode_warped.GetPolyData(), targetModelNode.GetPolyData(), outputPoints_vtk, projectionFactor)
+          maxProjection = (targetModelNode.GetPolyData().GetLength()) * projectionFactor
+          projectedPoints = self.projectPointsPolydata(sourceModelNode_warped.GetPolyData(), targetModelNode.GetPolyData(), outputPoints_vtk, maxProjection)
           projectedLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"Refined Predicted Landmarks")
           for i in range(projectedPoints.GetNumberOfPoints()):
             point = projectedPoints.GetPoint(i)
@@ -740,12 +731,12 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
           # Save output landmarks
           rootName = os.path.splitext(targetFileName)[0]
           outputFilePath = os.path.join(outputDirectory, rootName + ".fcsv")
-          slicer.util.saveNode(projectedLMNode, outputFilePath)
-          slicer.mrmlScene.RemoveNode(outputFiducialNode)
-          slicer.mrmlScene.RemoveNode(projectedLMNode)
-          slicer.mrmlScene.RemoveNode(sourceModelNode)
-          slicer.mrmlScene.RemoveNode(targetModelNode)
-          slicer.mrmlScene.RemoveNode(sourceModelNode_warped)
+          #slicer.util.saveNode(projectedLMNode, outputFilePath)
+          #slicer.mrmlScene.RemoveNode(outputFiducialNode)
+          #slicer.mrmlScene.RemoveNode(projectedLMNode)
+          #slicer.mrmlScene.RemoveNode(sourceModelNode)
+          #slicer.mrmlScene.RemoveNode(targetModelNode)
+          #slicer.mrmlScene.RemoveNode(sourceModelNode_warped)
           
 
   def exportPointCloud(self, pointCloud, nodeName):
