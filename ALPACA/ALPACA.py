@@ -127,7 +127,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.ICPDistanceThreshold, self.alpha, self.beta, self.CPDIterations, self.CPDTolerence] = self.addAdvancedMenu(alignSingleWidgetLayout)
     
     # Advanced tab connections
-
+    self.projectionFactor.connect('valueChanged(double)', self.onChangeAdvanced)
     self.pointDensity.connect('valueChanged(double)', self.onChangeAdvanced)
     self.normalSearchRadius.connect('valueChanged(double)', self.onChangeAdvanced)
     self.FPFHSearchRadius.connect('valueChanged(double)', self.onChangeAdvanced)
