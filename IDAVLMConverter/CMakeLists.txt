@@ -1,5 +1,5 @@
 #-----------------------------------------------------------------------------
-set(MODULE_NAME ConvertMorphologikaLandmarks)
+set(MODULE_NAME IDAVLMConverter)
 
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS

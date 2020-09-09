@@ -5,17 +5,17 @@ from slicer.ScriptedLoadableModule import *
 import logging
 
 #
-# ConvertMorphologikaLandmarks
+# MorphologikaLMConverter
 #
 
-class ConvertMorphologikaLandmarks(ScriptedLoadableModule):
+class MorphologikaLMConverter(ScriptedLoadableModule):
   """Uses ScriptedLoadableModule base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
 
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
-    self.parent.title = "ConvertMorphologikaLandmarks" # TODO make this more human readable by adding spaces
+    self.parent.title = "MorphologikaLMConverter" # TODO make this more human readable by adding spaces
     self.parent.categories = ["SlicerMorph"]
     self.parent.dependencies = []
     self.parent.contributors = ["Sara Rolfe (UW), Murat Maga (UW)"] # replace with "Firstname Lastname (Organization)"
@@ -30,10 +30,10 @@ https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
 """ # replace with organization, grant and thanks.
 
 #
-# ConvertMorphologikaLandmarksWidget
+# MorphologikaLMConverterWidget
 #
 
-class ConvertMorphologikaLandmarksWidget(ScriptedLoadableModuleWidget):
+class MorphologikaLMConverterWidget(ScriptedLoadableModuleWidget):
   """Uses ScriptedLoadableModuleWidget base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
@@ -103,15 +103,15 @@ class ConvertMorphologikaLandmarksWidget(ScriptedLoadableModuleWidget):
 
 
   def onApplyButton(self):
-    logic = ConvertMorphologikaLandmarksLogic()
+    logic = MorphologikaLMConverterLogic()
     enableScreenshotsFlag = self.enableScreenshotsFlagCheckBox.checked
     logic.run(self.inputFileSelector.currentPath, self.outputDirectory.directory)
 
 #
-# ConvertMorphologikaLandmarksLogic
+# MorphologikaLMConverterLogic
 #
 
-class ConvertMorphologikaLandmarksLogic(ScriptedLoadableModuleLogic):
+class MorphologikaLMConverterLogic(ScriptedLoadableModuleLogic):
   """This class should implement all the actual
   computation done by your module.  The interface
   should be such that other python code can import
@@ -246,7 +246,7 @@ class ConvertMorphologikaLandmarksLogic(ScriptedLoadableModuleLogic):
     return True
 
 
-class ConvertMorphologikaLandmarksTest(ScriptedLoadableModuleTest):
+class MorphologikaLMConverterTest(ScriptedLoadableModuleTest):
   """
   This is the test case for your scripted module.
   Uses ScriptedLoadableModuleTest base class, available at:
@@ -262,9 +262,9 @@ class ConvertMorphologikaLandmarksTest(ScriptedLoadableModuleTest):
     """Run as few or as many tests as needed here.
     """
     self.setUp()
-    self.test_ConvertMorphologikaLandmarks1()
+    self.test_MorphologikaLMConverter1()
 
-  def test_ConvertMorphologikaLandmarks1(self):
+  def test_MorphologikaLMConverter1(self):
     """ Ideally you should have several levels of tests.  At the lowest level
     tests should exercise the functionality of the logic with different inputs
     (both valid and invalid).  At higher levels your tests should emulate the
@@ -288,6 +288,6 @@ class ConvertMorphologikaLandmarksTest(ScriptedLoadableModuleTest):
     self.delayDisplay('Finished with download and loading')
 
     volumeNode = slicer.util.getNode(pattern="FA")
-    logic = ConvertMorphologikaLandmarksLogic()
+    logic = MorphologikaLMConverterLogic()
     self.assertIsNotNone( logic.hasImageData(volumeNode) )
     self.delayDisplay('Test passed!')

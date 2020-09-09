@@ -5,17 +5,17 @@ from slicer.ScriptedLoadableModule import *
 import logging
 
 #
-# ReadLandmarkFile
+# IDAVLMConverter
 #
 
-class ReadLandmarkFile(ScriptedLoadableModule):
+class IDAVLMConverter(ScriptedLoadableModule):
   """Uses ScriptedLoadableModule base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
 
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
-    self.parent.title = "ReadLandmarkFile" # TODO make this more human readable by adding spaces
+    self.parent.title = "IDAVLMConverter" # TODO make this more human readable by adding spaces
     self.parent.categories = ["SlicerMorph"]
     self.parent.dependencies = []
     self.parent.contributors = ["Murat Maga (UW), Sara Rolfe (UW)"] # replace with "Firstname Lastname (Organization)"
@@ -31,10 +31,10 @@ https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
 """ # replace with organization, grant and thanks.
 
 #
-# ReadLandmarkFileWidget
+# IDAVLMConverterWidget
 #
 
-class ReadLandmarkFileWidget(ScriptedLoadableModuleWidget):
+class IDAVLMConverterWidget(ScriptedLoadableModuleWidget):
   """Uses ScriptedLoadableModuleWidget base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
@@ -106,15 +106,15 @@ class ReadLandmarkFileWidget(ScriptedLoadableModuleWidget):
     self.applyButton.enabled = bool(self.inputFileSelector.currentPath)
 
   def onApplyButton(self):
-    logic = ReadLandmarkFileLogic()
+    logic = IDAVLMConverterLogic()
     enableScreenshotsFlag = self.enableScreenshotsFlagCheckBox.checked
     logic.run(self.inputFileSelector.currentPath, self.headerLengthWidget.value, enableScreenshotsFlag)
 
 #
-# ReadLandmarkFileLogic
+# IDAVLMConverterLogic
 #
 
-class ReadLandmarkFileLogic(ScriptedLoadableModuleLogic):
+class IDAVLMConverterLogic(ScriptedLoadableModuleLogic):
   """This class should implement all the actual
   computation done by your module.  The interface
   should be such that other python code can import
@@ -222,14 +222,14 @@ class ReadLandmarkFileLogic(ScriptedLoadableModuleLogic):
 
     # Capture screenshot
     if enableScreenshots:
-      self.takeScreenshot('ReadLandmarkFileTest-Start','MyScreenshot',-1)
+      self.takeScreenshot('IDAVLMConverterTest-Start','MyScreenshot',-1)
 
     logging.info('Processing completed')
 
     return True
 
 
-class ReadLandmarkFileTest(ScriptedLoadableModuleTest):
+class IDAVLMConverterTest(ScriptedLoadableModuleTest):
   """
   This is the test case for your scripted module.
   Uses ScriptedLoadableModuleTest base class, available at:
@@ -245,9 +245,9 @@ class ReadLandmarkFileTest(ScriptedLoadableModuleTest):
     """Run as few or as many tests as needed here.
     """
     self.setUp()
-    self.test_ReadLandmarkFile1()
+    self.test_IDAVLMConverter1()
 
-  def test_ReadLandmarkFile1(self):
+  def test_IDAVLMConverter1(self):
     """ Ideally you should have several levels of tests.  At the lowest level
     tests should exercise the functionality of the logic with different inputs
     (both valid and invalid).  At higher levels your tests should emulate the
@@ -271,6 +271,6 @@ class ReadLandmarkFileTest(ScriptedLoadableModuleTest):
     self.delayDisplay('Finished with download and loading')
 
     volumeNode = slicer.util.getNode(pattern="FA")
-    logic = ReadLandmarkFileLogic()
+    logic = IDAVLMConverterLogic()
     self.assertIsNotNone( logic.hasImageData(volumeNode) )
     self.delayDisplay('Test passed!')

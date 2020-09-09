@@ -1,5 +1,5 @@
 #-----------------------------------------------------------------------------
-set(MODULE_NAME SemiLandmark)
+set(MODULE_NAME CreateSemiLMPatches)
 
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS
