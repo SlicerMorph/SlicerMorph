@@ -8,21 +8,21 @@ import  numpy as np
 import random
 import math
 
-import SemiLandmark
+import CreateSemiLMPatches
 import re
 import csv
 #
-# TransferSemiLandmarks
+# PlaceSemiLMPatches
 #
 
-class TransferSemiLandmarks(ScriptedLoadableModule):
+class PlaceSemiLMPatches(ScriptedLoadableModule):
   """Uses ScriptedLoadableModule base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
 
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
-    self.parent.title = "TransferSemiLandmarks" # TODO make this more human readable by adding spaces
+    self.parent.title = "PlaceSemiLMPatches" # TODO make this more human readable by adding spaces
     self.parent.categories = ["SlicerMorph.SlicerMorph Labs"]
     self.parent.dependencies = []
     self.parent.contributors = ["Sara Rolfe (UW), Murat Maga (UW)"] # replace with "Firstname Lastname (Organization)"
@@ -38,10 +38,10 @@ class TransferSemiLandmarks(ScriptedLoadableModule):
       """ # replace with organization, grant and thanks.
 
 #
-# TransferSemiLandmarksWidget
+# PlaceSemiLMPatchesWidget
 #
 
-class TransferSemiLandmarksWidget(ScriptedLoadableModuleWidget):
+class PlaceSemiLMPatchesWidget(ScriptedLoadableModuleWidget):
   """Uses ScriptedLoadableModuleWidget base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
@@ -99,7 +99,7 @@ class TransferSemiLandmarksWidget(ScriptedLoadableModuleWidget):
     # Apply Button
     #
     self.applyButton = qt.QPushButton("Apply")
-    self.applyButton.toolTip = "Generate TransferSemiLandmarkss."
+    self.applyButton.toolTip = "Generate PlaceSemiLMPatchess."
     self.applyButton.enabled = False
     parametersFormLayout.addRow(self.applyButton)
 
@@ -118,15 +118,15 @@ class TransferSemiLandmarksWidget(ScriptedLoadableModuleWidget):
 
 
   def onApplyButton(self):
-    logic = TransferSemiLandmarksLogic()
+    logic = PlaceSemiLMPatchesLogic()
     logic.run(self.meshDirectory.currentPath, self.landmarkDirectory.currentPath, self.gridFile.currentPath,
       self.outputDirectory.currentPath, int(self.sampleRate.value))
 
 #
-# TransferSemiLandmarksLogic
+# PlaceSemiLMPatchesLogic
 #
 
-class TransferSemiLandmarksLogic(ScriptedLoadableModuleLogic):
+class PlaceSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
   """This class should implement all the actual
     computation done by your module.  The interface
     should be such that other python code can import
@@ -138,7 +138,7 @@ class TransferSemiLandmarksLogic(ScriptedLoadableModuleLogic):
   def run(self, meshDirectory, lmDirectory, gridFileName, ouputDirectory, sampleRate):
     smoothingIterations = 75
     maximumProjectionDistance = .75
-    SLLogic=SemiLandmark.SemiLandmarkLogic()
+    SLLogic=CreateSemiLMPatches.CreateSemiLMPatchesLogic()
     gridVertices = []
     with open(gridFileName) as gridFile:
       gridReader = csv.reader(gridFile)
@@ -169,7 +169,7 @@ class TransferSemiLandmarksLogic(ScriptedLoadableModuleLogic):
             success = SLLogic.mergeList(nodeList, landmarkNode, meshNode, sampleRate, mergedLandmarkNode)
             print("Number of merged landmark points", mergedLandmarkNode.GetNumberOfFiducials())
             if not success:
-              print("Something went wrong in SemilandmarkLogic.merge")
+              print("Something went wrong in CreateSemiLMPatchesLogic.merge")
             outputFileName = meshFileName + '_merged.fcsv'
             outputFilePath = os.path.join(ouputDirectory, outputFileName)
             slicer.util.saveNode(mergedLandmarkNode, outputFilePath)
@@ -212,7 +212,7 @@ class TransferSemiLandmarksLogic(ScriptedLoadableModuleLogic):
     annotationLogic.CreateSnapShot(name, description, type, 1, imageData)
 
 
-class TransferSemiLandmarksTest(ScriptedLoadableModuleTest):
+class PlaceSemiLMPatchesTest(ScriptedLoadableModuleTest):
   """
     This is the test case for your scripted module.
     Uses ScriptedLoadableModuleTest base class, available at:
@@ -228,9 +228,9 @@ class TransferSemiLandmarksTest(ScriptedLoadableModuleTest):
     """Run as few or as many tests as needed here.
       """
     self.setUp()
-    self.test_TransferSemiLandmarks1()
+    self.test_PlaceSemiLMPatches1()
 
-  def test_TransferSemiLandmarks1(self):
+  def test_PlaceSemiLMPatches1(self):
     """ Ideally you should have several levels of tests.  At the lowest level
       tests should exercise the functionality of the logic with different inputs
       (both valid and invalid).  At higher levels your tests should emulate the
@@ -254,6 +254,6 @@ class TransferSemiLandmarksTest(ScriptedLoadableModuleTest):
     self.delayDisplay('Finished with download and loading')
 
     volumeNode = slicer.util.getNode(pattern="FA")
-    logic = TransferSemiLandmarksLogic()
+    logic = PlaceSemiLMPatchesLogic()
     self.assertIsNotNone( logic.hasImageData(volumeNode) )
     self.delayDisplay('Test passed!')

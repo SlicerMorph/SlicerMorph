@@ -1,5 +1,5 @@
 #-----------------------------------------------------------------------------
-set(MODULE_NAME ResampleCurves)
+set(MODULE_NAME MorphologikaLMConverter)
 
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS

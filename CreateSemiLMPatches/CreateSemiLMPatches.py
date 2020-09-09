@@ -11,17 +11,17 @@ import math
 
 
 #
-# SemiLandmark
+# CreateSemiLMPatches
 #
 
-class SemiLandmark(ScriptedLoadableModule):
+class CreateSemiLMPatches(ScriptedLoadableModule):
   """Uses ScriptedLoadableModule base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
   
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
-    self.parent.title = "SemiLandmark" # TODO make this more human readable by adding spaces
+    self.parent.title = "CreateSemiLMPatches" # TODO make this more human readable by adding spaces
     self.parent.categories = ["SlicerMorph.SlicerMorph Labs"]
     self.parent.dependencies = []
     self.parent.contributors = ["Sara Rolfe (UW), Murat Maga (UW)"] # replace with "Firstname Lastname (Organization)"
@@ -36,10 +36,10 @@ class SemiLandmark(ScriptedLoadableModule):
       """ # replace with organization, grant and thanks.
 
 #
-# SemiLandmarkWidget
+# CreateSemiLMPatchesWidget
 #
 
-class SemiLandmarkWidget(ScriptedLoadableModuleWidget):
+class CreateSemiLMPatchesWidget(ScriptedLoadableModuleWidget):
   """Uses ScriptedLoadableModuleWidget base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
@@ -215,7 +215,7 @@ class SemiLandmarkWidget(ScriptedLoadableModuleWidget):
     pass
   
   def onApplyButton(self):
-    logic = SemiLandmarkLogic()
+    logic = CreateSemiLMPatchesLogic()
     enableScreenshotsFlag = self.enableScreenshotsFlagCheckBox.checked
     gridLandmarks = [int(self.landmarkGridPoint1.value), int(self.landmarkGridPoint2.value), int(self.landmarkGridPoint3.value)]
     smoothingIterations =  int(self.smoothingSlider.value)
@@ -223,7 +223,7 @@ class SemiLandmarkWidget(ScriptedLoadableModuleWidget):
     logic.run(self.meshSelect.currentNode(), self.LMSelect.currentNode(), gridLandmarks, int(self.gridSamplingRate.value)+1, smoothingIterations, projectionRayTolerance)
   
   def onMergeButton(self):
-    logic = SemiLandmarkLogic()
+    logic = CreateSemiLMPatchesLogic()
     enableScreenshotsFlag = self.enableScreenshotsFlagCheckBox.checked
     logic.mergeTree(self.fiducialView, self.LMSelect.currentNode(), self.meshSelect.currentNode(),int(self.gridSamplingRate.value))
     
@@ -232,10 +232,10 @@ class SemiLandmarkWidget(ScriptedLoadableModuleWidget):
     self.mergeButton.enabled = bool (nodes and self.LMSelect.currentNode() and self.meshSelect.currentNode())
 
 #
-# SemiLandmarkLogic
+# CreateSemiLMPatchesLogic
 #
 
-class SemiLandmarkLogic(ScriptedLoadableModuleLogic):
+class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
   """This class should implement all the actual
     computation done by your module.  The interface
     should be such that other python code can import
@@ -790,7 +790,7 @@ class SemiLandmarkLogic(ScriptedLoadableModuleLogic):
     annotationLogic.CreateSnapShot(name, description, type, 1, imageData)
 
 
-class SemiLandmarkTest(ScriptedLoadableModuleTest):
+class CreateSemiLMPatchesTest(ScriptedLoadableModuleTest):
   """
     This is the test case for your scripted module.
     Uses ScriptedLoadableModuleTest base class, available at:
@@ -806,9 +806,9 @@ class SemiLandmarkTest(ScriptedLoadableModuleTest):
     """Run as few or as many tests as needed here.
       """
     self.setUp()
-    self.test_SemiLandmark1()
+    self.test_CreateSemiLMPatches1()
   
-  def test_SemiLandmark1(self):
+  def test_CreateSemiLMPatches1(self):
     """ Ideally you should have several levels of tests.  At the lowest level
       tests should exercise the functionality of the logic with different inputs
       (both valid and invalid).  At higher levels your tests should emulate the
@@ -839,6 +839,6 @@ class SemiLandmarkTest(ScriptedLoadableModuleTest):
     self.delayDisplay('Finished with download and loading')
     
     volumeNode = slicer.util.getNode(pattern="FA")
-    logic = SemiLandmarkLogic()
+    logic = CreateSemiLMPatchesLogic()
     self.assertIsNotNone( logic.hasImageData(volumeNode) )
     self.delayDisplay('Test passed!')
