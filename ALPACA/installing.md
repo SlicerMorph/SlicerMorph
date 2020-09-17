@@ -6,8 +6,7 @@
 2. While installing if you receive warning about security or unknown publisher, ignore and processed with installation. If you are a Mac user you might have to do [these steps to run Slicer after installation](https://discourse.slicer.org/t/unsigned-application-issue-on-mac/12930/2?u=muratmaga).
 
 3. Open extension manager, go to “Install Extensions” tab and search for SlicerMorph and click *install*.
-Wait until all 9 extensions are shown under “Manage Extensions” tab, and then click Restart
-After the restart, open the module list and see that SlicerMorph is now listed.
+Wait until all 9 extensions are shown under “Manage Extensions” tab, and then click Restart. After the restart, open the module list and see that SlicerMorph is now listed.
 
 <img src="images/extension_manager.png">
 
