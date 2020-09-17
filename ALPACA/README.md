@@ -6,11 +6,11 @@
 
 `ALPACA` provides fast landmark transfer from a 3D model and its associated landmark set to target 3D model(s) through point cloud alignment and deformable mesh registration. Unlike the Slicermorph's semi-landmark methods, it does not require presence of fixed landmarks. Optimal set of parameters that gives the best correspondence can be investigated (and outcome can be visualized) in single alignment mode, and then applied to a number of 3D models in batch mode. Invoked first time, `ALPACA` needs your permission to download `open3D` library. Depending on the internet speed, download may take sometime but it is a one-time event.
 
-- [Installing ALPACA](installation.md)
+- [Installing ALPACA](installing.md)
 - [Finding ALPACA within SlicerMorph](locating.md)
 
 
-## Panels
+## Panels - Single Alignment
 
 A close examination of the module's main menu reveals that there are two main tabs in ALPACA : a Single aligment and a Batch processing one.
 
@@ -67,7 +67,7 @@ Note that the `Single aligment` tab also contains an `Advanced parameter setting
   * __CPD tolerance__: Tolerance to be used when stopping the CPD algorithm.
   
 
-* __Batch processing__ 
+## Panels - Batch processing
 
 As mentioned in the prior section, the main purpose of the `Single aligmment` tab is to find the best combination of hyperparameters for the task, so that they can be applied to a large array of specimens. In `ALPACA`, the parameters used in `Single alignment` tab get transferred to the `Batch processing` tab once that tab gets selected. 
 
