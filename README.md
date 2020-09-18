@@ -1,8 +1,8 @@
 <img src="https://raw.githubusercontent.com/SlicerMorph/SlicerMorph/master/GPA/Resources/Icons/GPA.png" alt="SlicerMorph logo" width="256" height="256">
 
-This is the development repository for our NSF ABI grant
+This is the development repository for SlicerMorph project. 
 
-SlicerMorph enable biologists to retrieve, visualize, measure and annotate high-resolution specimen data both from volumetric scans (CTs and MRs) as well as from 3D surface scanners effectively within 3D Slicer. It also provides a Generalized Procrustes Analysis (GPA) module as well as tools to visualize PCA decomposition of the GPA results.
+SlicerMorph enable biologists to retrieve, visualize, measure and annotate high-resolution specimen data both from volumetric scans (CTs and MRs) as well as from 3D surface scanners more effectively within 3D Slicer. It has a number of modules that facilitate Geometric Morphometrics analysis on these 3D specimens. 
 
 ## Installation
 To install SlicerMorph, please first install the Preview Release of [3D Slicer](https://download.slicer.org/). Open the application and use the [Extensions Manager module](https://www.slicer.org/wiki/Documentation/Nightly/SlicerApplication/ExtensionsManager) to install the SlicerMorph extension. After restarting 3D Slicer, all SlicerMorph modules will be available in the application.
@@ -26,18 +26,18 @@ Modules in SlicerMorph are organized in three broad categories:
 
 ### Utility Modules 
 
+  - **Animator:** A basic keyframe-based animation of 3D volumes. Supports interpolation of regions of interests, rotations, and transfer functions for volume rendering. Output can be either as an image sequence of frames or can be compiled into mp4 format.   
   - **PlaceSemiLMPatches:** A utility to apply the generated connectivity table from the **CreateSemiLMPatches** module to other 3D models with the same set of landmarks. A new set of semiLandmarks are sampled directly from the new models using the specified connectivity map. Inputs: a directory with 3D models and fcsv (same filename prefix). 
   - **ProjectSemiLMPatches:** A utility to transfer a template of semilandmarks to new 3D models using Thin Plate Splines (TPS) warp. Requires existence identical set of fixed landmarks in the template and target models. 
-  - **SegmentEndoCranium:** Automatically segments the endocranial space in a 3D volume of a vertebrate skull. 
-  - **Animator:** A basic keyframe-based animation of 3D volumes. Supports interpolation of regions of interests, rotations, and transfer functions for volume rendering. Output can be either as an image sequence of frames or can be compiled into mp4 format.   
   - **MorphologikaLMConverter:** Imports a Morphologika formatted landmark file that may contain multiple subjects and exports a Slicer .FCSV landmark file for each individual to a directory specified by the user.
-  - **ImportSurfaceToSegment:** Imports a 3D surface model as a segmentation and prompts the user to edit it using the Segment Editor module.
   - **IDAVLMConverter:** Imports IDAV landmark editor files with header length specified by the user.
+  - **ImportSurfaceToSegment:** Imports a 3D surface model as a segmentation and prompts the user to edit it using the Segment Editor module.
+  - **SegmentEndoCranium:** Automatically segments the endocranial space in a 3D volume of a vertebrate skull. 
 
 ## Dependencies
-SlicerMorph automatically installs these additional extensions as dependencies. Click on the links to get more information about these extensions.
+SlicerMorph automatically installs these additional extensions as dependencies. It should be noted that none of the SlicerMorph specific functionality directly relies on these modules. Functionality in these extensions complements modules in SlicerMorph. Click on the links to get more information about these extensions.
 
-- [**Auto3Dgm:** Auto3dgm, which allows for comparative analysis of 3D digital models representing biological surfaces, is part of the SlicerMorph project. You can find more information about it in their project site .](https://github.com/toothandclaw/SlicerAuto3Dgm) 
+- [**Auto3Dgm:** Auto3dgm, which allows for comparative analysis of 3D digital models representing biological surfaces, is part of the SlicerMorph project. You can find more information about it in their project site .](https://github.com/toothandclaw/SlicerAuto3Dgm). Pseudo-landmark output from Auto3Dgm can be directly analyzed with the **GPA module**.  
 - [**SegmentEditorExtraEffects:** Provides additional segmentation effects and utilities, such as our SplitSegment function that allows saving the 3D volume  into multiple smaller, individual volumes using the provided segmentation.](https://github.com/lassoan/SlicerSegmentEditorExtraEffects)
 - [**SlicerIGT:** Provides landmark driven registration (affine and deformable) of volumes and models.](https://github.com/SlicerIGT/SlicerIGT)
 - [**Sandbox:** Provides utilities like Cross-sectional Area from segments, Lights module for more in-depth lighting control and CurvePlanarReformat module for straightening of curved structures (e.g., coiled snake scans.](https://github.com/PerkLab/SlicerSandbox/)
