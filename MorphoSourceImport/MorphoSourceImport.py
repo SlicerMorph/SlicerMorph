@@ -41,7 +41,7 @@ class MorphoSourceImport(ScriptedLoadableModule):
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "MorphoSourceImport" # TODO make this more human readable by adding spaces
-    self.parent.categories = ["SlicerMorph.SlicerMorph Labs"]
+    self.parent.categories = ["SlicerMorph.Input and Ouput"]
     self.parent.dependencies = []
     self.parent.contributors = ["Murat Maga (UW), Sara Rolfe (UW), Arthur Porto(SCRI)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """

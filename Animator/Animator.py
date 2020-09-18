@@ -482,7 +482,7 @@ class Animator(ScriptedLoadableModule):
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "Animator"
-    self.parent.categories = ["SlicerMorph.SlicerMorph Labs"]
+    self.parent.categories = ["SlicerMorph.SlicerMorph Utilities"]
     self.parent.dependencies = []
     self.parent.contributors = ["Steve Pieper (Isomics, Inc.)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """

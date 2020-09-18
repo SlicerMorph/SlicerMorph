@@ -23,7 +23,7 @@ class MarkupEditor(ScriptedLoadableModule):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "Markup Editor"
     self.parent.hidden = True
-    self.parent.categories = ["SlicerMorph", "Labs"]
+    self.parent.categories = ["SlicerMorph.Geometric Morphometrics"]
     self.parent.dependencies = []
     self.parent.contributors = ["Steve Pieper (Isomics, Inc.)"]
     self.parent.helpText = """

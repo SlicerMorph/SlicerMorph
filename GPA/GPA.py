@@ -29,7 +29,7 @@ class GPA(ScriptedLoadableModule):
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "GPA" # TODO make this more human readable by adding spaces
-    self.parent.categories = ["SlicerMorph"]
+    self.parent.categories = ["SlicerMorph.Geometric Morphometrics"]
     self.parent.dependencies = []
     self.parent.contributors = [" Sara Rolfe (UW), Murat Maga (UW)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """
