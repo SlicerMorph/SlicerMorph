@@ -1,6 +1,6 @@
 <img src="https://raw.githubusercontent.com/SlicerMorph/SlicerMorph/master/GPA/Resources/Icons/GPA.png" alt="SlicerMorph logo" width="256" height="256">
 
-This is the development repository for SlicerMorph project. 
+This is the development repository for [SlicerMorph project](http://SlicerMorph.org). 
 
 SlicerMorph enable biologists to retrieve, visualize, measure and annotate high-resolution specimen data both from volumetric scans (CTs and MRs) as well as from 3D surface scanners more effectively within 3D Slicer. It has a number of modules that facilitate Geometric Morphometrics analysis on these 3D specimens. 
 
@@ -46,6 +46,23 @@ SlicerMorph automatically installs these additional extensions as dependencies. 
 - [**DCM2NIIX:** Provides a user-interface for the DICOM to NIFTI converter DCM2NIIX. Ideal for stripping metadata from DICOM datasets.](https://github.com/rordenlab/dcm2niix)
 - [**SurfaceWrapSolidy:** A segment editor effect useful to extract endocasts of cranial and other spaces.](https://github.com/sebastianandress/Slicer-SurfaceWrapSolidify)
 - [**RawImageGuess:** A module that enables the user to import proprietory imaging formats by specifying data type, image dimensions and endiness.](https://github.com/acetylsalicyl/SlicerRawImageGuess)
+
+
+## 3D Morphometrics and Image Analysis Short Course materials
+
+We actively use SlicerMorph to teach a week-long intense [short course on 3D Morphometrics and Image analysis](http://workshop.SlicerMorph.org). The feedback of the attendees help us prioritize feature development and refinement. We are grateful for the feedback of over 100 participants. Contents from previous workshops are available on github. 
+- [Summer 2020](https://github.com/SlicerMorph/S_2020)
+- [Winter 2020](https://github.com/SlicerMorph/W_2020)
+- [Summer 2019](https://github.com/SlicerMorph/S_2019)
+
+
+## Important Websites	
+*	SlicerMorph project website: https://www.SlicerMorph.org
+*	Please sign up for the SlicerMorph announcement to keep up-to-date with SlicerMorph project and extension updates http://mailman11.u.washington.edu/mailman/listinfo/slicermorph-announcements
+* [Introduction to Slicer - Official Slicer Documentation](https://slicer.readthedocs.io/en/latest/user_guide/getting_started.html)
+* [Difference between Slicer and SlicerMorph](https://docs.google.com/document/d/1VdsYQzhjEh9tT5WQQjb1GUdn5Hmnq8cK3yLzjYeVv5M/edit)
+*	Slicer Forum, https://discourse.slicer.org (alternatively you can use your github or google accounts to signup)
+* Official Slicer Documentation 
 
 ## Funding Acknowledgement
 This project is supported by a NSF Advances in Biological Informatics Collaborative grant to Murat Maga (ABI-1759883), Adam Summers (ABI-1759637) and Doug Boyer (ABI-1759839).
