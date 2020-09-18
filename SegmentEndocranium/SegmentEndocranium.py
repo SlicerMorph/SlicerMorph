@@ -17,7 +17,7 @@ class SegmentEndocranium(ScriptedLoadableModule):
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "Segment Endocranium"
-    self.parent.categories = ["SlicerMorph.SlicerMorph Labs"]
+    self.parent.categories = ["SlicerMorph.SlicerMorph Utilities"]
     self.parent.dependencies = []
     self.parent.contributors = ["Andras Lasso (PerkLab)"]
     self.parent.helpText = """

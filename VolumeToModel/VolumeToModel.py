@@ -9,18 +9,18 @@ import random
 import math
 
 #
-# VolumeToMesh
+# VolumeToModel
 #
 
-class VolumeToMesh(ScriptedLoadableModule):
+class VolumeToModel(ScriptedLoadableModule):
   """Uses ScriptedLoadableModule base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
 
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
-    self.parent.title = "VolumeToMesh" # TODO make this more human readable by adding spaces
-    self.parent.categories = ["SlicerMorph.SlicerMorph Labs"]
+    self.parent.title = "VolumeToModel" # TODO make this more human readable by adding spaces
+    self.parent.categories = ["SlicerMorph.SlicerMorph Utilities"]
     self.parent.dependencies = []
     self.parent.contributors = ["Sara Rolfe (UW), Murat Maga (UW)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """
@@ -35,10 +35,10 @@ class VolumeToMesh(ScriptedLoadableModule):
       """ # replace with organization, grant and thanks.
 
 #
-# VolumeToMeshWidget
+# VolumeToModelWidget
 #
 
-class VolumeToMeshWidget(ScriptedLoadableModuleWidget):
+class VolumeToModelWidget(ScriptedLoadableModuleWidget):
   """Uses ScriptedLoadableModuleWidget base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
@@ -96,7 +96,7 @@ class VolumeToMeshWidget(ScriptedLoadableModuleWidget):
     # Apply Button
     #
     self.applyButton = qt.QPushButton("Apply")
-    self.applyButton.toolTip = "Generate VolumeToMeshs."
+    self.applyButton.toolTip = "Generate VolumeToModels."
     self.applyButton.enabled = False
     parametersFormLayout.addRow(self.applyButton)
 
@@ -123,7 +123,7 @@ class VolumeToMeshWidget(ScriptedLoadableModuleWidget):
 
 
   def onApplyButton(self):
-    logic = VolumeToMeshLogic()
+    logic = VolumeToModelLogic()
     enableScreenshotsFlag = self.enableScreenshotsFlagCheckBox.checked
     extension =""
     if self.extensionOptionGZ.checked:
@@ -132,10 +132,10 @@ class VolumeToMeshWidget(ScriptedLoadableModuleWidget):
     logic.run(self.inputDirectory.currentPath, self.outputDirectory.currentPath, extension, int(self.threshold.value))
 
 #
-# VolumeToMeshLogic
+# VolumeToModelLogic
 #
 
-class VolumeToMeshLogic(ScriptedLoadableModuleLogic):
+class VolumeToModelLogic(ScriptedLoadableModuleLogic):
   """This class should implement all the actual
     computation done by your module.  The interface
     should be such that other python code can import
@@ -216,7 +216,7 @@ class VolumeToMeshLogic(ScriptedLoadableModuleLogic):
     annotationLogic.CreateSnapShot(name, description, type, 1, imageData)
 
 
-class VolumeToMeshTest(ScriptedLoadableModuleTest):
+class VolumeToModelTest(ScriptedLoadableModuleTest):
   """
     This is the test case for your scripted module.
     Uses ScriptedLoadableModuleTest base class, available at:
@@ -232,9 +232,9 @@ class VolumeToMeshTest(ScriptedLoadableModuleTest):
     """Run as few or as many tests as needed here.
       """
     self.setUp()
-    self.test_VolumeToMesh1()
+    self.test_VolumeToModel1()
 
-  def test_VolumeToMesh1(self):
+  def test_VolumeToModel1(self):
     """ Ideally you should have several levels of tests.  At the lowest level
       tests should exercise the functionality of the logic with different inputs
       (both valid and invalid).  At higher levels your tests should emulate the
@@ -258,6 +258,6 @@ class VolumeToMeshTest(ScriptedLoadableModuleTest):
     self.delayDisplay('Finished with download and loading')
 
     volumeNode = slicer.util.getNode(pattern="FA")
-    logic = VolumeToMeshLogic()
+    logic = VolumeToModelLogic()
     self.assertIsNotNone( logic.hasImageData(volumeNode) )
     self.delayDisplay('Test passed!')

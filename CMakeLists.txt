@@ -37,7 +37,6 @@ add_subdirectory(PlaceSemiLMPatches)
 add_subdirectory(ProjectSemiLMPatches)
 add_subdirectory(PseudoLMGenerator)
 add_subdirectory(SegmentEndocranium)
-add_subdirectory(VolumeToMesh)
 
 ## NEXT_MODULE
 
