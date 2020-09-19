@@ -468,6 +468,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.meanLandmarkNode.AddFiducialFromArray(self.rawMeanLandmarks[landmarkNumber,:], name)
     self.meanLandmarkNode.SetDisplayVisibility(1) 
     self.meanLandmarkNode.LockedOn() #lock position so when displayed they cannot be moved
+    #initialize mean LM display
+    self.scaleMeanGlyph()
+    self.toggleMeanColor()
 
     # Set up cloned mean landmark node for pc warping
     shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
@@ -498,6 +501,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     # Set up layout
     self.assignLayoutDescription()
     
+    #initialize mean LM display
+    self.scaleMeanGlyph()
+    self.toggleMeanColor()
+    
     # Enable buttons for workflow
     self.plotButton.enabled = True
     self.lolliButton.enabled = True
@@ -505,6 +512,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.plotMeanButton3D.enabled = True
     self.showMeanLabelsButton.enabled = True
     self.selectorButton.enabled = True
+    self.landmarkVisualizationType.enabled = True
+    self.modelVisualizationType.enabled = True
     
   def populateDistanceTable(self, files):
     sortedArray = np.zeros(len(files), dtype={'names':('filename', 'procdist'),'formats':('U50','f8')})
@@ -628,8 +637,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
   def initializeOnLoad(self):
   # clear rest of module when starting GPA analysis
 
-    self.grayscaleSelector.setCurrentPath(None)
-    self.FudSelect.setCurrentPath(None)
+    self.grayscaleSelector.setCurrentPath("")
+    self.FudSelect.setCurrentPath("")
 
     self.slider1.clear()
     self.slider2.clear()
@@ -655,8 +664,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.LM_dir_name=None
     self.LMText.setText(" ")
 
-    self.grayscaleSelector.setCurrentPath(None)
-    self.FudSelect.setCurrentPath(None)
+    self.grayscaleSelector.setCurrentPath("")
+    self.FudSelect.setCurrentPath("")
 
     self.slider1.clear()
     self.slider2.clear()
@@ -672,6 +681,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     self.scaleMeanShapeSlider.value=3
     self.meanShapeColor.color=qt.QColor(250,128,114)
+    
+    self.scaleSlider.enabled = False
 
     # Disable buttons for workflow
     self.plotButton.enabled = False
@@ -681,6 +692,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.plotMeanButton3D.enabled = False
     self.showMeanLabelsButton.enabled = False
     self.loadButton.enabled = False
+    self.landmarkVisualizationType.enabled = False
+    self.modelVisualizationType.enabled = False
     self.selectorButton.enabled = False
     self.stopRecordButton.enabled = False
     self.startRecordButton.enabled = False
@@ -828,6 +841,50 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     meanShapeLayout.addWidget(self.scaleMeanShapeSlider,4,2)
     self.scaleMeanShapeSlider.connect('valueChanged(double)', self.scaleMeanGlyph)
 
+     # Landmark Variance Section
+    distributionFrame=ctk.ctkCollapsibleButton()
+    distributionFrame.text="Landmark Variance Plot Options"
+    distributionLayout= qt.QGridLayout(distributionFrame)
+    self.layout.addWidget(distributionFrame)
+
+    self.EllipseType=qt.QRadioButton()
+    ellipseTypeLabel=qt.QLabel("Ellipse type")
+    self.EllipseType.setChecked(True)
+    distributionLayout.addWidget(ellipseTypeLabel,2,1)
+    distributionLayout.addWidget(self.EllipseType,2,2,1,2)
+    self.SphereType=qt.QRadioButton()
+    sphereTypeLabel=qt.QLabel("Sphere type")
+    distributionLayout.addWidget(sphereTypeLabel,3,1)
+    distributionLayout.addWidget(self.SphereType,3,2,1,2)
+    self.CloudType=qt.QRadioButton()
+    cloudTypeLabel=qt.QLabel("Point cloud type")
+    distributionLayout.addWidget(cloudTypeLabel,4,1)
+    distributionLayout.addWidget(self.CloudType,4,2,1,2)
+    self.NoneType=qt.QRadioButton()
+    noneTypeLabel=qt.QLabel("None")
+    distributionLayout.addWidget(noneTypeLabel,5,1)
+    distributionLayout.addWidget(self.NoneType,5,2,1,2)
+
+    self.scaleSlider = ctk.ctkSliderWidget()
+    self.scaleSlider.singleStep = .1
+    self.scaleSlider.minimum = 0
+    self.scaleSlider.maximum = 10
+    self.scaleSlider.value = 3
+    self.scaleSlider.enabled = False
+    self.scaleSlider.setToolTip("Set scale for variance visualization")
+    sliderLabel=qt.QLabel("Scale Glyphs")
+    distributionLayout.addWidget(sliderLabel,6,1)
+    distributionLayout.addWidget(self.scaleSlider,6,2,1,2)
+    self.scaleSlider.connect('valueChanged(double)', self.onPlotDistribution)
+
+    self.plotDistributionButton = qt.QPushButton("Plot LM variance")
+    self.plotDistributionButton.checkable = True
+    self.plotDistributionButton.setStyleSheet(self.StyleSheet)
+    self.plotDistributionButton.toolTip = "Visualize variance of landmarks from all subjects"
+    distributionLayout.addWidget(self.plotDistributionButton,7,1,1,4)
+    self.plotDistributionButton.enabled = False
+    self.plotDistributionButton.connect('clicked(bool)', self.onPlotDistribution)
+
     #PC plot section
     plotFrame=ctk.ctkCollapsibleButton()
     plotFrame.text="PCA Scatter Plot Options"
@@ -908,75 +965,52 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.lolliButton.enabled = False
     self.lolliButton.connect('clicked(bool)', self.lolliPlot)
 
- # Landmark Variance Section
-    distributionFrame=ctk.ctkCollapsibleButton()
-    distributionFrame.text="Landmark Variance Plot Options"
-    distributionLayout= qt.QGridLayout(distributionFrame)
-    self.layout.addWidget(distributionFrame)
-
-    self.EllipseType=qt.QRadioButton()
-    ellipseTypeLabel=qt.QLabel("Ellipse type")
-    self.EllipseType.setChecked(True)
-    distributionLayout.addWidget(ellipseTypeLabel,2,1)
-    distributionLayout.addWidget(self.EllipseType,2,2,1,2)
-    self.SphereType=qt.QRadioButton()
-    sphereTypeLabel=qt.QLabel("Sphere type")
-    distributionLayout.addWidget(sphereTypeLabel,3,1)
-    distributionLayout.addWidget(self.SphereType,3,2,1,2)
-    self.CloudType=qt.QRadioButton()
-    cloudTypeLabel=qt.QLabel("Point cloud type")
-    distributionLayout.addWidget(cloudTypeLabel,4,1)
-    distributionLayout.addWidget(self.CloudType,4,2,1,2)
-    self.NoneType=qt.QRadioButton()
-    noneTypeLabel=qt.QLabel("None")
-    distributionLayout.addWidget(noneTypeLabel,5,1)
-    distributionLayout.addWidget(self.NoneType,5,2,1,2)
-
-    self.scaleSlider = ctk.ctkSliderWidget()
-    self.scaleSlider.singleStep = .1
-    self.scaleSlider.minimum = 0
-    self.scaleSlider.maximum = 10
-    self.scaleSlider.value = 3
-    self.scaleSlider.setToolTip("Set scale for variance visualization")
-    sliderLabel=qt.QLabel("Scale Glyphs")
-    distributionLayout.addWidget(sliderLabel,6,1)
-    distributionLayout.addWidget(self.scaleSlider,6,2,1,2)
-    self.scaleSlider.connect('valueChanged(double)', self.onPlotDistribution)
-
-    self.plotDistributionButton = qt.QPushButton("Plot LM variance")
-    self.plotDistributionButton.checkable = True
-    self.plotDistributionButton.setStyleSheet(self.StyleSheet)
-    self.plotDistributionButton.toolTip = "Visualize variance of landmarks from all subjects"
-    distributionLayout.addWidget(self.plotDistributionButton,7,1,1,4)
-    self.plotDistributionButton.enabled = False
-    self.plotDistributionButton.connect('clicked(bool)', self.onPlotDistribution)
-
-    # 3D view set up tab
+    # Interactive view set up tab
     selectTemplatesButton=ctk.ctkCollapsibleButton()
-    selectTemplatesButton.text="Setup 3D Visualization"
+    selectTemplatesButton.text="Setup Interactive Visualization"
     selectTemplatesLayout= qt.QGridLayout(selectTemplatesButton)
+    
+    self.landmarkVisualizationType=qt.QRadioButton()
+    landmarkVisualizationTypeLabel=qt.QLabel("Mean shape visualization")
+    self.landmarkVisualizationType.setChecked(True)
+    self.landmarkVisualizationType.enabled = False
+    selectTemplatesLayout.addWidget(landmarkVisualizationTypeLabel,2,1)
+    selectTemplatesLayout.addWidget(self.landmarkVisualizationType,2,2,1,4)
+    self.modelVisualizationType=qt.QRadioButton()
+    self.modelVisualizationType.enabled = False
+    modelVisualizationTypeLabel=qt.QLabel("3D model visualization")
+    selectTemplatesLayout.addWidget(modelVisualizationTypeLabel,3,1)
+    selectTemplatesLayout.addWidget(self.modelVisualizationType,3,2,1,4)
+    self.landmarkVisualizationType.connect('toggled(bool)', self.onToggleVisualization)
+    self.modelVisualizationType.connect('toggled(bool)', self.onToggleVisualization)
 
-    self.grayscaleSelectorLabel = qt.QLabel("Specify Reference Model for 3D Vis.")
-    self.grayscaleSelectorLabel.setToolTip( "Select the model node for display")
-    selectTemplatesLayout.addWidget(self.grayscaleSelectorLabel,1,1)
+    self.grayscaleSelectorLabel = qt.QLabel("Specify reference model")
+    self.grayscaleSelectorLabel.setToolTip( "Load the model for the interactive visualization")
+    self.grayscaleSelectorLabel.enabled = False
+    selectTemplatesLayout.addWidget(self.grayscaleSelectorLabel,4,2)
 
     self.grayscaleSelector = ctk.ctkPathLineEdit()
     self.grayscaleSelector.filters  = ctk.ctkPathLineEdit().Files
     self.grayscaleSelector.nameFilters= ["*.ply","*.stl","*.obj","*.vtp","*.vtk", "*.orig", "*.g", "*.byu"]
-    selectTemplatesLayout.addWidget(self.grayscaleSelector,1,2,1,3)
+    self.grayscaleSelector.enabled = False
+    self.grayscaleSelector.connect('validInputChanged(bool)', self.onModelSelected)
+    selectTemplatesLayout.addWidget(self.grayscaleSelector,4,3,1,3)
 
     self.FudSelectLabel = qt.QLabel("Specify LM set for the selected model: ")
     self.FudSelectLabel.setToolTip( "Select the landmark set that corresponds to the reference model")
+    self.FudSelectLabel.enabled = False
     self.FudSelect = ctk.ctkPathLineEdit()
     self.FudSelect.filters  = ctk.ctkPathLineEdit().Files
     self.FudSelect.nameFilters=["*.fcsv"]
-    selectTemplatesLayout.addWidget(self.FudSelectLabel,2,1)
-    selectTemplatesLayout.addWidget(self.FudSelect,2,2,1,3)
+    self.FudSelect.enabled = False
+    self.FudSelect.connect('validInputChanged(bool)', self.onModelSelected)
+    selectTemplatesLayout.addWidget(self.FudSelectLabel,5,2)
+    selectTemplatesLayout.addWidget(self.FudSelect,5,3,1,3)
 
     self.selectorButton = qt.QPushButton("Apply")
     self.selectorButton.checkable = True
     self.selectorButton.setStyleSheet(self.StyleSheet)
-    selectTemplatesLayout.addWidget(self.selectorButton,3,1,1,4)
+    selectTemplatesLayout.addWidget(self.selectorButton,6,1,1,5)
     self.selectorButton.enabled = False
     self.selectorButton.connect('clicked(bool)', self.onSelect)
 
@@ -1038,7 +1072,20 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.addLayoutButton(501, 'Table Only View', 'Custom layout for GPA module', 'LayoutTableOnlyView.png', slicer.customLayoutTableOnly)
     self.addLayoutButton(502, 'Plot Only View', 'Custom layout for GPA module', 'LayoutPlotOnlyView.png', slicer.customLayoutPlotOnly)
     
-    
+  def onModelSelected(self):
+    self.selectorButton.enabled = bool( self.grayscaleSelector.currentPath and self.FudSelect.currentPath)  
+  
+  def onToggleVisualization(self):
+    if self.landmarkVisualizationType.isChecked():
+      self.selectorButton.enabled = True
+    else:
+      self.grayscaleSelector.enabled = True
+      self.FudSelect.enabled = True
+      print(self.grayscaleSelector.currentPath)
+      print(self.FudSelect.currentPath )
+      self.selectorButton.enabled = bool( self.grayscaleSelector.currentPath is not "") and bool(self.FudSelect.currentPath is not "") 
+  
+  
   def addLayoutButton(self, layoutID, buttonAction, toolTip, imageFileName, layoutDiscription):
     layoutManager = slicer.app.layoutManager()
     layoutManager.layoutLogic().GetLayoutNode().AddLayoutDescription(layoutID, layoutDiscription)
@@ -1120,7 +1167,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.initializeOnSelect()
     self.cloneLandmarkNode = self.copyLandmarkNode
     self.cloneLandmarkNode.CreateDefaultDisplayNodes()
-    if bool((self.FudSelect.currentPath != 'None') and (self.grayscaleSelector.currentPath != 'None')):
+    if self.modelVisualizationType.isChecked():
       # get landmark node selected
       logic = GPALogic()
       self.sourceLMNode= slicer.util.loadMarkups(self.FudSelect.currentPath)
@@ -1173,11 +1220,12 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     else:
       self.cloneLandmarkNode.SetDisplayVisibility(1)
       self.meanLandmarkNode.SetDisplayVisibility(1)
-      #set color and scale from GUI
-      color = self.meanShapeColor.color
-      self.cloneLandmarkNode.GetDisplayNode().SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
-      if self.scaleMeanShapeSlider.value == 0:  # If the scale is set to 0, reset to default scale 
-        self.scaleMeanShapeSlider.value = 3
+    
+    #set mean landmark color and scale from GUI
+    self.scaleMeanGlyph()
+    self.toggleMeanColor()
+    if self.scaleMeanShapeSlider.value == 0:  # If the scale is set to 0, reset to default scale 
+      self.scaleMeanShapeSlider.value = 3
      
       self.cloneLandmarkNode.GetDisplayNode().SetGlyphScale(self.scaleMeanShapeSlider.value)
       
@@ -1239,6 +1287,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         index+=1
             
   def onPlotDistribution(self):
+    self.scaleSlider.enabled = True
     if self.NoneType.isChecked():
       self.unplotDistributions()
     elif self.CloudType.isChecked():
