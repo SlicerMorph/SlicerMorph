@@ -41,7 +41,7 @@ class MorphoSourceImport(ScriptedLoadableModule):
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "MorphoSourceImport" # TODO make this more human readable by adding spaces
-    self.parent.categories = ["SlicerMorph.SlicerMorph Labs"]
+    self.parent.categories = ["SlicerMorph.Input and Ouput"]
     self.parent.dependencies = []
     self.parent.contributors = ["Murat Maga (UW), Sara Rolfe (UW), Arthur Porto(SCRI)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """
@@ -282,17 +282,23 @@ class MorphoSourceImportLogic(ScriptedLoadableModuleLogic):
   def runImport(self, dataFrame, session):
     for index in dataFrame.index:
       print('Downloading file for specimen ID ' + dataFrame['specimen_id'][index])
-
       try:
         response = session.get(dataFrame['download_link'][index])
         zip_file = zipfile.ZipFile(io.BytesIO(response.content))
         extensions = ('.stl','.ply', '.obj')
         destFolderPath = slicer.mrmlScene.GetCacheManager().GetRemoteCacheDirectory()
-        model=[zip_file.extract(file,destFolderPath) for file in zip_file.namelist() if file.endswith(extensions)]
-        slicer.util.loadModel(model[0])
+        for file in zip_file.namelist():
+          if file.endswith(extensions):
+            modelPath = os.path.join(destFolderPath,file)
+            if os.path.isfile(modelPath):
+              slicer.util.loadModel(modelPath)  
+              print("Found file in cache, reusing")
+            else:
+              model=[zip_file.extract(file,destFolderPath)  ]
+              slicer.util.loadModel(model[0])
       except:
         print('Error downloading file. Please confirm login information is correct.')
-
+        
   def process_json(self,response_json, session):
     #Initializing the database
     database=[]

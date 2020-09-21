@@ -5,23 +5,22 @@ from slicer.ScriptedLoadableModule import *
 import logging
 
 #
-# ImportSurfaceToSegment
+# MorphologikaLMConverter
 #
 
-class ImportSurfaceToSegment(ScriptedLoadableModule):
+class MorphologikaLMConverter(ScriptedLoadableModule):
   """Uses ScriptedLoadableModule base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
 
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
-    self.parent.title = "ImportSurfaceToSegment" # TODO make this more human readable by adding spaces
+    self.parent.title = "MorphologikaLMConverter" # TODO make this more human readable by adding spaces
     self.parent.categories = ["SlicerMorph.SlicerMorph Utilities"]
     self.parent.dependencies = []
     self.parent.contributors = ["Sara Rolfe (UW), Murat Maga (UW)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """
-This module imports a surface image and converts it to a segmentation for editing. If the default segmentation produced by this module is not sufficient,
-please see the Segmentations module Export to Files tab to set advanced settings.
+This module imports a file containing landmarks in Morphologika format and saves them to a file in Slicer FCSV format, one file per subject.
 """
     self.parent.helpText += self.getDefaultModuleDocumentationLink()
     self.parent.acknowledgementText = """
@@ -31,10 +30,10 @@ https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
 """ # replace with organization, grant and thanks.
 
 #
-# ImportSurfaceToSegmentWidget
+# MorphologikaLMConverterWidget
 #
 
-class ImportSurfaceToSegmentWidget(ScriptedLoadableModuleWidget):
+class MorphologikaLMConverterWidget(ScriptedLoadableModuleWidget):
   """Uses ScriptedLoadableModuleWidget base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
@@ -59,8 +58,15 @@ class ImportSurfaceToSegmentWidget(ScriptedLoadableModuleWidget):
     #
     self.inputFileSelector = ctk.ctkPathLineEdit()
     self.inputFileSelector.filters  = ctk.ctkPathLineEdit().Files
-    self.inputFileSelector.setToolTip( "Select surface image that will be imported as a segment for editing" )
-    parametersFormLayout.addRow("Select surface file to edit:", self.inputFileSelector)
+    self.inputFileSelector.setToolTip( "Select Morphologika landmark file for conversion" )
+    parametersFormLayout.addRow("Select file containing landmark names and coordinates to load:", self.inputFileSelector)
+
+    #
+    # output directory selector
+    #
+    self.outputDirectory = ctk.ctkDirectoryButton()
+    self.outputDirectory.directory = qt.QDir.homePath()
+    parametersFormLayout.addRow("Output Directory:", self.outputDirectory)
 
     #
     # check box to trigger taking screen shots for later use in tutorials
@@ -97,15 +103,15 @@ class ImportSurfaceToSegmentWidget(ScriptedLoadableModuleWidget):
 
 
   def onApplyButton(self):
-    logic = ImportSurfaceToSegmentLogic()
+    logic = MorphologikaLMConverterLogic()
     enableScreenshotsFlag = self.enableScreenshotsFlagCheckBox.checked
-    logic.run(self.inputFileSelector.currentPath)
+    logic.run(self.inputFileSelector.currentPath, self.outputDirectory.directory)
 
 #
-# ImportSurfaceToSegmentLogic
+# MorphologikaLMConverterLogic
 #
 
-class ImportSurfaceToSegmentLogic(ScriptedLoadableModuleLogic):
+class MorphologikaLMConverterLogic(ScriptedLoadableModuleLogic):
   """This class should implement all the actual
   computation done by your module.  The interface
   should be such that other python code can import
@@ -178,35 +184,69 @@ class ImportSurfaceToSegmentLogic(ScriptedLoadableModuleLogic):
     annotationLogic = slicer.modules.annotations.logic()
     annotationLogic.CreateSnapShot(name, description, type, 1, imageData)
 
-  def run(self, surfaceFileName):
+  def run(self, morphFileName, outputDirectory):
     """
     Run the actual conversion
     """
-    [success, modelNode] = slicer.util.loadModel(surfaceFileName, returnNode=True)
-    # Convert to segmentation
-    segmentName = modelNode.GetName() + '-segmentation'
-    segmentNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLSegmentationNode', segmentName)
-    slicer.modules.segmentations.logic().ImportModelToSegmentationNode(modelNode, segmentNode)
-    #Convert to label map
-    labelName = modelNode.GetName() + '-labelmap'
-    labelmapNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLLabelMapVolumeNode', labelName)
-    slicer.modules.segmentations.logic().ExportAllSegmentsToLabelmapNode(segmentNode, labelmapNode)
+    f=open(morphFileName,'r')
+    data=f.readlines()
+    f.close
 
-    # Set up interface for editing
-    slicer.util.selectModule(slicer.modules.segmenteditor)
-    editorWidget=slicer.modules.segmenteditor.widgetRepresentation()
-    segmentID=segmentNode.GetSegmentation().GetNthSegmentID(0)
-    qWidget=slicer.util.findChild(editorWidget,'qMRMLSegmentEditorWidget')
-    qWidget.setCurrentSegmentID(segmentID)
-    qWidget.setMasterVolumeNode(labelmapNode)
-    #remove original model Node
-    slicer.mrmlScene.RemoveNode(modelNode)
+    subjectNumber= 0
+    landmarkNumber=0
+    dimensionNumber=0
+    nameIndex=0
+    rawIndex=0
+
+    #Scan file for data size
+    for num, line in enumerate(data, 0):
+      if 'individuals' in line.lower():
+        subjectNumber= int(data[num+1])
+      elif 'landmarks' in line.lower():
+        landmarkNumber= int(data[num+1])
+      elif 'dimensions' in line.lower():
+        dimensionNumber = int(data[num+1])
+      elif 'names' in line.lower():
+        nameIndex=num
+      elif 'rawpoints' in line.lower():
+        rawIndex = num
+
+    #Check that size variables were found
+    if subjectNumber==0 or landmarkNumber==0 or dimensionNumber==0:
+      print("Error reading file: can not read size")
+
+    print("Individuals: ", subjectNumber)
+    print("Landmarks: ", landmarkNumber)
+    print("Dimensions: ", dimensionNumber)
+
+    subjectList=data[nameIndex+1:nameIndex+1+subjectNumber]
+    rawData = data[rawIndex+1:len(data)] # get raw data portion of file
+    rawData = [ line for line in rawData if not ("\'" in line or "\n" == line)] # remove spaces and names
+
+    if len(rawData) != subjectNumber*landmarkNumber:    # check for error in landmark import
+      print("Error reading file: incorrect landmark number")
+    else:
+      fiducialNode = slicer.vtkMRMLMarkupsFiducialNode() # Create a markups node for imported points
+      for index, subject in enumerate(subjectList): # iterate through each subject
+
+        for landmark in range(landmarkNumber):
+          lineData = rawData.pop(0).split() #get first line and split by whitespace
+          coordinates = [float(lineData[0]), float(lineData[1]), float(lineData[2])]
+          fiducialNode.AddFiducialFromArray(coordinates, str(landmark)) #insert fiducial named by landmark number
+
+        slicer.mrmlScene.AddNode(fiducialNode)
+        fiducialNode.SetName(subject.split()[0]) # set name to subject name, removing new line char
+        path = os.path.join(outputDirectory, subject.split()[0] + '.fcsv')
+        slicer.util.saveNode(fiducialNode, path)
+        slicer.mrmlScene.RemoveNode(fiducialNode)  #remove node from scene
+        #fiducialNode.RemoveAllControlPoints() # remove all landmarks from node (new markups version)
+        fiducialNode.RemoveAllMarkups()  # remove all landmarks from node
     logging.info('Processing completed')
 
     return True
 
 
-class ImportSurfaceToSegmentTest(ScriptedLoadableModuleTest):
+class MorphologikaLMConverterTest(ScriptedLoadableModuleTest):
   """
   This is the test case for your scripted module.
   Uses ScriptedLoadableModuleTest base class, available at:
@@ -222,9 +262,9 @@ class ImportSurfaceToSegmentTest(ScriptedLoadableModuleTest):
     """Run as few or as many tests as needed here.
     """
     self.setUp()
-    self.test_ImportSurfaceToSegment1()
+    self.test_MorphologikaLMConverter1()
 
-  def test_ImportSurfaceToSegment1(self):
+  def test_MorphologikaLMConverter1(self):
     """ Ideally you should have several levels of tests.  At the lowest level
     tests should exercise the functionality of the logic with different inputs
     (both valid and invalid).  At higher levels your tests should emulate the
@@ -248,6 +288,6 @@ class ImportSurfaceToSegmentTest(ScriptedLoadableModuleTest):
     self.delayDisplay('Finished with download and loading')
 
     volumeNode = slicer.util.getNode(pattern="FA")
-    logic = ImportSurfaceToSegmentLogic()
+    logic = MorphologikaLMConverterLogic()
     self.assertIsNotNone( logic.hasImageData(volumeNode) )
     self.delayDisplay('Test passed!')

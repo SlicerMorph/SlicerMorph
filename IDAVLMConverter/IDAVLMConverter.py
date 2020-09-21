@@ -5,23 +5,23 @@ from slicer.ScriptedLoadableModule import *
 import logging
 
 #
-# ImportSurfaceToSegment
+# IDAVLMConverter
 #
 
-class ImportSurfaceToSegment(ScriptedLoadableModule):
+class IDAVLMConverter(ScriptedLoadableModule):
   """Uses ScriptedLoadableModule base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
 
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
-    self.parent.title = "ImportSurfaceToSegment" # TODO make this more human readable by adding spaces
+    self.parent.title = "IDAVLMConverter" # TODO make this more human readable by adding spaces
     self.parent.categories = ["SlicerMorph.SlicerMorph Utilities"]
     self.parent.dependencies = []
-    self.parent.contributors = ["Sara Rolfe (UW), Murat Maga (UW)"] # replace with "Firstname Lastname (Organization)"
+    self.parent.contributors = ["Murat Maga (UW), Sara Rolfe (UW)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """
-This module imports a surface image and converts it to a segmentation for editing. If the default segmentation produced by this module is not sufficient,
-please see the Segmentations module Export to Files tab to set advanced settings.
+This module imports an image sequence into Slicer as a 3D volume. Accepted formats are TIF, PNG, JPG and BMP. For DICOMS, use the DICOM module.
+User can optionally perform downsampling of the volume at the time of import. For specific use cases and options,
 """
     self.parent.helpText += self.getDefaultModuleDocumentationLink()
     self.parent.acknowledgementText = """
@@ -31,10 +31,10 @@ https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
 """ # replace with organization, grant and thanks.
 
 #
-# ImportSurfaceToSegmentWidget
+# IDAVLMConverterWidget
 #
 
-class ImportSurfaceToSegmentWidget(ScriptedLoadableModuleWidget):
+class IDAVLMConverterWidget(ScriptedLoadableModuleWidget):
   """Uses ScriptedLoadableModuleWidget base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
@@ -59,53 +59,69 @@ class ImportSurfaceToSegmentWidget(ScriptedLoadableModuleWidget):
     #
     self.inputFileSelector = ctk.ctkPathLineEdit()
     self.inputFileSelector.filters  = ctk.ctkPathLineEdit().Files
-    self.inputFileSelector.setToolTip( "Select surface image that will be imported as a segment for editing" )
-    parametersFormLayout.addRow("Select surface file to edit:", self.inputFileSelector)
+    self.inputFileSelector.setToolTip( "Select landmark file for import" )
+    parametersFormLayout.addRow("Select file containing landmark names and coordinates to load:", self.inputFileSelector)
+    
+    #
+    # output directory selector
+    #
+    self.outputDirectory = ctk.ctkDirectoryButton()
+    self.outputDirectory.directory = slicer.mrmlScene.GetCacheManager().GetRemoteCacheDirectory()
+    parametersFormLayout.addRow("Output Directory:", self.outputDirectory)
+
+    #
+    # Get header length
+    #
+    self.headerLengthWidget = ctk.ctkDoubleSpinBox()
+    self.headerLengthWidget.value = 2
+    self.headerLengthWidget.minimum = 0
+    self.headerLengthWidget.singleStep = 1
+    self.headerLengthWidget.setToolTip("Input the number of lines in header")
+    parametersFormLayout.addRow("Header length:", self.headerLengthWidget)
 
     #
     # check box to trigger taking screen shots for later use in tutorials
     #
-    self.enableScreenshotsFlagCheckBox = qt.QCheckBox()
-    self.enableScreenshotsFlagCheckBox.checked = 0
-    self.enableScreenshotsFlagCheckBox.setToolTip("If checked, take screen shots for tutorials. Use Save Data to write them to disk.")
-    parametersFormLayout.addRow("Enable Screenshots", self.enableScreenshotsFlagCheckBox)
+    self.loadLandmarkNode = qt.QCheckBox()
+    self.loadLandmarkNode.checked = 0
+    self.loadLandmarkNode.setToolTip("After conversion, load landmarks into the scene.")
+    parametersFormLayout.addRow("Load landmarks into scene", self.loadLandmarkNode)
 
     #
     # Apply Button
     #
     self.applyButton = qt.QPushButton("Apply")
-    self.applyButton.toolTip = "Run the conversion."
+    self.applyButton.toolTip = "Run the algorithm."
     self.applyButton.enabled = False
     parametersFormLayout.addRow(self.applyButton)
 
     # connections
     self.applyButton.connect('clicked(bool)', self.onApplyButton)
-    self.inputFileSelector.connect('validInputChanged(bool)', self.onSelectInput)
+    self.inputFileSelector.connect('validInputChanged(bool)', self.onSelect)
+
 
     # Add vertical spacer
     self.layout.addStretch(1)
 
     # Refresh Apply button state
-    self.onSelectInput()
-    #self.onSelectOutput()
+    self.onSelect()
 
   def cleanup(self):
     pass
 
-  def onSelectInput(self):
+  def onSelect(self):
     self.applyButton.enabled = bool(self.inputFileSelector.currentPath)
 
-
   def onApplyButton(self):
-    logic = ImportSurfaceToSegmentLogic()
-    enableScreenshotsFlag = self.enableScreenshotsFlagCheckBox.checked
-    logic.run(self.inputFileSelector.currentPath)
+    logic = IDAVLMConverterLogic()
+    loadFileOption = self.loadLandmarkNode.checked
+    logic.run(self.inputFileSelector.currentPath, self.outputDirectory.directory, self.headerLengthWidget.value, loadFileOption)
 
 #
-# ImportSurfaceToSegmentLogic
+# IDAVLMConverterLogic
 #
 
-class ImportSurfaceToSegmentLogic(ScriptedLoadableModuleLogic):
+class IDAVLMConverterLogic(ScriptedLoadableModuleLogic):
   """This class should implement all the actual
   computation done by your module.  The interface
   should be such that other python code can import
@@ -142,71 +158,50 @@ class ImportSurfaceToSegmentLogic(ScriptedLoadableModuleLogic):
       return False
     return True
 
-  def takeScreenshot(self,name,description,type=-1):
-    # show the message even if not taking a screen shot
-    slicer.util.delayDisplay('Take screenshot: '+description+'.\nResult is available in the Annotations module.', 3000)
-
-    lm = slicer.app.layoutManager()
-    # switch on the type to get the requested window
-    widget = 0
-    if type == slicer.qMRMLScreenShotDialog.FullLayout:
-      # full layout
-      widget = lm.viewport()
-    elif type == slicer.qMRMLScreenShotDialog.ThreeD:
-      # just the 3D window
-      widget = lm.threeDWidget(0).threeDView()
-    elif type == slicer.qMRMLScreenShotDialog.Red:
-      # red slice window
-      widget = lm.sliceWidget("Red")
-    elif type == slicer.qMRMLScreenShotDialog.Yellow:
-      # yellow slice window
-      widget = lm.sliceWidget("Yellow")
-    elif type == slicer.qMRMLScreenShotDialog.Green:
-      # green slice window
-      widget = lm.sliceWidget("Green")
-    else:
-      # default to using the full window
-      widget = slicer.util.mainWindow()
-      # reset the type so that the node is set correctly
-      type = slicer.qMRMLScreenShotDialog.FullLayout
-
-    # grab and convert to vtk image data
-    qimage = ctk.ctkWidgetsUtils.grabWidget(widget)
-    imageData = vtk.vtkImageData()
-    slicer.qMRMLUtils().qImageToVtkImageData(qimage,imageData)
-
-    annotationLogic = slicer.modules.annotations.logic()
-    annotationLogic.CreateSnapShot(name, description, type, 1, imageData)
-
-  def run(self, surfaceFileName):
+  def run(self, landmarkFilePath, outputDirectory, headerSize, loadFileOption):
     """
-    Run the actual conversion
+    Run the actual algorithm
     """
-    [success, modelNode] = slicer.util.loadModel(surfaceFileName, returnNode=True)
-    # Convert to segmentation
-    segmentName = modelNode.GetName() + '-segmentation'
-    segmentNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLSegmentationNode', segmentName)
-    slicer.modules.segmentations.logic().ImportModelToSegmentationNode(modelNode, segmentNode)
-    #Convert to label map
-    labelName = modelNode.GetName() + '-labelmap'
-    labelmapNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLLabelMapVolumeNode', labelName)
-    slicer.modules.segmentations.logic().ExportAllSegmentsToLabelmapNode(segmentNode, labelmapNode)
+    # set landmark filename and length of header
+    headerSize = 2  #number of lines in the header
+    landmarkFileName = os.path.basename(landmarkFilePath)
+    (landmarkFileBase, ext) = os.path.splitext(landmarkFileName)
 
-    # Set up interface for editing
-    slicer.util.selectModule(slicer.modules.segmenteditor)
-    editorWidget=slicer.modules.segmenteditor.widgetRepresentation()
-    segmentID=segmentNode.GetSegmentation().GetNthSegmentID(0)
-    qWidget=slicer.util.findChild(editorWidget,'qMRMLSegmentEditorWidget')
-    qWidget.setCurrentSegmentID(segmentID)
-    qWidget.setMasterVolumeNode(labelmapNode)
-    #remove original model Node
-    slicer.mrmlScene.RemoveNode(modelNode)
+
+    # Create a markups node for imported points
+    fiducialNode = slicer.vtkMRMLMarkupsFiducialNode()
+    slicer.mrmlScene.AddNode(fiducialNode)
+    fiducialNode.CreateDefaultDisplayNodes()
+    fiducialNode.SetName(landmarkFileBase)
+
+    # read landmarks
+    landmarkFile = open(landmarkFilePath, "r")
+    lines = landmarkFile.readlines()
+    landmarkFile.close()
+
+    #iterate through list of and place in markups node
+    for i in range(headerSize,len(lines)-1):
+      # in this file format, lines contain [name, x-coordinate, y-coordinate, z-coordinate]
+      # by default, split command splits by whitespace
+      lineData = lines[i].split()
+      if len(lineData) == 4:
+        coordinates = [float(lineData[1]), float(lineData[2]), float(lineData[3])]
+        name = lineData[0]
+        fiducialNode.AddFiducialFromArray(coordinates, name)
+      else:
+        logging.debug("Error: not a supported landmark file format")
+    
+    outputPath = os.path.join(outputDirectory, landmarkFileBase + '.fcsv')
+    slicer.util.saveNode(fiducialNode, outputPath)
+    if not loadFileOption:
+      slicer.mrmlScene.RemoveNode(fiducialNode)  #remove node from scene
+
     logging.info('Processing completed')
 
     return True
 
 
-class ImportSurfaceToSegmentTest(ScriptedLoadableModuleTest):
+class IDAVLMConverterTest(ScriptedLoadableModuleTest):
   """
   This is the test case for your scripted module.
   Uses ScriptedLoadableModuleTest base class, available at:
@@ -222,9 +217,9 @@ class ImportSurfaceToSegmentTest(ScriptedLoadableModuleTest):
     """Run as few or as many tests as needed here.
     """
     self.setUp()
-    self.test_ImportSurfaceToSegment1()
+    self.test_IDAVLMConverter1()
 
-  def test_ImportSurfaceToSegment1(self):
+  def test_IDAVLMConverter1(self):
     """ Ideally you should have several levels of tests.  At the lowest level
     tests should exercise the functionality of the logic with different inputs
     (both valid and invalid).  At higher levels your tests should emulate the
@@ -248,6 +243,6 @@ class ImportSurfaceToSegmentTest(ScriptedLoadableModuleTest):
     self.delayDisplay('Finished with download and loading')
 
     volumeNode = slicer.util.getNode(pattern="FA")
-    logic = ImportSurfaceToSegmentLogic()
+    logic = IDAVLMConverterLogic()
     self.assertIsNotNone( logic.hasImageData(volumeNode) )
     self.delayDisplay('Test passed!')
