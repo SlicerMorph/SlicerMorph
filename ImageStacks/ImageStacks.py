@@ -73,9 +73,9 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget):
 
     buttonLayout = qt.QHBoxLayout()
     self.addByBrowsingButton = qt.QPushButton("Browse for files")
-    self.clearFilesButton = qt.QPushButton("Clear files")
+    self.clearButton = qt.QPushButton("Clear")
     buttonLayout.addWidget(self.addByBrowsingButton)
-    buttonLayout.addWidget(self.clearFilesButton)
+    buttonLayout.addWidget(self.clearButton)
     filesFormLayout.addRow(buttonLayout)
 
     self.propertiesLabel = qt.QLabel()
@@ -174,7 +174,7 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget):
 
     # connections
     self.addByBrowsingButton.connect('clicked()', self.addByBrowsing)
-    self.clearFilesButton.connect('clicked()', self.onClearFiles)
+    self.clearButton.connect('clicked()', self.onClear)
     self.archetypePathEdit.connect('currentPathChanged(QString)', self.validateInput)
     self.archetypePathEdit.connect('currentPathChanged(QString)', self.updateGUIFromArchetype)
     self.archetypeFormat.connect('textChanged(QString)', self.validateInput)
@@ -202,9 +202,10 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget):
     text = text[:-1]
     self.propertiesLabel.text = text
 
-  def onClearFiles(self):
+  def onClear(self):
     self.fileTable.model().clear()
     self.updateFileProperties({})
+    self.outputSelector.currentNodeID = ""
 
   def addByBrowsing(self):
     filePaths = qt.QFileDialog().getOpenFileNames()
