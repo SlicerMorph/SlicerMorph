@@ -61,6 +61,13 @@ class IDAVLMConverterWidget(ScriptedLoadableModuleWidget):
     self.inputFileSelector.filters  = ctk.ctkPathLineEdit().Files
     self.inputFileSelector.setToolTip( "Select landmark file for import" )
     parametersFormLayout.addRow("Select file containing landmark names and coordinates to load:", self.inputFileSelector)
+    
+    #
+    # output directory selector
+    #
+    self.outputDirectory = ctk.ctkDirectoryButton()
+    self.outputDirectory.directory = slicer.mrmlScene.GetCacheManager().GetRemoteCacheDirectory()
+    parametersFormLayout.addRow("Output Directory:", self.outputDirectory)
 
     #
     # Get header length
@@ -75,10 +82,10 @@ class IDAVLMConverterWidget(ScriptedLoadableModuleWidget):
     #
     # check box to trigger taking screen shots for later use in tutorials
     #
-    self.enableScreenshotsFlagCheckBox = qt.QCheckBox()
-    self.enableScreenshotsFlagCheckBox.checked = 0
-    self.enableScreenshotsFlagCheckBox.setToolTip("If checked, take screen shots for tutorials. Use Save Data to write them to disk.")
-    parametersFormLayout.addRow("Enable Screenshots", self.enableScreenshotsFlagCheckBox)
+    self.loadLandmarkNode = qt.QCheckBox()
+    self.loadLandmarkNode.checked = 0
+    self.loadLandmarkNode.setToolTip("After conversion, load landmarks into the scene.")
+    parametersFormLayout.addRow("Load landmarks into scene", self.loadLandmarkNode)
 
     #
     # Apply Button
@@ -107,8 +114,8 @@ class IDAVLMConverterWidget(ScriptedLoadableModuleWidget):
 
   def onApplyButton(self):
     logic = IDAVLMConverterLogic()
-    enableScreenshotsFlag = self.enableScreenshotsFlagCheckBox.checked
-    logic.run(self.inputFileSelector.currentPath, self.headerLengthWidget.value, enableScreenshotsFlag)
+    loadFileOption = self.loadLandmarkNode.checked
+    logic.run(self.inputFileSelector.currentPath, self.outputDirectory.directory, self.headerLengthWidget.value, loadFileOption)
 
 #
 # IDAVLMConverterLogic
@@ -151,43 +158,7 @@ class IDAVLMConverterLogic(ScriptedLoadableModuleLogic):
       return False
     return True
 
-  def takeScreenshot(self,name,description,type=-1):
-    # show the message even if not taking a screen shot
-    slicer.util.delayDisplay('Take screenshot: '+description+'.\nResult is available in the Annotations module.', 3000)
-
-    lm = slicer.app.layoutManager()
-    # switch on the type to get the requested window
-    widget = 0
-    if type == slicer.qMRMLScreenShotDialog.FullLayout:
-      # full layout
-      widget = lm.viewport()
-    elif type == slicer.qMRMLScreenShotDialog.ThreeD:
-      # just the 3D window
-      widget = lm.threeDWidget(0).threeDView()
-    elif type == slicer.qMRMLScreenShotDialog.Red:
-      # red slice window
-      widget = lm.sliceWidget("Red")
-    elif type == slicer.qMRMLScreenShotDialog.Yellow:
-      # yellow slice window
-      widget = lm.sliceWidget("Yellow")
-    elif type == slicer.qMRMLScreenShotDialog.Green:
-      # green slice window
-      widget = lm.sliceWidget("Green")
-    else:
-      # default to using the full window
-      widget = slicer.util.mainWindow()
-      # reset the type so that the node is set correctly
-      type = slicer.qMRMLScreenShotDialog.FullLayout
-
-    # grab and convert to vtk image data
-    qimage = ctk.ctkWidgetsUtils.grabWidget(widget)
-    imageData = vtk.vtkImageData()
-    slicer.qMRMLUtils().qImageToVtkImageData(qimage,imageData)
-
-    annotationLogic = slicer.modules.annotations.logic()
-    annotationLogic.CreateSnapShot(name, description, type, 1, imageData)
-
-  def run(self, landmarkFilePath, headerSize, enableScreenshots=0):
+  def run(self, landmarkFilePath, outputDirectory, headerSize, loadFileOption):
     """
     Run the actual algorithm
     """
@@ -219,10 +190,11 @@ class IDAVLMConverterLogic(ScriptedLoadableModuleLogic):
         fiducialNode.AddFiducialFromArray(coordinates, name)
       else:
         logging.debug("Error: not a supported landmark file format")
-
-    # Capture screenshot
-    if enableScreenshots:
-      self.takeScreenshot('IDAVLMConverterTest-Start','MyScreenshot',-1)
+    
+    outputPath = os.path.join(outputDirectory, landmarkFileBase + '.fcsv')
+    slicer.util.saveNode(fiducialNode, outputPath)
+    if not loadFileOption:
+      slicer.mrmlScene.RemoveNode(fiducialNode)  #remove node from scene
 
     logging.info('Processing completed')
 
