@@ -1,4 +1,5 @@
 import json
+import logging
 import math
 import os
 import unittest
@@ -319,28 +320,15 @@ class VolumePropertyAction(AnimatorAction):
     self.name = "Volume Property"
 
   def defaultAction(self):
-    startVolumeProperty = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLVolumePropertyNode')
-    startVolumeProperty.SetName('Start VolumeProperty')
-    endVolumeProperty = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLVolumePropertyNode')
-    endVolumeProperty.SetName('End VolumeProperty')
-    #
-    # TODO: what to do if volume rendering not yet set up
-    #
     volumeRenderingNode = slicer.mrmlScene.GetFirstNodeByName('VolumeRendering')
     if volumeRenderingNode is None:
-      volumeNode = slicer.mrmlScene.GetFirstNodeByClass('vtkMRMLScalarVolumeNode')
-      if volumeNode is None:
-          print("No volume node in the scene")
-          return
-      logic = slicer.modules.volumerendering.logic()
-      displayNode = logic.CreateVolumeRenderingDisplayNode()
-      slicer.mrmlScene.AddNode(displayNode)
-      displayNode.UnRegister(logic)
-      logic.UpdateDisplayNodeFromVolumeNode(displayNode, volumeNode)
-      volumeNode.AddAndObserveDisplayNodeID(displayNode.GetID())
-    volumeRenderingNode = slicer.mrmlScene.GetFirstNodeByName('VolumeRendering')
+      logging.error("Can't add VolumePropertyAction, no volume rendering node in the scene")
+      return
     animatedVolumeProperty = volumeRenderingNode.GetVolumePropertyNode()
-
+    startVolumeProperty = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLVolumePropertyNode')
+    startVolumeProperty.SetName(slicer.mrmlScene.GetUniqueNameByString('Start VolumeProperty'))
+    endVolumeProperty = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLVolumePropertyNode')
+    endVolumeProperty.SetName(slicer.mrmlScene.GetUniqueNameByString('End VolumeProperty'))
     startVolumeProperty.CopyParameterSet(animatedVolumeProperty)
     endVolumeProperty.CopyParameterSet(animatedVolumeProperty)
 
@@ -354,6 +342,8 @@ class VolumePropertyAction(AnimatorAction):
       'startVolumePropertyID': startVolumeProperty.GetID(),
       'endVolumePropertyID': endVolumeProperty.GetID(),
       'animatedVolumePropertyID': animatedVolumeProperty.GetID(),
+      'clampAtStart': True,
+      'clampAtEnd': True,
     }
     return(volumePropertyAction)
 
@@ -366,9 +356,11 @@ class VolumePropertyAction(AnimatorAction):
     # TODO: animated to animated
 
     if scriptTime <= action['startTime']:
-      animatedVolumeProperty.CopyParameterSet(startVolumeProperty)
+      if action['clampAtStart']:
+        animatedVolumeProperty.CopyParameterSet(startVolumeProperty)
     elif scriptTime >= action['endTime']:
-      animatedVolumeProperty.CopyParameterSet(endVolumeProperty)
+      if action['clampAtEnd']:
+        animatedVolumeProperty.CopyParameterSet(endVolumeProperty)
     else:
       actionTime = scriptTime - action['startTime']
       duration = action['endTime'] - action['startTime']
@@ -412,6 +404,7 @@ class VolumePropertyAction(AnimatorAction):
     self.startSelector.nodeTypes = ["vtkMRMLVolumePropertyNode"]
     self.startSelector.addEnabled = True
     self.startSelector.renameEnabled = True
+    self.startSelector.editEnabled = True
     self.startSelector.removeEnabled = False
     self.startSelector.noneEnabled = False
     self.startSelector.selectNodeUponCreation = True
@@ -422,10 +415,15 @@ class VolumePropertyAction(AnimatorAction):
     self.startSelector.currentNodeID = action['startVolumePropertyID']
     layout.addRow("Start VolumeProperty", self.startSelector)
 
+    self.startClampCheckbox = qt.QCheckBox()
+    self.startClampCheckbox.checked = action['clampAtStart']
+    layout.addRow("Clamp at start", self.startClampCheckbox)
+
     self.endSelector = slicer.qMRMLNodeComboBox()
     self.endSelector.nodeTypes = ["vtkMRMLVolumePropertyNode"]
     self.endSelector.addEnabled = True
     self.endSelector.renameEnabled = True
+    self.endSelector.editEnabled = True
     self.endSelector.removeEnabled = False
     self.endSelector.noneEnabled = False
     self.endSelector.selectNodeUponCreation = True
@@ -436,10 +434,15 @@ class VolumePropertyAction(AnimatorAction):
     self.endSelector.currentNodeID = action['endVolumePropertyID']
     layout.addRow("End VolumeProperty", self.endSelector)
 
+    self.endClampCheckbox = qt.QCheckBox()
+    self.endClampCheckbox.checked = action['clampAtEnd']
+    layout.addRow("Clamp at end", self.endClampCheckbox)
+
     self.animatedSelector = slicer.qMRMLNodeComboBox()
     self.animatedSelector.nodeTypes = ["vtkMRMLVolumePropertyNode"]
     self.animatedSelector.addEnabled = True
     self.animatedSelector.renameEnabled = True
+    self.animatedSelector.editEnabled = False
     self.animatedSelector.removeEnabled = False
     self.animatedSelector.noneEnabled = False
     self.animatedSelector.selectNodeUponCreation = True
@@ -454,6 +457,8 @@ class VolumePropertyAction(AnimatorAction):
     action['startVolumePropertyID'] = self.startSelector.currentNodeID
     action['endVolumePropertyID'] = self.endSelector.currentNodeID
     action['animatedVolumePropertyID'] = self.animatedSelector.currentNodeID
+    action['clampAtStart'] = self.startClampCheckbox.checked
+    action['clampAtEnd'] = self.endClampCheckbox.checked
 
 
 # add an module-specific dict for any module other to add animator plugins.
@@ -681,8 +686,9 @@ class AnimatorWidget(ScriptedLoadableModuleWidget):
     if animationNode:
       actionInstance = slicer.modules.animatorActionPlugins[actionName]()
       action = actionInstance.defaultAction()
-      self.logic.addAction(animationNode, action)
-      self.onSelect()
+      if action:
+        self.logic.addAction(animationNode, action)
+        self.onSelect()
 
   def selectExportFile(self):
     self.outputFileButton.text = qt.QFileDialog.getSaveFileName(
