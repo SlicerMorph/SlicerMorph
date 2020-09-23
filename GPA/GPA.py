@@ -170,7 +170,6 @@ class sliderGroup(qt.QGroupBox):
 class LMData:
   def __init__(self):
     self.lm=0
-    self.lmRaw=0
     self.lmOrig=0
     self.val=0
     self.vec=0
@@ -180,11 +179,34 @@ class LMData:
     self.shift=0
     self.centriodSize=0
 
+  def initializeFromDataFrame(self, outputData, meanShape, eigenVectors, eigenValues):
+    try:
+      self.centriodSize = outputData.centeroid.to_numpy()
+      self.centriodSize=self.centriodSize.reshape(-1,1)
+      LMHeaders = [name for name in outputData.columns if 'LM ' in name]
+      points = outputData[LMHeaders].to_numpy().transpose()
+      self.lm = points.reshape(int(points.shape[0]/3), 3, -1, order='F')
+      print(self.lm.shape)
+      self.lmOrig = self.lm
+      self.mShape = meanShape[['X','Y','Z']].to_numpy()
+      self.val = eigenValues.Scores.to_numpy()
+      vectors = [name for name in eigenVectors.columns if 'PC ' in name]
+      self.vec = eigenVectors[vectors].to_numpy()
+      print("lm shape", self.lm.shape)
+      print("mShape shape", self.mShape.shape)
+      self.procdist=gpa_lib.procDist(self.lm, self.mShape)
+      self.procdist=self.procdist.reshape(-1,1)
+      return 1
+    except:
+      print("Error loading results")
+      return 0
+    
+      
   def calcLMVariation(self, SampleScaleFactor, skipScalingCheckBox):
-    i,j,k=self.lmRaw.shape
+    i,j,k=self.lmOrig.shape
     varianceMat=np.zeros((i,j))
     for subject in range(k):
-      tmp=pow((self.lmRaw[:,:,subject]-self.mShape),2)
+      tmp=pow((self.lmOrig[:,:,subject]-self.mShape),2)
       varianceMat=varianceMat+tmp
     # if GPA scaling has been skipped, don't apply image size scaling factor
     if(skipScalingCheckBox):
@@ -194,15 +216,15 @@ class LMData:
     return varianceMat
 
   def doGpa(self,skipScalingCheckBox):
-    i,j,k=self.lmRaw.shape
+    i,j,k=self.lmOrig.shape
     self.centriodSize=np.zeros(k)
     for i in range(k):
-      self.centriodSize[i]=np.linalg.norm(self.lmRaw[:,:,i]-self.lmRaw[:,:,i].mean(axis=0))
+      self.centriodSize[i]=np.linalg.norm(self.lmOrig[:,:,i]-self.lmOrig[:,:,i].mean(axis=0))
     if skipScalingCheckBox:
       print("Skipping Scaling")
-      self.lm, self.mShape=gpa_lib.doGPANoScale(self.lmRaw)
+      self.lm, self.mShape=gpa_lib.doGPANoScale(self.lmOrig)
     else:
-      self.lm, self.mShape=gpa_lib.doGPA(self.lmRaw)
+      self.lm, self.mShape=gpa_lib.doGPA(self.lmOrig)
 
   def calcEigen(self):
     twoDim=gpa_lib.makeTwoDim(self.lm)
@@ -255,11 +277,13 @@ class LMData:
     np.savetxt(outputFolder+os.sep+"MeanShape.csv", temp, delimiter=",",fmt='%s')
 
     percentVar=self.val/self.val.sum()
+    print("lm shape", self.lm.shape)
+    print("mShape shape", self.mShape.shape)
     self.procdist=gpa_lib.procDist(self.lm, self.mShape)
     files=np.array(files)
     i=files.shape
     files=files.reshape(i[0],1)
-    k,j,i=self.lmRaw.shape
+    k,j,i=self.lmOrig.shape
 
     coords=gpa_lib.makeTwoDim(self.lm)
     self.procdist=self.procdist.reshape(i,1)
@@ -386,6 +410,14 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     except AttributeError:
       self.loadButton.enabled = False
 
+  def selectResultsDirectory(self):
+    self.resultsDirectory=qt.QFileDialog().getExistingDirectory()
+    self.resultsText.setText(self.resultsDirectory)
+    try:
+      self.loadResultsButton.enabled = bool (self.resultsDirectory)
+    except AttributeError:
+      self.loadResultsButton.enabled = False
+      
   def selectOutputDirectory(self):
     self.outputDirectory=qt.QFileDialog().getExistingDirectory()
     self.outText.setText(self.outputDirectory)
@@ -423,11 +455,120 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.vectorTwo.addItem(string)
       self.vectorThree.addItem(string)
 
+  
+  def onLoadFromFile(self):
+    self.initializeOnLoad() #clean up module from previous runs
+    logic = GPALogic()
+    import pandas
+    
+    # Load data
+    outputDataPath = os.path.join(self.resultsDirectory, 'OutputData.csv')
+    meanShapePath = os.path.join(self.resultsDirectory, 'MeanShape.csv')
+    eigenVectorPath = os.path.join(self.resultsDirectory, 'eigenvector.csv')
+    eigenValuePath = os.path.join(self.resultsDirectory, 'eigenvalues.csv')
+    eigenValueNames = ['Index', 'Scores']
+    try:
+      eigenValues = pandas.read_csv(eigenValuePath, names=eigenValueNames)
+      eigenVector = pandas.read_csv(eigenVectorPath)
+      meanShape = pandas.read_csv(meanShapePath)
+      outputData = pandas.read_csv(outputDataPath)
+    except:
+      logging.debug('Result import failed: Missing file')
+      return
+    
+    # Initialize variables
+    self.LM=LMData() 
+    success = self.LM.initializeFromDataFrame(outputData, meanShape, eigenVector, eigenValues)
+    if not success:
+      return
+      
+    self.files = outputData.Sample_name.tolist()
+    shape = self.LM.lmOrig.shape
+    print('Loaded ' + str(shape[2]) + ' subjects with ' + str(shape[0]) + ' landmark points.')
+    
+    # GPA parameters
+    self.pcNumber=25
+    self.updateList()
+    
+    # get mean landmarks as a fiducial node
+    self.meanLandmarkNode=slicer.mrmlScene.GetFirstNodeByName('Mean Landmark Node')
+    if self.meanLandmarkNode is None:
+      self.meanLandmarkNode = slicer.vtkMRMLMarkupsFiducialNode()
+      self.meanLandmarkNode.SetName('Mean Landmark Node')
+      slicer.mrmlScene.AddNode(self.meanLandmarkNode)
+      GPANodeCollection.AddItem(self.meanLandmarkNode)
+      modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
+      GPANodeCollection.AddItem(modelDisplayNode)
+      
+    #set scaling factor using mean of landmarks
+    self.rawMeanLandmarks = self.LM.lmOrig.mean(2)
+    logic = GPALogic()
+    self.sampleSizeScaleFactor = logic.dist2(self.rawMeanLandmarks).max()
+    print("Scale Factor: " + str(self.sampleSizeScaleFactor))
+    
+    # get mean landmarks as a fiducial node
+    self.meanLandmarkNode=slicer.mrmlScene.GetFirstNodeByName('Mean Landmark Node')
+    if self.meanLandmarkNode is None:
+      self.meanLandmarkNode = slicer.vtkMRMLMarkupsFiducialNode()
+      self.meanLandmarkNode.SetName('Mean Landmark Node')
+      slicer.mrmlScene.AddNode(self.meanLandmarkNode)
+      GPANodeCollection.AddItem(self.meanLandmarkNode)
+      modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
+      GPANodeCollection.AddItem(modelDisplayNode)
+      
+    for landmarkNumber in range (shape[0]):
+      name = str(landmarkNumber+1) #start numbering at 1
+      self.meanLandmarkNode.AddFiducialFromArray(self.rawMeanLandmarks[landmarkNumber,:], name)
+    self.meanLandmarkNode.SetDisplayVisibility(1) 
+    self.meanLandmarkNode.LockedOn() #lock position so when displayed they cannot be moved
+    #initialize mean LM display
+    self.scaleMeanGlyph()
+    self.toggleMeanColor()  
+    # Set up cloned mean landmark node for pc warping
+    shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+    itemIDToClone = shNode.GetItemByDataNode(self.meanLandmarkNode)
+    print(itemIDToClone)
+    clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(shNode, itemIDToClone)
+    self.copyLandmarkNode = shNode.GetItemDataNode(clonedItemID)
+    GPANodeCollection.AddItem(self.copyLandmarkNode)
+    self.copyLandmarkNode.SetName('PC Warped Landmarks')
+    self.copyLandmarkNode.SetDisplayVisibility(0)
+    
+    #set up procrustes distance plot
+    filename=self.LM.closestSample(self.files)
+    self.populateDistanceTable(self.files)
+    print("Closest sample to mean:" + filename)
+    
+    #Setup for scatter plots 
+    shape = self.LM.lm.shape
+    self.scatterDataAll= np.zeros(shape=(shape[2],self.pcNumber))    
+    for i in range(self.pcNumber):
+      data=gpa_lib.plotTanProj(self.LM.lm,i,1)
+      self.scatterDataAll[:,i] = data[:,0]
+
+    # Set up layout
+    self.assignLayoutDescription()
+    
+    #initialize mean LM display
+    self.scaleMeanGlyph()
+    self.toggleMeanColor()
+
+    # Enable buttons for workflow
+    self.plotButton.enabled = True
+    self.lolliButton.enabled = True
+    self.plotDistributionButton.enabled = True
+    self.plotMeanButton3D.enabled = True
+    self.showMeanLabelsButton.enabled = True
+    self.selectorButton.enabled = True
+    self.landmarkVisualizationType.enabled = True
+    self.modelVisualizationType.enabled = True
+       
   def onLoad(self):
     self.initializeOnLoad() #clean up module from previous runs
     logic = GPALogic()
+
     # get landmarks
-    self.LM=LMData()
+    self.LM=LMData()    
     lmToExclude=self.excludeLMText.text
     if len(lmToExclude) != 0:
       self.LMExclusionList=lmToExclude.split(",")
@@ -436,8 +577,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       lmNP=np.asarray(self.LMExclusionList)
     else:
       self.LMExclusionList=[]
+    
     self.LM.lmOrig, self.files = logic.mergeMatchs(self.LM_dir_name, self.LMExclusionList)
-    self.LM.lmRaw, self.files = logic.mergeMatchs(self.LM_dir_name, self.LMExclusionList)
+    print("orig", self.LM.lmOrig[0])
     shape = self.LM.lmOrig.shape
     print('Loaded ' + str(shape[2]) + ' subjects with ' + str(shape[0]) + ' landmark points.')
     
@@ -447,8 +589,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.pcNumber=25
     self.updateList()
     
-    #set scaling factor using mean of raw landmarks
-    self.rawMeanLandmarks = self.LM.lmRaw.mean(2)
+    #set scaling factor using mean of landmarks
+    self.rawMeanLandmarks = self.LM.lmOrig.mean(2)
     logic = GPALogic()
     self.sampleSizeScaleFactor = logic.dist2(self.rawMeanLandmarks).max()
     print("Scale Factor: " + str(self.sampleSizeScaleFactor))
@@ -468,9 +610,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.meanLandmarkNode.AddFiducialFromArray(self.rawMeanLandmarks[landmarkNumber,:], name)
     self.meanLandmarkNode.SetDisplayVisibility(1) 
     self.meanLandmarkNode.LockedOn() #lock position so when displayed they cannot be moved
-    #initialize mean LM display
-    self.scaleMeanGlyph()
-    self.toggleMeanColor()
 
     # Set up cloned mean landmark node for pc warping
     shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
@@ -504,7 +643,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     #initialize mean LM display
     self.scaleMeanGlyph()
     self.toggleMeanColor()
-    
+
     # Enable buttons for workflow
     self.plotButton.enabled = True
     self.lolliButton.enabled = True
@@ -793,7 +932,30 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.loadButton.toolTip = "Push to start the program. Make sure you have filled in all the data."
     self.loadButton.enabled = False
     self.loadButton.connect('clicked(bool)', self.onLoad)
-
+    
+    #Load from file option
+    loadFromFileCollapsibleButton = ctk.ctkCollapsibleButton()
+    loadFromFileCollapsibleButton.text = "Load previous analysis"
+    loadFromFileCollapsibleButton.collapsed = True
+    self.layout.addWidget(loadFromFileCollapsibleButton)
+    loadFromFileLayout = qt.QGridLayout(loadFromFileCollapsibleButton)
+    
+    #Select results folder
+    self.resultsText, resultsLabel, self.resultsButton=self.textIn('Results Directory','', '')
+    loadFromFileLayout.addWidget(self.resultsText,2,2)
+    loadFromFileLayout.addWidget(resultsLabel,2,1)
+    loadFromFileLayout.addWidget(self.resultsButton,2,3)
+    self.resultsButton.connect('clicked(bool)', self.selectResultsDirectory)
+    
+    #Load Results Button
+    self.loadResultsButton = qt.QPushButton("Load GPA + PCA Analysis from File")
+    self.loadResultsButton.checkable = True
+    self.loadResultsButton.setStyleSheet(self.StyleSheet)
+    loadFromFileLayout.addWidget(self.loadResultsButton,5,1,1,3)
+    self.loadResultsButton.toolTip = "Select previous analysis from file and restore."
+    self.loadResultsButton.enabled = False
+    self.loadResultsButton.connect('clicked(bool)', self.onLoadFromFile)
+    
     #Mean Shape display section
     meanShapeFrame = ctk.ctkCollapsibleButton()
     meanShapeFrame.text="Mean Shape Plot Options"
@@ -1224,6 +1386,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     #set mean landmark color and scale from GUI
     self.scaleMeanGlyph()
     self.toggleMeanColor()
+    visibility = self.meanLandmarkNode.GetDisplayNode().GetPointLabelsVisibility()
+    self.cloneLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(visibility)
+        
     if self.scaleMeanShapeSlider.value == 0:  # If the scale is set to 0, reset to default scale 
       self.scaleMeanShapeSlider.value = 3
      
@@ -1307,7 +1472,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       slicer.mrmlScene.RemoveNode(modelNode)
 
   def plotDistributionCloud(self):
-    i,j,k=self.LM.lmRaw.shape
+    self.unplotDistributions()
+    i,j,k=self.LM.lmOrig.shape
     pt=[0,0,0]
     #set up vtk point array for each landmark point
     points = vtk.vtkPoints()
@@ -1318,7 +1484,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     for subject in range(0,k):
       for landmark in range(0,i):
-        pt=self.LM.lmRaw[landmark,:,subject]
+        pt=self.LM.lmOrig[landmark,:,subject]
         points.SetPoint(pointCounter,pt)
         indexes.InsertNextValue(landmark+1)
         pointCounter+=1
@@ -1359,8 +1525,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     modelNode.SetAndObservePolyData(glyph.GetOutput())
 
   def plotDistributionGlyph(self, sliderScale):
+    self.unplotDistributions()
     varianceMat = self.LM.calcLMVariation(self.sampleSizeScaleFactor,self.skipScalingCheckBox.checked)
-    i,j,k=self.LM.lmRaw.shape
+    i,j,k=self.LM.lmOrig.shape
     pt=[0,0,0]
     #set up vtk point array for each landmark point
     points = vtk.vtkPoints()
@@ -1379,7 +1546,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     # get fiducial node for mean landmarks, make just labels visible
     self.meanLandmarkNode.SetDisplayVisibility(1)
     self.scaleMeanShapeSlider.value=0
-    print("No reference landmarks loaded. Plotting distributions at mean landmark points.")
     for landmark in range(i):
       pt=self.rawMeanLandmarks[landmark,:]
       points.SetPoint(landmark,pt)
@@ -1519,6 +1685,10 @@ class GPALogic(ScriptedLoadableModuleLogic):
     annotationLogic = slicer.modules.annotations.logic()
     annotationLogic.CreateSnapShot(name, description, type, 1, imageData)
 
+  def loadResultsFromFile(self, resultPath):
+    import pandas
+    data = pandas.read_csv(resultPath)
+    
   def mergeMatchs(self, topDir, lmToRemove, suffix=".fcsv"):
     # initial data array
     dirs, files, matchList = self.walk_dir_current(topDir)
