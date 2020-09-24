@@ -1684,10 +1684,6 @@ class GPALogic(ScriptedLoadableModuleLogic):
 
     annotationLogic = slicer.modules.annotations.logic()
     annotationLogic.CreateSnapShot(name, description, type, 1, imageData)
-
-  def loadResultsFromFile(self, resultPath):
-    import pandas
-    data = pandas.read_csv(resultPath)
     
   def mergeMatchs(self, topDir, lmToRemove, suffix=".fcsv"):
     # initial data array
