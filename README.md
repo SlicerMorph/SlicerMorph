@@ -57,12 +57,12 @@ We actively use SlicerMorph to teach a week-long intense [short course on 3D Mor
 
 
 ## Important Websites	
-*	SlicerMorph project website: https://www.SlicerMorph.org
+*	SlicerMorph project website: https://www.SlicerMorph.org (website has additional tutorial, pointers to specimen repositories, and list of upcoming events).
 *	Please sign up for the SlicerMorph announcement to keep up-to-date with SlicerMorph project and extension updates http://mailman11.u.washington.edu/mailman/listinfo/slicermorph-announcements
 * [Introduction to Slicer - Official Slicer Documentation](https://slicer.readthedocs.io/en/latest/user_guide/getting_started.html)
 * [Difference between Slicer and SlicerMorph](https://docs.google.com/document/d/1VdsYQzhjEh9tT5WQQjb1GUdn5Hmnq8cK3yLzjYeVv5M/edit)
+* [SlicerMorph YouTube Channel](https://www.youtube.com/channel/UCy3Uz1ikRH1B7WSMfaldcjQ): provides visual tutorials for GPA, semilandmarks, and others.
 *	Slicer Forum, https://discourse.slicer.org (alternatively you can use your github or google accounts to signup)
-* Official Slicer Documentation 
 
 ## Funding Acknowledgement
 This project is supported by a NSF Advances in Biological Informatics Collaborative grant to Murat Maga (ABI-1759883), Adam Summers (ABI-1759637) and Doug Boyer (ABI-1759839).
