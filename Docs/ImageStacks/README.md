@@ -14,7 +14,7 @@
 
 **Reverse:** If checked, it will reverse the ordering of files. This is useful to mitigate the mirror reflection problem of the specimens due to unknown nature of ordering (is it from top to bottom or bottom to top) of slices.
 
-## TUTORIAL
+### TUTORIAL
 Please see https://github.com/SlicerMorph/S_2020/blob/master/Day_1/ImageStacks/ImageStacks.md#imagestacks
 
 
