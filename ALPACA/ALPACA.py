@@ -393,7 +393,6 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     # Display target points
     self.targetModelNode = slicer.util.loadModel(self.targetModelSelector.currentPath)
     blue=[0,0,1]
-    self.targetModelNode.GetDisplayNode().SetColor(blue)
     
     # Display aligned source points
     self.sourceModelNode = slicer.util.loadModel(self.sourceModelSelector.currentPath)
@@ -450,6 +449,9 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       
     # Enable next step of analysis  
     self.displayWarpedModelButton.enabled = True
+    
+    # Update visualization
+    self.sourceModelNode.GetDisplayNode().SetVisibility(False)
         
   def onDisplayWarpedModel(self):    
     logic = ALPACALogic()
