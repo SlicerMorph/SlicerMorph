@@ -93,9 +93,9 @@ shortcuts = [
     ('Ctrl+n', lambda: setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpYellowSliceView)),
     ('Ctrl+m', lambda: setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpGreenSliceView)),
     ('Ctrl+,', lambda: setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutFourUpView)),
-    ('Ctrl+p', enterPlaceFiducial),
-    ('Ctrl+t', togglePlaceModePersistence),
-    ('Ctrl+l', toggleMarkupLocks),
+    ('p', enterPlaceFiducial),
+    ('t', togglePlaceModePersistence),
+    ('l', toggleMarkupLocks),
     ]
 
 for (shortcutKey, callback) in shortcuts:
