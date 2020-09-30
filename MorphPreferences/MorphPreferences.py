@@ -7,6 +7,7 @@ from slicer.ScriptedLoadableModule import *
 from SubjectHierarchyPlugins import AbstractScriptedSubjectHierarchyPlugin
 
 class MorphPreferences(ScriptedLoadableModule):
+
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
         parent.title = "SlicerMorph MorphPreferences Plugin"
@@ -19,26 +20,15 @@ class MorphPreferences(ScriptedLoadableModule):
         # register Settings panel and perform customizations
         #
         def onStartupCompleted():
-
             toBool = slicer.util.toBool
             key = "MorphPreferences/customize"
             customize = slicer.util.settingsValue(key, True, converter=toBool)
             if customize:
-              moduleDir = os.path.dirname(self.parent.path)
-              rcPath = os.path.join(moduleDir, 'Resources', 'SlicerMorphRC.py')
-              try:
-                exec(open(rcPath).read())
-              except Exception as e:
-                import traceback
-                traceback.print_exc()
-                errorMessage = "Error loading SlicerMorphRC.py\n\n" + str(e) + "\n\nSee Python Console for Stack Trace"
-                slicer.util.errorDisplay(errorMessage)
-              
-
+                MorphPreferences.loadRCFile(self.rcPath())
 
             if not slicer.app.commandOptions().noMainWindow:
               # add the settings options
-              self.settingsPanel = MorphPreferencesSettingsPanel()
+              self.settingsPanel = MorphPreferencesSettingsPanel(self.rcPath())
               slicer.app.settingsDialog().addPanel("SlicerMorph", self.settingsPanel)
 
             loadMorphPreferences = int(slicer.util.settingsValue('MorphPreferences/loadMorphPreferences', qt.QMessageBox.InvalidRole))
@@ -46,9 +36,23 @@ class MorphPreferences(ScriptedLoadableModule):
 
         slicer.app.connect("startupCompleted()", onStartupCompleted)
 
+    def rcPath(self):
+        moduleDir = os.path.dirname(self.parent.path)
+        return os.path.join(moduleDir, 'Resources', 'SlicerMorphRC.py')
+
+    @staticmethod
+    def loadRCFile(rcPath):
+      try:
+        exec(open(rcPath).read())
+      except Exception as e:
+        import traceback
+        traceback.print_exc()
+        errorMessage = "Error loading SlicerMorphRC.py\n\n" + str(e) + "\n\nSee Python Console for Stack Trace"
+        slicer.util.errorDisplay(errorMessage)
+
 
 class _ui_MorphPreferencesSettingsPanel(object):
-  def __init__(self, parent):
+  def __init__(self, parent, rcPath):
     vBoxLayout = qt.QVBoxLayout(parent)
     # Add generic settings
     genericGroupBox = ctk.ctkCollapsibleGroupBox()
@@ -63,9 +67,16 @@ class _ui_MorphPreferencesSettingsPanel(object):
     key = "MorphPreferences/customize"
     customize = slicer.util.settingsValue(key, True, converter=toBool)
     self.loadMorphPreferencesCheckBox.checked = customize
-
     genericGroupBoxFormLayout.addRow("Use SlicerMorph customizations:", self.loadMorphPreferencesCheckBox)
 
+    label = qt.QLabel(rcPath)
+    genericGroupBoxFormLayout.addRow("Customization file:", label)
+
+    loadNowButton = qt.QPushButton("Load now")
+    loadNowButton.toolTip = "Load the customization file now"
+    genericGroupBoxFormLayout.addRow("Customization file:", loadNowButton)
+
+    loadNowButton.connect("clicked()", lambda rcPath=rcPath: MorphPreferences.loadRCFile(rcPath))
     self.loadMorphPreferencesCheckBox.connect("toggled(bool)", self.onLoadMorphPreferencesCheckBoxToggled)
 
     vBoxLayout.addWidget(genericGroupBox)
@@ -76,7 +87,7 @@ class _ui_MorphPreferencesSettingsPanel(object):
 
 
 class MorphPreferencesSettingsPanel(ctk.ctkSettingsPanel):
-  def __init__(self, *args, **kwargs):
+  def __init__(self, rcPath, *args, **kwargs):
     ctk.ctkSettingsPanel.__init__(self, *args, **kwargs)
-    self.ui = _ui_MorphPreferencesSettingsPanel(self)
+    self.ui = _ui_MorphPreferencesSettingsPanel(self, rcPath)
 
