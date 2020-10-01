@@ -7,13 +7,13 @@ logging.info("Customizing with SlicerMorphRC.py")
 defaultVolumeStorageNode = slicer.vtkMRMLVolumeArchetypeStorageNode()
 defaultVolumeStorageNode.SetUseCompression(0)
 slicer.mrmlScene.AddDefaultNode(defaultVolumeStorageNode)
-logging.info("Volume nodes will be stored uncompressed by default")
+logging.info("  Volume nodes will be stored uncompressed by default")
 
 #set the default volume storage to not compress by default
 defaultVolumeStorageNode = slicer.vtkMRMLSegmentationStorageNode()
 defaultVolumeStorageNode.SetUseCompression(0)
 slicer.mrmlScene.AddDefaultNode(defaultVolumeStorageNode)
-logging.info("Segmentation nodes will be stored uncompressed")
+logging.info("  Segmentation nodes will be stored uncompressed")
 
 #set the default model save format to ply (from vtk)
 defaultModelStorageNode = slicer.vtkMRMLModelStorageNode()
@@ -62,11 +62,29 @@ def cycleEffect(delta=1):
         # module not active
         pass
 
+def cycleEffectForward():
+    cycleEffect(1)
+
+def cycleEffectBackward():
+    cycleEffect(-1)
+
 
 # change the main window layout
 
 def setLayout(layoutID):
     slicer.app.layoutManager().setLayout(layoutID)
+
+def setLayoutOneUpRedSliceView():
+    setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpRedSliceView)
+
+def setLayoutOneUpYellowSliceView():
+    setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpYellowSliceView)
+
+def setLayoutOneUpGreenSliceView():
+    setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpGreenSliceView)
+
+def setLayoutFourUpView():
+    setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutFourUpView)
 
 # operate on landmarks
 
@@ -82,17 +100,21 @@ def toggleMarkupLocks():
     selectionNode = slicer.mrmlScene.GetNodeByID("vtkMRMLSelectionNodeSingleton")
     placeNode = slicer.mrmlScene.GetNodeByID(selectionNode.GetActivePlaceNodeID())
     if placeNode:
-        placeNode.SetLocked(not placeNode.GetLocked())
+        wasLocked = placeNode.GetNthControlPointLocked(0)
+        wasModifying = placeNode.StartModify()
+        for index in range(placeNode.GetNumberOfControlPoints()):
+            placeNode.SetNthControlPointLocked(index, not wasLocked)
+        placeNode.EndModify(wasModifying)
 
 # setup shortcut keys
 
 shortcuts = [
-    ('`', lambda: cycleEffect(1)),
-    ('~', lambda: cycleEffect(-1)),
-    ('Ctrl+b', lambda: setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpRedSliceView)),
-    ('Ctrl+n', lambda: setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpYellowSliceView)),
-    ('Ctrl+m', lambda: setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpGreenSliceView)),
-    ('Ctrl+,', lambda: setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutFourUpView)),
+    ('`', cycleEffectForward),
+    ('~', cycleEffectBackward),
+    ('b', setLayoutOneUpRedSliceView),
+    ('n', setLayoutOneUpYellowSliceView),
+    ('m', setLayoutOneUpGreenSliceView),
+    (',', setLayoutFourUpView),
     ('p', enterPlaceFiducial),
     ('t', togglePlaceModePersistence),
     ('l', toggleMarkupLocks),
@@ -103,6 +125,6 @@ for (shortcutKey, callback) in shortcuts:
     shortcut.setKey(qt.QKeySequence(shortcutKey))
     if not shortcut.connect( 'activated()', callback):
         print(f"Couldn't set up {shortcutKey}")
-
+logging.info(f"  {len(shortcuts)} keyboard shortcuts installed")
 
 logging.info("Done customizing with SlicerMorphRC.py")
