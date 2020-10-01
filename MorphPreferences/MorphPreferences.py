@@ -43,7 +43,7 @@ class MorphPreferences(ScriptedLoadableModule):
     @staticmethod
     def loadRCFile(rcPath):
       try:
-        exec(open(rcPath).read())
+        exec(open(rcPath).read(), globals())
       except Exception as e:
         import traceback
         traceback.print_exc()
