@@ -9,7 +9,7 @@ Start with loading the 3D volume to be rendered into Slicer, and [enable the Vol
 **Animation Node:** Default blank, choose to create _New Animation_\
 
 
-**ACTIONS**
+**ACTIONS**\
 **Add Action:** There are three possibilities:
 
   * **CameraRotationAction:** User needs to choose the rotation speed (degrees per second), and the axis of rotation (yaw, pitch or roll). 
