@@ -105,6 +105,20 @@ class PseudoLMGeneratorWidget(ScriptedLoadableModuleWidget):
     templateFormLayout.addRow("Original Geometry", self.OriginalType)
     templateFormLayout.addRow("Ellipse", self.EllipseType)
     templateFormLayout.addRow("Sphere", self.SphereType)
+
+    #
+    # Specify plane of symmetry
+    #
+    self.planeSelector = slicer.qMRMLNodeComboBox()
+    self.planeSelector.nodeTypes = ( ("vtkMRMLMarkupsPlaneNode"), "" )
+    self.planeSelector.enabled = True
+    self.planeSelector.selectNodeUponCreation = False
+    self.planeSelector.addEnabled = False
+    self.planeSelector.removeEnabled = False
+    self.planeSelector.noneEnabled = True
+    self.planeSelector.showHidden = False
+    self.planeSelector.setMRMLScene( slicer.mrmlScene )
+    templateFormLayout.addRow("Symmetry plane: ", self.planeSelector)
     
     #
     # Set template scale factor
@@ -197,17 +211,23 @@ class PseudoLMGeneratorWidget(ScriptedLoadableModuleWidget):
   
   def onToggleModel(self):
     self.scaleFactor.enabled = bool(self.OriginalType.isChecked()) is False
-      
+  
   def onGetPointNumberButton(self):
     logic = PseudoLMGeneratorLogic()
     spacingPercentage = self.spacingTolerance.value/100
     scaleFactor = self.scaleFactor.value/100
     if self.EllipseType.isChecked():
-      self.templatePolyData = logic.generateEllipseTemplate(self.modelSelector.currentNode(), spacingPercentage, scaleFactor)
+      template = logic.generateEllipseTemplate(self.modelSelector.currentNode(), spacingPercentage, scaleFactor)
     elif self.SphereType.isChecked():
-      self.templatePolyData = logic.generateSphereTemplate(self.modelSelector.currentNode(), spacingPercentage, scaleFactor)
+      template = logic.generateSphereTemplate(self.modelSelector.currentNode(), spacingPercentage, scaleFactor)
     else: 
-      self.templatePolyData = logic.generateOriginalGeometryTemplate(self.modelSelector.currentNode(), spacingPercentage)
+      template = logic.generateOriginalGeometryTemplate(self.modelSelector.currentNode(), spacingPercentage)
+    
+    #if (self.planeSelector.currentNode() is not None):
+      #self.templatePolyData = logic.cropWithPlane(template, self.planeSelector.currentNode())
+    #else:
+      
+    self.templatePolyData = template
       
     self.subsampleInfo.insertPlainText(f'The subsampled template has a total of {self.templatePolyData.GetNumberOfPoints()} points. \n')
     
@@ -218,12 +238,7 @@ class PseudoLMGeneratorWidget(ScriptedLoadableModuleWidget):
     logic = PseudoLMGeneratorLogic()
     # set up MRML node for sphere polyData and visualize
     self.templateNode = logic.addTemplateToScene(self.templatePolyData)
-    #self.templateLMNode = logic.getTemplateLandmarks(self.templatePolyData)
-    
-    # update visualization
-    #self.templateLMNode.GetDisplayNode().SetPointLabelsVisibility(False)
-   # blue=[0,0,1]
-    #self.templateLMNode.GetDisplayNode().SetSelectedColor(blue)
+
     # enable next step
     self.projectPointsButton.enabled = True
       
@@ -231,40 +246,45 @@ class PseudoLMGeneratorWidget(ScriptedLoadableModuleWidget):
     logic = PseudoLMGeneratorLogic()
     isOriginalGeometry = self.OriginalType.isChecked()
     maxProjection = self.projectionFactor.value/100
+    projectionModel = self.modelSelector.currentNode().GetPolyData()
     if isOriginalGeometry:
-      self.projectedLM = logic.runPointProjection(self.modelSelector.currentNode(), self.modelSelector.currentNode(), self.templateNode.GetPolyData().GetPoints(), maxProjection, isOriginalGeometry)
-    else:    
-      self.projectedLM = logic.runPointProjection(self.templateNode, self.modelSelector.currentNode(), self.templateNode.GetPolyData().GetPoints(), maxProjection, isOriginalGeometry)
-    
-    if self.projectedLM.GetNumberOfFiducials() == self.templateNode.GetPolyData().GetNumberOfPoints():
-      # update visualization
-      #self.templateLMNode.SetDisplayVisibility(False)
-      self.templateNode.SetDisplayVisibility(False)
-      self.projectedLM.GetDisplayNode().SetPointLabelsVisibility(False)
-      red=[1,0,0]
-      self.projectedLM.GetDisplayNode().SetSelectedColor(red) 
-    
-      # enable next step
-      self.cleanButton.enabled = True
+      projectionTemplate = projectionModel
     else:
-      print("Error: projected point number does not match template point number")
-      self.cleanButton.enabled = False
+      projectionTemplate = self.templateNode.GetPolyData()
+      
+    self.projectedLM = logic.runPointProjection(projectionTemplate, projectionModel, self.templateNode.GetPolyData().GetPoints(), maxProjection, isOriginalGeometry, self.planeSelector.currentNode())
+ 
+    # update visualization
+    self.templateNode.SetDisplayVisibility(False)
+    self.projectedLM.SetDisplayVisibility(True)
+    self.projectedLM.GetDisplayNode().SetPointLabelsVisibility(False)
+    red=[1,0,0]
+    self.projectedLM.GetDisplayNode().SetSelectedColor(red) 
+    
+    # enable next step
+    self.cleanButton.enabled = True
     
   def onCleanButton(self):
     logic = PseudoLMGeneratorLogic()
     spacingPercentage = self.spacingTolerance.value/100
-    self.sphericalSemiLandmarks = logic.runCleaning(self.projectedLM, self.templateNode, spacingPercentage)
+    self.sphericalSemiLandmarks = logic.runCleaningFast(self.projectedLM, self.templateNode, spacingPercentage)
     
     # update visualization
-    self.projectedLM.SetDisplayVisibility(False)
     for i in range(self.sphericalSemiLandmarks.GetNumberOfFiducials()):
       self.sphericalSemiLandmarks.SetNthFiducialLocked(i,True)
+    
     self.sphericalSemiLandmarks.GetDisplayNode().SetPointLabelsVisibility(False)
     green=[0,1,0]
     self.sphericalSemiLandmarks.GetDisplayNode().SetSelectedColor(green)
+    self.projectedLM.SetDisplayVisibility(False)
   
     #confirm number of cleaned points is in the expected range
     self.subsampleInfo.insertPlainText(f'After filtering there are {self.sphericalSemiLandmarks.GetNumberOfFiducials()} semi-landmark points. \n')
+    
+    if self.planeSelector.currentNode() is not None:
+      print("Symmetrizing points")
+      logic.symmetrizeLandmarks(self.modelSelector.currentNode(), self.sphericalSemiLandmarks, self.planeSelector.currentNode(), spacingPercentage)
+
 #
 # PseudoLMGeneratorLogic
 #
@@ -278,13 +298,14 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
     Uses ScriptedLoadableModuleLogic base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
-  def runCleaningOriginalGeometry(self, projectedLM, sphere, spacingPercentage): 
+  def runCleaningPointCloud(self, projectedLM, sphere, spacingPercentage): 
     # Convert projected surface points to a VTK array for transform
     p=[0,0,0]
     targetPoints = vtk.vtkPoints()
     for i in range(projectedLM.GetNumberOfFiducials()):
       projectedLM.GetMarkupPoint(0,i,p)
       targetPoints.InsertNextPoint(p)
+      print("inserting vtk point: ", p)
       
     pointPD=vtk.vtkPolyData()
     pointPD.SetPoints(targetPoints)
@@ -292,7 +313,7 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
     glyphFilter=vtk.vtkGlyph3D()
     glyphFilter.SetInputData(pointPD)
     glyphFilter.Update()
-    glyphPD = glyph.GetOutput()
+    glyphPD = glyphFilter.GetOutput()
 
     cleanFilter=vtk.vtkCleanPolyData()
     cleanFilter.SetTolerance(spacingPercentage)
@@ -301,12 +322,42 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
     outputPoints = cleanFilter.GetOutput()
 
     sphereSampleLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"sphericalSampledLandmarks")
+    sphereSampleLMNode.CreateDefaultDisplayNodes()
     for i in range(outputPoints.GetNumberOfPoints()):
       point = outputPoints.GetPoint(i)
       sphereSampleLMNode.AddFiducialFromArray(point)
+      print("inserting fiducial point: ", p)
     
     return sphereSampleLMNode
       
+  def runCleaningFast(self, projectedLM, sphere, spacingPercentage):    
+    # Convert projected surface points to a VTK array for transform
+    p=[0,0,0]
+    targetPoints = vtk.vtkPoints()
+    for i in range(projectedLM.GetNumberOfFiducials()):
+      projectedLM.GetMarkupPoint(0,i,p)
+      targetPoints.InsertNextPoint(p)
+    
+    templateData = sphere.GetPolyData()
+    templateData.SetPoints(targetPoints)
+      
+    # Clean up semi-landmarks within radius
+    filter=vtk.vtkCleanPolyData()
+    filter.SetToleranceIsAbsolute(False)
+    filter.SetTolerance(spacingPercentage/2)
+    filter.SetInputData(templateData)
+    filter.Update()
+    cleanPolyData=filter.GetOutput()
+    
+    # Create a landmark node from the cleaned polyData
+    sphereSampleLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"sphericalSampledLandmarks")
+    sphereSampleLMNode.CreateDefaultDisplayNodes()
+    for i in range(cleanPolyData.GetNumberOfPoints()):
+      point = cleanPolyData.GetPoint(i)
+      sphereSampleLMNode.AddFiducialFromArray(point)
+      
+    return sphereSampleLMNode
+  
   def runCleaning(self, projectedLM, sphere, spacingPercentage):    
     # Convert projected surface points to a VTK array for transform
     p=[0,0,0]
@@ -338,17 +389,20 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
     
     # Create a landmark node from the cleaned polyData
     sphereSampleLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"sphericalSampledLandmarks")
+    sphereSampleLMNode.CreateDefaultDisplayNodes()
     for i in range(cleanPolyData.GetNumberOfPoints()):
       point = cleanPolyData.GetPoint(i)
       sphereSampleLMNode.AddFiducialFromArray(point)
     
     return sphereSampleLMNode
     
-  def runPointProjection(self, sphere, model, spherePoints, maxProjectionFactor, isOriginalGeometry):
-    maxProjection = (model.GetPolyData().GetLength()) * maxProjectionFactor
+  def runPointProjection(self, sphere, model, spherePoints, maxProjectionFactor, isOriginalGeometry, symmetryPlane=None):
+    maxProjection = (model.GetLength()) * maxProjectionFactor
+    print('max projection: ', maxProjection)
     # project landmarks from template to model
-    projectedPoints = self.projectPointsPolydata(sphere.GetPolyData(), model.GetPolyData(), spherePoints, maxProjection)
+    projectedPoints = self.projectPointsPolydata(sphere, model, spherePoints, maxProjection)     
     projectedLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"projectedLM")
+    projectedLMNode.CreateDefaultDisplayNodes()
     if(isOriginalGeometry):
       for i in range(projectedPoints.GetNumberOfPoints()):
         point = projectedPoints.GetPoint(i)
@@ -356,14 +410,13 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
       return projectedLMNode
     else:    
       #project landmarks from model to model external surface
-      projectedPointsExternal = self.projectPointsPolydata(model.GetPolyData(), model.GetPolyData(), projectedPoints, maxProjection)
+      projectedPointsExternal = self.projectPointsPolydata(model, model, projectedPoints, maxProjection)
       for i in range(projectedPointsExternal.GetNumberOfPoints()):
         point = projectedPointsExternal.GetPoint(i)
         projectedLMNode.AddFiducialFromArray(point)
       return projectedLMNode
   
   def projectPointsPolydata(self, sourcePolydata, targetPolydata, originalPoints, rayLength):
-    print("original points: ", originalPoints.GetNumberOfPoints())
     #set up polydata for projected points to return
     projectedPointData = vtk.vtkPolyData()
     projectedPoints = vtk.vtkPoints()
@@ -396,6 +449,7 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
       if(not normalArray):
         print("Error: no normal array")
         return projectedPointData
+    print('Original points:', originalPoints.GetNumberOfPoints() )
     for index in range(originalPoints.GetNumberOfPoints()):
       originalPoint= originalPoints.GetPoint(index)
       # get ray direction from closest normal
@@ -424,10 +478,12 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
           closestPointId = targetPointLocator.FindClosestPoint(originalPoint)
           rayOrigin = targetPolydata.GetPoint(closestPointId)
           projectedPoints.InsertNextPoint(rayOrigin)
+    print('Projected points:', originalPoints.GetNumberOfPoints() )
     return projectedPointData
        
   def getTemplateLandmarks(self, spherePolyData):
     semiLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"templatePoints")
+    semiLMNode.CreateDefaultDisplayNodes()
     for i in range(spherePolyData.GetNumberOfPoints()):
       point = spherePolyData.GetPoint(i)
       semiLMNode.AddFiducialFromArray(point)
@@ -436,6 +492,7 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
   
   def addTemplateToScene(self, spherePolyData):
     sphereNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode',"templateModel")
+    sphereNode.CreateDefaultDisplayNodes()
     sphereNode.SetAndObservePolyData(spherePolyData)
     sphereNode.CreateDefaultDisplayNodes()
     sphereNode.GetDisplayNode().SetRepresentation(1)
@@ -514,43 +571,183 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
     
     return cleanFilter.GetOutput() 
         
-  def takeScreenshot(self,name,description,type=-1):
-    # show the message even if not taking a screen shot
-    slicer.util.delayDisplay('Take screenshot: '+description+'.\nResult is available in the Annotations module.', 3000)
+  def cropWithPlane(self, inputData, plane, insideOutOption=False):
+    normal=[0,0,0]
+    origin=[0,0,0]  
+    plane.GetNormalWorld(normal)
+    plane.GetOriginWorld(origin)
     
-    lm = slicer.app.layoutManager()
-    # switch on the type to get the requested window
-    widget = 0
-    if type == slicer.qMRMLScreenShotDialog.FullLayout:
-      # full layout
-      widget = lm.viewport()
-    elif type == slicer.qMRMLScreenShotDialog.ThreeD:
-      # just the 3D window
-      widget = lm.threeDWidget(0).threeDView()
-    elif type == slicer.qMRMLScreenShotDialog.Red:
-      # red slice window
-      widget = lm.sliceWidget("Red")
-    elif type == slicer.qMRMLScreenShotDialog.Yellow:
-      # yellow slice window
-      widget = lm.sliceWidget("Yellow")
-    elif type == slicer.qMRMLScreenShotDialog.Green:
-      # green slice window
-      widget = lm.sliceWidget("Green")
-    else:
-      # default to using the full window
-      widget = slicer.util.mainWindow()
-      # reset the type so that the node is set correctly
-      type = slicer.qMRMLScreenShotDialog.FullLayout
+    vtkPlane = vtk.vtkPlane()
+    vtkPlane.SetOrigin(origin)
+    vtkPlane.SetNormal(normal)
+    clipper = vtk.vtkClipPolyData()
+    clipper.SetClipFunction(vtkPlane)
+    clipper.SetInputData(inputData)
+    clipper.SetInsideOut(insideOutOption)
+    clipper.Update()
+    return clipper.GetOutput()
     
-    # grab and convert to vtk image data
-    qimage = ctk.ctkWidgetsUtils.grabWidget(widget)
-    imageData = vtk.vtkImageData()
-    slicer.qMRMLUtils().qImageToVtkImageData(qimage,imageData)
+  def createSymmetry(self, inputData, plane):  
+    normal=[0,0,0]
+    origin=[0,0,0]  
+    plane.GetNormalWorld(normal)
+    plane.GetOriginWorld(origin)
+      
+    vtkPlane = vtk.vtkPlane()
+    vtkPlane.SetOrigin(origin)
+    vtkPlane.SetNormal(normal)
+    clipper = vtk.vtkClipPolyData()
+    clipper.SetClipFunction(vtkPlane)
+    clipper.SetInputData(inputData)
+    clipper.Update()
+    return cleanFilter.GetOutput()
     
-    annotationLogic = slicer.modules.annotations.logic()
-    annotationLogic.CreateSnapShot(name, description, type, 1, imageData)
+    mirrorMatrix = vtk.vtkMatrix4x4()
+    mirrorMatrix.SetElement(0, 0, 1 - 2 * normal[0] * normal[0])
+    mirrorMatrix.SetElement(0, 1, - 2 * normal[0] * normal[1])
+    mirrorMatrix.SetElement(0, 2, - 2 * normal[0] * normal[2])
+    mirrorMatrix.SetElement(1, 0, - 2 * normal[0] * normal[1])
+    mirrorMatrix.SetElement(1, 1, 1 - 2 * normal[1] * normal[1])
+    mirrorMatrix.SetElement(1, 2, - 2 * normal[1] * normal[2])
+    mirrorMatrix.SetElement(2, 0, - 2 * normal[0] * normal[2])
+    mirrorMatrix.SetElement(2, 1, - 2 * normal[1] * normal[2])
+    mirrorMatrix.SetElement(2, 2, 1 - 2 * normal[2] * normal[2])
+    
+    translateWorldToPlane = [0,0,0] 
+    vtk.vtkMath.Add(translateWorldToPlane, origin, translateWorldToPlane)
+    translatePlaneOToWorld = [0,0,0]
+    vtk.vtkMath.Add(translatePlaneOToWorld, origin, translatePlaneOToWorld)
+    vtk.vtkMath.MultiplyScalar(translatePlaneOToWorld ,-1)
+    
+    mirrorTransform = vtk.vtkTransform()
+    mirrorTransform.SetMatrix(mirrorMatrix)
+    mirrorTransform.PostMultiply()
+    mirrorTransform.Identity()
+    mirrorTransform.Translate(translatePlaneOToWorld)
+    mirrorTransform.Concatenate(mirrorMatrix)
+    mirrorTransform.Translate(translateWorldToPlane)
+    mirrorFilter = vtk.vtkTransformFilter()
+    mirrorFilter.SetTransform(mirrorTransform)
+    mirrorFilter.SetInputConnection(clipper.GetOutputPort())
+    
+    reverseNormalFilter = vtk.vtkReverseSense()
+    reverseNormalFilter.SetInputConnection(mirrorFilter.GetOutputPort())
+    reverseNormalFilter.Update()
+    
+    appendFilter = vtk.vtkAppendPolyData()
+    appendFilter.AddInputData(clipper.GetOutput())
+    appendFilter.AddInputData(reverseNormalFilter.GetOutput())
+    
+    cleanFilter = vtk.vtkCleanPolyData()
+    cleanFilter.SetInputConnection(appendFilter.GetOutputPort())
+    cleanFilter.Update()
+    return cleanFilter.GetOutput()
+    
+  def clipAndMirrorWithPlane(self, inputData, plane):  
+    normal=[0,0,0]
+    origin=[0,0,0]  
+    plane.GetNormalWorld(normal)
+    plane.GetOriginWorld(origin)
+      
+    vtkPlane = vtk.vtkPlane()
+    vtkPlane.SetOrigin(origin)
+    vtkPlane.SetNormal(normal)
+    clipper = vtk.vtkClipPolyData()
+    clipper.SetClipFunction(vtkPlane)
+    clipper.SetInputData(inputData)
+    clipper.Update()
+    
+    mirrorMatrix = vtk.vtkMatrix4x4()
+    mirrorMatrix.SetElement(0, 0, 1 - 2 * normal[0] * normal[0])
+    mirrorMatrix.SetElement(0, 1, - 2 * normal[0] * normal[1])
+    mirrorMatrix.SetElement(0, 2, - 2 * normal[0] * normal[2])
+    mirrorMatrix.SetElement(1, 0, - 2 * normal[0] * normal[1])
+    mirrorMatrix.SetElement(1, 1, 1 - 2 * normal[1] * normal[1])
+    mirrorMatrix.SetElement(1, 2, - 2 * normal[1] * normal[2])
+    mirrorMatrix.SetElement(2, 0, - 2 * normal[0] * normal[2])
+    mirrorMatrix.SetElement(2, 1, - 2 * normal[1] * normal[2])
+    mirrorMatrix.SetElement(2, 2, 1 - 2 * normal[2] * normal[2])
+    
+    translateWorldToPlane = [0,0,0] 
+    vtk.vtkMath.Add(translateWorldToPlane, origin, translateWorldToPlane)
+    translatePlaneOToWorld = [0,0,0]
+    vtk.vtkMath.Add(translatePlaneOToWorld, origin, translatePlaneOToWorld)
+    vtk.vtkMath.MultiplyScalar(translatePlaneOToWorld ,-1)
+    
+    mirrorTransform = vtk.vtkTransform()
+    mirrorTransform.SetMatrix(mirrorMatrix)
+    mirrorTransform.PostMultiply()
+    mirrorTransform.Identity()
+    mirrorTransform.Translate(translatePlaneOToWorld)
+    mirrorTransform.Concatenate(mirrorMatrix)
+    mirrorTransform.Translate(translateWorldToPlane)
+    mirrorFilter = vtk.vtkTransformFilter()
+    mirrorFilter.SetTransform(mirrorTransform)
+    mirrorFilter.SetInputConnection(clipper.GetOutputPort())
+    
+    reverseNormalFilter = vtk.vtkReverseSense()
+    reverseNormalFilter.SetInputConnection(mirrorFilter.GetOutputPort())
+    reverseNormalFilter.Update()
 
-
+    return reverseNormalFilter.GetOutput()
+    
+  def symmetrizeLandmarks(self, meshNode, landmarkNode, plane, samplingPercentage):
+    # clip and mirror mesh and points
+    pointsVTK = vtk.vtkPoints()
+    pointPolyData = vtk.vtkPolyData()
+    pointPolyData.SetPoints(pointsVTK)
+    mesh = meshNode.GetPolyData()
+    for i in range(landmarkNode.GetNumberOfFiducials()):
+      pointsVTK.InsertNextPoint(landmarkNode.GetNthControlPointPositionVector(i))  
+    geometryFilter = vtk.vtkVertexGlyphFilter()
+    geometryFilter.SetInputData(pointPolyData)
+    geometryFilter.Update()
+    vertPolyData = geometryFilter.GetOutput()
+    mirrorPoints = self.clipAndMirrorWithPlane(vertPolyData, plane)
+    mirrorMesh = self.clipAndMirrorWithPlane(mesh, plane)
+    # get clipped point set
+    clippedPoints = self.cropWithPlane(vertPolyData, plane)
+    clippedLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"symmetricLM1")
+    for i in range(clippedPoints.GetNumberOfPoints()):
+      clippedLMNode.AddFiducialFromArray(clippedPoints.GetPoint(i))
+    insideOutOption = True
+    clippedMesh = self.cropWithPlane(mesh, plane, insideOutOption)
+    
+    # project mirrored points onto mesh
+    maxProjection = mesh.GetLength()*.3
+    projectedPoints = self.projectPointsPolydata(mirrorMesh, clippedMesh, mirrorPoints, maxProjection)
+    
+    # convert symmetric points to landmark node
+    clippedLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"LM_normal")
+    clippedLMNode.CreateDefaultDisplayNodes()
+    projectedLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"LM_inverse")
+    projectedLMNode.CreateDefaultDisplayNodes()
+    midlineLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"LM_merged")
+    midlineLMNode.CreateDefaultDisplayNodes()
+    totalLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"LM_total")
+    totalLMNode.CreateDefaultDisplayNodes()
+    
+    samplingDistance = mesh.GetLength()*samplingPercentage
+    spatialConstraint = samplingDistance*samplingDistance
+    mergedPoint = [0,0,0]
+    for i in range(projectedPoints.GetNumberOfPoints()):
+      clippedPoint = clippedPoints.GetPoint(i)
+      projectedPoint = projectedPoints.GetPoint(i)
+      distance = vtk.vtkMath().Distance2BetweenPoints(clippedPoint, projectedPoint)
+      if distance > spatialConstraint:
+        clippedLMNode.AddFiducialFromArray(clippedPoint, 'n_'+str(i))
+        projectedLMNode.AddFiducialFromArray(projectedPoint, 'i_'+str(i))
+        totalLMNode.AddFiducialFromArray(clippedPoint, 'n_'+str(i))
+        totalLMNode.AddFiducialFromArray(projectedPoint, 'i_'+str(i))
+      else:
+        mergedPoint[0] = (clippedPoint[0]+projectedPoint[0])/2
+        mergedPoint[1] = (clippedPoint[1]+projectedPoint[1])/2
+        mergedPoint[2] = (clippedPoint[2]+projectedPoint[2])/2
+        totalLMNode.AddFiducialFromArray(mergedPoint, 'm_'+str(i))
+        midlineLMNode.AddFiducialFromArray(mergedPoint, 'm_'+str(i))
+        
+    return projectedLMNode
+    
 class PseudoLMGeneratorTest(ScriptedLoadableModuleTest):
   """
     This is the test case for your scripted module.
@@ -603,6 +800,3 @@ class PseudoLMGeneratorTest(ScriptedLoadableModuleTest):
     logic = PseudoLMGeneratorLogic()
     self.assertIsNotNone( logic.hasImageData(volumeNode) )
     self.delayDisplay('Test passed!')
-
-
-
