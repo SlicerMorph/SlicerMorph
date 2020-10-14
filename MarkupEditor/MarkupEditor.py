@@ -268,7 +268,12 @@ class MarkupEditorLogic(ScriptedLoadableModuleLogic):
 
     layoutManager = slicer.app.layoutManager()
     threeDWidget = layoutManager.viewWidget(viewNode)
+    threeDView = threeDWidget.threeDView()
     aspectRatio = threeDWidget.width / threeDWidget.height
+    className = "vtkMRMLMarkupsDisplayableManager"
+    markupsDisplayableManager = threeDView.displayableManagerByClassName(className)
+    fiducialsWidget =  markupsDisplayableManager.GetWidget(fiducialsNode.GetDisplayNode())
+    fiducialsRepresentation =  fiducialsWidget.GetRepresentation()
 
     cameraNode = slicer.modules.cameras.logic().GetViewActiveCameraNode(viewNode)
     camera = cameraNode.GetCamera()
@@ -315,7 +320,12 @@ class MarkupEditorLogic(ScriptedLoadableModuleLogic):
         slicer.modules.label.setPixmap(pixmap)
         slicer.modules.label.show()
 
+    visibleCount = 0
+    pickedCount = 0
     for index in range(fiducialsNode.GetNumberOfControlPoints()):
+      pointVisible = fiducialsRepresentation.GetNthControlPointViewVisibility(index)
+      if pointVisible:
+        visibleCount += 1
       ras = [0]*3
       fiducialsNode.GetNthControlPointPositionWorld(index, ras)
       column, row = rasToColumnRow(ras)
@@ -323,13 +333,18 @@ class MarkupEditorLogic(ScriptedLoadableModuleLogic):
               and row >= 0 and row < pickImage.height):
           pickColor = pickImage.pixelColor(column, row)
           picked = (pickColor != backgroundColor)
+          if picked:
+            pickedCount += 1
           if selectOption == "set":
-            fiducialsNode.SetNthControlPointSelected(index, picked)
+            if pointVisible:
+              fiducialsNode.SetNthControlPointSelected(index, picked)
+            else:
+              fiducialsNode.SetNthControlPointSelected(index, False)
           elif selectOption == "add":
-            if picked:
+            if picked and pointVisible:
               fiducialsNode.SetNthControlPointSelected(index, True)
           elif selectOption == "unset":
-            if picked:
+            if picked and pointVisible:
               fiducialsNode.SetNthControlPointSelected(index, False)
           else:
             logging.error(f"Unknown selectOption {selectOption}")
