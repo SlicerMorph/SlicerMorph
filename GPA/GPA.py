@@ -186,7 +186,6 @@ class LMData:
       LMHeaders = [name for name in outputData.columns if 'LM ' in name]
       points = outputData[LMHeaders].to_numpy().transpose()
       self.lm = points.reshape(int(points.shape[0]/3), 3, -1, order='F')
-      print(self.lm.shape)
       self.lmOrig = self.lm
       self.mShape = meanShape[['X','Y','Z']].to_numpy()
       self.val = eigenValues.Scores.to_numpy()
@@ -349,13 +348,14 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     # Assign nodes to appropriate views
     redNode = layoutManager.sliceWidget('Red').sliceView().mrmlSliceNode()
     self.meanLandmarkNode.GetDisplayNode().SetViewNodeIDs([viewNode1.GetID(),redNode.GetID()])
-    if hasattr(self, 'cloneLandmarkNode'):
-      self.cloneLandmarkNode.GetDisplayNode().SetViewNodeIDs([viewNode2.GetID()])
+    if hasattr(self, 'cloneLandmarkDisplayNode'):
+      self.cloneLandmarkDisplayNode.SetViewNodeIDs([viewNode2.GetID()])
     
     # check for loaded reference model
     if hasattr(self, 'modelDisplayNode'):
       self.modelDisplayNode.SetViewNodeIDs([viewNode1.GetID()])
-      self.cloneModelNode.GetDisplayNode().SetViewNodeIDs([viewNode2.GetID()])
+    if hasattr(self, 'cloneModelDisplayNode'):
+      self.cloneModelDisplayNode.SetViewNodeIDs([viewNode2.GetID()])
     
     # fit the red slice node to show the plot projections
     rasBounds = [0,]*6
@@ -527,7 +527,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     # Set up cloned mean landmark node for pc warping
     shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
     itemIDToClone = shNode.GetItemByDataNode(self.meanLandmarkNode)
-    print(itemIDToClone)
     clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(shNode, itemIDToClone)
     self.copyLandmarkNode = shNode.GetItemDataNode(clonedItemID)
     GPANodeCollection.AddItem(self.copyLandmarkNode)
@@ -579,7 +578,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.LMExclusionList=[]
     
     self.LM.lmOrig, self.files = logic.mergeMatchs(self.LM_dir_name, self.LMExclusionList)
-    print("orig", self.LM.lmOrig[0])
     shape = self.LM.lmOrig.shape
     print('Loaded ' + str(shape[2]) + ' subjects with ' + str(shape[0]) + ' landmark points.')
     
@@ -778,6 +776,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     self.grayscaleSelector.setCurrentPath("")
     self.FudSelect.setCurrentPath("")
+    
+    self.landmarkVisualizationType.setChecked(True)
 
     self.slider1.clear()
     self.slider2.clear()
@@ -862,36 +862,34 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       # refresh PC warped mean node
       if hasattr(self, 'cloneLandmarkNode'):
         self.cloneLandmarkNode.SetDisplayVisibility(True)
-        self.cloneLandmarkNode.GetDisplayNode().SetGlyphScale(self.scaleMeanShapeSlider.value)
-        self.cloneLandmarkNode.GetDisplayNode().SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
+        self.cloneLandmarkDisplayNode.SetGlyphScale(self.scaleMeanShapeSlider.value)
+        self.cloneLandmarkDisplayNode.SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
   
   def toggleMeanLabels(self):
     visibility = self.meanLandmarkNode.GetDisplayNode().GetPointLabelsVisibility()
     if visibility:
       self.meanLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(0)
       if hasattr(self, 'cloneLandmarkNode'):
-        self.cloneLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(0)
+        self.cloneLandmarkDisplayNode.SetPointLabelsVisibility(0)
     else:
       self.meanLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(1)
       if hasattr(self, 'cloneLandmarkNode'):
-        self.cloneLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(1)
+        self.cloneLandmarkDisplayNode.SetPointLabelsVisibility(1)
     
   def toggleMeanColor(self):
     color = self.meanShapeColor.color
     self.meanLandmarkNode.GetDisplayNode().SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
     if hasattr(self, 'cloneLandmarkNode'):
-      self.cloneLandmarkNode.GetDisplayNode().SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
+      self.cloneLandmarkDisplayNode.SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
     
   def scaleMeanGlyph(self):
     scaleFactor = self.sampleSizeScaleFactor/10
     self.meanLandmarkNode.GetDisplayNode().SetGlyphScale(self.scaleMeanShapeSlider.value)
     if hasattr(self, 'cloneLandmarkNode'):
-      self.cloneLandmarkNode.GetDisplayNode().SetGlyphScale(self.scaleMeanShapeSlider.value)
+      self.cloneLandmarkDisplayNode.SetGlyphScale(self.scaleMeanShapeSlider.value)
     
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
-    self.StyleSheet="font: 12px;  min-height: 20 px ; background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #f6f7fa, stop: 1 #dadbde); border: 1px solid; border-radius: 4px; "
-
     inbutton=ctk.ctkCollapsibleButton()
     inbutton.text="Setup Analysis"
     inputLayout= qt.QGridLayout(inbutton)
@@ -927,7 +925,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     #Load Button
     self.loadButton = qt.QPushButton("Execute GPA + PCA")
     self.loadButton.checkable = True
-    self.loadButton.setStyleSheet(self.StyleSheet)
     inputLayout.addWidget(self.loadButton,5,1,1,3)
     self.loadButton.toolTip = "Push to start the program. Make sure you have filled in all the data."
     self.loadButton.enabled = False
@@ -950,7 +947,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     #Load Results Button
     self.loadResultsButton = qt.QPushButton("Load GPA + PCA Analysis from File")
     self.loadResultsButton.checkable = True
-    self.loadResultsButton.setStyleSheet(self.StyleSheet)
     loadFromFileLayout.addWidget(self.loadResultsButton,5,1,1,3)
     self.loadResultsButton.toolTip = "Select previous analysis from file and restore."
     self.loadResultsButton.enabled = False
@@ -967,7 +963,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     self.plotMeanButton3D = qt.QPushButton("Toggle mean shape visibility")
     self.plotMeanButton3D.checkable = True
-    self.plotMeanButton3D.setStyleSheet(self.StyleSheet)
     self.plotMeanButton3D.toolTip = "Toggle visibility of mean shape plot"
     meanShapeLayout.addWidget(self.plotMeanButton3D,1,2)
     self.plotMeanButton3D.enabled = False
@@ -978,7 +973,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     
     self.showMeanLabelsButton = qt.QPushButton("Toggle label visibility")
     self.showMeanLabelsButton.checkable = True
-    self.showMeanLabelsButton.setStyleSheet(self.StyleSheet)
     self.showMeanLabelsButton.toolTip = "Toggle visibility of mean point labels"
     meanShapeLayout.addWidget(self.showMeanLabelsButton,2,2)
     self.showMeanLabelsButton.enabled = False
@@ -1041,7 +1035,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     self.plotDistributionButton = qt.QPushButton("Plot LM variance")
     self.plotDistributionButton.checkable = True
-    self.plotDistributionButton.setStyleSheet(self.StyleSheet)
     self.plotDistributionButton.toolTip = "Visualize variance of landmarks from all subjects"
     distributionLayout.addWidget(self.plotDistributionButton,7,1,1,4)
     self.plotDistributionButton.enabled = False
@@ -1072,7 +1065,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     self.inputFactorButton = qt.QPushButton("Add factor data")
     self.inputFactorButton.checkable = True
-    self.inputFactorButton.setStyleSheet(self.StyleSheet)
     self.inputFactorButton.toolTip = "Open table to input factor data"
     plotLayout.addWidget(self.inputFactorButton,3,4)
     self.inputFactorButton.enabled = False
@@ -1086,7 +1078,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     self.plotButton = qt.QPushButton("Scatter Plot")
     self.plotButton.checkable = True
-    self.plotButton.setStyleSheet(self.StyleSheet)
     self.plotButton.toolTip = "Plot PCs"
     plotLayout.addWidget(self.plotButton,5,1,1,5)
     self.plotButton.enabled = False
@@ -1121,7 +1112,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     self.lolliButton = qt.QPushButton("Lollipop Vector Plot")
     self.lolliButton.checkable = True
-    self.lolliButton.setStyleSheet(self.StyleSheet)
     self.lolliButton.toolTip = "Plot PC vectors"
     lolliLayout.addWidget(self.lolliButton,6,1,1,6)
     self.lolliButton.enabled = False
@@ -1171,7 +1161,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     self.selectorButton = qt.QPushButton("Apply")
     self.selectorButton.checkable = True
-    self.selectorButton.setStyleSheet(self.StyleSheet)
     selectTemplatesLayout.addWidget(self.selectorButton,6,1,1,5)
     self.selectorButton.enabled = False
     self.selectorButton.connect('clicked(bool)', self.onSelect)
@@ -1222,7 +1211,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     # Reset button
     resetButton = qt.QPushButton("Reset Scene")
     resetButton.checkable = True
-    resetButton.setStyleSheet(self.StyleSheet)
     self.layout.addWidget(resetButton)
     resetButton.toolTip = "Push to reset all fields."
     resetButton.connect('clicked(bool)', self.reset)
@@ -1329,6 +1317,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.initializeOnSelect()
     self.cloneLandmarkNode = self.copyLandmarkNode
     self.cloneLandmarkNode.CreateDefaultDisplayNodes()
+    self.cloneLandmarkDisplayNode = self.cloneLandmarkNode.GetDisplayNode()
     if self.modelVisualizationType.isChecked():
       # get landmark node selected
       logic = GPALogic()
@@ -1370,7 +1359,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(shNode, itemIDToClone)
       self.cloneModelNode = shNode.GetItemDataNode(clonedItemID)
       self.cloneModelNode.SetName('PCA Warped Volume')
-      self.cloneModelNode.GetDisplayNode().SetColor([0,0,1])
+      self.cloneModelDisplayNode =  self.cloneModelNode.GetDisplayNode()
+      self.cloneModelDisplayNode.SetColor([0,0,1])
       GPANodeCollection.AddItem(self.cloneModelNode)
       visibility = self.meanLandmarkNode.GetDisplayVisibility()
       self.cloneLandmarkNode.SetDisplayVisibility(visibility)
@@ -1387,12 +1377,12 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.scaleMeanGlyph()
     self.toggleMeanColor()
     visibility = self.meanLandmarkNode.GetDisplayNode().GetPointLabelsVisibility()
-    self.cloneLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(visibility)
+    self.cloneLandmarkDisplayNode.SetPointLabelsVisibility(visibility)
         
     if self.scaleMeanShapeSlider.value == 0:  # If the scale is set to 0, reset to default scale 
       self.scaleMeanShapeSlider.value = 3
      
-      self.cloneLandmarkNode.GetDisplayNode().SetGlyphScale(self.scaleMeanShapeSlider.value)
+      cloneLandmarkDisplayNode.SetGlyphScale(self.scaleMeanShapeSlider.value)
       
     #apply custom layout
     self.assignLayoutDescription()
