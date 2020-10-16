@@ -576,7 +576,13 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     else:
       self.LMExclusionList=[]
     
-    self.LM.lmOrig, self.files = logic.mergeMatchs(self.LM_dir_name, self.LMExclusionList)
+    try:
+      self.LM.lmOrig, self.files = logic.mergeMatchs(self.LM_dir_name, self.LMExclusionList)
+    except: 
+      logging.debug('Load landmark data failed: Could not access files')
+      print("Error reading landmark files")
+      return
+      
     shape = self.LM.lmOrig.shape
     print('Loaded ' + str(shape[2]) + ' subjects with ' + str(shape[0]) + ' landmark points.')
     
@@ -622,8 +628,14 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     # Set up output
     dateTimeStamp = datetime.now().strftime('%Y-%m-%d_%H_%M_%S')
     self.outputFolder = os.path.join(self.outputDirectory, dateTimeStamp)
-    os.makedirs(self.outputFolder)
-    self.LM.writeOutData(self.outputFolder, self.files)
+    try:
+      os.makedirs(self.outputFolder)
+      self.LM.writeOutData(self.outputFolder, self.files)
+    except:
+      logging.debug('Result directory failed: Could not access output folder')
+      print("Error creating result directory")
+        
+    # Get closest sample to mean
     filename=self.LM.closestSample(self.files)
     self.populateDistanceTable(self.files)
     print("Closest sample to mean:" + filename)
