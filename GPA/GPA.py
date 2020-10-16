@@ -191,7 +191,6 @@ class LMData:
       self.val = eigenValues.Scores.to_numpy()
       vectors = [name for name in eigenVectors.columns if 'PC ' in name]
       self.vec = eigenVectors[vectors].to_numpy()
-      print("lm shape", self.lm.shape)
       print("mShape shape", self.mShape.shape)
       self.procdist=gpa_lib.procDist(self.lm, self.mShape)
       self.procdist=self.procdist.reshape(-1,1)
@@ -607,12 +606,13 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       name = str(landmarkNumber+1) #start numbering at 1
       self.meanLandmarkNode.AddFiducialFromArray(self.rawMeanLandmarks[landmarkNumber,:], name)
     self.meanLandmarkNode.SetDisplayVisibility(1) 
+    self.meanLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(1)
+    self.meanLandmarkNode.GetDisplayNode().SetTextScale(3)
     self.meanLandmarkNode.LockedOn() #lock position so when displayed they cannot be moved
 
     # Set up cloned mean landmark node for pc warping
     shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
     itemIDToClone = shNode.GetItemByDataNode(self.meanLandmarkNode)
-    print(itemIDToClone)
     clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(shNode, itemIDToClone)
     self.copyLandmarkNode = shNode.GetItemDataNode(clonedItemID)
     GPANodeCollection.AddItem(self.copyLandmarkNode)
@@ -805,6 +805,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     self.grayscaleSelector.setCurrentPath("")
     self.FudSelect.setCurrentPath("")
+    self.grayscaleSelector.enabled = False
+    self.FudSelect.enabled = False
 
     self.slider1.clear()
     self.slider2.clear()
@@ -873,8 +875,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         self.cloneLandmarkDisplayNode.SetPointLabelsVisibility(0)
     else:
       self.meanLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(1)
+      self.meanLandmarkNode.GetDisplayNode().SetTextScale(3)
       if hasattr(self, 'cloneLandmarkNode'):
         self.cloneLandmarkDisplayNode.SetPointLabelsVisibility(1)
+        self.cloneLandmarkDisplayNode.SetTextScale(3)
     
   def toggleMeanColor(self):
     color = self.meanShapeColor.color
@@ -1143,7 +1147,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     self.grayscaleSelector = ctk.ctkPathLineEdit()
     self.grayscaleSelector.filters  = ctk.ctkPathLineEdit().Files
-    self.grayscaleSelector.nameFilters= ["*.ply","*.stl","*.obj","*.vtp","*.vtk", "*.orig", "*.g", "*.byu"]
+    self.grayscaleSelector.nameFilters= ["Model (*.ply *.stl *.obj *.vtk *.vtp *.orig *.g .byu )"]
     self.grayscaleSelector.enabled = False
     self.grayscaleSelector.connect('validInputChanged(bool)', self.onModelSelected)
     selectTemplatesLayout.addWidget(self.grayscaleSelector,4,3,1,3)
@@ -1378,11 +1382,12 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.toggleMeanColor()
     visibility = self.meanLandmarkNode.GetDisplayNode().GetPointLabelsVisibility()
     self.cloneLandmarkDisplayNode.SetPointLabelsVisibility(visibility)
+    self.cloneLandmarkDisplayNode.SetTextScale(3)
         
     if self.scaleMeanShapeSlider.value == 0:  # If the scale is set to 0, reset to default scale 
       self.scaleMeanShapeSlider.value = 3
      
-      cloneLandmarkDisplayNode.SetGlyphScale(self.scaleMeanShapeSlider.value)
+    self.cloneLandmarkDisplayNode.SetGlyphScale(self.scaleMeanShapeSlider.value)
       
     #apply custom layout
     self.assignLayoutDescription()
@@ -1405,7 +1410,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     # get scale values for each pc.
     sf1=self.slider1.sliderValue()
     sf2=self.slider2.sliderValue()
-    scaleFactors=np.zeros((5))
+    scaleFactors=np.zeros((2))
     scaleFactors[0]=sf1/100.0
     scaleFactors[1]=sf2/100.0
 
@@ -1498,7 +1503,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     if modelNode is None:
       modelNode = slicer.vtkMRMLModelNode()
       modelNode.SetName('Landmark Point Cloud')
-      modelNode.SetHideFromEditors(1) #hide from module so these cannot be selected for analysis
       slicer.mrmlScene.AddNode(modelNode)
       GPANodeCollection.AddItem(modelNode)
       modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
@@ -1556,7 +1560,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       if modelNode is None:
         modelNode = slicer.vtkMRMLModelNode()
         modelNode.SetName('Landmark Variance Ellipse')
-        modelNode.SetHideFromEditors(1) #hide from module so these cannot be selected for analysis
         slicer.mrmlScene.AddNode(modelNode)
         GPANodeCollection.AddItem(modelNode)
         modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
@@ -1573,7 +1576,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       if modelNode is None:
         modelNode = slicer.vtkMRMLModelNode()
         modelNode.SetName('Landmark Variance Sphere')
-        modelNode.SetHideFromEditors(1) #hide from module so these cannot be selected for analysis
         slicer.mrmlScene.AddNode(modelNode)
         GPANodeCollection.AddItem(modelNode)
         modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
@@ -1974,7 +1976,6 @@ class GPALogic(ScriptedLoadableModuleLogic):
       if modelNode is None:
         modelNode = slicer.vtkMRMLModelNode()
         modelNode.SetName(modelNodeName)
-        modelNode.SetHideFromEditors(1) #hide from module so these cannot be selected for analysis
         slicer.mrmlScene.AddNode(modelNode)
         GPANodeCollection.AddItem(modelNode)
         modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
@@ -1999,7 +2000,6 @@ class GPALogic(ScriptedLoadableModuleLogic):
 
   def calcEndpoints(self,LMObj,LM,pc, scaleFactor):
     i,j=LM.shape
-    print("LM shape: ", LM.shape)
     tmp=np.zeros((i,j))
     tmp[:,0]=LMObj.vec[0:i,pc]
     tmp[:,1]=LMObj.vec[i:2*i,pc]
