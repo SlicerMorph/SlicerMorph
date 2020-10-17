@@ -171,6 +171,7 @@ class CameraRotationAction(AnimatorAction):
     self.rate.suffix = " degreesPerSecond"
     self.rate.decimals = 2
     self.rate.minimum = 0
+    self.rate.maximum = 1000
     self.rate.value = action['degreesPerSecond']
     layout.addRow("Rotation rate", self.rate)
 
