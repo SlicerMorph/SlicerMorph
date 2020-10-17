@@ -14,9 +14,6 @@ import logging
 class AnimatorAction(object):
   """Superclass for actions to be animated."""
   def __init__(self):
-    self.name = "Action"
-    self.startTime = 0 # in seconds from start of script
-    self.endTime = -1 # full time span
     self.uuid = uuid.uuid4()
 
   def act(self, action, scriptTime):
@@ -25,12 +22,18 @@ class AnimatorAction(object):
   def gui(self, action, layout):
     pass
 
+  def allowMultiple(self):
+    return True
+
 class CameraRotationAction(AnimatorAction):
   """Defines an animation of a transform"""
   def __init__(self):
     super(CameraRotationAction,self).__init__()
     self.name = "Camera Rotation"
     self.animationMethods = ['azimuth', 'elevation', 'roll']
+
+  def allowMultiple(self):
+    return False
 
   def defaultAction(self):
     layoutManager = slicer.app.layoutManager()
@@ -43,8 +46,8 @@ class CameraRotationAction(AnimatorAction):
       'name': 'CameraRotation',
       'class': 'CameraRotationAction',
       'id': 'cameraRotation-'+str(self.uuid),
-      'startTime': .1,
-      'endTime': 4,
+      'startTime': 0,
+      'endTime': -1,
       'interpolation': 'linear',
       'referenceCameraID': referenceCamera.GetID(),
       'animatedCameraID': animatedCamera.GetID(),
@@ -57,10 +60,10 @@ class CameraRotationAction(AnimatorAction):
     referenceCamera = slicer.mrmlScene.GetNodeByID(action['referenceCameraID'])
     animatedCamera = slicer.mrmlScene.GetNodeByID(action['animatedCameraID'])
 
+    animatedCamera.GetCamera().DeepCopy(referenceCamera.GetCamera())
     if scriptTime <= action['startTime'] or scriptTime > action['endTime']:
       return
     else:
-      animatedCamera.GetCamera().DeepCopy(referenceCamera.GetCamera())
       actionTime = scriptTime - action['startTime']
       if actionTime > action['endTime']:
         actionTime = action['endTime'] # clamp to rotation at end
@@ -160,8 +163,8 @@ class ROIAction(AnimatorAction):
       'name': 'ROI',
       'class': 'ROIAction',
       'id': 'roi-'+str(self.uuid),
-      'startTime': 1,
-      'endTime': 4,
+      'startTime': 0,
+      'endTime': -1,
       'interpolation': 'linear',
       'startROIID': startROI.GetID(),
       'endROIID': endROI.GetID(),
@@ -261,7 +264,7 @@ class VolumePropertyAction(AnimatorAction):
     volumeRenderingNode = slicer.mrmlScene.GetFirstNodeByName('VolumeRendering')
     if volumeRenderingNode is None:
       logging.error("Can't add VolumePropertyAction, no volume rendering node in the scene")
-      return
+      return None
     animatedVolumeProperty = volumeRenderingNode.GetVolumePropertyNode()
     startVolumeProperty = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLVolumePropertyNode')
     startVolumeProperty.SetName(slicer.mrmlScene.GetUniqueNameByString('Start VolumeProperty'))
@@ -275,7 +278,7 @@ class VolumePropertyAction(AnimatorAction):
       'class': 'VolumePropertyAction',
       'id': 'volumeProperty1-'+str(self.uuid),
       'startTime': 0,
-      'endTime': 1,
+      'endTime': -1,
       'interpolation': 'linear',
       'startVolumePropertyID': startVolumeProperty.GetID(),
       'endVolumePropertyID': endVolumeProperty.GetID(),
@@ -491,7 +494,7 @@ class AnimatorWidget(ScriptedLoadableModuleWidget):
     parametersFormLayout.addRow("New animation duration", self.durationBox)
 
     #
-    # input volume selector
+    # animation selector
     #
     self.animationSelector = slicer.qMRMLNodeComboBox()
     self.animationSelector.nodeTypes = ["vtkMRMLScriptedModuleNode"]
@@ -515,7 +518,6 @@ class AnimatorWidget(ScriptedLoadableModuleWidget):
 
     parametersFormLayout.addRow(self.sequencePlay)
     parametersFormLayout.addRow(self.sequenceSeek)
-
 
     self.actionsMenuButton = qt.QPushButton("Add Action")
     self.actionsMenuButton.enabled = False
@@ -621,11 +623,37 @@ class AnimatorWidget(ScriptedLoadableModuleWidget):
   def onAddAction(self, actionName):
     animationNode = self.animationSelector.currentNode()
     if animationNode:
+      script = self.logic.getScript(animationNode)
       actionInstance = slicer.modules.animatorActionPlugins[actionName]()
       action = actionInstance.defaultAction()
       if action:
+        if not actionInstance.allowMultiple() and "actions" in script:
+          for actionKey in script['actions'].keys():
+            if script['actions'][actionKey]['class'] == action['class']:
+              slicer.util.messageBox(f"Sorry, only {action['class']} per animation is supported")
+              return
+
+        actionsByClass = self.logic.getActionsByClass(animationNode)
+        if action['class'] in actionsByClass.keys():
+          classActions = actionsByClass[action['class']]
+          lastAction = classActions[0]
+          latestEndTime = lastAction['endTime']
+          for classAction in classActions:
+            if classAction['endTime'] > latestEndTime:
+              lastAction = classAction
+              latestEndTime = lastAction['endTime']
+          midTime = lastAction['startTime'] + 0.5 * (lastAction['endTime'] - lastAction['startTime'])
+          action['startTime'] = midTime
+          action['endTime'] = lastAction['endTime']
+          script['actions'][lastAction['id']]['endTime'] = midTime
+          self.logic.setScript(animationNode, script)
+        else:
+          action['startTime'] = 0
+          action['endTime'] = script['duration']
         self.logic.addAction(animationNode, action)
         self.onSelect()
+      else:
+        slicer.util.messageBox("Could not add action. See error log.")
 
   def selectExportFile(self):
     self.outputFileButton.text = qt.QFileDialog.getSaveFileName(
@@ -807,6 +835,16 @@ class AnimatorLogic(ScriptedLoadableModuleLogic):
     script = self.getScript(animationNode)
     actions = script['actions'] if "actions" in script else {}
     return(actions)
+
+  def getActionsByClass(self, animationNode):
+    actions = self.getActions(animationNode)
+    actionsByClass = {}
+    for actionIndex in range(len(actions.keys())):
+      action = actions[list(actions.keys())[actionIndex]]
+      if not action['class'] in actionsByClass.keys():
+        actionsByClass[action['class']] = []
+      actionsByClass[action['class']].append(action)
+    return(actionsByClass)
 
   def addAction(self, animationNode, action):
     """Add an action to the script """
