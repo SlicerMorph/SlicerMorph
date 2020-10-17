@@ -16,7 +16,7 @@ class AnimatorAction(object):
   def __init__(self):
     self.name = "Action"
     self.startTime = 0 # in seconds from start of script
-    self.endTime = 0
+    self.endTime = -1 # full time span
     self.uuid = uuid.uuid4()
 
   def act(self, action, scriptTime):
@@ -24,69 +24,6 @@ class AnimatorAction(object):
 
   def gui(self, action, layout):
     pass
-
-class TranslationAction(AnimatorAction):
-  """Defines an animation of a transform"""
-  def __init__(self):
-    super(TranslationAction,self).__init__()
-    self.name = "Translation"
-
-  def defaultAction(self):
-    startTransform = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLLinearTransformNode')
-    startTransform.SetName('Start Transform')
-    endTransform = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLLinearTransformNode')
-    endTransform.SetName('End Transform')
-    animatedTransform = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLLinearTransformNode')
-    animatedTransform.SetName('Animated Transform')
-
-    matrix = vtk.vtkMatrix4x4()
-    matrix.SetElement(0,3, 10)
-    matrix.SetElement(1,3, 5)
-    matrix.SetElement(2,3, 15)
-    endTransform.SetMatrixTransformFromParent(matrix)
-
-    translationAction = {
-      'name': 'Translation',
-      'class': 'TranslationAction',
-      'id': 'translation-'+str(self.uuid),
-      'startTime': 4,
-      'endTime': 5,
-      'interpolation': 'linear',
-      'startTransformID': startTransform.GetID(),
-      'endTransformID': endTransform.GetID(),
-      'animatedTransformID': animatedTransform.GetID(),
-    }
-    return(translationAction)
-
-  def act(self, action, scriptTime):
-    startTransform = slicer.mrmlScene.GetNodeByID(action['startTransformID'])
-    endTransform = slicer.mrmlScene.GetNodeByID(action['endTransformID'])
-    animatedTransform = slicer.mrmlScene.GetNodeByID(action['animatedTransformID'])
-    if scriptTime <= action['startTime']:
-      matrix = vtk.vtkMatrix4x4()
-      startTransform.GetMatrixTransformFromParent(matrix)
-      animatedTransform.SetMatrixTransformFromParent(matrix)
-    elif scriptTime >= action['endTime']:
-      matrix = vtk.vtkMatrix4x4()
-      endTransform.GetMatrixTransformFromParent(matrix)
-      animatedTransform.SetMatrixTransformFromParent(matrix)
-    else:
-      actionTime = scriptTime - action['startTime']
-      duration = action['endTime'] - action['startTime']
-      fraction = actionTime / duration
-      startMatrix = vtk.vtkMatrix4x4()
-      startTransform.GetMatrixTransformFromParent(startMatrix)
-      endMatrix = vtk.vtkMatrix4x4()
-      endTransform.GetMatrixTransformFromParent(endMatrix)
-      animatedMatrix = vtk.vtkMatrix4x4()
-      animatedMatrix.DeepCopy(startMatrix)
-      for i in range(3):
-        start = startMatrix.GetElement(i,3)
-        end = endMatrix.GetElement(i,3)
-        delta = fraction * (end-start)
-        # TODO: add interpolation and ease in/out options
-        animatedMatrix.SetElement(i,3, start + delta)
-      animatedTransform.SetMatrixTransformFromParent(animatedMatrix)
 
 class CameraRotationAction(AnimatorAction):
   """Defines an animation of a transform"""
@@ -120,10 +57,10 @@ class CameraRotationAction(AnimatorAction):
     referenceCamera = slicer.mrmlScene.GetNodeByID(action['referenceCameraID'])
     animatedCamera = slicer.mrmlScene.GetNodeByID(action['animatedCameraID'])
 
-    animatedCamera.GetCamera().DeepCopy(referenceCamera.GetCamera())
-    if scriptTime <= action['startTime']:
+    if scriptTime <= action['startTime'] or scriptTime > action['endTime']:
       return
     else:
+      animatedCamera.GetCamera().DeepCopy(referenceCamera.GetCamera())
       actionTime = scriptTime - action['startTime']
       if actionTime > action['endTime']:
         actionTime = action['endTime'] # clamp to rotation at end
@@ -470,7 +407,6 @@ try:
   slicer.modules.animatorActionPlugins
 except AttributeError:
   slicer.modules.animatorActionPlugins = {}
-# slicer.modules.animatorActionPlugins['TranslationAction'] = TranslationAction ;# disable since it does nothing
 slicer.modules.animatorActionPlugins['CameraRotationAction'] = CameraRotationAction
 slicer.modules.animatorActionPlugins['ROIAction'] = ROIAction
 slicer.modules.animatorActionPlugins['VolumePropertyAction'] = VolumePropertyAction
@@ -490,7 +426,7 @@ class Animator(ScriptedLoadableModule):
     self.parent.title = "Animator"
     self.parent.categories = ["SlicerMorph.SlicerMorph Utilities"]
     self.parent.dependencies = []
-    self.parent.contributors = ["Steve Pieper (Isomics, Inc.)"] # replace with "Firstname Lastname (Organization)"
+    self.parent.contributors = ["Steve Pieper (Isomics, Inc.)"]
     self.parent.helpText = """
 A high-level animation interface that operates on top of the Sequences and Screen Capture interfaces.
 """
@@ -986,18 +922,6 @@ class AnimatorTest(ScriptedLoadableModuleTest):
 
     logic = AnimatorLogic()
     logic.initializeAnimationNode(animationNode)
-
-    #
-    # set up a translation action
-    # - this is just an example, it's not used in the self test
-    #
-
-    #actionInstance = slicer.modules.animatorActionPlugins["TranslationAction"]()
-    #translationAction = actionInstance.defaultAction()
-    #mrHead.SetAndObserveTransformNodeID(translationAction['animatedTransformID'])
-    # don't add this because it's not a fully worked out example
-    # (it does translation only, not full transformation interpolation)
-    #logic.addAction(animationNode, translationAction)
 
     #
     # set up a camera rotation action
