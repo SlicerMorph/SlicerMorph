@@ -133,7 +133,20 @@ class ROIAction(AnimatorAction):
     super(ROIAction,self).__init__()
     self.name = "ROI"
 
+  def allowMultiple(self):
+    return False
+
   def defaultAction(self):
+    volumeRenderingNode = slicer.mrmlScene.GetFirstNodeByName('VolumeRendering')
+    if not volumeRenderingNode:
+      logging.error("Need to set up volume rendering before using this action")
+      return None
+    animatedROI = volumeRenderingNode.GetROINode()
+    if not animatedROI:
+      logging.error("Need to set up volume rendering cropping ROI before using this action")
+      return None
+    volumeRenderingNode.SetCroppingEnabled(True)
+
     startROI = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLAnnotationROINode')
     startROI.SetName('Start ROI')
     endROI = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLAnnotationROINode')
@@ -141,12 +154,6 @@ class ROIAction(AnimatorAction):
     for roi in [startROI, endROI]:
       for index in range(roi.GetNumberOfDisplayNodes()):
         roi.GetNthDisplayNode(index).SetVisibility(False)
-    #
-    # TODO: what to do if volume rendering not yet set up
-    #
-    volumeRenderingNode = slicer.mrmlScene.GetFirstNodeByName('VolumeRendering')
-    animatedROI = volumeRenderingNode.GetROINode()
-    volumeRenderingNode.SetCroppingEnabled(True)
 
     start = [0.,]*3
     animatedROI.GetXYZ(start)
