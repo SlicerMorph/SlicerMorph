@@ -14,9 +14,6 @@ import logging
 class AnimatorAction(object):
   """Superclass for actions to be animated."""
   def __init__(self):
-    self.name = "Action"
-    self.startTime = 0 # in seconds from start of script
-    self.endTime = 0
     self.uuid = uuid.uuid4()
 
   def act(self, action, scriptTime):
@@ -25,68 +22,8 @@ class AnimatorAction(object):
   def gui(self, action, layout):
     pass
 
-class TranslationAction(AnimatorAction):
-  """Defines an animation of a transform"""
-  def __init__(self):
-    super(TranslationAction,self).__init__()
-    self.name = "Translation"
-
-  def defaultAction(self):
-    startTransform = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLLinearTransformNode')
-    startTransform.SetName('Start Transform')
-    endTransform = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLLinearTransformNode')
-    endTransform.SetName('End Transform')
-    animatedTransform = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLLinearTransformNode')
-    animatedTransform.SetName('Animated Transform')
-
-    matrix = vtk.vtkMatrix4x4()
-    matrix.SetElement(0,3, 10)
-    matrix.SetElement(1,3, 5)
-    matrix.SetElement(2,3, 15)
-    endTransform.SetMatrixTransformFromParent(matrix)
-
-    translationAction = {
-      'name': 'Translation',
-      'class': 'TranslationAction',
-      'id': 'translation-'+str(self.uuid),
-      'startTime': 4,
-      'endTime': 5,
-      'interpolation': 'linear',
-      'startTransformID': startTransform.GetID(),
-      'endTransformID': endTransform.GetID(),
-      'animatedTransformID': animatedTransform.GetID(),
-    }
-    return(translationAction)
-
-  def act(self, action, scriptTime):
-    startTransform = slicer.mrmlScene.GetNodeByID(action['startTransformID'])
-    endTransform = slicer.mrmlScene.GetNodeByID(action['endTransformID'])
-    animatedTransform = slicer.mrmlScene.GetNodeByID(action['animatedTransformID'])
-    if scriptTime <= action['startTime']:
-      matrix = vtk.vtkMatrix4x4()
-      startTransform.GetMatrixTransformFromParent(matrix)
-      animatedTransform.SetMatrixTransformFromParent(matrix)
-    elif scriptTime >= action['endTime']:
-      matrix = vtk.vtkMatrix4x4()
-      endTransform.GetMatrixTransformFromParent(matrix)
-      animatedTransform.SetMatrixTransformFromParent(matrix)
-    else:
-      actionTime = scriptTime - action['startTime']
-      duration = action['endTime'] - action['startTime']
-      fraction = actionTime / duration
-      startMatrix = vtk.vtkMatrix4x4()
-      startTransform.GetMatrixTransformFromParent(startMatrix)
-      endMatrix = vtk.vtkMatrix4x4()
-      endTransform.GetMatrixTransformFromParent(endMatrix)
-      animatedMatrix = vtk.vtkMatrix4x4()
-      animatedMatrix.DeepCopy(startMatrix)
-      for i in range(3):
-        start = startMatrix.GetElement(i,3)
-        end = endMatrix.GetElement(i,3)
-        delta = fraction * (end-start)
-        # TODO: add interpolation and ease in/out options
-        animatedMatrix.SetElement(i,3, start + delta)
-      animatedTransform.SetMatrixTransformFromParent(animatedMatrix)
+  def allowMultiple(self):
+    return True
 
 class CameraRotationAction(AnimatorAction):
   """Defines an animation of a transform"""
@@ -94,6 +31,9 @@ class CameraRotationAction(AnimatorAction):
     super(CameraRotationAction,self).__init__()
     self.name = "Camera Rotation"
     self.animationMethods = ['azimuth', 'elevation', 'roll']
+
+  def allowMultiple(self):
+    return False
 
   def defaultAction(self):
     layoutManager = slicer.app.layoutManager()
@@ -106,8 +46,8 @@ class CameraRotationAction(AnimatorAction):
       'name': 'CameraRotation',
       'class': 'CameraRotationAction',
       'id': 'cameraRotation-'+str(self.uuid),
-      'startTime': .1,
-      'endTime': 4,
+      'startTime': 0,
+      'endTime': -1,
       'interpolation': 'linear',
       'referenceCameraID': referenceCamera.GetID(),
       'animatedCameraID': animatedCamera.GetID(),
@@ -171,6 +111,7 @@ class CameraRotationAction(AnimatorAction):
     self.rate.suffix = " degreesPerSecond"
     self.rate.decimals = 2
     self.rate.minimum = 0
+    self.rate.maximum = 1000
     self.rate.value = action['degreesPerSecond']
     layout.addRow("Rotation rate", self.rate)
 
@@ -192,7 +133,20 @@ class ROIAction(AnimatorAction):
     super(ROIAction,self).__init__()
     self.name = "ROI"
 
+  def allowMultiple(self):
+    return False
+
   def defaultAction(self):
+    volumeRenderingNode = slicer.mrmlScene.GetFirstNodeByName('VolumeRendering')
+    if not volumeRenderingNode:
+      logging.error("Need to set up volume rendering before using this action")
+      return None
+    animatedROI = volumeRenderingNode.GetROINode()
+    if not animatedROI:
+      logging.error("Need to set up volume rendering cropping ROI before using this action")
+      return None
+    volumeRenderingNode.SetCroppingEnabled(True)
+
     startROI = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLAnnotationROINode')
     startROI.SetName('Start ROI')
     endROI = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLAnnotationROINode')
@@ -200,12 +154,6 @@ class ROIAction(AnimatorAction):
     for roi in [startROI, endROI]:
       for index in range(roi.GetNumberOfDisplayNodes()):
         roi.GetNthDisplayNode(index).SetVisibility(False)
-    #
-    # TODO: what to do if volume rendering not yet set up
-    #
-    volumeRenderingNode = slicer.mrmlScene.GetFirstNodeByName('VolumeRendering')
-    animatedROI = volumeRenderingNode.GetROINode()
-    volumeRenderingNode.SetCroppingEnabled(True)
 
     start = [0.,]*3
     animatedROI.GetXYZ(start)
@@ -222,8 +170,8 @@ class ROIAction(AnimatorAction):
       'name': 'ROI',
       'class': 'ROIAction',
       'id': 'roi-'+str(self.uuid),
-      'startTime': 1,
-      'endTime': 4,
+      'startTime': 0,
+      'endTime': -1,
       'interpolation': 'linear',
       'startROIID': startROI.GetID(),
       'endROIID': endROI.GetID(),
@@ -323,7 +271,7 @@ class VolumePropertyAction(AnimatorAction):
     volumeRenderingNode = slicer.mrmlScene.GetFirstNodeByName('VolumeRendering')
     if volumeRenderingNode is None:
       logging.error("Can't add VolumePropertyAction, no volume rendering node in the scene")
-      return
+      return None
     animatedVolumeProperty = volumeRenderingNode.GetVolumePropertyNode()
     startVolumeProperty = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLVolumePropertyNode')
     startVolumeProperty.SetName(slicer.mrmlScene.GetUniqueNameByString('Start VolumeProperty'))
@@ -337,7 +285,7 @@ class VolumePropertyAction(AnimatorAction):
       'class': 'VolumePropertyAction',
       'id': 'volumeProperty1-'+str(self.uuid),
       'startTime': 0,
-      'endTime': 1,
+      'endTime': -1,
       'interpolation': 'linear',
       'startVolumePropertyID': startVolumeProperty.GetID(),
       'endVolumePropertyID': endVolumeProperty.GetID(),
@@ -469,7 +417,6 @@ try:
   slicer.modules.animatorActionPlugins
 except AttributeError:
   slicer.modules.animatorActionPlugins = {}
-# slicer.modules.animatorActionPlugins['TranslationAction'] = TranslationAction ;# disable since it does nothing
 slicer.modules.animatorActionPlugins['CameraRotationAction'] = CameraRotationAction
 slicer.modules.animatorActionPlugins['ROIAction'] = ROIAction
 slicer.modules.animatorActionPlugins['VolumePropertyAction'] = VolumePropertyAction
@@ -489,11 +436,12 @@ class Animator(ScriptedLoadableModule):
     self.parent.title = "Animator"
     self.parent.categories = ["SlicerMorph.SlicerMorph Utilities"]
     self.parent.dependencies = []
-    self.parent.contributors = ["Steve Pieper (Isomics, Inc.)"] # replace with "Firstname Lastname (Organization)"
+    self.parent.contributors = ["Steve Pieper (Isomics, Inc.)"]
     self.parent.helpText = """
 A high-level animation interface that operates on top of the Sequences and Screen Capture interfaces.
+    <p>For more information see the <a href="https://github.com/muratmaga/SlicerMorph-1/tree/master/Docs/Animator">online documentation</a>.</p>
+
 """
-    self.parent.helpText += self.getDefaultModuleDocumentationLink()
     self.parent.acknowledgementText = """
 This file was originally developed by Jean-Christophe Fillion-Robin, Kitware Inc.
 and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR013218-12S1.
@@ -515,7 +463,10 @@ class AnimatorWidget(ScriptedLoadableModuleWidget):
             "160x120": {"width": 160, "height": 120},
             "320x240": {"width": 320, "height": 240},
             "640x480": {"width": 640, "height": 480},
-            "1920x1024": {"width": 1920, "height": 1080}}
+            "1920x1024": {"width": 1920, "height": 1024},
+            "1920x1080": {"width": 1920, "height": 1080},
+            "3840x2160": {"width": 3840, "height": 2160}
+            }
     self.defaultSize = "640x480"
     self.fileFormats = {
             "GIF": ".gif",
@@ -554,7 +505,7 @@ class AnimatorWidget(ScriptedLoadableModuleWidget):
     parametersFormLayout.addRow("New animation duration", self.durationBox)
 
     #
-    # input volume selector
+    # animation selector
     #
     self.animationSelector = slicer.qMRMLNodeComboBox()
     self.animationSelector.nodeTypes = ["vtkMRMLScriptedModuleNode"]
@@ -578,7 +529,6 @@ class AnimatorWidget(ScriptedLoadableModuleWidget):
 
     parametersFormLayout.addRow(self.sequencePlay)
     parametersFormLayout.addRow(self.sequenceSeek)
-
 
     self.actionsMenuButton = qt.QPushButton("Add Action")
     self.actionsMenuButton.enabled = False
@@ -684,11 +634,37 @@ class AnimatorWidget(ScriptedLoadableModuleWidget):
   def onAddAction(self, actionName):
     animationNode = self.animationSelector.currentNode()
     if animationNode:
+      script = self.logic.getScript(animationNode)
       actionInstance = slicer.modules.animatorActionPlugins[actionName]()
       action = actionInstance.defaultAction()
       if action:
+        if not actionInstance.allowMultiple() and "actions" in script:
+          for actionKey in script['actions'].keys():
+            if script['actions'][actionKey]['class'] == action['class']:
+              slicer.util.messageBox(f"Sorry, only {action['class']} per animation is supported")
+              return
+
+        actionsByClass = self.logic.getActionsByClass(animationNode)
+        if action['class'] in actionsByClass.keys():
+          classActions = actionsByClass[action['class']]
+          lastAction = classActions[0]
+          latestEndTime = lastAction['endTime']
+          for classAction in classActions:
+            if classAction['endTime'] > latestEndTime:
+              lastAction = classAction
+              latestEndTime = lastAction['endTime']
+          midTime = lastAction['startTime'] + 0.5 * (lastAction['endTime'] - lastAction['startTime'])
+          action['startTime'] = midTime
+          action['endTime'] = lastAction['endTime']
+          script['actions'][lastAction['id']]['endTime'] = midTime
+          self.logic.setScript(animationNode, script)
+        else:
+          action['startTime'] = 0
+          action['endTime'] = script['duration']
         self.logic.addAction(animationNode, action)
         self.onSelect()
+      else:
+        slicer.util.messageBox("Could not add action. See error log.")
 
   def selectExportFile(self):
     self.outputFileButton.text = qt.QFileDialog.getSaveFileName(
@@ -871,6 +847,16 @@ class AnimatorLogic(ScriptedLoadableModuleLogic):
     actions = script['actions'] if "actions" in script else {}
     return(actions)
 
+  def getActionsByClass(self, animationNode):
+    actions = self.getActions(animationNode)
+    actionsByClass = {}
+    for actionIndex in range(len(actions.keys())):
+      action = actions[list(actions.keys())[actionIndex]]
+      if not action['class'] in actionsByClass.keys():
+        actionsByClass[action['class']] = []
+      actionsByClass[action['class']].append(action)
+    return(actionsByClass)
+
   def addAction(self, animationNode, action):
     """Add an action to the script """
     script = self.getScript(animationNode)
@@ -985,18 +971,6 @@ class AnimatorTest(ScriptedLoadableModuleTest):
 
     logic = AnimatorLogic()
     logic.initializeAnimationNode(animationNode)
-
-    #
-    # set up a translation action
-    # - this is just an example, it's not used in the self test
-    #
-
-    #actionInstance = slicer.modules.animatorActionPlugins["TranslationAction"]()
-    #translationAction = actionInstance.defaultAction()
-    #mrHead.SetAndObserveTransformNodeID(translationAction['animatedTransformID'])
-    # don't add this because it's not a fully worked out example
-    # (it does translation only, not full transformation interpolation)
-    #logic.addAction(animationNode, translationAction)
 
     #
     # set up a camera rotation action
