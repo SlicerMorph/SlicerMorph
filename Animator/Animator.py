@@ -61,7 +61,7 @@ class CameraRotationAction(AnimatorAction):
     animatedCamera = slicer.mrmlScene.GetNodeByID(action['animatedCameraID'])
 
     animatedCamera.GetCamera().DeepCopy(referenceCamera.GetCamera())
-    if scriptTime <= action['startTime'] or scriptTime > action['endTime']:
+    if scriptTime <= action['startTime']:
       return
     else:
       actionTime = scriptTime - action['startTime']
