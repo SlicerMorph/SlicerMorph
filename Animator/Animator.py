@@ -463,7 +463,10 @@ class AnimatorWidget(ScriptedLoadableModuleWidget):
             "160x120": {"width": 160, "height": 120},
             "320x240": {"width": 320, "height": 240},
             "640x480": {"width": 640, "height": 480},
-            "1920x1024": {"width": 1920, "height": 1080}}
+            "1920x1024": {"width": 1920, "height": 1024},
+            "1920x1080": {"width": 1920, "height": 1080},
+            "3840x2160": {"width": 3840, "height": 2160}
+            }
     self.defaultSize = "640x480"
     self.fileFormats = {
             "GIF": ".gif",
