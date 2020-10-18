@@ -439,8 +439,9 @@ class Animator(ScriptedLoadableModule):
     self.parent.contributors = ["Steve Pieper (Isomics, Inc.)"]
     self.parent.helpText = """
 A high-level animation interface that operates on top of the Sequences and Screen Capture interfaces.
+    <p>For more information see the <a href="https://github.com/muratmaga/SlicerMorph-1/tree/master/Docs/Animator">online documentation</a>.</p>
+
 """
-    self.parent.helpText += self.getDefaultModuleDocumentationLink()
     self.parent.acknowledgementText = """
 This file was originally developed by Jean-Christophe Fillion-Robin, Kitware Inc.
 and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR013218-12S1.
