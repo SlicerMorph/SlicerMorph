@@ -4,8 +4,6 @@ __Summary__: This module provides fast landmark transfer from a 3D model and its
 
 ### USAGE
 
-The ALPACA module has two main tabs: a Single aligment and a Batch processing one. The main purpose of the `Single aligmment` tab is to find the best combination of hyperparameters for the task, so that they can be applied to a large array of specimens. In `ALPACA`, the parameters used in `Single alignment` tab get transferred to the `Batch processing` tab once that tab gets selected. 
-
 #### SINGLE ALIGNMENT
 
 * __Required parameters__
