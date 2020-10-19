@@ -48,8 +48,9 @@ class MorphoSourceImport(ScriptedLoadableModule):
 This module provides a keyword search to query and load 3D models from the MorphoSource database into the 3D Slicer scene.
 """
     self.parent.acknowledgementText = """
-This module was developed by Sara Rolfe and  Arthur Porto with guidance from Julie Winchester (MorphoSource), for the NSF ABI  grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections". https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
-"""
+      This module was developed by Sara Rolfe and Arthur Porto with guidance from Julie Winchester for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections" 
+      awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839). 
+      https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false"""
 
 #
 # MorphoSourceImportWidget

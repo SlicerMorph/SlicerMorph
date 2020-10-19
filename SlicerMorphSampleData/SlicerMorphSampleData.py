@@ -21,8 +21,10 @@ class SlicerMorphSampleData(ScriptedLoadableModule):
     self.parent.contributors = ["Murat Maga & Sara Rolfe"]
     self.parent.helpText = """This module adds sample data for SlicerMorph into the SampleData module"""
     self.parent.acknowledgementText = """
-This work was was funded
-"""
+This module was developed by Sara Rolfe and Murat Maga for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections" 
+      awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839). 
+      https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
+      """
 
     # don't show this module - additional data will be shown in SampleData module
     parent.hidden = True
