@@ -27,8 +27,9 @@ This module allows you to import stacks of images, such as png, jpg, or tiff, as
 volumes by resampling slice by slice during the input process.  This can allow you to import
 much larger volumes because you don't need to load the whole volume before downsampling.
 In addition, this provides a convenient spot to input volume spacing information.
+<p>For more information see the <a href="https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/ImageStacks">online documentation</a>.</p>
 """
-    self.parent.helpText += self.getDefaultModuleDocumentationLink()
+    #self.parent.helpText += self.getDefaultModuleDocumentationLink()
     self.parent.acknowledgementText = """
 This module was developed by Steve Pieper, Sara Rolfe and Murat Maga, through a NSF ABI Development grant, "An Integrated Platform for Retrieval, Visualization and Analysis of
 3D Morphology From Digital Biological Collections" (Award Numbers: 1759883 (Murat Maga), 1759637 (Adam Summers), 1759839 (Douglas Boyer)).
