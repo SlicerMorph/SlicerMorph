@@ -443,8 +443,9 @@ A high-level animation interface that operates on top of the Sequences and Scree
 
 """
     self.parent.acknowledgementText = """
-This file was originally developed by Jean-Christophe Fillion-Robin, Kitware Inc.
-and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR013218-12S1.
+This module was developed by Steve Pieper for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections" 
+awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839). 
+https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false 
 """ # replace with organization, grant and thanks.
 
 
