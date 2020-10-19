@@ -27,9 +27,10 @@ class ALPACA(ScriptedLoadableModule):
     self.parent.dependencies = []
     self.parent.contributors = ["Arthur Porto, Sara Rolfe (UW), Murat Maga (UW)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """
-      This module automatically transfers landmarks on a reference 3D model (mesh) to a target 3D model using dense correspondence and deformable registration. First optimize the parameters in single alignment analysis, then use them in batch mode to apply to all 3D models
+      This module automatically transfers landmarks on a reference 3D model (mesh) to a target 3D model using dense correspondence and deformable registration. First optimize the parameters in single alignment analysis, then use them in batch mode to apply to all 3D models. 
+      <p>For more information see the <a href="https://github.com/SlicerMorph/S_2020/tree/master/Lab_ALPACA">online tutorial</a>.</p> 
       """
-    self.parent.helpText += self.getDefaultModuleDocumentationLink()
+    #self.parent.helpText += self.getDefaultModuleDocumentationLink()
     self.parent.acknowledgementText = """
       This module was developed by Arthur Porto, Sara Rolfe, and Murat Maga for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections" 
       awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839). 
