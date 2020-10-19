@@ -2,18 +2,18 @@
 **Summary:** This module enables simple keyframe-based animation of 3D volumes. It supports interpolation of ROI, rotations, and transfer functions for volume rendering. Individual time-tracks can be set to each of these actions. While each volume rendering action support only a pair of transfer functions (Start and End), a number volume rendering tracks can be daisy-chained to create complex volume rendering animations. Output can be either as an image sequence of frames or can be compiled into mp4 format. _Animator uses the [ScreenCapture](https://www.slicer.org/wiki/Documentation/4.10/Modules/ScreenCapture) to make mp4 movies, so ensure that ffmpeg is installed and configured before making movies with Animator._
 
 ### USAGE
-Start with loading the 3D volume to be rendered into Slicer, and [enable the Volume Rendering for it](https://raw.githubusercontent.com/SlicerMorph/S_2020/master/Day_1/ImageStacks/Data_Volume_Rendering.png). Adjust the initial volume property (Scalar Opacity Map, Scalar Color Map) in whichevery you want the specimen you want to appear initially.
+Start with loading the 3D volume to be rendered into Slicer, and [enable the Volume Rendering for it](https://raw.githubusercontent.com/SlicerMorph/S_2020/master/Day_1/ImageStacks/Data_Volume_Rendering.png). Adjust the initial volume property (Scalar Opacity Map, Scalar Color Map) in whichever way you want the specimen to appear initially.
 
 **Limitations:** 
   *  Only one ROI and CameraRotation action per animation is currently allowed.
   *  Start and End Volume Properties must have identical number of control points in their Scalar Opacity and Color Maps, eitherwise interpolation will fail. As long as there are identical number of control points in across different volume property sets, their position, values and colors can be arbitrarily set. 
 
-**ANIMATION PARAMETERS**
-**New Animation Duration:** Default is 5 sec, can be overwritten by user (must be set before creating animation node)
+**ANIMATION PARAMETERS**\
+**New Animation Duration:** Default is 5 sec, can be overwritten by user (must be set before creating animation node)\
 **Animation Node:** Default blank, choose to create _New Animation_
 
 
-**ACTIONS**
+**ACTIONS**\
 **Add Action:** There are currently three possibilities:
 
   * **CameraRotationAction:** User needs to choose the rotation speed (degrees per second), and the axis of rotation (yaw, pitch or roll). Default rotation speed is 90 degrees per second, and can be editted by the user.
@@ -23,7 +23,7 @@ Start with loading the 3D volume to be rendered into Slicer, and [enable the Vol
 Any number of these actions can be added as separate time-tracks. 
   
 **EXPORT**\
-**Animation Size:** Choose one of the rendering size presets, 160x120, 320x240, 640x480, 1920x1024, 1920x1080, and 3840x2160
+**Animation Size:** Choose one of the rendering size presets, 160x120, 320x240, 640x480, 1920x1024, 1920x1080, and 3840x2160\
 **Animation Format:** Can be either mp4 or an animated GIF.\
 **Output File:** Specify the location of the output file. 
 
