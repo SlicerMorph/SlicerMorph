@@ -14,6 +14,9 @@
 
 **Reverse:** If checked, it will reverse the ordering of files. This is useful to mitigate the mirror reflection problem of the specimens due to unknown nature of ordering (is it from top to bottom or bottom to top) of slices.
 
+### KNOWN ISSUES
+In MacOS when browsing for files, user has to scroll down slowly to make sure all files are correctly included in the final selection. Quickly selecting the first file and jumping all the way to the last causes breaks in the selection when there are a large number of files (typically in thoudsands range). This appears to be an issue  QT library and how it uses the native file browser in MacOS. 
+
 ### TUTORIAL
 Please see https://github.com/SlicerMorph/S_2020/blob/master/Day_1/ImageStacks/ImageStacks.md#imagestacks
 
