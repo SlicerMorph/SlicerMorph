@@ -35,7 +35,7 @@ Modules in SlicerMorph are organized in three broad categories:
   - <a href="https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/MorphologikaLMConverter">**MorphologikaLMConverter:**</a> Imports a Morphologika formatted landmark file that may contain multiple subjects and exports a Slicer .FCSV landmark file for each individual to a directory specified by the user.
   - <a href="https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/IDAVLMConverter">**IDAVLMConverter:**</a> Imports IDAV landmark editor files with header length specified by the user.
   - **ImportSurfaceToSegment:** Imports a 3D surface model as a segmentation and prompts the user to edit it using the Segment Editor module.
-  - **SegmentEndoCranium:** Automatically segments the endocranial space in a 3D volume of a vertebrate skull. 
+  - **SegmentEndoCranium:** Automatically segments the endocranial space in a 3D volume of a vertebrate skull. A detailed description of the module and how it works can be found [in this tutorial under the automated method](https://slicermorph.github.io/Endocast_creation.html). 
 
 ## Dependencies
 SlicerMorph automatically installs these additional extensions as dependencies. It should be noted that none of the SlicerMorph specific functionality directly relies on these modules. Functionality in these extensions complements modules in SlicerMorph. Click on the links to get more information about these extensions.
