@@ -439,7 +439,7 @@ class Animator(ScriptedLoadableModule):
     self.parent.contributors = ["Steve Pieper (Isomics, Inc.)"]
     self.parent.helpText = """
 A high-level animation interface that operates on top of the Sequences and Screen Capture interfaces.
-    <p>For more information see the <a href="https://github.com/muratmaga/SlicerMorph-1/tree/master/Docs/Animator">online documentation</a>.</p>
+    <p>For more information see the <a href="https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/Animator">online documentation</a>.</p>
 
 """
     self.parent.acknowledgementText = """
