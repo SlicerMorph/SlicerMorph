@@ -76,6 +76,15 @@ This module was developed by Sara Rolfe and Murat Maga for SlicerMorph. SlicerMo
       uris='https://github.com/SlicerMorph/SampleData/blob/master/sample_Skyscan_mCT_reconstruction.zip?raw=true',
       loadFiles=False,
       fileNames='sample_Skyscan_mCT_reconstruction.zip',
-      #thumbnailFileName=os.path.join(iconsPath, 'CTPCardio.png'),
+      thumbnailFileName=os.path.join(iconsPath, 'microCT_stack_thumbnail.png'),
+      loadFileType='zip',
+)
+    SampleData.SampleDataLogic.registerCustomSampleDataSource(
+      sampleName='Auto3dgm sample',
+      category='SlicerMorph',
+      uris='https://toothandclaw.github.io/files/samples.zip',
+      loadFiles=False,
+      fileNames='samples.zip',
+      thumbnailFileName=os.path.join(iconsPath, 'auto3dgm_thumbnail.png'),
       loadFileType='zip',
 )
