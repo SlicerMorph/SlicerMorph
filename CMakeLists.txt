@@ -35,7 +35,7 @@ add_subdirectory(MorphPreferences)
 add_subdirectory(SkyscanReconImport)
 add_subdirectory(SlicerMorphSampleData)
 add_subdirectory(PlaceSemiLMPatches)
-add_subdirectory(ProjectSemiLMPatches)
+add_subdirectory(ProjectSemiLM)
 add_subdirectory(PseudoLMGenerator)
 add_subdirectory(SegmentEndocranium)
 
