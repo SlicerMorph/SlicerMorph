@@ -12,17 +12,17 @@ import CreateSemiLMPatches
 import re
 import csv
 #
-# ProjectSemiLMPatches
+# ProjectSemiLM
 #
 
-class ProjectSemiLMPatches(ScriptedLoadableModule):
+class ProjectSemiLM(ScriptedLoadableModule):
   """Uses ScriptedLoadableModule base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
   
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
-    self.parent.title = "ProjectSemiLMPatches" # TODO make this more human readable by adding spaces
+    self.parent.title = "ProjectSemiLM" # TODO make this more human readable by adding spaces
     self.parent.categories = ["SlicerMorph.SlicerMorph Utilities"]
     self.parent.dependencies = []
     self.parent.contributors = ["Sara Rolfe (UW), Murat Maga (UW)"] # replace with "Firstname Lastname (Organization)"
@@ -37,10 +37,10 @@ class ProjectSemiLMPatches(ScriptedLoadableModule):
       """ # replace with organization, grant and thanks.
 
 #
-# ProjectSemiLMPatchesWidget
+# ProjectSemiLMWidget
 #
 
-class ProjectSemiLMPatchesWidget(ScriptedLoadableModuleWidget):
+class ProjectSemiLMWidget(ScriptedLoadableModuleWidget):
   """Uses ScriptedLoadableModuleWidget base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
@@ -150,7 +150,7 @@ class ProjectSemiLMPatchesWidget(ScriptedLoadableModuleWidget):
     # Apply Button
     #
     self.applyButton = qt.QPushButton("Apply")
-    self.applyButton.toolTip = "Generate ProjectSemiLMPatchess."
+    self.applyButton.toolTip = "Generate ProjectSemiLMs."
     self.applyButton.enabled = False
     parametersFormLayout.addRow(self.applyButton)
     
@@ -171,15 +171,15 @@ class ProjectSemiLMPatchesWidget(ScriptedLoadableModuleWidget):
   
   
   def onApplyButton(self):
-    logic = ProjectSemiLMPatchesLogic()
+    logic = ProjectSemiLMLogic()
     logic.run(self.modelSelector.currentNode(), self.baseLMSelect.currentNode(), self.baseSLMSelect.currentNode(), self.meshDirectory.currentPath, 
       self.landmarkDirectory.currentPath, self.outputDirectory.currentPath, self.scaleProjection.value)
     
 #
-# ProjectSemiLMPatchesLogic
+# ProjectSemiLMLogic
 #
 
-class ProjectSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
+class ProjectSemiLMLogic(ScriptedLoadableModuleLogic):
   """This class should implement all the actual
     computation done by your module.  The interface
     should be such that other python code can import
@@ -219,7 +219,7 @@ class ProjectSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
             # if mesh and lm file with same subject id exist, load into scene
             currentMeshNode = slicer.util.loadModel(meshFilePath)
             lmFilePath = os.path.join(lmDirectory, lmFileName)
-            currentLMNode = slicer.util.loadMarkupsFiducialList(lmFilePath)
+            success, currentLMNode = slicer.util.loadMarkupsFiducialList(lmFilePath)
             
             # set up transform between base lms and current lms
             sourcePoints = vtk.vtkPoints()
@@ -308,7 +308,7 @@ class ProjectSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
     annotationLogic.CreateSnapShot(name, description, type, 1, imageData)
 
 
-class ProjectSemiLMPatchesTest(ScriptedLoadableModuleTest):
+class ProjectSemiLMTest(ScriptedLoadableModuleTest):
   """
     This is the test case for your scripted module.
     Uses ScriptedLoadableModuleTest base class, available at:
@@ -324,9 +324,9 @@ class ProjectSemiLMPatchesTest(ScriptedLoadableModuleTest):
     """Run as few or as many tests as needed here.
       """
     self.setUp()
-    self.test_ProjectSemiLMPatches1()
+    self.test_ProjectSemiLM1()
   
-  def test_ProjectSemiLMPatches1(self):
+  def test_ProjectSemiLM1(self):
     """ Ideally you should have several levels of tests.  At the lowest level
       tests should exercise the functionality of the logic with different inputs
       (both valid and invalid).  At higher levels your tests should emulate the
@@ -357,7 +357,7 @@ class ProjectSemiLMPatchesTest(ScriptedLoadableModuleTest):
     self.delayDisplay('Finished with download and loading')
     
     volumeNode = slicer.util.getNode(pattern="FA")
-    logic = ProjectSemiLMPatchesLogic()
+    logic = ProjectSemiLMLogic()
     self.assertIsNotNone( logic.hasImageData(volumeNode) )
     self.delayDisplay('Test passed!')
 

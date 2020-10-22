@@ -1,5 +1,5 @@
 #-----------------------------------------------------------------------------
-set(MODULE_NAME ProjectSemiLMPatches)
+set(MODULE_NAME ProjectSemiLM)
 
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS
