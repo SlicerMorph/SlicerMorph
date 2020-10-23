@@ -1,5 +1,5 @@
 ## GPA
-**Summary:** This module performs Generalized Procrustes Analysis (GPA) with or without scaling shape configurations to unit size, conducts principle component analysis (PCA) of GPA aligned shape coordinates, provides graphical output of GPA results and real-time 3D visualization of PC warps either using the landmarks of mean shape, or using a reference model that is transformed into the mean shape. Visualization of 3D shape deformation of the reference model can be exported as video clips. The input into the module is a folder path containing a number of landmark files stored in Slicer’s fcsv format and optionally a 3D model and accompanying set of landmarks to be used as reference model in 3D visualization of PCA results.
+**Summary:** This module performs Generalized Procrustes Analysis (GPA) with or without scaling shape configurations to unit size, conducts principal component analysis (PCA) of GPA aligned shape coordinates, provides graphical output of GPA results and real-time 3D visualization of PC warps either using the landmarks of mean shape, or using a reference model that is transformed into the mean shape. Visualization of 3D shape deformation of the reference model can be exported as video clips. The input into the module is a folder path containing a number of landmark files stored in Slicer’s fcsv format and optionally a 3D model and accompanying set of landmarks to be used as reference model in 3D visualization of PCA results.
 
 ### USAGE
 #### Setup analysis: 
@@ -37,47 +37,51 @@ This section creates a visualization of the Procrustes distance variance at each
 * __Point cloud:__ Plots GPA aligned landmark coordinates for the entire data set as a point cloud.
 
 #### PCA scatter plot options
-This section creates a 2D scatter plot of the PCA scores for each subject. The menu options are used to select the PC's on each axis, or optionally group subjects using factor data. 
+This section creates a 2D scatter plot of two selected principal component scores in the Plot Viewer. The menu options are used to select the principal components on each axis, or optionally group subjects using factor data. 
 
-* __X Axis:__
+* __X Axis:__ Select the PC on the X-axis.
 
-* __Y Axis:__
+* __Y Axis:__ Select the PC on the Y-axis.
 
-* __Factor name:__
+* __Factor name:__ Input the title of the factor to be added. Click `Add factor data` to display a table with the factor added as a column header. Input the factor data under this header.
 
-* __Select factor:__
+* __Select factor:__ To group subjects in the PC scatter plot using the input factor data, select a factor from the dropdown menu. Each factor grouping will be displayed in the PC scatter plot with a unique, random color.
 
 #### Lollipop plot options
+This section creates a visualization of the eigenvectors associated with each principal component in the 3D viewer. This vector indicates how the mean shape will change along the positive values of the selected PC. Between one and three PC vectors can be displayed simultaneously.
 
-* __Vector one: red__
+* __Vector one: red__ Select the first PC, which will be displayed in red.
 
-* __Vector two: green__
+* __Vector two: green__ Optionally select an additional PC that will be displayed in green.
 
-* __Vector three: blue__
+* __Vector three: blue__ Optionally select an additional PC that will be displayed in blue.
 
-* __Lollipop 2D projection__
+* __Lollipop 2D projection__ Option to project the vector visualization from the 3D viewer to a 2D view.
 
 #### Setup interactive visualization
+This section sets up an interactive visualization demonstrating how selected principal components impact the mean shape. The visualization can be shown using only the Procrustes mean shape calculated in the first step of the `GPA` module, which requires no additional data. Alternatively, the impact of each PC can be shown on a reference model. This option requires a representative 3D model with and a corresponding landmark file. When the interactive visualization has been set up, a the mean shape or reference model that will be warped by the PCs is displayed in the second 3D viewer.
 
-* __Mean shape visualization__
+* __Mean shape visualization__ This option selects the default visualization, which displays the impact of the PCs on the mean shape landmarks only.
 
-* __3D model visualization__
+* __3D model visualization__ This option will set up the interactive visualization using a sample mesh to show the impact of the PCs, if a model and corresponding landmark file are loaded.
 
-* __Specify reference model__
+* __Specify reference model__ If the `3D model visualization` option was chosen, this field is used to select the model. Supported model filetypes include: `.ply`, `.stl`, `.obj`, `.vtk`, `.vtp`, `.orig`, `.g`, and `.byu`.
 
-* __Specify landmark set for selected model__
+* __Specify landmark set for selected model__ If the `3D model visualization` option was chosen, this field is used to select the `.fcsv` file containing the model's corresponding landmarks.
 
-#### PCA visualization parameters
+#### PCA visualization parameters 
+This section allows the user to visualize the influence of select principal components on the mean shape landmarks or reference model displayed the second 3D viewer. The original mean shape or model remains in the first 3D viewer for comparison. The PC selectors allow up to two PCs to be selected and their influence to be modulated in both the positive and negative direction interactively using the slider bars. 
 
-* __PC Selector One__
+* __PC Selector One__ Select the first principal component and scaling factor.
 
-* __PC Selector Two__
+* __PC Selector Two__ Optionally select the second principal component and scaling factor.
 
 #### Create animation of PC warping
+This section allows the user to capture a PC deformation as an animation. The animation created can be exported using the `Screen Capture` module, which supports several video export formats, including `mp4`.
 
-* __Start recording__
+* __Start recording__ Begins recording the warping applied to the mean shape landmarks or reference model.
 
-* __Stop recording__
+* __Stop recording__  Ends recording the warping applied to the mean shape landamrks or reference model.
 
 ### TUTORIAL
 For more information, please see the [GPA tutorial](https://github.com/SlicerMorph/S_2020/blob/master/Day_3/GPA/GPA.md)
