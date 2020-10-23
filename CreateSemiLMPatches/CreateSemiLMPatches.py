@@ -26,7 +26,7 @@ class CreateSemiLMPatches(ScriptedLoadableModule):
     self.parent.dependencies = []
     self.parent.contributors = ["Sara Rolfe (UW), Murat Maga (UW)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """
-      This module takes a data set of landmark files and subject meshes and places semi-landmarks.
+      This module interactively places patches of semi-landmarks between user-specified anatomical landmarks.
       <p>For more information see the <a href="https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/CreateSemiLMPatches">online documentation.</a>.</p> 
       """
     #self.parent.helpText += self.getDefaultModuleDocumentationLink()
