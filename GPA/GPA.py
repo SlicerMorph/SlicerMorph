@@ -34,8 +34,9 @@ class GPA(ScriptedLoadableModule):
     self.parent.contributors = [" Sara Rolfe (UW), Murat Maga (UW)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """
 This module preforms standard Generalized Procrustes Analysis (GPA) based on (citation)
+<p>For more information see the <a href="https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/GPA">online documentation.</a>.</p>
 """
-    self.parent.helpText += self.getDefaultModuleDocumentationLink()
+    #self.parent.helpText += self.getDefaultModuleDocumentationLink()
     self.parent.acknowledgementText = """
       This module was developed by Sara Rolfe, and Murat Maga for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections" 
       awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839). 
