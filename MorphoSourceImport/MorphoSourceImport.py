@@ -46,6 +46,7 @@ class MorphoSourceImport(ScriptedLoadableModule):
     self.parent.contributors = ["Murat Maga (UW), Sara Rolfe (UW), Arthur Porto(SCRI)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """
 This module provides a keyword search to query and load 3D models from the MorphoSource database into the 3D Slicer scene.
+<p>For more information about usage and limitations see <a href="https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/MorphoSourceImport"> online documentation.</a>
 """
     self.parent.acknowledgementText = """
       This module was developed by Sara Rolfe and Arthur Porto with guidance from Julie Winchester for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections" 
