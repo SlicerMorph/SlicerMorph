@@ -27,10 +27,10 @@ class PlaceSemiLMPatches(ScriptedLoadableModule):
     self.parent.dependencies = []
     self.parent.contributors = ["Sara Rolfe (UW), Murat Maga (UW)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """
-      This module takes a directory of volumes and segments them using a user-supplied threshold value. The output segments are converted to models and saved in the
-      output directory.
+      This module places semi-landmark patches between anatomical landmarks as described by a user-provided connectivity file.
+      <p>For more information see the <a href="https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/PlaceSemiLMPatches">online documentation.</a>.</p> 
       """
-    self.parent.helpText += self.getDefaultModuleDocumentationLink()
+    #self.parent.helpText += self.getDefaultModuleDocumentationLink()
     self.parent.acknowledgementText = """
       This module was developed by Sara Rolfe for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections" 
       awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839). 
