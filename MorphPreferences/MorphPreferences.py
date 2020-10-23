@@ -65,7 +65,7 @@ class _ui_MorphPreferencesSettingsPanel(object):
       " Restart the app for changes to take effect.")
     toBool = slicer.util.toBool
     key = "MorphPreferences/customize"
-    customize = slicer.util.settingsValue(key, True, converter=toBool)
+    customize = slicer.util.settingsValue(key, False, converter=toBool)
     self.loadMorphPreferencesCheckBox.checked = customize
     genericGroupBoxFormLayout.addRow("Use SlicerMorph customizations:", self.loadMorphPreferencesCheckBox)
 
