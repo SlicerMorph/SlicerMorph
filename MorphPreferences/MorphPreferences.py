@@ -69,7 +69,8 @@ class _ui_MorphPreferencesSettingsPanel(object):
     self.loadMorphPreferencesCheckBox.checked = customize
     genericGroupBoxFormLayout.addRow("Use SlicerMorph customizations:", self.loadMorphPreferencesCheckBox)
 
-    label = qt.QLabel(rcPath)
+    label = qt.QLineEdit(rcPath)
+    label.readOnly = True
     genericGroupBoxFormLayout.addRow("Customization file:", label)
 
     loadNowButton = qt.QPushButton("Load now")
