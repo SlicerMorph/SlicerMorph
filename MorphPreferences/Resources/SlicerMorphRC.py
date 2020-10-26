@@ -54,6 +54,14 @@ settings.setValue("VolumeRendering/RenderingMethod", "vtkMRMLGPURayCastVolumeRen
 settings.setValue("VolumeRendering/DefaultQuality", "Normal")
 
 #
+# orthographic view mode and turn on rulers
+#
+settings = slicer.app.settings()
+settings.setValue("Default3DView/UseOrthographicProjection", True)
+settings.setValue("Default3DView/RulerType", "thin")
+settings.setValue("DefaultSliceView/RulerType", "thin")
+
+#
 # Keyboard shortcuts
 #
 
