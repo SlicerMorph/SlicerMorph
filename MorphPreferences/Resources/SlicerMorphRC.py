@@ -34,6 +34,12 @@ slicer.util.findChild(slicer.util.mainWindow(), 'LogoLabel').visible = False
 #collapse Data Probe tab by default to save space modules tab
 slicer.util.findChild(slicer.util.mainWindow(), name='DataProbeCollapsibleWidget').collapsed = True
 
+# set volume rendering modes
+#
+settings = qt.QSettings()
+settings.setValue("VolumeRendering/RenderingMethod", "vtkMRMLGPURayCastVolumeRenderingDisplayNode")
+settings.setValue("VolumeRendering/DefaultQuality", "Normal")
+
 #
 # Keyboard shortcuts
 #
