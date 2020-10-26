@@ -161,3 +161,4 @@ for (shortcutKey, callback) in shortcuts:
 logging.info(f"  {len(shortcuts)} keyboard shortcuts installed")
 
 logging.info("Done customizing with SlicerMorphRC.py")
+logging.info("On first load of customization, restart Slicer to take effect.")
