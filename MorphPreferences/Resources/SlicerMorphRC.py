@@ -62,6 +62,12 @@ settings.setValue("Default3DView/RulerType", "thin")
 settings.setValue("DefaultSliceView/RulerType", "thin")
 
 #
+# units settings
+#
+revisionUserSettings = slicer.app.revisionUserSettings()
+revisionUserSettings.setValue("length/precision", 10)
+
+#
 # Keyboard shortcuts
 #
 
