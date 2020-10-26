@@ -83,11 +83,38 @@ class _ui_MorphPreferencesSettingsPanel(object):
     loadNowButton.connect("clicked()", lambda rcPath=rcPath: MorphPreferences.loadRCFile(rcPath))
     self.loadMorphPreferencesCheckBox.connect("toggled(bool)", self.onLoadMorphPreferencesCheckBoxToggled)
 
+    hbox = qt.QHBoxLayout()
+    self.downloadDirectory = qt.QLineEdit()
+    self.downloadDirectory.readOnly = True
+    key = "MorphPreferences/downloadDirectory"
+    downloadDirectory = slicer.util.settingsValue(key, "", converter=str)
+    if downloadDirectory == "":
+        self.downloadDirectory.setText("Defaults")
+    else:
+        self.downloadDirectory.setText(downloadDirectory)
+        self.setDownloadDirectories(downloadDirectory)
+    self.setDownloadDirectoryButton = qt.QPushButton("Set")
+    self.setDownloadDirectoryButton.connect("clicked()", self.onSetDownloadDirectory)
+    hbox.addWidget(self.downloadDirectory)
+    hbox.addWidget(self.setDownloadDirectoryButton)
+    genericGroupBoxFormLayout.addRow("Download directory:", hbox)
+
     vBoxLayout.addWidget(genericGroupBox)
     vBoxLayout.addStretch(1)
 
   def onLoadMorphPreferencesCheckBoxToggled(self, checked):
-    qt.QSettings().setValue("MorphPreferences/customize", checked)
+    slicer.app.settings().setValue("MorphPreferences/customize", checked)
+
+  def onSetDownloadDirectory(self):
+    directory = qt.QFileDialog.getExistingDirectory()
+    if directory != "":
+        self.downloadDirectory.setText(directory)
+        slicer.app.settings().setValue("MorphPreferences/downloadDirectory", directory)
+        self.setDownloadDirectories(directory)
+
+  def setDownloadDirectories(self, directory):
+    slicer.app.settings().setValue("Cache/Path", directory)
+    slicer.app.settings().setValue("Modules/TemporaryDirectory", directory)
 
 
 class MorphPreferencesSettingsPanel(ctk.ctkSettingsPanel):
