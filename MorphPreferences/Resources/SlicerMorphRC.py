@@ -49,7 +49,7 @@ slicer.util.findChild(slicer.util.mainWindow(), name='DataProbeCollapsibleWidget
 #
 # set volume rendering modes
 #
-settings = qt.QSettings()
+settings = slicer.app.settings()
 settings.setValue("VolumeRendering/RenderingMethod", "vtkMRMLGPURayCastVolumeRenderingDisplayNode")
 settings.setValue("VolumeRendering/DefaultQuality", "Normal")
 
