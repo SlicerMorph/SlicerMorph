@@ -22,7 +22,7 @@ class MorphPreferences(ScriptedLoadableModule):
         def onStartupCompleted():
             toBool = slicer.util.toBool
             key = "MorphPreferences/customize"
-            customize = slicer.util.settingsValue(key, True, converter=toBool)
+            customize = slicer.util.settingsValue(key, False, converter=toBool)
             if customize:
                 MorphPreferences.loadRCFile(self.rcPath())
 
