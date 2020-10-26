@@ -69,13 +69,16 @@ class _ui_MorphPreferencesSettingsPanel(object):
     self.loadMorphPreferencesCheckBox.checked = customize
     genericGroupBoxFormLayout.addRow("Use SlicerMorph customizations:", self.loadMorphPreferencesCheckBox)
 
+    hbox = qt.QHBoxLayout()
     label = qt.QLineEdit(rcPath)
     label.readOnly = True
     genericGroupBoxFormLayout.addRow("Customization file:", label)
 
     loadNowButton = qt.QPushButton("Load now")
     loadNowButton.toolTip = "Load the customization file now"
-    genericGroupBoxFormLayout.addRow("Customization file:", loadNowButton)
+    hbox.addWidget(label)
+    hbox.addWidget(loadNowButton)
+    genericGroupBoxFormLayout.addRow("Customization file:", hbox)
 
     loadNowButton.connect("clicked()", lambda rcPath=rcPath: MorphPreferences.loadRCFile(rcPath))
     self.loadMorphPreferencesCheckBox.connect("toggled(bool)", self.onLoadMorphPreferencesCheckBoxToggled)
