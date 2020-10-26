@@ -3,37 +3,50 @@ import logging
 logging.info("Customizing with SlicerMorphRC.py")
 
 
+#
 #set the default volume storage to not compress by default
+#
 defaultVolumeStorageNode = slicer.vtkMRMLVolumeArchetypeStorageNode()
 defaultVolumeStorageNode.SetUseCompression(0)
 slicer.mrmlScene.AddDefaultNode(defaultVolumeStorageNode)
 logging.info("  Volume nodes will be stored uncompressed by default")
 
+#
 #set the default volume storage to not compress by default
+#
 defaultVolumeStorageNode = slicer.vtkMRMLSegmentationStorageNode()
 defaultVolumeStorageNode.SetUseCompression(0)
 slicer.mrmlScene.AddDefaultNode(defaultVolumeStorageNode)
 logging.info("  Segmentation nodes will be stored uncompressed")
 
+#
 #set the default model save format to ply (from vtk)
+#
 defaultModelStorageNode = slicer.vtkMRMLModelStorageNode()
 defaultModelStorageNode.SetUseCompression(0)
 defaultModelStorageNode.SetDefaultWriteFileExtension('ply')
 slicer.mrmlScene.AddDefaultNode(defaultModelStorageNode)
 
+#
 #disable interpolation of the volumes by default
+#
 def NoInterpolate(caller,event):
   for node in slicer.util.getNodes('*').values():
     if node.IsA('vtkMRMLScalarVolumeDisplayNode'):
       node.SetInterpolate(0)
 slicer.mrmlScene.AddObserver(slicer.mrmlScene.NodeAddedEvent, NoInterpolate)
 
+#
 #hide SLicer logo in module tab
+#
 slicer.util.findChild(slicer.util.mainWindow(), 'LogoLabel').visible = False
 
+#
 #collapse Data Probe tab by default to save space modules tab
+#
 slicer.util.findChild(slicer.util.mainWindow(), name='DataProbeCollapsibleWidget').collapsed = True
 
+#
 # set volume rendering modes
 #
 settings = qt.QSettings()
