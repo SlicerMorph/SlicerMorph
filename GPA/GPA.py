@@ -1690,16 +1690,31 @@ class GPALogic(ScriptedLoadableModuleLogic):
     annotationLogic = slicer.modules.annotations.logic()
     annotationLogic.CreateSnapShot(name, description, type, 1, imageData)
     
-  def mergeMatchs(self, topDir, lmToRemove, suffix=".fcsv"):
+  def mergeMatchs(self, topDir, lmToRemove):
     # initial data array
     dirs, files, matchList = self.walk_dir_current(topDir)
-    landmarks=self.initDataArray(dirs,files[0],len(matchList))
-    matchedfiles=[]
-    for i in range(len(matchList)):
-      tmp1=self.importLandMarks(matchList[i]+".fcsv")
-      landmarks[:,:,i]=tmp1
-      matchedfiles.append(os.path.basename(matchList[i]))
-    
+    suffix = files[0].split(".")[-1]
+    if suffix == "fcsv":
+      landmarks=self.initDataArray(dirs,files[0],len(matchList))
+      matchedfiles=[]
+      for i in range(len(matchList)):
+        tmp1=self.importLandMarks(matchList[i]+'.'+ suffix)
+        landmarks[:,:,i] = tmp1
+        matchedfiles.append(os.path.basename(matchList[i]))
+    elif suffix == "json":
+      import pandas
+      firstFilename = os.path.join(dirs[0], files[0])
+      tempTable = pandas.DataFrame.from_dict(pandas.read_json(firstFilename)['markups'][0]['controlPoints'])
+      landmarkNumber = len(tempTable)
+      landmarks=np.zeros(shape=(landmarkNumber,3,len(matchList)))
+      matchedfiles=[]
+      for i in range(len(matchList)):
+        filename = os.path.join(dirs[0], files[i])
+        tmp1=pandas.DataFrame.from_dict(pandas.read_json(filename)['markups'][0]['controlPoints'])
+        lmArray = tmp1['position'].to_numpy()
+        for j in range(landmarkNumber):
+          landmarks[j,:,i]=lmArray[j]
+        matchedfiles.append(os.path.basename(matchList[i]))
     if len(lmToRemove)>0:
       indexToRemove=[]
       for i in range(len(lmToRemove)):
@@ -1750,7 +1765,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
     file_to_open=[]
     for path, dir, files in os.walk(top_dir):
       for filename in files:
-        if fnmatch.fnmatch(filename,"*.fcsv"):
+        if fnmatch.fnmatch(filename,"*.fcsv") or fnmatch.fnmatch(filename,"*.json"):
           dir_to_explore.append(path)
           file_to_open.append(filename)
     return dir_to_explore, file_to_open
@@ -1761,9 +1776,9 @@ class GPALogic(ScriptedLoadableModuleLogic):
     """
     dirs=[]
     validFiles=[]
-    files = [f for f in os.listdir(top_dir) if os.path.isfile(os.path.join(top_dir,f))]
+    files = [f for f in os.listdir(top_dir) if os.path.isfile(os.path.join(top_dir,f))]        
     for filename in files:
-      if fnmatch.fnmatch(filename,"*.fcsv"):
+      if fnmatch.fnmatch(filename,"*.fcsv") or fnmatch.fnmatch(filename,"*.json"):
         dirs.append(top_dir)
         validFiles.append(os.path.join(top_dir, filename[:-5]))
     return dirs, files, validFiles
