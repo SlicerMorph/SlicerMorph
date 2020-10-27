@@ -285,7 +285,7 @@ class PseudoLMGeneratorWidget(ScriptedLoadableModuleWidget):
     if self.planeSelector.currentNode() is not None:
       print("Symmetrizing points")
       logic.symmetrizeLandmarks(self.modelSelector.currentNode(), self.sphericalSemiLandmarks, self.planeSelector.currentNode(), spacingPercentage)
-
+      self.sphericalSemiLandmarks.SetDisplayVisibility(False)
 #
 # PseudoLMGeneratorLogic
 #
@@ -322,7 +322,7 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
     cleanFilter.Update()
     outputPoints = cleanFilter.GetOutput()
 
-    sphereSampleLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"sphericalSampledLandmarks")
+    sphereSampleLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"PseudoLandmarks")
     sphereSampleLMNode.CreateDefaultDisplayNodes()
     for i in range(outputPoints.GetNumberOfPoints()):
       point = outputPoints.GetPoint(i)
@@ -351,7 +351,7 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
     cleanPolyData=filter.GetOutput()
     
     # Create a landmark node from the cleaned polyData
-    sphereSampleLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"sphericalSampledLandmarks")
+    sphereSampleLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"PseudoLandmarks")
     sphereSampleLMNode.CreateDefaultDisplayNodes()
     for i in range(cleanPolyData.GetNumberOfPoints()):
       point = cleanPolyData.GetPoint(i)
@@ -389,7 +389,7 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
     cleanPolyData=filter.GetOutput()
     
     # Create a landmark node from the cleaned polyData
-    sphereSampleLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"sphericalSampledLandmarks")
+    sphereSampleLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"PseudoLandmarks")
     sphereSampleLMNode.CreateDefaultDisplayNodes()
     for i in range(cleanPolyData.GetNumberOfPoints()):
       point = cleanPolyData.GetPoint(i)
@@ -708,7 +708,7 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
     mirrorMesh = self.clipAndMirrorWithPlane(mesh, plane)
     # get clipped point set
     clippedPoints = self.cropWithPlane(vertPolyData, plane)
-    clippedLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"symmetricLM1")
+    clippedLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"LM_normal")
     for i in range(clippedPoints.GetNumberOfPoints()):
       clippedLMNode.AddFiducialFromArray(clippedPoints.GetPoint(i))
     insideOutOption = True
@@ -719,14 +719,31 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
     projectedPoints = self.projectPointsPolydata(mirrorMesh, clippedMesh, mirrorPoints, maxProjection)
     
     # convert symmetric points to landmark node
-    clippedLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"LM_normal")
     clippedLMNode.CreateDefaultDisplayNodes()
+    clippedLMNode.SetDisplayVisibility(False)
+    clippedLMNode.GetDisplayNode().SetPointLabelsVisibility(False)
+    pink=[1,0,1]
+    clippedLMNode.GetDisplayNode().SetSelectedColor(pink)
+    
     projectedLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"LM_inverse")
     projectedLMNode.CreateDefaultDisplayNodes()
+    projectedLMNode.SetDisplayVisibility(False)
+    projectedLMNode.GetDisplayNode().SetPointLabelsVisibility(False)
+    teal=[0,1,1]
+    projectedLMNode.GetDisplayNode().SetSelectedColor(teal)
+    
     midlineLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"LM_merged")
     midlineLMNode.CreateDefaultDisplayNodes()
-    totalLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"LM_total")
+    midlineLMNode.SetDisplayVisibility(False)
+    midlineLMNode.GetDisplayNode().SetPointLabelsVisibility(False)
+    orange=[1,.5,0]
+    midlineLMNode.GetDisplayNode().SetSelectedColor(orange)
+    
+    totalLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"SymmetricPseudoLandmarks")
     totalLMNode.CreateDefaultDisplayNodes()
+    totalLMNode.GetDisplayNode().SetPointLabelsVisibility(False)
+    green=[0,1,0]
+    totalLMNode.GetDisplayNode().SetSelectedColor(green)
     
     samplingDistance = mesh.GetLength()*samplingPercentage
     spatialConstraint = samplingDistance*samplingDistance
