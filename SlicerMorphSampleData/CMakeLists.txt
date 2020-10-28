@@ -11,6 +11,8 @@ set(MODULE_PYTHON_RESOURCES
   Resources/Icons/gorilla3D.png
   Resources/Icons/mouse3D.png
   Resources/Icons/pointcloud.png
+  Resources/Icons/auto3dgm_thumbnail.png
+  Resources/Icons/microCT_stack_thumbnail.png
   )
 
 #-----------------------------------------------------------------------------
