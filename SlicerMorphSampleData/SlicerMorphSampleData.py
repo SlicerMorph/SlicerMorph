@@ -49,7 +49,7 @@ This module was developed by Sara Rolfe and Murat Maga for SlicerMorph. SlicerMo
       fileNames=['Gor_template_low_res.ply', 'Gorilla_template_LM1.fcsv'],
       nodeNames=['Gor_template_low_res', 'Gorilla_template_LM1'],
       thumbnailFileName=os.path.join(iconsPath, 'gorilla3D.png'),
-      loadFileType=['ModelFile', 'MarkupsFiducials'],
+      loadFileType=['ModelFile', 'MarkupsFile'],
 )
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
       sampleName='Mouse Skull Landmarks Only',
@@ -68,7 +68,7 @@ This module was developed by Sara Rolfe and Murat Maga for SlicerMorph. SlicerMo
       fileNames=['4074_skull.vtk','4074_S_lm1.fcsv'],
       nodeNames=['4074_skull', '4074_S_lm1'],
       thumbnailFileName=os.path.join(iconsPath, 'mouse3D.png'),
-      loadFileType=['ModelFile','MarkupsFiducials'],
+      loadFileType=['ModelFile','MarkupsFile'],
 )
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
       sampleName='Bruker/Sykscan mCT Recon sample',
@@ -77,7 +77,7 @@ This module was developed by Sara Rolfe and Murat Maga for SlicerMorph. SlicerMo
       loadFiles=False,
       fileNames='sample_Skyscan_mCT_reconstruction.zip',
       thumbnailFileName=os.path.join(iconsPath, 'microCT_stack_thumbnail.png'),
-      loadFileType='zip',
+      loadFileType='ZipFile',
 )
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
       sampleName='Auto3dgm sample',
@@ -86,5 +86,5 @@ This module was developed by Sara Rolfe and Murat Maga for SlicerMorph. SlicerMo
       loadFiles=False,
       fileNames='samples.zip',
       thumbnailFileName=os.path.join(iconsPath, 'auto3dgm_thumbnail.png'),
-      loadFileType='zip',
+      loadFileType='ZipFile',
 )
