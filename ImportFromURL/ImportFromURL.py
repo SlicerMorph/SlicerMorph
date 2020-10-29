@@ -118,11 +118,31 @@ class ImportFromURLLogic(ScriptedLoadableModuleLogic):
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
   def runImport(self, url, fileNames, nodeNames):
+    filename, extension = os.path.splitext(fileNames)
+    if(extension in ['.zip', '.gz']):
+      fileTypes = 'ZipFile'
+    elif(extension in ['.mrml'] ):
+      fileTypes = 'SceneFile'
+    elif(extension in ['.dcm', '.nrrd', '.mhd', '.mha', '.vtk', '.hdr', '.img', '.bmp', '.jpg', '.jpeg', '.png', '.tif', '.tiff']):
+      ileTypes = VolumeFile
+    elif(extension in ['.vtk', '.vtp', '.obj', '.ply', '.stl'] ):
+      fileTypes = 'ModelFile'   
+    elif(extension in ['.fcsv', '.json'] ):
+      fileTypes = 'MarkupsFile'
+    else:
+      logging.debug('Could not download data. Not a supported file type.')
+      
     sampleDataLogic = SampleData.SampleDataLogic()
     loadedNodes = sampleDataLogic.downloadFromURL(
     nodeNames= nodeNames,
     fileNames= fileNames,
+    loadFileTypes=fileTypes,
     uris= url)
+    
+    # Check if download from URL returned a node collection. If not, then file was downloaded but not imported.
+    if not hasattr(loadedNodes, "GetNumberOfItems"):
+      logging.debug('Could not import data into the scene. Downloaded to: ' + loadedNodes[0])  
+      
     
 class ImportFromURLTest(ScriptedLoadableModuleTest):
   """
