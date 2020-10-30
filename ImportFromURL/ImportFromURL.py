@@ -121,7 +121,7 @@ class ImportFromURLLogic(ScriptedLoadableModuleLogic):
     filename, extension = os.path.splitext(fileNames)
     if(extension in ['.zip', '.gz']):
       fileTypes = 'ZipFile'
-    elif(extension in ['.mrml'] ):
+    elif(extension in ['.mrb'] ):
       fileTypes = 'SceneFile'
     elif(extension in ['.dcm', '.nrrd', '.mhd', '.mha', '.hdr', '.img', '.bmp', '.jpg', '.jpeg', '.png', '.tif', '.tiff']):
       fileTypes = 'VolumeFile'
@@ -137,6 +137,7 @@ class ImportFromURLLogic(ScriptedLoadableModuleLogic):
     nodeNames= nodeNames,
     fileNames= fileNames,
     loadFileTypes=fileTypes,
+    loadFiles = True,
     uris= url)
             
     # Check if download from URL returned a node collection. If not, then file was downloaded but not imported.
