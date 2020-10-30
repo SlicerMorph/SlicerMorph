@@ -123,8 +123,8 @@ class ImportFromURLLogic(ScriptedLoadableModuleLogic):
       fileTypes = 'ZipFile'
     elif(extension in ['.mrml'] ):
       fileTypes = 'SceneFile'
-    elif(extension in ['.dcm', '.nrrd', '.mhd', '.mha', '.vtk', '.hdr', '.img', '.bmp', '.jpg', '.jpeg', '.png', '.tif', '.tiff']):
-      ileTypes = VolumeFile
+    elif(extension in ['.dcm', '.nrrd', '.mhd', '.mha', '.hdr', '.img', '.bmp', '.jpg', '.jpeg', '.png', '.tif', '.tiff']):
+      fileTypes = 'VolumeFile'
     elif(extension in ['.vtk', '.vtp', '.obj', '.ply', '.stl'] ):
       fileTypes = 'ModelFile'   
     elif(extension in ['.fcsv', '.json'] ):
@@ -138,12 +138,26 @@ class ImportFromURLLogic(ScriptedLoadableModuleLogic):
     fileNames= fileNames,
     loadFileTypes=fileTypes,
     uris= url)
-    
+            
     # Check if download from URL returned a node collection. If not, then file was downloaded but not imported.
-    if not hasattr(loadedNodes, "GetNumberOfItems"):
+    if isinstance(loadedNodes[0], str):
       logging.debug('Could not import data into the scene. Downloaded to: ' + loadedNodes[0])  
-      
-    
+    elif fileTypes == 'VolumeFile':
+      self.autoRenderVolume(loadedNodes[0])
+        
+  def autoRenderVolume(self, volumeNode):
+    print("Auto- render node: "+volumeNode.GetName())
+    volRenLogic = slicer.modules.volumerendering.logic()
+    displayNode = volRenLogic.CreateDefaultVolumeRenderingNodes(volumeNode)
+    displayNode.SetVisibility(True)
+    scalarRange = volumeNode.GetImageData().GetScalarRange()
+    if scalarRange[1]-scalarRange[0] < 1500:
+      # small dynamic range, probably MRI
+      displayNode.GetVolumePropertyNode().Copy(volRenLogic.GetPresetByName('MR-Default'))
+    else:
+      # larger dynamic range, probably CT
+      displayNode.GetVolumePropertyNode().Copy(volRenLogic.GetPresetByName('CT-Chest-Contrast-Enhanced'))
+        
 class ImportFromURLTest(ScriptedLoadableModuleTest):
   """
     This is the test case for your scripted module.
