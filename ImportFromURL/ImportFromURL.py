@@ -119,12 +119,18 @@ class ImportFromURLLogic(ScriptedLoadableModuleLogic):
     """
   def runImport(self, url, fileNames, nodeNames):
     filename, extension = os.path.splitext(fileNames)
-    if(extension in ['.zip', '.gz']):
+    if(extension in ['.zip']):
       fileTypes = 'ZipFile'
     elif(extension in ['.mrb'] ):
       fileTypes = 'SceneFile'
     elif(extension in ['.dcm', '.nrrd', '.mhd', '.mha', '.hdr', '.img', '.bmp', '.jpg', '.jpeg', '.png', '.tif', '.tiff']):
       fileTypes = 'VolumeFile'
+    elif(extension == '.gz'):
+      subfilename, subextension = os.path.splitext(filename)
+      if subextension == '.nii':
+        fileTypes = 'VolumeFile'
+      else:
+        logging.debug('Could not download data. Not a supported file type.')   
     elif(extension in ['.vtk', '.vtp', '.obj', '.ply', '.stl'] ):
       fileTypes = 'ModelFile'   
     elif(extension in ['.fcsv', '.json'] ):
@@ -147,7 +153,7 @@ class ImportFromURLLogic(ScriptedLoadableModuleLogic):
       self.autoRenderVolume(loadedNodes[0])
         
   def autoRenderVolume(self, volumeNode):
-    print("Auto- render node: "+volumeNode.GetName())
+    print("Auto-render node: "+volumeNode.GetName())
     volRenLogic = slicer.modules.volumerendering.logic()
     displayNode = volRenLogic.CreateDefaultVolumeRenderingNodes(volumeNode)
     displayNode.SetVisibility(True)
