@@ -4,6 +4,8 @@ This is the development repository for [SlicerMorph project](http://SlicerMorph.
 
 SlicerMorph enable biologists to retrieve, visualize, measure and annotate high-resolution specimen data both from volumetric scans (CTs and MRs) as well as from 3D surface scanners more effectively within 3D Slicer. It has a number of modules that facilitate Geometric Morphometrics analysis on these 3D specimens. 
 
+[SlicerMorph: An open and extensible platform to retrieve, visualize and analyze 3D morphology](https://www.biorxiv.org/content/10.1101/2020.11.09.374926v1) preprint is now on Biorxiv.
+
 ## Installation
 Official method of obtaining SlicerMorph is through extension mechanism of 3D Slicer. To install, please first install the Preview Release (v4.11 or higher) of [3D Slicer](https://download.slicer.org/), as SlicerMorph is not available for older versions. Open the application and use the [Extensions Manager module](https://www.slicer.org/wiki/Documentation/Nightly/SlicerApplication/ExtensionsManager) to search for and install the SlicerMorph extension. After restarting 3D Slicer, all SlicerMorph modules will be available in the application.
 
