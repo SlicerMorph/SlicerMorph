@@ -37,7 +37,7 @@ The parameters in this section allow the user to select and adjust the regularly
 * Pseudo-landmarks placed on samples independently using this module should not be compared, as the positions are random. 
 
 ### TUTORIAL
-For more detail, please see the [PseudoLMGenerator tutorial](https://github.com/SlicerMorph/S_2020/blob/master/Day_3/Spherical_sampling/Spherical_Sampling.md).
+For more detail, please see the [PseudoLMGenerator tutorial](https://github.com/SlicerMorph/S_2020/blob/master/Day_3/PseudoLMGenerator/PseudoLMGenerator.md).
 
 
 
