@@ -60,7 +60,7 @@ We actively use SlicerMorph to teach a week-long intense [short course on 3D Mor
 
 
 ## Important Websites	
-*	SlicerMorph project website: https://www.SlicerMorph.org (website has additional tutorial, pointers to specimen repositories, and list of upcoming events).
+*	SlicerMorph project website: https://slicermorph.github.io (website has additional tutorial, pointers to specimen repositories, and list of upcoming events).
 *	Please sign up for the SlicerMorph announcement to keep up-to-date with SlicerMorph project and extension updates http://mailman11.u.washington.edu/mailman/listinfo/slicermorph-announcements
 * [Introduction to Slicer - Official Slicer Documentation](https://slicer.readthedocs.io/en/latest/user_guide/getting_started.html)
 * [Difference between Slicer and SlicerMorph](https://docs.google.com/document/d/1VdsYQzhjEh9tT5WQQjb1GUdn5Hmnq8cK3yLzjYeVv5M/edit)
