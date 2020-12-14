@@ -54,7 +54,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     except ModuleNotFoundError as e:
       if slicer.util.confirmOkCancelDisplay("ALPACA requires the open3d library. Installation may take a few minutes"):
         slicer.util.pip_install('notebook==6.0.3')
-        slicer.util.pip_install('open3d==0.9.0')
+        slicer.util.pip_install('open3d==0.10.0')
         import open3d as o3d
     try:
       from pycpd import DeformableRegistration
@@ -778,8 +778,8 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     targetCloud = geometry.PointCloud()
     targetCloud.points = utility.Vector3dVector(targetArray)
     cloudSize = np.max(targetCloud.get_max_bound() - targetCloud.get_min_bound())
-    targetCloud.scale(25 / cloudSize, center = False)
-    sourceCloud.scale(25 / cloudSize, center = False)
+    targetCloud.scale(25 / cloudSize, center = (0,0,0))
+    sourceCloud.scale   (25 / cloudSize, center = (0,0,0))
     #Convert back to numpy for cpd
     sourceArrayCombined = np.asarray(sourceCloud.points,dtype=np.float32)
     targetArray = np.asarray(targetCloud.points,dtype=np.float32)
@@ -789,7 +789,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     fiducial_prediction = deformed_array[-len(sourceLM):]
     fiducialCloud = geometry.PointCloud()
     fiducialCloud.points = utility.Vector3dVector(fiducial_prediction)
-    fiducialCloud.scale(cloudSize/25, center = False)
+    fiducialCloud.scale(cloudSize/25, center = (0,0,0))
     return np.asarray(fiducialCloud.points)
     
   def RAS2LPSTransform(self, modelNode):
@@ -892,7 +892,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     scaling = (targetSize)/sourceSize
     if skipScaling != 0:
         scaling = 1
-    source.scale(scaling, center=False)    
+    source.scale(scaling, center = (0,0,0))   
     source_down, source_fpfh = self.preprocess_point_cloud(source, voxel_size, parameters["normalSearchRadius"], parameters["FPFHSearchRadius"])
     target_down, target_fpfh = self.preprocess_point_cloud(target, voxel_size, parameters["normalSearchRadius"], parameters["FPFHSearchRadius"])
     return source, target, source_down, target_down, source_fpfh, target_fpfh, voxel_size, scaling
@@ -910,7 +910,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     slicer.mrmlScene.RemoveNode(sourceLandmarkNode)
     cloud = geometry.PointCloud()
     cloud.points = utility.Vector3dVector(sourceLandmarks_np)
-    cloud.scale(scaling, center=False)
+    cloud.scale(scaling, center = (0,0,0))
     fiducialVTK = self.convertPointsToVTK (cloud.points)
     return fiducialVTK
 
