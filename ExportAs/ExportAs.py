@@ -69,7 +69,7 @@ class ExportAsSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin):
           a = self.menu.addAction(writerFormat)
           a.connect("triggered()", lambda writerFormat=writerFormat : self.export(associatedNode, writerFormat, False))
     
-    if associatedNode is not None and associatedNode.IsA("vtkMRMLStorableNode") and associatedNode.GetTransformNodeID():
+    if associatedNode is not None and associatedNode.IsA("vtkMRMLTransformableNode") and associatedNode.GetTransformNodeID():
         self.exportTransformedAsAction.visible = True
         self.exportTransformedAsAction.enabled = True
         writerExtensions = slicer.app.coreIOManager().fileWriterExtensions(associatedNode)
