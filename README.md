@@ -7,9 +7,18 @@ SlicerMorph enable biologists to retrieve, visualize, measure and annotate high-
 [SlicerMorph: An open and extensible platform to retrieve, visualize and analyze 3D morphology](https://www.biorxiv.org/content/10.1101/2020.11.09.374926v1) preprint is now on Biorxiv.
 
 ## Installation
-Official method of obtaining SlicerMorph is through extension mechanism of 3D Slicer. To install, please first install the Preview Release (v4.11 or higher) of [3D Slicer](https://download.slicer.org/), as SlicerMorph is not available for older versions. Open the application and use the [Extensions Manager module](https://www.slicer.org/wiki/Documentation/Nightly/SlicerApplication/ExtensionsManager) to search for and install the SlicerMorph extension. After restarting 3D Slicer, all SlicerMorph modules will be available in the application.
+Official method of obtaining SlicerMorph is through extension mechanism of 3D Slicer. To install, please first install a v4.11 or higher release of [3D Slicer](https://download.slicer.org/), as SlicerMorph is not available for older versions. Open the application and use the [Extensions Manager module](https://www.slicer.org/wiki/Documentation/Nightly/SlicerApplication/ExtensionsManager) to search for and install the SlicerMorph extension. After restarting 3D Slicer, all SlicerMorph modules will be available in the application.
 
-Alternatively, Mac and Windows users looking for a pre-packaged portable installation (e.g., running from a flash drive) of SlicerMorph, can [download our customized versions from](http://download.SlicerMorph.org). Our prepackaged versions are approximately updated quarterly with a newer base version of 3D Slicer, and with its latest extensions.  
+## Citations
+If you use SlicerMorph in your research please cite one or more of these publications.
+
+* **SlicerMorph** as a general platform for digital anatomy: Rolfe, S., Pieper, S., Porto, A., Diamond, K., Winchester, J., Shan, S., … Maga, A. M. (2020). _SlicerMorph: An open and extensible platform to retrieve, visualize and analyze 3D morphology._ BioRxiv, 2020.11.09.374926. https://doi.org/10.1101/2020.11.09.374926
+
+* For **CreateSemiLMPatches, ProjectSemiLMs, PseudoLMGenerator**: Rolfe, S., Davis, C., & Maga, A. M. (2021). _Comparing semi-landmarking approaches for analyzing three-dimensional cranial morphology. American Journal of Physical Anthropology_, (Early View). https://doi.org/10.1002/ajpa.24214
+
+* For **ALPACA**: Porto, A., Rolfe, S. M., & Maga, A. M. (2020). _ALPACA: A fast and accurate approach for automated landmarking of three-dimensional biological structures_. BioRxiv, 2020.09.18.303891. https://doi.org/10.1101/2020.09.18.303891
+
+To cite 3D Slicer as a general purpose biomedical visualization platform, please use: Kikinis, R., Pieper, S. D., & Vosburgh, K. G. (2014). 3D Slicer: A Platform for Subject-Specific Image Analysis, Visualization, and Clinical Support. In Intraoperative Imaging and Image-Guided Therapy (pp. 277–289). Springer, New York, NY. https://doi.org/10.1007/978-1-4614-7657-3_19
 
 ## Module Descriptions
 
