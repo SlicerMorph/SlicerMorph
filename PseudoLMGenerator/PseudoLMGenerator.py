@@ -708,9 +708,6 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
     mirrorMesh = self.clipAndMirrorWithPlane(mesh, plane)
     # get clipped point set
     clippedPoints = self.cropWithPlane(vertPolyData, plane)
-    clippedLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"LM_normal")
-    for i in range(clippedPoints.GetNumberOfPoints()):
-      clippedLMNode.AddFiducialFromArray(clippedPoints.GetPoint(i))
     insideOutOption = True
     clippedMesh = self.cropWithPlane(mesh, plane, insideOutOption)
     
@@ -719,6 +716,7 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
     projectedPoints = self.projectPointsPolydata(mirrorMesh, clippedMesh, mirrorPoints, maxProjection)
     
     # convert symmetric points to landmark node
+    clippedLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"LM_normal")
     clippedLMNode.CreateDefaultDisplayNodes()
     clippedLMNode.SetDisplayVisibility(False)
     clippedLMNode.GetDisplayNode().SetPointLabelsVisibility(False)
