@@ -276,7 +276,9 @@ class PseudoLMGeneratorWidget(ScriptedLoadableModuleWidget):
     
     self.sphericalSemiLandmarks.GetDisplayNode().SetPointLabelsVisibility(False)
     green=[0,1,0]
+    purple=[1,0,1]
     self.sphericalSemiLandmarks.GetDisplayNode().SetSelectedColor(green)
+    self.sphericalSemiLandmarks.GetDisplayNode().SetColor(purple)
     self.projectedLM.SetDisplayVisibility(False)
   
     #confirm number of cleaned points is in the expected range
@@ -741,7 +743,9 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
     totalLMNode.CreateDefaultDisplayNodes()
     totalLMNode.GetDisplayNode().SetPointLabelsVisibility(False)
     green=[0,1,0]
+    purple=[1,0,1]
     totalLMNode.GetDisplayNode().SetSelectedColor(green)
+    totalLMNode.GetDisplayNode().SetColor(purple)
     
     samplingDistance = mesh.GetLength()*samplingPercentage
     spatialConstraint = samplingDistance*samplingDistance
