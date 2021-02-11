@@ -754,8 +754,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     shape = self.LM.lm.shape
 
     factorIndex = self.selectFactor.currentIndex
-    if (factorIndex > 0) and hasattr(self, 'factorTableNode') and (self.factorTableNode.GetNumberOfColumns()>factorIndex):
-      factorCol = self.factorTableNode.GetTable().GetColumn(factorIndex)
+    if (factorIndex > 0) and hasattr(self, 'factorTableNode'): 
+      factorCol = self.factorTableNode.GetTable().GetColumn(1)
       factorArray=[]
       for i in range(factorCol.GetNumberOfTuples()):
         factorArray.append(factorCol.GetValue(i).rstrip())
@@ -764,7 +764,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         logic.makeScatterPlotWithFactors(self.scatterDataAll,self.files,factorArrayNP,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1),self.pcNumber)
       else:   #if the user input a factor requiring more than 3 groups, do not use factor
         qt.QMessageBox.critical(slicer.util.mainWindow(),
-        'Error', 'Please use factors with 3 discrete values or less')
+        'Error', 'Please use more than one unique factor')
         logic.makeScatterPlot(self.scatterDataAll,self.files,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1),self.pcNumber)
     else:
       logic.makeScatterPlot(self.scatterDataAll,self.files,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1),self.pcNumber)
