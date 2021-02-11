@@ -758,7 +758,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       factorCol = self.factorTableNode.GetTable().GetColumn(factorIndex)
       factorArray=[]
       for i in range(factorCol.GetNumberOfTuples()):
-        factorArray.append(factorCol.GetValue(i))
+        factorArray.append(factorCol.GetValue(i).rstrip())
       factorArrayNP = np.array(factorArray)
       if(len(np.unique(factorArrayNP))>1 ): #check values of factors for scatter plot
         logic.makeScatterPlotWithFactors(self.scatterDataAll,self.files,factorArrayNP,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1),self.pcNumber)
