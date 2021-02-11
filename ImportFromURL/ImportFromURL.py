@@ -123,7 +123,7 @@ class ImportFromURLLogic(ScriptedLoadableModuleLogic):
       fileTypes = 'ZipFile'
     elif(extension in ['.mrb'] ):
       fileTypes = 'SceneFile'
-    elif(extension in ['.dcm', '.nrrd', '.mhd', '.mha', '.hdr', '.img', '.bmp', '.jpg', '.jpeg', '.png', '.tif', '.tiff']):
+    elif(extension in ['.dcm', '.nrrd', '.nii', '.mhd', '.mha', '.hdr', '.img', '.bmp', '.jpg', '.jpeg', '.png', '.tif', '.tiff']):
       fileTypes = 'VolumeFile'
     elif(extension == '.gz'):
       subfilename, subextension = os.path.splitext(filename)
