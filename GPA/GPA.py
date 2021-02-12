@@ -547,6 +547,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     # Set up layout
     self.assignLayoutDescription()
+    cameras=slicer.mrmlScene.GetNodesByClass('vtkMRMLCameraNode')
+    for camera in cameras:
+      camera.GetCamera().Zoom(2000*self.sampleSizeScaleFactor)
     
     #initialize mean LM display
     self.scaleMeanGlyph()
@@ -650,6 +653,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     # Set up layout
     self.assignLayoutDescription()
+    cameras=slicer.mrmlScene.GetNodesByClass('vtkMRMLCameraNode')
+    for camera in cameras:
+      camera.GetCamera().Zoom(2000*self.sampleSizeScaleFactor)
     
     #initialize mean LM display
     self.scaleMeanGlyph()
