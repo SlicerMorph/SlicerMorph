@@ -121,9 +121,24 @@ def setLayoutFourUpView():
 
 # operate on landmarks
 
-def enterPlaceFiducial():
+def placeFiducial():
     interactionNode = slicer.mrmlScene.GetNodeByID("vtkMRMLInteractionNodeSingleton")
     interactionNode.SetCurrentInteractionMode(interactionNode.Place)
+    view = slicer.app.layoutManager().threeDWidget(0).threeDView()
+    style = view.interactorStyle()
+    interactor = style.GetInteractor()
+    mousePosition = view.mapFromGlobal(qt.QCursor.pos())
+    point = (mousePosition.x(), view.height - mousePosition.y())
+
+    interactor.SetEventPosition(*point)
+    interactor.MouseMoveEvent()
+    interactor.LeftButtonPressEvent()
+    interactor.LeftButtonReleaseEvent()
+
+    # TODO: currently we use the first threeDWidget because widgetAt
+    # returns a ctk class that does not expose the vtk interactor
+    mousePosition = qt.QCursor.pos()
+    widget = slicer.app.widgetAt(mousePosition)
 
 def togglePlaceModePersistence():
     interactionNode = slicer.mrmlScene.GetNodeByID("vtkMRMLInteractionNodeSingleton")
@@ -148,7 +163,7 @@ shortcuts = [
     ('n', setLayoutOneUpYellowSliceView),
     ('m', setLayoutOneUpGreenSliceView),
     (',', setLayoutFourUpView),
-    ('p', enterPlaceFiducial),
+    ('p', placeFiducial),
     ('t', togglePlaceModePersistence),
     ('l', toggleMarkupLocks),
     ]
