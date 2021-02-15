@@ -26,6 +26,11 @@ class ImageStacks(ScriptedLoadableModule):
 This module allows you to import stacks of images, such as png, jpg, or tiff, as Slicer scalar
 volumes by resampling slice by slice during the input process.  This can allow you to import
 much larger volumes because you don't need to load the whole volume before downsampling.
+You can select files using either a file browser to select a block of files, or by selecting
+a single archetype file.  The archetype would be a such as /opt/data/image-0001.png in which case
+it would match image-0002.png, image-0003.png, etc.  You can also type an archetype string
+using sprintf formatting, such as image-%04d.png.  Archetype lists can start from zero or one, or
+from the number detected in the selected archetype.
 In addition, this provides a convenient spot to input volume spacing information.
 <p>For more information see the <a href="https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/ImageStacks">online documentation</a>.</p>
 """
@@ -72,6 +77,7 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget):
     self.fileTable.setModel(self.fileModel)
     filesFormLayout.addRow(self.fileTable)
 
+    # select a range of files
     buttonLayout = qt.QHBoxLayout()
     self.addByBrowsingButton = qt.QPushButton("Browse for files")
     self.clearButton = qt.QPushButton("Clear")
@@ -79,6 +85,16 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget):
     buttonLayout.addWidget(self.clearButton)
     filesFormLayout.addRow(buttonLayout)
 
+    # select one file
+    buttonLayout = qt.QHBoxLayout()
+    self.addFromArchetype = qt.QPushButton("Select archetype")
+    buttonLayout.addWidget(self.addFromArchetype)
+    self.archetypeText = qt.QLineEdit()
+    buttonLayout.addWidget(self.archetypeText)
+    filesFormLayout.addRow(buttonLayout)
+    self.archetypeStartNumber = 0
+
+    # properties area for feedback
     self.propertiesLabel = qt.QLabel()
     filesFormLayout.addRow(self.propertiesLabel)
 
@@ -138,54 +154,16 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget):
     outputFormLayout.addRow("Slice skip: ", self.sliceSkip)
 
     self.loadButton = qt.QPushButton("Load files")
+    self.loadButton.toolTip = "Populate the file list above using either the Browse for files or Select archetype buttons to enable this button"
+    self.loadButton.enabled = False
     outputFormLayout.addRow(self.loadButton)
-
-    #
-    # Add by name area
-    #
-    addByNameCollapsibleButton = ctk.ctkCollapsibleButton()
-    addByNameCollapsibleButton.text = "Add files by name"
-    addByNameCollapsibleButton.collapsed = True
-    addByNameFormLayout = qt.QFormLayout(addByNameCollapsibleButton)
-    # Don't enable Add by name for now - let's see if it's actually needed
-    # self.layout.addWidget(addByNameCollapsibleButton)
-
-    forExample = """
-    directoryPath = '/Volumes/SSD2T/data/SlicerMorph/Sample_for_steve/1326_Rec'
-    pathFormat = '%s/1326__rec%04d.png'
-    start, end =  (50, 621)
-    """
-
-    self.archetypePathEdit = ctk.ctkPathLineEdit()
-    self.archetypePathEdit.filters  = ctk.ctkPathLineEdit().Files
-    addByNameFormLayout.addRow("Archetype file", self.archetypePathEdit)
-
-    self.archetypeFormat = qt.QLineEdit()
-    addByNameFormLayout.addRow("Name format", self.archetypeFormat)
-
-    self.indexRange = ctk.ctkRangeWidget()
-    self.indexRange.decimals = 0
-    self.indexRange.maximum = 0
-    addByNameFormLayout.addRow("Index range", self.indexRange)
-
-    self.generateNamesButton = qt.QPushButton("Apply")
-    self.generateNamesButton.toolTip = "Run the algorithm."
-    self.generateNamesButton.enabled = False
-    addByNameFormLayout.addRow(self.generateNamesButton)
 
     # connections
     self.addByBrowsingButton.connect('clicked()', self.addByBrowsing)
+    self.addFromArchetype.connect('clicked()', self.selectArchetype)
+    self.archetypeText.connect('textChanged(const QString &)', self.populateFromArchetype)
     self.clearButton.connect('clicked()', self.onClear)
-    self.archetypePathEdit.connect('currentPathChanged(QString)', self.validateInput)
-    self.archetypePathEdit.connect('currentPathChanged(QString)', self.updateGUIFromArchetype)
-    self.archetypeFormat.connect('textChanged(QString)', self.validateInput)
-    self.generateNamesButton.connect('clicked()', self.onGenerateNames)
-    # self.outputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.validateInput) # TODO - this is missing
     self.loadButton.connect('clicked()', self.onLoadButton)
-
-    # refill last selection
-    self.archetypePathEdit.currentPath = slicer.util.settingsValue("ImageStacks/lastArchetypePath", "")
-
 
     # Add vertical spacer
     self.layout.addStretch(1)
@@ -207,6 +185,7 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget):
     self.fileTable.model().clear()
     self.updateFileProperties({})
     self.outputSelector.currentNodeID = ""
+    self.loadButton.enabled = False
 
   def addByBrowsing(self):
     filePaths = qt.QFileDialog().getOpenFileNames()
@@ -214,8 +193,60 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget):
       item = qt.QStandardItem()
       item.setText(filePath)
       self.fileModel.setItem(self.fileModel.rowCount(), 0, item)
+    self.loadButton.enabled = filePaths != []
     properties = self.logic.calculateProperties(filePaths)
     self.updateFileProperties(properties)
+
+  def selectArchetype(self):
+    filePath = qt.QFileDialog().getOpenFileName()
+    self.archetypeText.text = filePath
+
+  def populateFromArchetype(self):
+    """
+    User selects a file like "/opt/data/image-0001.tif" and
+    this will populate the file list with all files that match
+    the numbering pattern in that directory
+    """
+    self.onClear()
+    filePath = self.archetypeText.text
+    if filePath.find('%') == -1:
+      index = len(filePath) -1
+      while index > 0 and (filePath[index] < '0' or filePath[index] > '9'):
+        index -= 1
+      numberEndIndex = index
+      while index > 0 and filePath[index] >= '0' and filePath[index] <= '9':
+        index -= 1
+      if index <= 0:
+        return
+      numberStartIndex = index+1
+      if filePath[numberStartIndex] == '0':
+        formatString = f"%0{numberEndIndex-numberStartIndex+1}d"
+      else:
+        formatString = "%d"
+      archetypeFormat = filePath[:numberStartIndex] + formatString + filePath[numberEndIndex+1:]
+      candidateStartNumber = int(filePath[numberStartIndex:numberEndIndex+1])
+      while os.path.exists(archetypeFormat % candidateStartNumber):
+        candidateStartNumber -= 1
+      self.archetypeStartNumber = candidateStartNumber + 1
+    else:
+      archetypeFormat = filePath
+    fileIndex = self.archetypeStartNumber
+    filePaths = []
+    while True:
+      filePath = archetypeFormat % fileIndex
+      if os.path.exists(filePath):
+        item = qt.QStandardItem()
+        item.setText(filePath)
+        self.fileModel.setItem(self.fileModel.rowCount(), 0, item)
+        filePaths.append(filePath)
+      else:
+        if fileIndex != 0:
+          break
+      fileIndex += 1
+    self.loadButton.enabled = filePaths != []
+    properties = self.logic.calculateProperties(filePaths)
+    self.updateFileProperties(properties)
+    self.archetypeText.text = archetypeFormat
 
   def currentNode(self):
     # TODO: this should be moved to qMRMLSubjectHierarchyComboBox::currentNode()
@@ -232,25 +263,6 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget):
       pass
     else:
       self.outputSelector.setCurrentNode(node)
-
-  def validateInput(self):
-    self.indexRange.enabled = len(self.archetypePathEdit.currentPath)
-    self.generateNamesButton.enabled = len(self.archetypePathEdit.currentPath) and len(self.archetypeFormat.text)
-
-  def updateGUIFromArchetype(self):
-    properties = self.logic.propertiesFromArchetype(self.archetypePathEdit.currentPath)
-    self.archetypeFormat.text = properties['fileName']
-    self.indexRange.minimum = properties['minimum']
-    self.indexRange.maximum = properties['maximum']
-    self.indexRange.maximumValue = properties['maximum']
-
-  def onGenerateNames(self):
-    qt.QSettings().setValue("ImageStacks/lastArchetypePath", self.archetypePathEdit.currentPath)
-    self.logic = ImageStacksLogic()
-    self.logic.loadByArchetype(archetypePath = self.archetypePathEdit.currentPath,
-                    archetypeFormat = self.archetypeFormat.text,
-                    indexRange = (int(self.indexRange.minimumValue), int(self.indexRange.maximumValue + 1)),
-                    outputNode = self.currentNode())
 
   def onLoadButton(self):
     paths = []
@@ -281,14 +293,6 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
 
-  def propertiesFromArchetype(self, archetypePath):
-    properties = {}
-    properties['directoryPath'] = os.path.dirname(archetypePath)
-    properties['fileName'] = os.path.basename(archetypePath)
-    properties['minimum'] = 0
-    properties['maximum'] = len(os.listdir(properties['directoryPath']))
-    return(properties)
-
   def humanizeByteCount(self,byteCount):
     units = "bytes"
     for unit in ['kilobytes', 'megabytes', 'gigabytes', 'terabytes']:
@@ -299,6 +303,8 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
 
   def calculateProperties(self, filePaths):
     properties = {}
+    if filePaths == []:
+      return properties
     reader = sitk.ImageFileReader()
     reader.SetFileName(filePaths[0])
     image = reader.Execute()
@@ -314,14 +320,6 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
     properties['downsampled volume size'] = f"{byteCount:.3f} {units}"
     return(properties)
 
-  def loadByArchetype(self, archetypePath, archetypeFormat, indexRange, outputNode):
-
-    dirName = os.path.dirname(archetypePath)
-    pathFormat = os.path.join(dirName, archetypeFormat)
-    paths = [ pathFormat % i for i in range(*indexRange) ]
-
-    self.loadByPaths(paths, outputNode)
-
   def loadByPaths(self, paths, outputNode, properties={}):
     """
     Load the files in paths to outputNode with optional properties.
@@ -333,6 +331,9 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
     slices/row/columns which should be easy in numpy
     and give good results for a pixel aligned 50% scale operation.
     """
+
+    if paths == []:
+      return
 
     spacing = (1,1,1)
     if 'spacing' in properties:
