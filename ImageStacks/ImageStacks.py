@@ -224,7 +224,10 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget):
       else:
         formatString = "%d"
       archetypeFormat = filePath[:numberStartIndex] + formatString + filePath[numberEndIndex+1:]
-      self.archetypeStartNumber = int(filePath[numberStartIndex:numberEndIndex+1])
+      candidateStartNumber = int(filePath[numberStartIndex:numberEndIndex+1])
+      while os.path.exists(archetypeFormat % candidateStartNumber):
+        candidateStartNumber -= 1
+      self.archetypeStartNumber = candidateStartNumber + 1
     else:
       archetypeFormat = filePath
     fileIndex = self.archetypeStartNumber
