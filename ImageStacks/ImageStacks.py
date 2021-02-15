@@ -66,12 +66,14 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget):
     filesFormLayout = qt.QFormLayout(filesCollapsibleButton)
 
     self.fileModel = qt.QStandardItemModel()
+    self.fileModel.setTextElideMode(qt.ElideMiddle)
     self.fileTable = qt.QTableView()
     self.fileTable.horizontalHeader().stretchLastSection = True
     self.fileTable.horizontalHeader().visible = False
     self.fileTable.setModel(self.fileModel)
     filesFormLayout.addRow(self.fileTable)
 
+    # select a range of files
     buttonLayout = qt.QHBoxLayout()
     self.addByBrowsingButton = qt.QPushButton("Browse for files")
     self.clearButton = qt.QPushButton("Clear")
@@ -79,6 +81,15 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget):
     buttonLayout.addWidget(self.clearButton)
     filesFormLayout.addRow(buttonLayout)
 
+    # select one file
+    buttonLayout = qt.QHBoxLayout()
+    self.addFromArchetype = qt.QPushButton("Select archetype")
+    buttonLayout.addWidget(self.addFromArchetype)
+    self.archetypeText = qt.QLineEdit()
+    buttonLayout.addWidget(self.archetypeText)
+    filesFormLayout.addRow(buttonLayout)
+
+    # properties area for feedback
     self.propertiesLabel = qt.QLabel()
     filesFormLayout.addRow(self.propertiesLabel)
 
@@ -175,6 +186,8 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget):
 
     # connections
     self.addByBrowsingButton.connect('clicked()', self.addByBrowsing)
+    self.addFromArchetype.connect('clicked()', self.selectArchetype)
+    self.archetypeText.connect('textChanged(const QString &)', self.populateFromArchetype)
     self.clearButton.connect('clicked()', self.onClear)
     self.archetypePathEdit.connect('currentPathChanged(QString)', self.validateInput)
     self.archetypePathEdit.connect('currentPathChanged(QString)', self.updateGUIFromArchetype)
@@ -216,6 +229,52 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget):
       self.fileModel.setItem(self.fileModel.rowCount(), 0, item)
     properties = self.logic.calculateProperties(filePaths)
     self.updateFileProperties(properties)
+
+  def selectArchetype(self):
+    filePath = qt.QFileDialog().getOpenFileName()
+    self.archetypeText.text = filePath
+
+  def populateFromArchetype(self):
+    """
+    User selects a file like "/opt/data/image-0001.tif" and
+    this will populate the file list with all files that match
+    the numbering pattern in that directory
+    """
+    self.onClear()
+    filePath = self.archetypeText.text
+    if filePath.find('%') == -1:
+      index = len(filePath) -1
+      while index > 0 and (filePath[index] < '0' or filePath[index] > '9'):
+        index -= 1
+      numberEndIndex = index
+      while index > 0 and filePath[index] >= '0' and filePath[index] <= '9':
+        index -= 1
+      if index == 0:
+        return
+      numberStartIndex = index+1
+      if filePath[numberStartIndex] == '0':
+        formatString = f"%0{numberEndIndex-numberStartIndex+1}d"
+      else:
+        formatString = "%d"
+      archetypeFormat = filePath[:numberStartIndex] + formatString + filePath[numberEndIndex+1:]
+    else:
+      archetypeFormat = filePath
+    fileIndex = 0
+    filePaths = []
+    while True:
+      filePath = archetypeFormat % fileIndex
+      if os.path.exists(filePath):
+        item = qt.QStandardItem()
+        item.setText(filePath)
+        self.fileModel.setItem(self.fileModel.rowCount(), 0, item)
+        filePaths.append(filePath)
+      else:
+        if fileIndex != 0:
+          break
+      fileIndex += 1
+    properties = self.logic.calculateProperties(filePaths)
+    self.updateFileProperties(properties)
+    self.archetypeText.text = archetypeFormat
 
   def currentNode(self):
     # TODO: this should be moved to qMRMLSubjectHierarchyComboBox::currentNode()
