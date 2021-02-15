@@ -252,7 +252,7 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget):
       numberEndIndex = index
       while index > 0 and filePath[index] >= '0' and filePath[index] <= '9':
         index -= 1
-      if index == 0:
+      if index <= 0:
         return
       numberStartIndex = index+1
       if filePath[numberStartIndex] == '0':
@@ -361,6 +361,8 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
 
   def calculateProperties(self, filePaths):
     properties = {}
+    if filePaths == []:
+      return properties
     reader = sitk.ImageFileReader()
     reader.SetFileName(filePaths[0])
     image = reader.Execute()
@@ -395,6 +397,9 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
     slices/row/columns which should be easy in numpy
     and give good results for a pixel aligned 50% scale operation.
     """
+
+    if paths == []:
+      return
 
     spacing = (1,1,1)
     if 'spacing' in properties:
