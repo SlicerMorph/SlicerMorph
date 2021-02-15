@@ -70,7 +70,6 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget):
     filesFormLayout = qt.QFormLayout(filesCollapsibleButton)
 
     self.fileModel = qt.QStandardItemModel()
-    self.fileModel.setTextElideMode(qt.ElideMiddle)
     self.fileTable = qt.QTableView()
     self.fileTable.horizontalHeader().stretchLastSection = True
     self.fileTable.horizontalHeader().visible = False
