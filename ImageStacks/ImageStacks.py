@@ -29,7 +29,8 @@ much larger volumes because you don't need to load the whole volume before downs
 You can select files using either a file browser to select a block of files, or by selecting
 a single archetype file.  The archetype would be a such as /opt/data/image-0001.png in which case
 it would match image-0002.png, image-0003.png, etc.  You can also type an archetype string
-using sprintf formatting, such as image-%04d.png.  Archetype lists can start from zero or one.
+using sprintf formatting, such as image-%04d.png.  Archetype lists can start from zero or one, or
+from the number detected in the selected archetype.
 In addition, this provides a convenient spot to input volume spacing information.
 <p>For more information see the <a href="https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/ImageStacks">online documentation</a>.</p>
 """
@@ -175,6 +176,7 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget):
     self.archetypePathEdit = ctk.ctkPathLineEdit()
     self.archetypePathEdit.filters  = ctk.ctkPathLineEdit().Files
     addByNameFormLayout.addRow("Archetype file", self.archetypePathEdit)
+    self.archetypeStartNumber = 0
 
     self.archetypeFormat = qt.QLineEdit()
     addByNameFormLayout.addRow("Name format", self.archetypeFormat)
@@ -264,9 +266,10 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget):
       else:
         formatString = "%d"
       archetypeFormat = filePath[:numberStartIndex] + formatString + filePath[numberEndIndex+1:]
+      self.archetypeStartNumber = int(filePath[numberStartIndex:numberEndIndex+1])
     else:
       archetypeFormat = filePath
-    fileIndex = 0
+    fileIndex = self.archetypeStartNumber
     filePaths = []
     while True:
       filePath = archetypeFormat % fileIndex
