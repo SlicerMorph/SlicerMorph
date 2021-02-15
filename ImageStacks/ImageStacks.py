@@ -26,6 +26,10 @@ class ImageStacks(ScriptedLoadableModule):
 This module allows you to import stacks of images, such as png, jpg, or tiff, as Slicer scalar
 volumes by resampling slice by slice during the input process.  This can allow you to import
 much larger volumes because you don't need to load the whole volume before downsampling.
+You can select files using either a file browser to select a block of files, or by selecting
+a single archetype file.  The archetype would be a such as /opt/data/image-0001.png in which case
+it would match image-0002.png, image-0003.png, etc.  You can also type an archetype string
+using sprintf formatting, such as image-%04d.png.  Archetype lists can start from zero or one.
 In addition, this provides a convenient spot to input volume spacing information.
 <p>For more information see the <a href="https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/ImageStacks">online documentation</a>.</p>
 """
