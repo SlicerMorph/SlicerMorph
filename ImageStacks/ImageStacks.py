@@ -152,6 +152,8 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget):
     outputFormLayout.addRow("Slice skip: ", self.sliceSkip)
 
     self.loadButton = qt.QPushButton("Load files")
+    self.loadButton.toolTip = "Populate the file list above using either the Browse for files or Select archetype buttons to enable this button"
+    self.loadButton.enabled = False
     outputFormLayout.addRow(self.loadButton)
 
     #
@@ -223,6 +225,7 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget):
     self.fileTable.model().clear()
     self.updateFileProperties({})
     self.outputSelector.currentNodeID = ""
+    self.loadButton.enabled = False
 
   def addByBrowsing(self):
     filePaths = qt.QFileDialog().getOpenFileNames()
@@ -230,6 +233,7 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget):
       item = qt.QStandardItem()
       item.setText(filePath)
       self.fileModel.setItem(self.fileModel.rowCount(), 0, item)
+    self.loadButton.enabled = filePaths != []
     properties = self.logic.calculateProperties(filePaths)
     self.updateFileProperties(properties)
 
@@ -275,6 +279,7 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget):
         if fileIndex != 0:
           break
       fileIndex += 1
+    self.loadButton.enabled = filePaths != []
     properties = self.logic.calculateProperties(filePaths)
     self.updateFileProperties(properties)
     self.archetypeText.text = archetypeFormat
