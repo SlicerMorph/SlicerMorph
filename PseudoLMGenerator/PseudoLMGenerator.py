@@ -301,6 +301,21 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
     Uses ScriptedLoadableModuleLogic base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
+  def setAllLandmarksType2(self,landmarkNode):
+    if hasattr(slicer, 'vtkMRMLStaticMeasurement'):
+      # Create a VTK array that contains the custom data
+      landmarkTypesArray = vtk.vtkDoubleArray()
+      for controlPointIndex in range(landmarkNode.GetNumberOfControlPoints()):
+        landmarkTypesArray.InsertNextValue(1)
+
+      # Add the landmark array as static measurement
+      landmarkTypes = slicer.vtkMRMLStaticMeasurement()
+      landmarkTypes.SetName('LandmarkType2')
+      landmarkTypes.SetUnits('')
+      landmarkTypes.SetPrintFormat("")
+      landmarkTypes.SetControlPointValues(landmarkTypesArray)
+      landmarkNode.AddMeasurement(landmarkTypes)
+  
   def runCleaningPointCloud(self, projectedLM, sphere, spacingPercentage): 
     # Convert projected surface points to a VTK array for transform
     p=[0,0,0]
@@ -331,6 +346,7 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
       sphereSampleLMNode.AddFiducialFromArray(point)
       print("inserting fiducial point: ", p)
     
+    self.setAllLandmarksType2(sphereSampleLMNode) 
     return sphereSampleLMNode
       
   def runCleaningFast(self, projectedLM, sphere, spacingPercentage):    
@@ -358,7 +374,8 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
     for i in range(cleanPolyData.GetNumberOfPoints()):
       point = cleanPolyData.GetPoint(i)
       sphereSampleLMNode.AddFiducialFromArray(point)
-      
+    
+    self.setAllLandmarksType2(sphereSampleLMNode)  
     return sphereSampleLMNode
   
   def runCleaning(self, projectedLM, sphere, spacingPercentage):    
@@ -397,6 +414,7 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
       point = cleanPolyData.GetPoint(i)
       sphereSampleLMNode.AddFiducialFromArray(point)
     
+    self.setAllLandmarksType2(sphereSampleLMNode)
     return sphereSampleLMNode
     
   def runPointProjection(self, sphere, model, spherePoints, maxProjectionFactor, isOriginalGeometry, symmetryPlane=None):
@@ -765,6 +783,12 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
         mergedPoint[2] = (clippedPoint[2]+projectedPoint[2])/2
         totalLMNode.AddFiducialFromArray(mergedPoint, 'm_'+str(i))
         midlineLMNode.AddFiducialFromArray(mergedPoint, 'm_'+str(i))
+    
+    # set psuedo landmarks created to type II
+    self.setAllLandmarksType2(totalLMNode)
+    self.setAllLandmarksType2(midlineLMNode)
+    self.setAllLandmarksType2(projectedLMNode)
+    self.setAllLandmarksType2(clippedLMNode)
         
     return projectedLMNode
     
