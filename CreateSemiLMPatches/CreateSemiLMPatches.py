@@ -478,6 +478,21 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
     gridArray=[]
     return gridArray
   
+  def setAllLandmarksType2(self,landmarkNode):
+    if hasattr(slicer, 'vtkMRMLStaticMeasurement'):
+      # Create a VTK array that contains the custom data
+      landmarkTypesArray = vtk.vtkDoubleArray()
+      for controlPointIndex in range(landmarkNode.GetNumberOfControlPoints()):
+        landmarkTypesArray.InsertNextValue(1)
+
+      # Add the landmark array as static measurement
+      landmarkTypes = slicer.vtkMRMLStaticMeasurement()
+      landmarkTypes.SetName('LandmarkType2')
+      landmarkTypes.SetUnits('')
+      landmarkTypes.SetPrintFormat("")
+      landmarkTypes.SetControlPointValues(landmarkTypesArray)
+      landmarkNode.AddMeasurement(landmarkTypes)
+  
   def mergeTree(self, treeWidget, landmarkNode, modelNode,rowColNumber):
     nodeIDs=treeWidget.selectedIndexes()
     nodeList = vtk.vtkCollection()
@@ -563,7 +578,8 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
     mergedNode.SetLocked(True)
     mergedNode.GetDisplayNode().SetColor(random.random(), random.random(), random.random())
     mergedNode.GetDisplayNode().SetSelectedColor(random.random(), random.random(), random.random())
-    mergedNode.GetDisplayNode().PointLabelsVisibilityOff()     
+    mergedNode.GetDisplayNode().PointLabelsVisibilityOff() 
+    self.setAllLandmarksType2(mergedNode) 
 
     # clean up
     slicer.mrmlScene.RemoveNode(tempCurve)
