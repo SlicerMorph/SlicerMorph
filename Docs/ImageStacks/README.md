@@ -4,6 +4,8 @@
 ### USAGE
 **Browse Files:** Use browse files to select a sequence of 2D images. Selection should only contain files of the same type. Also, it uses the ordering provided by the user. Make sure the selection is correctly ordered by the slice number in the OS dialog box. Hit Clear to reset the selection.
 
+**Select Archetype:** If the files in the image stack are consistently and consecutively numbered (e.g., image0001.png, image0002.png), then Select Archetype option can be used to pick one sample file, which then be used to automatically select and order all files that use the same convention.   
+
 `ImageStacks` will display the image dimensions of the files currently selected, its data type, estimated memory usage at full and downsampled resolutions.
 
 **Output Volume:** If left as None, the very first file in file selection will be used as the output volume node name. Alternatively, users create their own names using **Create New Volume As** option
@@ -15,7 +17,7 @@
 **Reverse:** If checked, it will reverse the ordering of files. This is useful to mitigate the mirror reflection problem of the specimens due to unknown nature of ordering (is it from top to bottom or bottom to top) of slices.
 
 ### KNOWN ISSUES
-In MacOS when browsing for files, user has to scroll down slowly to make sure all files are correctly included in the final selection. Quickly selecting the first file and jumping all the way to the last causes breaks in the selection when there are a large number of files (typically in thoudsands range). This appears to be an issue  QT library and how it uses the native file browser in MacOS. 
+In MacOS, selecting large number of files (in thousands range) interactively with Browse Files may cause gaps in the selection, resulting in an incorrect stack. For such larg number of files, we advise using Select Archetype option instead.  
 
 ### TUTORIAL
 Please see https://github.com/SlicerMorph/S_2020/blob/master/Day_1/ImageStacks/ImageStacks.md#imagestacks
