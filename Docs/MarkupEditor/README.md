@@ -12,6 +12,7 @@ Note that MarkupEditor uses the colors specified in the Display tab of the <a hr
 
 **Limitations:** There is no undo for actions (for example for deleted points). If necessary, we suggest cloning the fiducial node prior to editing so that original data can be restored. If you do so, also make sure to turn off the visibility of the cloned node.      
 
+**Known Issue:** For selection to pick up correct points, entire model and the landmarks should be visible in 3D viewer. If only a portion of 3D model and points are visible and the rest is cut off (e.g., the model is zoomed in), unintended points might be added to the selection. 
 
 ### TUTORIAL
 Please see https://github.com/SlicerMorph/S_2020/blob/master/Day_3/MarkupEditor/MarkupEditor.md
