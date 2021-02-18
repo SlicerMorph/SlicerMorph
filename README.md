@@ -1,8 +1,8 @@
 <img src="https://raw.githubusercontent.com/SlicerMorph/SlicerMorph/master/GPA/Resources/Icons/GPA.png" alt="SlicerMorph logo" width="256" height="256">
 
-This is the development repository for [SlicerMorph project](http://SlicerMorph.org). 
+This is the official repository for [SlicerMorph project](http://SlicerMorph.org). 
 
-SlicerMorph enable biologists to retrieve, visualize, measure and annotate high-resolution specimen data both from volumetric scans (CTs and MRs) as well as from 3D surface scanners more effectively within 3D Slicer. It has a number of modules that facilitate Geometric Morphometrics analysis on these 3D specimens. 
+SlicerMorph enable biologists to retrieve, visualize, measure and annotate high-resolution 3D specimen data both from volumetric scans (CTs and MRs) as well as from  surface scanners more effectively within 3D Slicer. It has a number of modules that facilitate Geometric Morphometrics analysis on these 3D specimens. 
 
 [SlicerMorph: An open and extensible platform to retrieve, visualize and analyze 3D morphology](https://www.biorxiv.org/content/10.1101/2020.11.09.374926v1) preprint is now on Biorxiv.
 
@@ -48,6 +48,7 @@ Modules in SlicerMorph are organized in three broad categories:
   - [**IDAVLMConverter:**](https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/IDAVLMConverter) Imports IDAV landmark editor files with header length specified by the user.
   - **ImportSurfaceToSegment:** Imports a 3D surface model as a segmentation and prompts the user to edit it using the Segment Editor module.
   - **SegmentEndoCranium:** Automatically segments the endocranial space in a 3D volume of a vertebrate skull. A detailed description of the module and how it works can be found [in this tutorial under the automated method](https://slicermorph.github.io/Endocast_creation.html). 
+  - [**SlicerMorph Preferences:**](https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/MorphPreferences/) Users can choose to enable specific customizations that include keyboard shortcuts, and optimized settings for working with large 3D datasets using the Application Settings menu of 3D Slicer. See the documentation link for list of SlicerMorph specific keyboard shortcuts and modified settings.   
 
 ## Dependencies
 SlicerMorph automatically installs these additional extensions as dependencies. It should be noted that none of the SlicerMorph specific functionality directly relies on these modules. Functionality in these extensions complements modules in SlicerMorph. Click on the links to get more information about these extensions.
@@ -72,7 +73,6 @@ We actively use SlicerMorph to teach a week-long intense [short course on 3D Mor
 *	SlicerMorph project website: https://slicermorph.github.io (website has additional tutorial, pointers to specimen repositories, and list of upcoming events).
 *	Please sign up for the SlicerMorph announcement to keep up-to-date with SlicerMorph project and extension updates http://mailman11.u.washington.edu/mailman/listinfo/slicermorph-announcements
 * [Introduction to Slicer - Official Slicer Documentation](https://slicer.readthedocs.io/en/latest/user_guide/getting_started.html)
-* [Difference between Slicer and SlicerMorph](https://docs.google.com/document/d/1VdsYQzhjEh9tT5WQQjb1GUdn5Hmnq8cK3yLzjYeVv5M/edit)
 * [SlicerMorph YouTube Channel](https://www.youtube.com/channel/UCy3Uz1ikRH1B7WSMfaldcjQ): provides visual tutorials for GPA, semilandmarks, and others.
 *	Slicer Forum, https://discourse.slicer.org (alternatively you can use your github or google accounts to signup)
 
