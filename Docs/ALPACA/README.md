@@ -61,10 +61,6 @@ __Summary__: This module provides fast landmark transfer from a 3D model and its
 
   *  Same as single alignment.
 
-### KNOWN ISSUES
-
-Linux users can only use ALPACA in 3D Slicer versions with date [2020-09-25](https://download.slicer.org/?date=2020-09-25) or older. 
-
   
 ### TUTORIAL
 
