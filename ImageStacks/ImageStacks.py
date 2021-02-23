@@ -26,13 +26,21 @@ class ImageStacks(ScriptedLoadableModule):
 This module allows you to import stacks of images, such as png, jpg, or tiff, as Slicer scalar
 volumes by resampling slice by slice during the input process.  This can allow you to import
 much larger volumes because you don't need to load the whole volume before downsampling.
-You can select files using either a file browser to select a block of files, or by selecting
-a single archetype file.  The archetype would be a such as /opt/data/image-0001.png in which case
-it would match image-0002.png, image-0003.png, etc.  You can also type an archetype string
-using sprintf formatting, such as image-%04d.png.  Archetype lists can start from zero or one, or
+<p>
+You can select files by drag-and-dropping folders or files to the application screen and choosing
+"Load files using ImageStacks module", or using "Browse for files..." button to select a block of files, or by selecting
+a single filename or filename pattern.
+<p>
+An example single filename would be /opt/data/image-0001.png in which case
+it would match image-0002.png, image-0003.png, etc.  You can also type a filename pattern string
+using <a href="https://www.cplusplus.com/reference/cstdio/scanf/">scanf formatting</a>,
+such as image-%04d.png.  Archetype lists can start from zero or one, or
 from the number detected in the selected archetype.
-In addition, this provides a convenient spot to input volume spacing information.
-<p>For more information see the <a href="https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/ImageStacks">online documentation</a>.</p>
+<p>
+The module can also apply voxel spacing information and the final voxel spacing is compute according to
+downsampling and frame skipping options.
+<p>
+For more information see the <a href="https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/ImageStacks">online documentation</a>.</p>
 """
     #self.parent.helpText += self.getDefaultModuleDocumentationLink()
     self.parent.acknowledgementText = """
@@ -64,12 +72,32 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget):
     # File area
     #
     filesCollapsibleButton = ctk.ctkCollapsibleButton()
-    filesCollapsibleButton.text = "Files"
+    filesCollapsibleButton.text = "Input files"
     filesCollapsibleButton.collapsed = False
     self.layout.addWidget(filesCollapsibleButton)
     # Layout within the files collapsible button
     filesFormLayout = qt.QFormLayout(filesCollapsibleButton)
 
+    # select one file
+    buttonLayout = qt.QHBoxLayout()
+    self.archetypeLabel = qt.QLabel("Filename pattern: ")
+    buttonLayout.addWidget(self.archetypeLabel)
+    self.archetypeText = qt.QLineEdit()
+    buttonLayout.addWidget(self.archetypeText)
+    self.addFromArchetype = qt.QPushButton("Browse...")
+    buttonLayout.addWidget(self.addFromArchetype)
+    filesFormLayout.addRow(buttonLayout)
+    self.archetypeStartNumber = 0
+
+    # select a range of files
+    buttonLayout = qt.QHBoxLayout()
+    self.addByBrowsingButton = qt.QPushButton("Browse for files...")
+    self.clearButton = qt.QPushButton("Clear")
+    buttonLayout.addWidget(self.addByBrowsingButton)
+    buttonLayout.addWidget(self.clearButton)
+    filesFormLayout.addRow(buttonLayout)
+
+    # file table
     self.fileModel = qt.QStandardItemModel()
     self.fileTable = qt.QTableView()
     self.fileTable.horizontalHeader().stretchLastSection = True
@@ -77,26 +105,23 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget):
     self.fileTable.setModel(self.fileModel)
     filesFormLayout.addRow(self.fileTable)
 
-    # select a range of files
-    buttonLayout = qt.QHBoxLayout()
-    self.addByBrowsingButton = qt.QPushButton("Browse for files")
-    self.clearButton = qt.QPushButton("Clear")
-    buttonLayout.addWidget(self.addByBrowsingButton)
-    buttonLayout.addWidget(self.clearButton)
-    filesFormLayout.addRow(buttonLayout)
-
-    # select one file
-    buttonLayout = qt.QHBoxLayout()
-    self.addFromArchetype = qt.QPushButton("Select archetype")
-    buttonLayout.addWidget(self.addFromArchetype)
-    self.archetypeText = qt.QLineEdit()
-    buttonLayout.addWidget(self.archetypeText)
-    filesFormLayout.addRow(buttonLayout)
-    self.archetypeStartNumber = 0
-
     # properties area for feedback
     self.propertiesLabel = qt.QLabel()
     filesFormLayout.addRow(self.propertiesLabel)
+
+    # spacing
+    self.spacing = slicer.qMRMLCoordinatesWidget()
+
+    self.spacing.decimalsOption  = ctk.ctkDoubleSpinBox.DecimalsByKey | ctk.ctkDoubleSpinBox.DecimalsByShortcuts | ctk.ctkDoubleSpinBox.DecimalsByValue
+    self.spacing.minimum = 0.0
+    self.spacing.maximum = 1000000000.0
+    self.spacing.quantity = "length"
+    self.spacing.unitAwareProperties = slicer.qMRMLCoordinatesWidget.Precision | slicer.qMRMLCoordinatesWidget.Prefix | slicer.qMRMLCoordinatesWidget.Scaling | slicer.qMRMLCoordinatesWidget.Suffix
+
+    self.spacing.decimals = 8
+    self.spacing.coordinates = "1,1,1"
+    self.spacing.toolTip = "Set the colunm, row, slice spacing in mm; original spacing not including downsample"
+    filesFormLayout.addRow("Spacing: ", self.spacing)
 
     #
     # output area
@@ -122,22 +147,10 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget):
     self.outputSelector.removeEnabled = True
     self.outputSelector.renameEnabled = True
     self.outputSelector.addEnabled = True
+    self.outputSelector.noneDisplay = "(Create new volume)"
     self.outputSelector.setMRMLScene( slicer.mrmlScene )
     self.outputSelector.setToolTip( "Pick the output volume to populate or None to autogenerate." )
     outputFormLayout.addRow("Output Volume: ", self.outputSelector)
-
-    self.spacing = slicer.qMRMLCoordinatesWidget()
-
-    self.spacing.decimalsOption  = ctk.ctkDoubleSpinBox.DecimalsByKey | ctk.ctkDoubleSpinBox.DecimalsByShortcuts | ctk.ctkDoubleSpinBox.DecimalsByValue
-    self.spacing.minimum = 0.0
-    self.spacing.maximum = 1000000000.0
-    self.spacing.quantity = "length"
-    self.spacing.unitAwareProperties = slicer.qMRMLCoordinatesWidget.Precision | slicer.qMRMLCoordinatesWidget.Prefix | slicer.qMRMLCoordinatesWidget.Scaling | slicer.qMRMLCoordinatesWidget.Suffix
-
-    self.spacing.decimals = 8
-    self.spacing.coordinates = "1,1,1"
-    self.spacing.toolTip = "Set the colunm, row, slice spacing in mm; original spacing not including downsample"
-    outputFormLayout.addRow("Spacing: ", self.spacing)
 
     self.downsample = qt.QCheckBox()
     self.downsample.toolTip = "Reduces data size by half in each dimension by skipping every other pixel and slice (uses about 1/8 memory)"
@@ -150,7 +163,7 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget):
     self.sliceSkip = ctk.ctkDoubleSpinBox()
     self.sliceSkip.decimals = 0
     self.sliceSkip.minimum = 0
-    self.sliceSkip.toolTip = "Skips the selected number of slices (use, for example, on long thin samples with more slices than in-plane resolution)"
+    self.sliceSkip.toolTip = "Skips the selected number of slices between each pair of output volume slices (use, for example, on long thin samples with more slices than in-plane resolution)"
     outputFormLayout.addRow("Slice skip: ", self.sliceSkip)
 
     self.loadButton = qt.QPushButton("Load files")
@@ -168,8 +181,7 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget):
     # Add vertical spacer
     self.layout.addStretch(1)
 
-    # Refresh Apply button state
-    self.validateInput()
+    self.loadButton.enabled = False
 
   def cleanup(self):
     pass
@@ -189,6 +201,9 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget):
 
   def addByBrowsing(self):
     filePaths = qt.QFileDialog().getOpenFileNames()
+    self.addFilePaths(filePaths)
+
+  def addFilePaths(self, filePaths):
     for filePath in filePaths:
       item = qt.QStandardItem()
       item.setText(filePath)
@@ -196,6 +211,21 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget):
     self.loadButton.enabled = filePaths != []
     properties = self.logic.calculateProperties(filePaths)
     self.updateFileProperties(properties)
+    self.updateSpacingFromFilePaths(filePaths)
+
+  def updateSpacingFromFilePaths(self, filePaths):
+    if not filePaths:
+      return
+    spacing = self.logic.getImageSpacing(filePaths[0])
+    if not spacing:
+      return
+    if spacing[0] == spacing[1]:
+      # If x and y spacing are the same then we assume that it is an isotropic volume
+      # and set z spacing to the same value
+      spacingZ = spacing[0]
+    else:
+      spacingZ = 1.0
+    self.spacing.coordinates = f"{spacing[0]},{spacing[1]},{spacingZ}"
 
   def selectArchetype(self):
     filePath = qt.QFileDialog().getOpenFileName()
@@ -246,6 +276,7 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget):
     self.loadButton.enabled = filePaths != []
     properties = self.logic.calculateProperties(filePaths)
     self.updateFileProperties(properties)
+    self.updateSpacingFromFilePaths(filePaths)
     self.archetypeText.text = archetypeFormat
 
   def currentNode(self):
@@ -276,8 +307,75 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget):
     properties['downsample'] = self.downsample.checked
     properties['reverse'] = self.reverse.checked
     properties['sliceSkip'] = self.sliceSkip.value
-    outputNode = self.logic.loadByPaths(paths, self.currentNode(), properties)
-    self.setCurrentNode(outputNode)
+    qt.QApplication.setOverrideCursor(qt.Qt.WaitCursor)
+    try:
+      outputNode = self.logic.loadByPaths(paths, self.currentNode(), properties)
+      self.setCurrentNode(outputNode)
+      qt.QApplication.restoreOverrideCursor()
+    except Exception as e:
+      qt.QApplication.restoreOverrideCursor()
+      message, _, details = str(e).partition('\nDetails:\n')
+      slicer.util.errorDisplay("Loading failed: " + message, detailedText=details)
+      import traceback
+      traceback.print_exc()
+
+#
+# File dialog to allow drag-and-drop of folders and files
+#
+class ImageStacksFileDialog(object):
+  """This specially named class is detected by the scripted loadable
+  module and is the target for optional drag and drop operations.
+  See: Base/QTGUI/qSlicerScriptedFileDialog.h
+  and commit http://svn.slicer.org/Slicer4/trunk@21951 and issue #3081
+  """
+
+  def __init__(self,qSlicerFileDialog):
+    self.qSlicerFileDialog = qSlicerFileDialog
+    qSlicerFileDialog.fileType = 'Image stack'
+    qSlicerFileDialog.description = 'Load files using ImageStacks module'
+    qSlicerFileDialog.action = slicer.qSlicerFileDialog.Read
+    self.filesToAdd = []
+
+  def execDialog(self):
+    """Not used"""
+    logging.debug('execDialog called on %s' % self)
+
+  def isMimeDataAccepted(self):
+    """Checks the dropped data and returns true if it is one or
+    more directories"""
+    self.filesToAdd = ImageStacksFileDialog.pathsFromMimeData(self.qSlicerFileDialog.mimeData())
+    self.qSlicerFileDialog.acceptMimeData(len(self.filesToAdd) != 0)
+
+  @staticmethod
+  def pathsFromMimeData(mimeData):
+    filesToAdd = []
+    acceptedFileExtensions = ['jpg', 'jpeg', 'tif', 'tiff', 'png', 'bmp']
+    if mimeData.hasFormat('text/uri-list'):
+      urls = mimeData.urls()
+      for url in urls:
+        localPath = url.toLocalFile() # convert QUrl to local path
+        pathInfo = qt.QFileInfo()
+        pathInfo.setFile(localPath) # information about the path
+        if pathInfo.isDir(): # if it is a directory we add the files to the dialog
+          directory = qt.QDir(localPath)
+          nameFilters = ['*.'+ext for ext in acceptedFileExtensions]
+          filenamesInFolder = directory.entryList(nameFilters, qt.QDir.Files, qt.QDir.Name)
+          for filenameInFolder in filenamesInFolder:
+            filesToAdd.append(directory.absoluteFilePath(filenameInFolder))
+        else:
+          ext = pathInfo.suffix().lower()
+          if ext in acceptedFileExtensions:
+            filesToAdd.append(localPath)
+    return filesToAdd
+
+  def dropEvent(self):
+    slicer.util.selectModule('ImageStacks')
+    if len(self.filesToAdd) == 1:
+      slicer.modules.imagestacks.widgetRepresentation().self().archetypeText.text = self.filesToAdd[0]
+    elif len(self.filesToAdd) > 1:
+      slicer.modules.imagestacks.widgetRepresentation().self().addFilePaths(self.filesToAdd)
+    self.filesToAdd=[]
+
 
 #
 # ImageStacksLogic
@@ -301,6 +399,15 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
         units = unit
     return(byteCount, units)
 
+  def getImageSpacing(self, filePath):
+    try:
+      reader = sitk.ImageFileReader()
+      reader.SetFileName(filePath)
+      image = reader.Execute()
+      return image.GetSpacing()
+    except:
+      return None
+
   def calculateProperties(self, filePaths):
     properties = {}
     if filePaths == []:
@@ -310,14 +417,13 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
     image = reader.Execute()
     sliceArray = sitk.GetArrayFromImage(image)
     dimensions = ((*sliceArray.shape[:2]), len(filePaths))
-    properties['dimensions'] = f"{dimensions}"
-    properties['data type'] = f"{sliceArray.dtype}"
     itemsize = numpy.dtype(sliceArray.dtype).itemsize
     volumeSize = (itemsize * dimensions[0] * dimensions[1] * dimensions[2])
     byteCount, units = self.humanizeByteCount(volumeSize)
-    properties['full volume size'] = f"{byteCount:.3f} {units}"
-    byteCount, units = self.humanizeByteCount(volumeSize/8.)
-    properties['downsampled volume size'] = f"{byteCount:.3f} {units}"
+    properties['Full volume size'] = f"{dimensions[0]} x {dimensions[1]} x {dimensions[2]} x {sliceArray.dtype} = {byteCount:.3f} {units}"
+    resampledDimensions = [i>>1 for i in dimensions]
+    byteCount, units = self.humanizeByteCount(resampledDimensions[0]*resampledDimensions[1]*resampledDimensions[2])
+    properties['Downsampled volume size'] = f"{resampledDimensions[0]} x {resampledDimensions[1]} x {resampledDimensions[2]} x {sliceArray.dtype} = {byteCount:.3f} {units}"
     return(properties)
 
   def loadByPaths(self, paths, outputNode, properties={}):
@@ -372,6 +478,12 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
         volumeArray = numpy.zeros(shape, dtype=sliceArray.dtype)
       if downsample:
         sliceArray = sliceArray[::2,::2]
+      if (sliceIndex > 0) and (volumeArray[sliceIndex].shape != sliceArray.shape):
+        message = "There are multiple datasets in the folder. Please select a single file as a sample or specify a pattern.\nDetails:\n{0}{1} size is {2} x {3}\n\n{4} size is {5} x {6}".format(
+          "After downsampling:\n\n" if downsample else "",
+          paths[0], volumeArray[0].shape[0], volumeArray[0].shape[1],
+          path, sliceArray.shape[0], sliceArray.shape[1])
+        raise ValueError(message)
       volumeArray[sliceIndex] = sliceArray
       sliceIndex += 1
 
