@@ -547,9 +547,12 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     # Set up layout
     self.assignLayoutDescription()
-    cameras=slicer.mrmlScene.GetNodesByClass('vtkMRMLCameraNode')
-    for camera in cameras:
-      camera.GetCamera().Zoom(2000*self.sampleSizeScaleFactor)
+    # Apply zoom for morphospace if scaling not skipped
+    if(not self.skipScalingOption):
+      cameras=slicer.mrmlScene.GetNodesByClass('vtkMRMLCameraNode')
+      self.widgetZoomFactor = 2000*self.sampleSizeScaleFactor
+      for camera in cameras:
+        camera.GetCamera().Zoom(self.widgetZoomFactor)
     
     #initialize mean LM display
     self.scaleMeanGlyph()
@@ -611,6 +614,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       GPANodeCollection.AddItem(self.meanLandmarkNode)
       modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
       GPANodeCollection.AddItem(modelDisplayNode)
+    self.meanLandmarkNode.GetDisplayNode().SetSliceProjection(True)
+    self.meanLandmarkNode.GetDisplayNode().SetSliceProjectionOpacity(1)
 
     for landmarkNumber in range (shape[0]):
       name = str(landmarkNumber+1) #start numbering at 1
@@ -654,9 +659,12 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     # Set up layout
     self.assignLayoutDescription()
-    cameras=slicer.mrmlScene.GetNodesByClass('vtkMRMLCameraNode')
-    for camera in cameras:
-      camera.GetCamera().Zoom(2000*self.sampleSizeScaleFactor)
+    # Apply zoom for morphospace if scaling not skipped
+    if(not self.skipScalingOption):
+      cameras=slicer.mrmlScene.GetNodesByClass('vtkMRMLCameraNode')
+      self.widgetZoomFactor = 2000*self.sampleSizeScaleFactor
+      for camera in cameras:
+        camera.GetCamera().Zoom(self.widgetZoomFactor)
     
     #initialize mean LM display
     self.scaleMeanGlyph()
@@ -843,6 +851,13 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.meanShapeColor.color=qt.QColor(250,128,114)
 
     self.nodeCleanUp()
+    
+    # Reset zoom
+    if self.widgetZoomFactor > 0: 
+      cameras=slicer.mrmlScene.GetNodesByClass('vtkMRMLCameraNode')
+      for camera in cameras:
+        camera.GetCamera().Zoom(1/self.widgetZoomFactor)
+      self.widgetZoomFactor = 0
 
   def reset(self):
     # delete the two data objects
@@ -947,6 +962,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     inbutton=ctk.ctkCollapsibleButton()
     inbutton.text="Setup Analysis"
     inputLayout= qt.QGridLayout(inbutton)
+    
+    self.widgetZoomFactor = 0
 
     self.LMText, volumeInLabel, self.LMbutton=self.textIn('Landmark Folder','', '')
     inputLayout.addWidget(self.LMText,1,2)
