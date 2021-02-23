@@ -579,9 +579,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       lmNP=np.asarray(self.LMExclusionList)
     else:
       self.LMExclusionList=[]
-    
     try:
-      self.LM.lmOrig, self.files = logic.mergeMatchs(self.LM_dir_name, self.LMExclusionList)
+      self.LM.lmOrig, self.files, self.isJSON = logic.mergeMatchs(self.LM_dir_name, self.LMExclusionList)
     except: 
       logging.debug('Load landmark data failed: Could not access files')
       print("Error reading landmark files")
@@ -591,7 +590,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     print('Loaded ' + str(shape[2]) + ' subjects with ' + str(shape[0]) + ' landmark points.')
     
     # Do GPA
-    self.LM.doGpa(self.skipScalingCheckBox.checked)
+    self.skipScalingOption=self.skipScalingCheckBox.checked
+    self.LM.doGpa(self.skipScalingOption)
     self.LM.calcEigen()
     self.pcNumber=25
     self.updateList()
@@ -635,6 +635,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     try:
       os.makedirs(self.outputFolder)
       self.LM.writeOutData(self.outputFolder, self.files)
+      self.writeAnalysisLogFile(self.LM_dir_name, self.outputFolder, self.files)
     except:
       logging.debug('Result directory failed: Could not access output folder')
       print("Error creating result directory")
@@ -670,6 +671,33 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.selectorButton.enabled = True
     self.landmarkVisualizationType.enabled = True
     self.modelVisualizationType.enabled = True
+  
+  def writeAnalysisLogFile(self, inputPath, outputPath, files):  
+    # generate log file
+    logFile = open(outputPath+os.sep+"analysis.log","w") 
+    logFile.write("Date=" + datetime.now().strftime('%Y-%m-%d') + "\n")
+    logFile.write("Time=" + datetime.now().strftime('%H:%M:%S') + "\n")
+    logFile.write("InputPath=" + inputPath + "\n")
+    logFile.write("OutputPath=" + outputPath + "\n")
+    if self.isJSON:
+      extension = "json"
+    else:
+       extension = "fcsv"
+    logFile.write("Files=") 
+    for i in range(len(files)-1):
+      logFile.write(files[i] + "." + extension + ",")
+    logFile.write("LM_format="  + extension + "\n")
+    logFile.write(files[len(files)-1] + "\n")
+    [pointNumber, dim, subjectNumber] = self.LM.lmOrig.shape
+    logFile.write("NumberLM=" + str(pointNumber) + "\n")
+    logFile.write("ExcludedLM=" + str(self.LMExclusionList) + "\n")
+    logFile.write("Scale=" + str(not self.skipScalingOption) + "\n")
+    logFile.write("MeanShape=MeanShape.csv"+ "\n")
+    logFile.write("eigenvalues=eigenvalues.csv" + "\n")
+    logFile.write("eigenvectors=eigenvectors.csv" + "\n")
+    logFile.write("OutputData=OutputData.csv" + "\n")
+    logFile.write("pcScores=pcScores.csv" + "\n")
+    logFile.close()
     
   def populateDistanceTable(self, files):
     sortedArray = np.zeros(len(files), dtype={'names':('filename', 'procdist'),'formats':('U50','f8')})
@@ -1539,7 +1567,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
   def plotDistributionGlyph(self, sliderScale):
     self.unplotDistributions()
-    varianceMat = self.LM.calcLMVariation(self.sampleSizeScaleFactor,self.skipScalingCheckBox.checked)
+    varianceMat = self.LM.calcLMVariation(self.sampleSizeScaleFactor,self.skipScalingOption)
     i,j,k=self.LM.lmOrig.shape
     pt=[0,0,0]
     #set up vtk point array for each landmark point
@@ -1616,8 +1644,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     modelDisplayNode.SetScalarVisibility(True)
     modelDisplayNode.SetActiveScalarName('Index') #color by landmark number
     modelDisplayNode.SetAndObserveColorNodeID('vtkMRMLColorTableNodeLabels.txt')
-
-
 
 #
 # GPALogic
@@ -1700,6 +1726,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
     # initial data array
     dirs, files, matchList = self.walk_dir_current(topDir)
     suffix = files[0].split(".")[-1]
+    isJSON=False
     if suffix == "fcsv":
       landmarks=self.initDataArray(dirs,files[0],len(matchList))
       matchedfiles=[]
@@ -1708,6 +1735,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
         landmarks[:,:,i] = tmp1
         matchedfiles.append(os.path.basename(matchList[i]))
     elif suffix == "json":
+      isJSON=True
       import pandas
       firstFilename = os.path.join(dirs[0], files[0])
       tempTable = pandas.DataFrame.from_dict(pandas.read_json(firstFilename)['markups'][0]['controlPoints'])
@@ -1727,7 +1755,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
         indexToRemove.append(lmToRemove[i]-1)
       landmarks=np.delete(landmarks,indexToRemove,axis=0)
     
-    return landmarks, matchedfiles
+    return landmarks, matchedfiles, isJSON
 
   def createMatchList(self, topDir,suffix):
    #eliminate requirement for 2 landmark files
