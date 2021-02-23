@@ -694,7 +694,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     logFile.write("Files=") 
     for i in range(len(files)-1):
       logFile.write(files[i] + "." + extension + ",")
-    logFile.write(files[len(files)-1] + extension + "\n")
+    logFile.write(files[len(files)-1] + "." + extension + "\n")
     logFile.write("LM_format="  + extension + "\n")
     [pointNumber, dim, subjectNumber] = self.LM.lmOrig.shape
     totalLandmarks = pointNumber + len(self.LMExclusionList)
