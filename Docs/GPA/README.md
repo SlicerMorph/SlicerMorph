@@ -7,7 +7,7 @@ This section of the module runs the GPA and PCA analysis on a directory of landm
 
 * __Landmark folder:__ Use landmarkfolder field to select the directory containing `.fcsv` files to be analyzed. There should be one `.fcsv` file per subject. 
 
-* __Output directory prefix:__ Use the output directory field to select the directory where the results will be written. Each time the `GPA` module is run, and new, timestamped results folder is created in this directory to prevent results from being overwritten. Please ensure that you have write access to the directory selected.
+* __Output directory prefix:__ Use the output directory field to select the directory where the results will be written. Each time the `GPA` module is run, and new, timestamped results folder is created in this directory to prevent results from being overwritten. Please ensure that you have write access to the directory selected. Output folder will contain a log file that lists the files and the settings used in the analysis. This file can be parsed by convinence function [_log_parser.R_ ](https://raw.githubusercontent.com/muratmaga/SlicerMorph_Rexamples/main/log_parser.R) for further analysis in R. 
 
 * __Exclude landmarks:__ Optionally, landmarks can be excluded from analysis. Please enter the number of each landmark to exclude, seperated by commas (example: 25,27,29). If all landmarks will be used, this field can be left empty.
 
