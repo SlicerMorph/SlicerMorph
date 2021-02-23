@@ -678,19 +678,22 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     logFile.write("Date=" + datetime.now().strftime('%Y-%m-%d') + "\n")
     logFile.write("Time=" + datetime.now().strftime('%H:%M:%S') + "\n")
     logFile.write("InputPath=" + inputPath + "\n")
-    logFile.write("OutputPath=" + outputPath + "\n")
+    logFile.write("OutputPath=" + outputPath.replace("\\","/") + "\n")
     if self.isJSON:
       extension = "json"
     else:
-       extension = "fcsv"
+      extension = "fcsv"
     logFile.write("Files=") 
     for i in range(len(files)-1):
       logFile.write(files[i] + "." + extension + ",")
+    logFile.write(files[len(files)-1] + extension + "\n")
     logFile.write("LM_format="  + extension + "\n")
-    logFile.write(files[len(files)-1] + "\n")
     [pointNumber, dim, subjectNumber] = self.LM.lmOrig.shape
-    logFile.write("NumberLM=" + str(pointNumber) + "\n")
-    logFile.write("ExcludedLM=" + str(self.LMExclusionList) + "\n")
+    totalLandmarks = pointNumber + len(self.LMExclusionList)
+    logFile.write("NumberLM=" + str(totalLandmarks) + "\n")
+    logFile.write("ExcludedLM=")
+    exclusions = ",".join(map(str, self.LMExclusionList)) 
+    logFile.write(exclusions + "\n")
     logFile.write("Scale=" + str(not self.skipScalingOption) + "\n")
     logFile.write("MeanShape=MeanShape.csv"+ "\n")
     logFile.write("eigenvalues=eigenvalues.csv" + "\n")
