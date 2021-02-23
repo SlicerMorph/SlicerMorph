@@ -959,17 +959,33 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
+    # Initialize zoom factor for widget
+    self.widgetZoomFactor = 0
+    
+    # Set up tabs to split workflow
+    tabsWidget = qt.QTabWidget()
+    setupTab = qt.QWidget()
+    setupTabLayout = qt.QFormLayout(setupTab)
+    exploreTab = qt.QWidget()
+    exploreTabLayout = qt.QFormLayout(exploreTab)
+    visualizeTab = qt.QWidget()
+    visualizeTabLayout = qt.QFormLayout(visualizeTab)
+
+    tabsWidget.addTab(setupTab, "Setup Analysis")
+    tabsWidget.addTab(exploreTab, "Explore Data")
+    tabsWidget.addTab(visualizeTab, "Interactive Visualizion")
+    self.layout.addWidget(tabsWidget)
+    
+    ################################### Setup Tab ###################################
     inbutton=ctk.ctkCollapsibleButton()
     inbutton.text="Setup Analysis"
     inputLayout= qt.QGridLayout(inbutton)
-    
-    self.widgetZoomFactor = 0
+    setupTabLayout.addRow(inbutton)
 
     self.LMText, volumeInLabel, self.LMbutton=self.textIn('Landmark Folder','', '')
     inputLayout.addWidget(self.LMText,1,2)
     inputLayout.addWidget(volumeInLabel,1,1)
     inputLayout.addWidget(self.LMbutton,1,3)
-    self.layout.addWidget(inbutton)
     self.LMbutton.connect('clicked(bool)', self.selectLandmarkFile)
 
     # Select output directory
@@ -977,7 +993,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     inputLayout.addWidget(self.outText,2,2)
     inputLayout.addWidget(outLabel,2,1)
     inputLayout.addWidget(self.outbutton,2,3)
-    self.layout.addWidget(inbutton)
     self.outbutton.connect('clicked(bool)', self.selectOutputDirectory)
 
     self.excludeLMLabel=qt.QLabel('Exclude landmarks')
@@ -1003,10 +1018,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     
     #Load from file option
     loadFromFileCollapsibleButton = ctk.ctkCollapsibleButton()
+    loadFromFileLayout = qt.QGridLayout(loadFromFileCollapsibleButton)
     loadFromFileCollapsibleButton.text = "Load previous analysis"
     loadFromFileCollapsibleButton.collapsed = True
-    self.layout.addWidget(loadFromFileCollapsibleButton)
-    loadFromFileLayout = qt.QGridLayout(loadFromFileCollapsibleButton)
+    setupTabLayout.addRow(loadFromFileCollapsibleButton)
     
     #Select results folder
     self.resultsText, resultsLabel, self.resultsButton=self.textIn('Results Directory','', '')
@@ -1023,11 +1038,12 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.loadResultsButton.enabled = False
     self.loadResultsButton.connect('clicked(bool)', self.onLoadFromFile)
     
+    ################################### Explore Tab ###################################
     #Mean Shape display section
     meanShapeFrame = ctk.ctkCollapsibleButton()
     meanShapeFrame.text="Mean Shape Plot Options"
     meanShapeLayout= qt.QGridLayout(meanShapeFrame)
-    self.layout.addWidget(meanShapeFrame)
+    exploreTabLayout.addRow(meanShapeFrame)
 
     meanButtonLable=qt.QLabel("Mean shape visibility: ")
     meanShapeLayout.addWidget(meanButtonLable,1,1)
@@ -1072,7 +1088,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     distributionFrame=ctk.ctkCollapsibleButton()
     distributionFrame.text="Landmark Variance Plot Options"
     distributionLayout= qt.QGridLayout(distributionFrame)
-    self.layout.addWidget(distributionFrame)
+    exploreTabLayout.addRow(distributionFrame)
 
     self.EllipseType=qt.QRadioButton()
     ellipseTypeLabel=qt.QLabel("Ellipse type")
@@ -1115,7 +1131,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     plotFrame=ctk.ctkCollapsibleButton()
     plotFrame.text="PCA Scatter Plot Options"
     plotLayout= qt.QGridLayout(plotFrame)
-    self.layout.addWidget(plotFrame)
+    exploreTabLayout.addRow(plotFrame)
 
     self.XcomboBox=qt.QComboBox()
     Xlabel=qt.QLabel("X Axis")
@@ -1159,7 +1175,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     lolliFrame=ctk.ctkCollapsibleButton()
     lolliFrame.text="Lollipop Plot Options"
     lolliLayout= qt.QGridLayout(lolliFrame)
-    self.layout.addWidget(lolliFrame)
+    exploreTabLayout.addRow(lolliFrame)
 
     self.vectorOne=qt.QComboBox()
     vectorOneLabel=qt.QLabel("Vector One: Red")
@@ -1188,10 +1204,12 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.lolliButton.enabled = False
     self.lolliButton.connect('clicked(bool)', self.lolliPlot)
 
+    ################################### Visualize Tab ###################################
     # Interactive view set up tab
     selectTemplatesButton=ctk.ctkCollapsibleButton()
     selectTemplatesButton.text="Setup Interactive Visualization"
     selectTemplatesLayout= qt.QGridLayout(selectTemplatesButton)
+    visualizeTabLayout.addRow(selectTemplatesButton)
     
     self.landmarkVisualizationType=qt.QRadioButton()
     landmarkVisualizationTypeLabel=qt.QLabel("Mean shape visualization")
@@ -1236,12 +1254,12 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.selectorButton.enabled = False
     self.selectorButton.connect('clicked(bool)', self.onSelect)
 
-    self.layout.addWidget(selectTemplatesButton)
-
     # PC warping
     vis=ctk.ctkCollapsibleButton()
     vis.text='PCA Visualization Parameters'
     visLayout= qt.QGridLayout(vis)
+    visualizeTabLayout.addRow(vis)
+    
     self.applyEnabled=False
 
     def warpOnChangePC1(value):
@@ -1261,12 +1279,12 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.slider2.connectList(self.PCList)
     visLayout.addWidget(self.slider2,4,1,1,2)
 
-    self.layout.addWidget(vis)
-
     # Create Animations
     animate=ctk.ctkCollapsibleButton()
     animate.text='Create animation of PC Warping'
     animateLayout= qt.QGridLayout(animate)
+    visualizeTabLayout.addRow(animate)
+    
     self.startRecordButton = qt.QPushButton("Start Recording")
     self.startRecordButton.toolTip = "Start recording PCA warping applied manually using the slider bars."
     self.startRecordButton.enabled = False
@@ -1277,12 +1295,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.stopRecordButton.enabled = False
     animateLayout.addWidget(self.stopRecordButton,1,5,1,2)
     self.stopRecordButton.connect('clicked(bool)', self.onStopRecording)
-    self.layout.addWidget(animate)
 
     # Reset button
     resetButton = qt.QPushButton("Reset Scene")
     resetButton.checkable = True
-    self.layout.addWidget(resetButton)
+    visualizeTabLayout.addRow(resetButton)
     resetButton.toolTip = "Push to reset all fields."
     resetButton.connect('clicked(bool)', self.reset)
 
