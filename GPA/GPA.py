@@ -1116,8 +1116,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.scaleSlider.enabled = False
     self.scaleSlider.setToolTip("Set scale for variance visualization")
     sliderLabel=qt.QLabel("Scale Glyphs")
-    distributionLayout.addWidget(sliderLabel,6,1)
-    distributionLayout.addWidget(self.scaleSlider,6,2,1,2)
+    distributionLayout.addWidget(sliderLabel,2,3)
+    distributionLayout.addWidget(self.scaleSlider,3,3,1,2)
     self.scaleSlider.connect('valueChanged(double)', self.onPlotDistribution)
 
     self.plotDistributionButton = qt.QPushButton("Plot LM variance")
