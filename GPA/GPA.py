@@ -2092,6 +2092,14 @@ class GPALogic(ScriptedLoadableModuleLogic):
       if TwoDOption:
         modelDisplayNode.SetSliceDisplayModeToProjection()
         modelDisplayNode.SetVisibility2D(True)
+        # Assign node to 2D views
+        layoutManager = slicer.app.layoutManager()
+        redNode = layoutManager.sliceWidget('Red').sliceView().mrmlSliceNode()
+        viewNode1 = slicer.mrmlScene.GetFirstNodeByName("View1")
+        modelDisplayNode.SetViewNodeIDs([viewNode1.GetID(),redNode.GetID()])
+      else:
+        viewNode1 = slicer.mrmlScene.GetFirstNodeByName("View1")
+        modelDisplayNode.SetViewNodeIDs([viewNode1.GetID()])  
     else:
       modelNode=slicer.mrmlScene.GetFirstNodeByName(modelNodeName)
       if modelNode is not None:
