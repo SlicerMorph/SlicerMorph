@@ -476,6 +476,16 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       logging.debug('Result import failed: Missing file')
       return
     
+    # Try to load skip scaling option from log file, if present
+    self.skipScalingOption = False
+    logFilePath = os.path.join(self.resultsDirectory, 'analysis.log')
+    try:
+      with open(logFilePath) as f:
+        if 'Scale=False' in f.read():
+          self.skipScalingOption = True
+    except:
+      logging.debug('Log import failed: Cannot read scaling option from log file')
+    print("Skip Scale option: ", self.skipScalingOption)
     # Initialize variables
     self.LM=LMData() 
     success = self.LM.initializeFromDataFrame(outputData, meanShape, eigenVector, eigenValues)
