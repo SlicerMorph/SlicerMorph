@@ -509,6 +509,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       GPANodeCollection.AddItem(self.meanLandmarkNode)
       modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
       GPANodeCollection.AddItem(modelDisplayNode)
+    self.meanLandmarkNode.GetDisplayNode().SetSliceProjection(True)
+    self.meanLandmarkNode.GetDisplayNode().SetSliceProjectionOpacity(1)
       
     #set scaling factor using mean of landmarks
     self.rawMeanLandmarks = self.LM.lmOrig.mean(2)
