@@ -1792,7 +1792,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
       landmarks=np.zeros(shape=(landmarkNumber,3,len(matchList)))
       matchedfiles=[]
       for i in range(len(matchList)):
-        filename = os.path.join(dirs[0], files[i])
+        filename =  matchList[i]+'.'+ suffix
         tmp1=pandas.DataFrame.from_dict(pandas.read_json(filename)['markups'][0]['controlPoints'])
         lmArray = tmp1['position'].to_numpy()
         for j in range(landmarkNumber):
