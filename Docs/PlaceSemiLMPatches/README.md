@@ -24,7 +24,12 @@
 
 
 ### TUTORIAL
-For more information of generating the connectivity table used by the `PlaceSemiLMPatches` module, please see the [CreateSemiLMPatches tutorial](https://github.com/SlicerMorph/S_2020/blob/master/Day_3/Patch-based_semiLMs/Patch-based_semiLMs.md).
+For more details, please see the [CreateSemiLMPatches tutorial](https://github.com/SlicerMorph/Spr_2021/blob/main/Day_3/Patch-based_semiLMs/Patch-based_semiLMs.md)
+
+CreateSemiLMPatches video tutorials:
+1. [Creating Patches](https://www.youtube.com/watch?v=SArudRq-M4A)
+2. [Applying Patches to new samples](https://www.youtube.com/watch?v=UD2tmFuaSJg)
+
 
 
 
