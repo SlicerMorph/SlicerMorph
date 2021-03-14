@@ -15,9 +15,9 @@ Note that MarkupEditor uses the colors specified in the Display tab of the <a hr
 **Known Issue:** For selection to pick up correct points, entire model and the landmarks should be visible in 3D viewer. If only a portion of 3D model and points are visible and the rest is cut off (e.g., the model is zoomed in), unintended points might be added to the selection. 
 
 ### TUTORIAL
-Please see https://github.com/SlicerMorph/S_2020/blob/master/Day_3/MarkupEditor/MarkupEditor.md
+Please see https://github.com/SlicerMorph/Spr_2021/blob/main/Day_3/MarkupEditor/MarkupEditor.md
 
-
+[Part of the PseudoLMGenerator video tutorial highlights how to use the MarkupEditor](https://youtu.be/yvI65oyxYpA?t=211)
 
 
 
