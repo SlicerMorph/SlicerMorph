@@ -29,8 +29,8 @@ Any number of these actions can be added as separate time-tracks.
 
 
 ### TUTORIAL
-Please see https://github.com/SlicerMorph/S_2020/blob/master/Day_2/SlicerAnimator/SlicerAnimator.md
-
+Please see https://github.com/SlicerMorph/Spr_2021/blob/main/Day_2/SlicerAnimator/SlicerAnimator.md
+[Animator video tutorial:](https://www.youtube.com/watch?v=9GBekYcJR4E)
 
 
 
