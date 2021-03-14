@@ -1,4 +1,4 @@
-## MorphoSourceImport module is currently non-functional as MorphoSource is testing a new API as part of their v2.0 release. Once MorphoSource v2.0 goes full production, we will update the module.
+## MorphoSourceImport module is currently non-functional as MorphoSource is testing a new API as part of their v2.0 beta release. Once MorphoSource v2.0 goes full production, we will update the module.
 
 ## MorphoSourceImport
 **Summary:** This module enables to query and download <a href="https://docs.google.com/spreadsheets/d/1fhdVv2JwvUJAC4dvSgKZi2pwSl7dPGaB-ksYsB64k4U/edit#gid=0"> publicly available 3D meshes</a> from MorphoSource website directly into the Slicer. The user has to register with the MorphoSource website. 
