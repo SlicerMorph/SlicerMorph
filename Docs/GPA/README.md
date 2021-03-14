@@ -84,8 +84,12 @@ This section allows the user to capture a PC deformation as an animation. The an
 * __Stop recording__  Ends recording the warping applied to the mean shape landamrks or reference model.
 
 ### TUTORIAL
-For more information, please see the [GPA tutorial](https://github.com/SlicerMorph/S_2020/blob/master/Day_3/GPA/GPA.md)
+For more information how to use the module, please see the [GPA tutorial](https://github.com/SlicerMorph/Spr_2021/blob/main/Day_3/GPA/GPA.md)
 
+There are also video tutorials available. Note that while the UI might be slightly different, the functionality is the same:
+1. [Basics of GPA](https://www.youtube.com/watch?v=FCeZ2J5Uvcw&t=215s)
+2. [Visualizing shape deformation with a reference model:](https://www.youtube.com/watch?v=hMMR9GChek8&t=240s)
+3. [Recording shape deformations as an animation:](https://www.youtube.com/watch?v=gtHqhqaKeCU)
 
 
 
