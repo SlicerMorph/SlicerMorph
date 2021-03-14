@@ -33,8 +33,9 @@ The advanced parameters are settings that can be adjusted to improve the perform
 
 ### TUTORIAL
 For more details, please see the [CreateSemiLMPatches tutorial](https://github.com/SlicerMorph/Spr_2021/blob/main/Day_3/Patch-based_semiLMs/Patch-based_semiLMs.md)
-[CreateSemiLMPatches video tutorial: Creating Patches](https://www.youtube.com/watch?v=SArudRq-M4A)
-[CreateSemiLMPatches video tutorial: Applying Patches](https://www.youtube.com/watch?v=UD2tmFuaSJg)
+CreateSemiLMPatches video tutorials:
+1. [Creating Patches](https://www.youtube.com/watch?v=SArudRq-M4A)
+2. [Applying Patches to new samples](https://www.youtube.com/watch?v=UD2tmFuaSJg)
 
 
 
