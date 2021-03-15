@@ -34,7 +34,7 @@ MicroCT scans of whole specimens can contain regions of black space, or the user
 ### TUTORIAL
 Please see https://github.com/SlicerMorph/Spr_2021/blob/main/Day_1/ImageStacks/ImageStacks.md#imagestacks
 
-[A video tutorial of ImageStacks module highlighting preview and ROI selection functionality](https://youtu.be/TkY15V9OGW8)
+[A video tutorial of ImageStacks module highlighting preview and ROI selection functionality](https://www.youtube.com/watch?v=tjZUOqnrc_Y&t=2s)
 
 
 
