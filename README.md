@@ -4,10 +4,12 @@ This is the official repository for [SlicerMorph project](http://SlicerMorph.org
 
 SlicerMorph enable biologists to retrieve, visualize, measure and annotate high-resolution 3D specimen data both from volumetric scans (CTs and MRs) as well as from  surface scanners more effectively within 3D Slicer. It has a number of modules that facilitate Geometric Morphometrics analysis on these 3D specimens. 
 
-[SlicerMorph: An open and extensible platform to retrieve, visualize and analyze 3D morphology](https://www.biorxiv.org/content/10.1101/2020.11.09.374926v1) preprint is now on Biorxiv.
+[SlicerMorph: An open and extensible platform to retrieve, visualize and analyze 3D morphology](https://www.biorxiv.org/content/10.1101/2020.11.09.374926v1) that explains digital anatomy workflows is now on Biorxiv as a preprint.
 
 ## Installation
 Official method of obtaining SlicerMorph is through extension mechanism of 3D Slicer. To obtain SlicerMorph, please first install the latest **stable release** (at the moment release 29738) of [3D Slicer](https://download.slicer.org/), as SlicerMorph is not available for older versions. Open the application and use the [Extensions Manager module](https://www.slicer.org/wiki/Documentation/Nightly/SlicerApplication/ExtensionsManager) to search for and install the SlicerMorph extension. After restarting 3D Slicer, all SlicerMorph modules will be available in the application.
+
+<img src="https://raw.githubusercontent.com/SlicerMorph/Spr_2021/main/TechCheckin/exten_manager.png">
 
 Alternatively, we maintain an archive of the latest Slicer stable with SlicerMorph and other extensions are bundled with. These packages do not require installation, simply extract the archive and execute Slicer file within the top level of the folder. [You can find these packages here.](http://download.slicermorph.org)
 
@@ -24,7 +26,9 @@ To cite 3D Slicer as a general purpose biomedical visualization platform, please
 
 ## Updating SlicerMorph
 
-We continuously add new features and functionalities to SlicerMorph packages. To make sure you are using the latest version, go to Extension Manager, click Manage Extensions tab and then use the "Check for updates" function. Once updates are installed, please restart Slicer for changes to take effect. This feature is only available for stable releases. If you are using the preview version, you have to install a newer version to obtain the changes introduced to SlicerMorph.  
+We continuously add new features and functionalities to SlicerMorph packages. To make sure you are using the latest version, go to Extension Manager, click Manage Extensions tab and then use the "Check for updates" function. Once updates are installed, please restart Slicer for changes to take effect. This feature is only available for stable releases. If you are using the preview version, you have to install a newer preview version to obtain the changes introduced to SlicerMorph.  
+
+<img src="https://raw.githubusercontent.com/SlicerMorph/Spr_2021/main/TechCheckin/Exten_manager_Update.png">
 
 ## Module Descriptions
 
@@ -69,15 +73,12 @@ SlicerMorph automatically installs these additional extensions as dependencies. 
 
 ## 3D Morphometrics and Image Analysis Short Course materials
 
-We actively use SlicerMorph to teach a week-long intense [short course on 3D Morphometrics and Image analysis](http://workshop.SlicerMorph.org). The feedback of the attendees help us prioritize feature development and refinement. We are grateful for the feedback of over 100 participants. Contents from previous workshops are available on github. 
-- [Summer 2020](https://github.com/SlicerMorph/S_2020)
-- [Winter 2020](https://github.com/SlicerMorph/W_2020)
-- [Summer 2019](https://github.com/SlicerMorph/S_2019)
+We actively use SlicerMorph to teach a week-long intense [short course on 3D Morphometrics and Image analysis](http://workshop.SlicerMorph.org). The feedback of the attendees help us prioritize feature development and refinement. We are grateful for the feedback of over 100 participants. [Click for contents from the latest workshop, Spring 2021](https://github.com/SlicerMorph/Spr_2021)
 
 
 ## Important Websites	
 *	SlicerMorph project website: https://slicermorph.github.io (website has additional tutorial, pointers to specimen repositories, and list of upcoming events).
-*	Please sign up for the SlicerMorph announcement to keep up-to-date with SlicerMorph project and extension updates http://mailman11.u.washington.edu/mailman/listinfo/slicermorph-announcements
+*	Please sign up for the SlicerMorph announcement to receive notifications about SlicerMorph project, extension updates and upcoming demos and workshops http://mailman11.u.washington.edu/mailman/listinfo/slicermorph-announcements
 * [Introduction to Slicer - Official Slicer Documentation](https://slicer.readthedocs.io/en/latest/user_guide/getting_started.html)
 * [SlicerMorph YouTube Channel](https://www.youtube.com/channel/UCy3Uz1ikRH1B7WSMfaldcjQ): provides visual tutorials for GPA, semilandmarks, and others.
 *	Slicer Forum, https://discourse.slicer.org (alternatively you can use your github or google accounts to signup)
