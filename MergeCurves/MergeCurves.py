@@ -84,7 +84,7 @@ class MergeCurvesWidget(ScriptedLoadableModuleWidget):
     self.markupsView.setAlternatingRowColors(True)
     self.markupsView.setDragDropMode(qt.QAbstractItemView().DragDrop)
     self.markupsView.setColumnHidden(self.markupsView.model().transformColumn, True)
-    self.markupsView.sortFilterProxyModel().setNodeTypes(["vtkMRMLMarkupsCurveNode", "vtkMRMLMarkupsClosedCurveNode"])
+    self.markupsView.sortFilterProxyModel().setNodeTypes(["vtkMRMLMarkupsCurveNode"])
     parametersFormLayout.addRow(self.markupsView)
     
     #
@@ -135,39 +135,30 @@ class MergeCurvesLogic(ScriptedLoadableModuleLogic):
         nodeList.AddItem(currentNode)
     mergedNodeName = "mergedMarkupsNode"
     mergedNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsCurveNode', mergedNodeName)
-    self.mergeList(nodeList,mergedNode)
+    purple=[1,0,1]
+    mergedNode.GetDisplayNode().SetSelectedColor(purple)
+    self.mergeList(nodeList, mergedNode, continuousCurveOption)
     return True
-    
-  def setAllLandmarksType2(self,landmarkNode):
-    if hasattr(slicer, 'vtkMRMLStaticMeasurement'):
-      # Create a VTK array that contains the custom data
-      landmarkTypesArray = vtk.vtkDoubleArray()
-      for controlPointIndex in range(landmarkNode.GetNumberOfControlPoints()):
-        landmarkTypesArray.InsertNextValue(1)
-      # Add the landmark array as static measurement
-      landmarkTypes = slicer.vtkMRMLStaticMeasurement()
-      landmarkTypes.SetName('LandmarkType2')
-      landmarkTypes.SetUnits('')
-      landmarkTypes.SetPrintFormat("")
-      landmarkTypes.SetControlPointValues(landmarkTypesArray)
-      landmarkNode.AddMeasurement(landmarkTypes)    
   
-  def mergeList(self, nodeList,mergedNode):
+  def mergeList(self, nodeList,mergedNode, continuousCurveOption):
     pointList=[]          
+    connectingNode=False
     # Add semi-landmark points within triangle patches
     for currentNode in nodeList:
       for index in range(currentNode.GetNumberOfControlPoints()):
-        pt = currentNode.GetNthControlPointPositionVector(index)
-        pt_array = [pt.GetX(), pt.GetY(), pt.GetZ()]
-        if pt_array not in pointList:
-          pointList.append(pt_array)
-          fiducialLabel = currentNode.GetNthControlPointLabel(index)
-          fiducialDescription = currentNode.GetNthControlPointDescription(index)
-          fiducialMeasurement = currentNode.GetNthMeasurement(index)
-          mergedNode.AddControlPoint(pt,fiducialLabel)
-          mergedIndex = mergedNode.GetNumberOfControlPoints()
-          mergedNode.SetNthControlPointDescription(mergedIndex,fiducialDescription)
-          mergedNode.GetNthMeasurement(index)
+        if not(index==0 and continuousCurveOption and connectingNode):
+          pt = currentNode.GetNthControlPointPositionVector(index)
+          pt_array = [pt.GetX(), pt.GetY(), pt.GetZ()]
+          if pt_array not in pointList:
+            pointList.append(pt_array)
+            fiducialLabel = currentNode.GetNthControlPointLabel(index)
+            fiducialDescription = currentNode.GetNthControlPointDescription(index)
+            fiducialMeasurement = currentNode.GetNthMeasurement(index)
+            mergedNode.AddControlPoint(pt,fiducialLabel)
+            mergedIndex = mergedNode.GetNumberOfControlPoints()
+            mergedNode.SetNthControlPointDescription(mergedIndex,fiducialDescription)
+            mergedNode.GetNthMeasurement(index)
+      connectingNode=True  
     return True
   
 class MergeCurvesTest(ScriptedLoadableModuleTest):
