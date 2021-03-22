@@ -155,9 +155,9 @@ class MergeCurvesLogic(ScriptedLoadableModuleLogic):
             fiducialDescription = currentNode.GetNthControlPointDescription(index)
             fiducialMeasurement = currentNode.GetNthMeasurement(index)
             mergedNode.AddControlPoint(pt,fiducialLabel)
-            mergedIndex = mergedNode.GetNumberOfControlPoints()
+            mergedIndex = mergedNode.GetNumberOfControlPoints()-1
             mergedNode.SetNthControlPointDescription(mergedIndex,fiducialDescription)
-            mergedNode.GetNthMeasurement(index)
+            mergedNode.SetNthMeasurement(mergedIndex, fiducialMeasurement)
       connectingNode=True  
     return True
   
