@@ -273,12 +273,20 @@ class VolumePropertyAction(AnimatorAction):
       logging.error("Can't add VolumePropertyAction, no volume rendering node in the scene")
       return None
     animatedVolumeProperty = volumeRenderingNode.GetVolumePropertyNode()
-    startVolumeProperty = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLVolumePropertyNode')
-    startVolumeProperty.SetName(slicer.mrmlScene.GetUniqueNameByString('Start VolumeProperty'))
-    endVolumeProperty = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLVolumePropertyNode')
-    endVolumeProperty.SetName(slicer.mrmlScene.GetUniqueNameByString('End VolumeProperty'))
-    startVolumeProperty.CopyParameterSet(animatedVolumeProperty)
-    endVolumeProperty.CopyParameterSet(animatedVolumeProperty)
+
+    startVolumePropertyID = None
+    endVolumePropertyID = None
+    if False:
+      # for now we prefer to have the user create the volume properties by hand,
+      # but in the future we may want to go back to making these for them
+      startVolumeProperty = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLVolumePropertyNode')
+      startVolumeProperty.SetName(slicer.mrmlScene.GetUniqueNameByString('Start VolumeProperty'))
+      endVolumeProperty = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLVolumePropertyNode')
+      endVolumeProperty.SetName(slicer.mrmlScene.GetUniqueNameByString('End VolumeProperty'))
+      startVolumeProperty.CopyParameterSet(animatedVolumeProperty)
+      endVolumeProperty.CopyParameterSet(animatedVolumeProperty)
+      startVolumePropertyID = startVolumeProperty.GetID()
+      endVolumePropertyID = endVolumeProperty.GetID()
 
     volumePropertyAction = {
       'name': 'Volume Property',
@@ -287,8 +295,8 @@ class VolumePropertyAction(AnimatorAction):
       'startTime': 0,
       'endTime': -1,
       'interpolation': 'linear',
-      'startVolumePropertyID': startVolumeProperty.GetID(),
-      'endVolumePropertyID': endVolumeProperty.GetID(),
+      'startVolumePropertyID': startVolumePropertyID,
+      'endVolumePropertyID': endVolumePropertyID,
       'animatedVolumePropertyID': animatedVolumeProperty.GetID(),
       'clampAtStart': True,
       'clampAtEnd': True,
@@ -296,6 +304,10 @@ class VolumePropertyAction(AnimatorAction):
     return(volumePropertyAction)
 
   def act(self, action, scriptTime):
+
+    if action['startVolumePropertyID'] is None or action['endVolumePropertyID'] is None:
+      return
+
     startVolumeProperty = slicer.mrmlScene.GetNodeByID(action['startVolumePropertyID'])
     endVolumeProperty = slicer.mrmlScene.GetNodeByID(action['endVolumePropertyID'])
     animatedVolumeProperty = slicer.mrmlScene.GetNodeByID(action['animatedVolumePropertyID'])
@@ -353,7 +365,7 @@ class VolumePropertyAction(AnimatorAction):
     self.startSelector.addEnabled = True
     self.startSelector.renameEnabled = True
     self.startSelector.editEnabled = True
-    self.startSelector.removeEnabled = False
+    self.startSelector.removeEnabled = True
     self.startSelector.noneEnabled = False
     self.startSelector.selectNodeUponCreation = True
     self.startSelector.showHidden = True
@@ -372,7 +384,7 @@ class VolumePropertyAction(AnimatorAction):
     self.endSelector.addEnabled = True
     self.endSelector.renameEnabled = True
     self.endSelector.editEnabled = True
-    self.endSelector.removeEnabled = False
+    self.endSelector.removeEnabled = True
     self.endSelector.noneEnabled = False
     self.endSelector.selectNodeUponCreation = True
     self.endSelector.showHidden = True
