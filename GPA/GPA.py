@@ -197,6 +197,7 @@ class LMData:
       self.procdist=self.procdist.reshape(-1,1)
       return 1
     except:
+      slicer.util.messageBox("Error: Load from file failed. Please confirm the output file formats are correct.")
       print("Error loading results")
       return 0
     
@@ -598,6 +599,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.LM.lmOrig, self.files, self.isJSON = logic.mergeMatchs(self.LM_dir_name, self.LMExclusionList)
     except: 
       logging.debug('Load landmark data failed: Could not access files')
+      slicer.util.messageBox("Error: Could not read landmark files. Please make sure all samples have identical landmark sets.")
       print("Error reading landmark files")
       return
       
