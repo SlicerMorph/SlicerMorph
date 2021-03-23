@@ -68,7 +68,7 @@ class ExportAsSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin):
         for writerFormat in writerExtensions:
           a = self.menu.addAction(writerFormat)
           a.connect("triggered()", lambda writerFormat=writerFormat : self.export(associatedNode, writerFormat, False))
-    
+
     if associatedNode is not None and associatedNode.IsA("vtkMRMLTransformableNode") and associatedNode.GetTransformNodeID():
         self.exportTransformedAsAction.visible = True
         self.exportTransformedAsAction.enabled = True
@@ -86,12 +86,13 @@ class ExportAsSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin):
 
       transformNode = slicer.mrmlScene.GetNodeByID(node.GetTransformNodeID())
       clonedNode.SetAndObserveTransformNodeID(transformNode.GetID())
-      
+
       transformLogic = slicer.vtkSlicerTransformLogic()
       transformLogic.hardenTransform(clonedNode)
 
       node = clonedNode
-    
+
+    writerFormat += ";(*)"
     fileName = qt.QFileDialog.getSaveFileName(slicer.util.mainWindow(),
                                             "Export As...", node.GetName(), writerFormat)
     extension = slicer.vtkDataFileFormatHelper.GetFileExtensionFromFormatString(writerFormat)
