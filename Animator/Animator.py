@@ -147,24 +147,31 @@ class ROIAction(AnimatorAction):
       return None
     volumeRenderingNode.SetCroppingEnabled(True)
 
-    startROI = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLAnnotationROINode')
-    startROI.SetName('Start ROI')
-    endROI = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLAnnotationROINode')
-    endROI.SetName('End ROI')
-    for roi in [startROI, endROI]:
-      for index in range(roi.GetNumberOfDisplayNodes()):
-        roi.GetNthDisplayNode(index).SetVisibility(False)
+    startROIID = None
+    endROIID = None
+    if False:
+      # don't create start-and-end ROIs, but instead rely on
+      # user to create them so they can have more than
+      startROI = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLAnnotationROINode')
+      startROI.SetName('Start ROI')
+      endROI = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLAnnotationROINode')
+      endROI.SetName('End ROI')
+      for roi in [startROI, endROI]:
+        for index in range(roi.GetNumberOfDisplayNodes()):
+          roi.GetNthDisplayNode(index).SetVisibility(False)
+      startROIID = startROI.GetID()
+      endROIID = endROI.GetID()
 
-    start = [0.,]*3
-    animatedROI.GetXYZ(start)
-    startROI.SetXYZ(start)
-    endROI.SetXYZ(start)
-    animatedROI.GetRadiusXYZ(start)
-    startROI.SetRadiusXYZ(start)
-    end = [0.,]*3
-    for i in range(3):
-      end[i] = start[i] / 2.
-    endROI.SetRadiusXYZ(end)
+      start = [0.,]*3
+      animatedROI.GetXYZ(start)
+      startROI.SetXYZ(start)
+      endROI.SetXYZ(start)
+      animatedROI.GetRadiusXYZ(start)
+      startROI.SetRadiusXYZ(start)
+      end = [0.,]*3
+      for i in range(3):
+        end[i] = start[i] / 2.
+      endROI.SetRadiusXYZ(end)
 
     roiAction = {
       'name': 'ROI',
@@ -173,13 +180,15 @@ class ROIAction(AnimatorAction):
       'startTime': 0,
       'endTime': -1,
       'interpolation': 'linear',
-      'startROIID': startROI.GetID(),
-      'endROIID': endROI.GetID(),
+      'startROIID': startROIID,
+      'endROIID': endROIID,
       'animatedROIID': animatedROI.GetID(),
     }
     return(roiAction)
 
   def act(self, action, scriptTime):
+    if action['startROIID'] is None or action['startROIID'] is None:
+      return
     startROI = slicer.mrmlScene.GetNodeByID(action['startROIID'])
     endROI = slicer.mrmlScene.GetNodeByID(action['endROIID'])
     animatedROI = slicer.mrmlScene.GetNodeByID(action['animatedROIID'])
@@ -218,7 +227,7 @@ class ROIAction(AnimatorAction):
     self.startSelector.nodeTypes = ["vtkMRMLAnnotationROINode"]
     self.startSelector.addEnabled = True
     self.startSelector.renameEnabled = True
-    self.startSelector.removeEnabled = False
+    self.startSelector.removeEnabled = True
     self.startSelector.noneEnabled = False
     self.startSelector.selectNodeUponCreation = True
     self.startSelector.showHidden = True
@@ -232,7 +241,7 @@ class ROIAction(AnimatorAction):
     self.endSelector.nodeTypes = ["vtkMRMLAnnotationROINode"]
     self.endSelector.addEnabled = True
     self.endSelector.renameEnabled = True
-    self.endSelector.removeEnabled = False
+    self.endSelector.removeEnabled = True
     self.endSelector.noneEnabled = False
     self.endSelector.selectNodeUponCreation = True
     self.endSelector.showHidden = True
@@ -246,7 +255,7 @@ class ROIAction(AnimatorAction):
     self.animatedSelector.nodeTypes = ["vtkMRMLAnnotationROINode"]
     self.animatedSelector.addEnabled = True
     self.animatedSelector.renameEnabled = True
-    self.animatedSelector.removeEnabled = False
+    self.animatedSelector.removeEnabled = True
     self.animatedSelector.noneEnabled = False
     self.animatedSelector.selectNodeUponCreation = True
     self.animatedSelector.showHidden = True
