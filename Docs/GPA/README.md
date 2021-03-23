@@ -83,6 +83,9 @@ This section allows the user to capture a PC deformation as an animation. The an
 
 * __Stop recording__  Ends recording the warping applied to the mean shape landamrks or reference model.
 
+### LIMITATIONS
+As implemented, GPA module does not allow sliding of the semi or pseudoLMs during superimposition. If sliding is required, we advise using the R/geomorph package for GPA superimposition.
+
 ### TUTORIAL
 For more information how to use the module, please see the [GPA tutorial](https://github.com/SlicerMorph/Spr_2021/blob/main/Day_3/GPA/GPA.md)
 
