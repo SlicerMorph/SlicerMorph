@@ -92,6 +92,7 @@ class ExportAsSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin):
 
       node = clonedNode
     
+    writerFormat += ";(*)"
     fileName = qt.QFileDialog.getSaveFileName(slicer.util.mainWindow(),
                                             "Export As...", node.GetName(), writerFormat)
     extension = slicer.vtkDataFileFormatHelper.GetFileExtensionFromFormatString(writerFormat)
