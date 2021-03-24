@@ -590,7 +590,7 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
 
     return ijkToRAS, extent
 
-  def loadVolume(self, outputNode):
+  def loadVolume(self, outputNode=None):
     """
     Load the files in paths to outputNode.
     TODO: currently downsample is done with nearest neighbor filtering
