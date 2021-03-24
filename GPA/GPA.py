@@ -1806,16 +1806,20 @@ class GPALogic(ScriptedLoadableModuleLogic):
       landmarks=np.zeros(shape=(landmarkNumber,3,len(matchList)))
       matchedfiles=[]
       for i in range(len(matchList)):
-        filename = os.path.join(dirs[0], files[i])
-        tmp1=pandas.DataFrame.from_dict(pandas.read_json(filename)['markups'][0]['controlPoints'])
+        filename =  matchList[i]+'.'+ suffix
+        try:
+          tmp1=pandas.DataFrame.from_dict(pandas.read_json(filename)['markups'][0]['controlPoints'])
+        except:
+          warning = "Error: Load file {} failed:.".format(filename)  
+          slicer.util.messageBox(warning)  
         if len(tmp1) == landmarkNumber:
           lmArray = tmp1['position'].to_numpy()
           for j in range(landmarkNumber):
             landmarks[j,:,i]=lmArray[j]
           matchedfiles.append(os.path.basename(matchList[i]))
         else:
-          warning = "Error: Load file {} failed. There are {} landmarks instead of the expected {}.".format(matchList[i],len(tmp1),landmarkNumber)
-          slicer.util.messageBox("Error: Load from file failed. Please confirm the output file formats are correct.")
+          warning = "Error: Load file {} failed. There are {} landmarks instead of the expected {}.".format(filename,len(tmp1),landmarkNumber)
+          slicer.util.messageBox(warning)
           return
     if len(lmToRemove)>0:
       indexToRemove=[]
