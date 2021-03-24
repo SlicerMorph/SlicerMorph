@@ -197,7 +197,6 @@ class LMData:
       self.procdist=self.procdist.reshape(-1,1)
       return 1
     except:
-      slicer.util.messageBox("Error: Load from file failed. Please confirm the output file formats are correct.")
       print("Error loading results")
       return 0
     
@@ -487,6 +486,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     except:
       logging.debug('Log import failed: Cannot read scaling option from log file')
     print("Skip Scale option: ", self.skipScalingOption)
+    
     # Initialize variables
     self.LM=LMData() 
     success = self.LM.initializeFromDataFrame(outputData, meanShape, eigenVector, eigenValues)
@@ -512,7 +512,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       GPANodeCollection.AddItem(modelDisplayNode)
     self.meanLandmarkNode.GetDisplayNode().SetSliceProjection(True)
     self.meanLandmarkNode.GetDisplayNode().SetSliceProjectionOpacity(1)
-      
+    
     #set scaling factor using mean of landmarks
     self.rawMeanLandmarks = self.LM.lmOrig.mean(2)
     logic = GPALogic()
@@ -596,11 +596,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     else:
       self.LMExclusionList=[]
     try:
-      self.LM.lmOrig, self.files, self.isJSON = logic.mergeMatchs(self.LM_dir_name, self.LMExclusionList)
+      self.LM.lmOrig, self.files, self.landmarkTypeArray, self.isJSON = logic.mergeMatchs(self.LM_dir_name, self.LMExclusionList)
     except: 
-      logging.debug('Load landmark data failed: Could not access files')
-      slicer.util.messageBox("Error: Could not read landmark files. Please make sure all samples have identical landmark sets.")
-      print("Error reading landmark files")
+      logging.debug('Load landmark data failed: Could not create an array from landmark files')
       return
       
     shape = self.LM.lmOrig.shape
@@ -654,7 +652,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     try:
       os.makedirs(self.outputFolder)
       self.LM.writeOutData(self.outputFolder, self.files)
-      self.writeAnalysisLogFile(self.LM_dir_name, self.outputFolder, self.files)
+      self.writeAnalysisLogFile(self.LM_dir_name, self.outputFolder, self.files, self.landmarkTypeArray)
     except:
       logging.debug('Result directory failed: Could not access output folder')
       print("Error creating result directory")
@@ -694,7 +692,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.landmarkVisualizationType.enabled = True
     self.modelVisualizationType.enabled = True
   
-  def writeAnalysisLogFile(self, inputPath, outputPath, files):  
+  def writeAnalysisLogFile(self, inputPath, outputPath, files, lmType):  
     # generate log file
     logFile = open(outputPath+os.sep+"analysis.log","w") 
     logFile.write("Date=" + datetime.now().strftime('%Y-%m-%d') + "\n")
@@ -722,6 +720,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     logFile.write("eigenvectors=eigenvectors.csv" + "\n")
     logFile.write("OutputData=OutputData.csv" + "\n")
     logFile.write("pcScores=pcScores.csv" + "\n")
+    logFile.write("SemiLandmarks= ") 
+    logFile.write(lmType)
     logFile.close()
     
   def populateDistanceTable(self, files):
@@ -1779,34 +1779,51 @@ class GPALogic(ScriptedLoadableModuleLogic):
     suffix = files[0].split(".")[-1]
     isJSON=False
     if suffix == "fcsv":
-      landmarks=self.initDataArray(dirs,files[0],len(matchList))
+      landmarks, landmarkTypeArray = self.initDataArray(dirs,files[0],len(matchList))
+      landmarkNumber = len(landmarkTypeArray)
       matchedfiles=[]
       for i in range(len(matchList)):
         tmp1=self.importLandMarks(matchList[i]+'.'+ suffix)
-        landmarks[:,:,i] = tmp1
-        matchedfiles.append(os.path.basename(matchList[i]))
+        if len(tmp1) == landmarkNumber:
+          landmarks[:,:,i] = tmp1
+          matchedfiles.append(os.path.basename(matchList[i]))
+        else:
+          warning = "Error: Load file {} failed. There are {} landmarks instead of the expected {}.".format(matchList[i],len(tmp1),landmarkNumber)
+          slicer.util.messageBox(warning)
+          return 
     elif suffix == "json":
       isJSON=True
       import pandas
       firstFilename = os.path.join(dirs[0], files[0])
       tempTable = pandas.DataFrame.from_dict(pandas.read_json(firstFilename)['markups'][0]['controlPoints'])
       landmarkNumber = len(tempTable)
+      landmarkTypeArray=[]
+      for i in range(landmarkNumber):
+        if tempTable['description'][i]=='Semi':
+          landmarkTypeArray.append('Semi')
+        else:
+          landmarkTypeArray.append('Fixed')
       landmarks=np.zeros(shape=(landmarkNumber,3,len(matchList)))
       matchedfiles=[]
       for i in range(len(matchList)):
-        filename =  matchList[i]+'.'+ suffix
+        filename = os.path.join(dirs[0], files[i])
         tmp1=pandas.DataFrame.from_dict(pandas.read_json(filename)['markups'][0]['controlPoints'])
-        lmArray = tmp1['position'].to_numpy()
-        for j in range(landmarkNumber):
-          landmarks[j,:,i]=lmArray[j]
-        matchedfiles.append(os.path.basename(matchList[i]))
+        if len(tmp1) == landmarkNumber:
+          lmArray = tmp1['position'].to_numpy()
+          for j in range(landmarkNumber):
+            landmarks[j,:,i]=lmArray[j]
+          matchedfiles.append(os.path.basename(matchList[i]))
+        else:
+          warning = "Error: Load file {} failed. There are {} landmarks instead of the expected {}.".format(matchList[i],len(tmp1),landmarkNumber)
+          slicer.util.messageBox("Error: Load from file failed. Please confirm the output file formats are correct.")
+          return
     if len(lmToRemove)>0:
       indexToRemove=[]
       for i in range(len(lmToRemove)):
         indexToRemove.append(lmToRemove[i]-1)
       landmarks=np.delete(landmarks,indexToRemove,axis=0)
     
-    return landmarks, matchedfiles, isJSON
+    return landmarks, matchedfiles, landmarkTypeArray, isJSON
 
   def createMatchList(self, topDir,suffix):
    #eliminate requirement for 2 landmark files
@@ -1870,18 +1887,22 @@ class GPALogic(ScriptedLoadableModuleLogic):
 
   def initDataArray(self, dirs, file,k):
     """
-    returns an np array for the storage of the landmarks.
+    returns an np array for the storage of the landmarks and an array of landmark types (Fixed, Semi)
     """
     j=3
     # import data file
     datafile=open(dirs[0]+os.sep+file,'r')
-    data=[]
+    landmarkType = []
     for row in datafile:
       if not fnmatch.fnmatch(row[0],"#*"):
-        data.append(row.strip().split(','))
-    i= len(data)
+        tmp=(row.strip().split(','))
+        if tmp[12] == 'Semi':
+          landmarkType.append('Semi')
+        else:
+          landmarkType.append('Fixed')
+    i= len(landmarkType)    
     landmarks=np.zeros(shape=(i,j,k))
-    return landmarks
+    return landmarks, landmarkType
 
   def dist(self, a):
     """
