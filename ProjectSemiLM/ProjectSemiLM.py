@@ -248,6 +248,13 @@ class ProjectSemiLMLogic(ScriptedLoadableModuleLogic):
             resampledLandmarkNode.SetAndObserveTransformNodeID(transformNode.GetID())  
             slicer.vtkSlicerTransformLogic().hardenTransform(resampledLandmarkNode)
             
+            # transfer point data
+            for index in range(semiLMNode.GetNumberOfControlPoints()):
+              fiducialLabel = semiLMNode.GetNthControlPointLabel(index)
+              fiducialDescription = semiLMNode.GetNthControlPointDescription(index)
+              resampledLandmarkNode.SetNthControlPointLabel(index, fiducialLabel)
+              resampledLandmarkNode.SetNthControlPointDescription(index,fiducialDescription)
+              
             # save output file
             outputFileName = meshFileName + '_SL_warped.fcsv'
             outputFilePath = os.path.join(ouputDirectory, outputFileName) 
