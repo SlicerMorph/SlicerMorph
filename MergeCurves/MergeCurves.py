@@ -49,15 +49,26 @@ class MergeCurvesWidget(ScriptedLoadableModuleWidget):
     
     # Instantiate and connect widgets ...
     
+    # Set up tabs to split workflow
+    tabsWidget = qt.QTabWidget()
+    curvesTab = qt.QWidget()
+    curvesTabLayout = qt.QFormLayout(curvesTab)
+    fiducialsTab = qt.QWidget()
+    fiducialsTabLayout = qt.QFormLayout(fiducialsTab)
+
+    tabsWidget.addTab(curvesTab, "Merge Curves")
+    tabsWidget.addTab(fiducialsTab, "Merge Landmark Sets")
+    self.layout.addWidget(tabsWidget)
+    ################## Curves Tab
     #
     # Parameters Area
     #
-    parametersCollapsibleButton = ctk.ctkCollapsibleButton()
-    parametersCollapsibleButton.text = "Parameters"
-    self.layout.addWidget(parametersCollapsibleButton)
+    parametersCurveCollapsibleButton = ctk.ctkCollapsibleButton()
+    parametersCurveCollapsibleButton.text = "Curve Viewer"
+    curvesTabLayout.addRow(parametersCurveCollapsibleButton)
     
     # Layout within the dummy collapsible button
-    parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
+    parametersCurveFormLayout = qt.QFormLayout(parametersCurveCollapsibleButton)
     
     #
     # check box to trigger taking screen shots for later use in tutorials
@@ -65,15 +76,7 @@ class MergeCurvesWidget(ScriptedLoadableModuleWidget):
     self.continuousCurvesCheckBox = qt.QCheckBox()
     self.continuousCurvesCheckBox.checked = 0
     self.continuousCurvesCheckBox.setToolTip("If checked, redundant points will be removed on merging.")
-    parametersFormLayout.addRow("Contiuous curves", self.continuousCurvesCheckBox)
-    
-    #
-    # Apply Button
-    #
-    self.applyButton = qt.QPushButton("Apply")
-    self.applyButton.toolTip = "Generate semilandmarks."
-    self.applyButton.enabled = False
-    parametersFormLayout.addRow(self.applyButton)
+    parametersCurveFormLayout.addRow("Contiuous curves", self.continuousCurvesCheckBox)
     
     #
     # markups view
@@ -85,7 +88,7 @@ class MergeCurvesWidget(ScriptedLoadableModuleWidget):
     self.markupsView.setDragDropMode(qt.QAbstractItemView().DragDrop)
     self.markupsView.setColumnHidden(self.markupsView.model().transformColumn, True)
     self.markupsView.sortFilterProxyModel().setNodeTypes(["vtkMRMLMarkupsCurveNode"])
-    parametersFormLayout.addRow(self.markupsView)
+    parametersCurveFormLayout.addRow(self.markupsView)
     
     #
     # Merge Button
@@ -93,11 +96,66 @@ class MergeCurvesWidget(ScriptedLoadableModuleWidget):
     self.mergeButton = qt.QPushButton("Merge highlighted nodes")
     self.mergeButton.toolTip = "Generate a single merged markup file from the selected nodes"
     self.mergeButton.enabled = False
-    parametersFormLayout.addRow(self.mergeButton)
+    parametersCurveFormLayout.addRow(self.mergeButton)
     
     # connections
     self.mergeButton.connect('clicked(bool)', self.onMergeButton)
     self.markupsView.connect('currentItemChanged(vtkIdType)', self.updateMergeButton)
+    
+    ################ Landmark Set Tab
+    #
+    # Parameters Area
+    #
+    parametersLMCollapsibleButton = ctk.ctkCollapsibleButton()
+    parametersLMCollapsibleButton.text = "Landmark Viewer"
+    fiducialsTabLayout.addRow(parametersLMCollapsibleButton)
+    
+    # Layout within the dummy collapsible button
+    parametersLMFormLayout = qt.QGridLayout(parametersLMCollapsibleButton)
+    
+    #
+    # markups view
+    #
+    self.markupsFiducialView = slicer.qMRMLSubjectHierarchyTreeView()
+    self.markupsFiducialView.setMRMLScene(slicer.mrmlScene)
+    self.markupsFiducialView.setMultiSelection(True)
+    self.markupsFiducialView.setAlternatingRowColors(True)
+    self.markupsFiducialView.setDragDropMode(qt.QAbstractItemView().DragDrop)
+    self.markupsFiducialView.setColumnHidden(self.markupsView.model().transformColumn, True)
+    self.markupsFiducialView.sortFilterProxyModel().setNodeTypes(["vtkMRMLMarkupsFiducialNode"])
+    parametersLMFormLayout.addWidget(self.markupsFiducialView,0,0,1,3)
+ 
+    #
+    # Set landmark type menu
+    #
+    boxLabel = qt.QLabel("Select landmark type description to apply: ")
+    self.LandmarkTypeSelection = qt.QComboBox()
+    self.LandmarkTypeSelection.addItems(["Select","Fixed", "Semi", "No description"])
+    parametersLMFormLayout.addWidget(boxLabel,1,0)
+    parametersLMFormLayout.addWidget(self.LandmarkTypeSelection,1,1)
+    
+    
+    #
+    # Apply Landmark Type Button
+    #
+    self.ApplyLMButton = qt.QPushButton("Apply to highlighted nodes")
+    self.ApplyLMButton.toolTip = "Apply the selected landmark type to points in the the selected nodes"
+    self.ApplyLMButton.enabled = False
+    parametersLMFormLayout.addWidget(self.ApplyLMButton,1,2)
+    
+    #
+    # Merge Button
+    #
+    self.mergeLMButton = qt.QPushButton("Merge highlighted nodes")
+    self.mergeLMButton.toolTip = "Generate a single merged markup file from the selected nodes"
+    self.mergeLMButton.enabled = False
+    parametersLMFormLayout.addWidget(self.mergeLMButton,2,0,1,3)
+    
+    # connections
+    self.mergeLMButton.connect('clicked(bool)', self.onMergeLMButton)
+    self.ApplyLMButton.connect('clicked(bool)', self.onApplyLMButton)
+    self.markupsFiducialView.connect('currentItemChanged(vtkIdType)', self.updateMergeLMButton)
+    self.LandmarkTypeSelection.connect('currentIndexChanged(int)', self.updateApplyLMButton)
     
     # Add vertical spacer
     self.layout.addStretch(1)
@@ -107,12 +165,31 @@ class MergeCurvesWidget(ScriptedLoadableModuleWidget):
   
   def onMergeButton(self):
     logic = MergeCurvesLogic()
-    logic.run(self.markupsView, self.continuousCurvesCheckBox.checked)
+    logic.runCurves(self.markupsView, self.continuousCurvesCheckBox.checked)
     
   def updateMergeButton(self):
     nodes=self.markupsView.selectedIndexes()
     self.mergeButton.enabled = bool(nodes)
 
+  def updateMergeLMButton(self):
+    nodes=self.markupsFiducialView.selectedIndexes()
+    self.mergeLMButton.enabled = bool(nodes)
+      
+  def onMergeLMButton(self):
+    logic = MergeCurvesLogic()
+    logic.runFiducials(self.markupsFiducialView)
+  
+  def updateApplyLMButton(self):
+    self.ApplyLMButton.enabled = not bool(self.LandmarkTypeSelection.currentText == "Select")
+        
+  def onApplyLMButton(self):
+    logic = MergeCurvesLogic()
+    if self.LandmarkTypeSelection.currentText == "No description":
+      label = ""
+    else:
+      label = self.LandmarkTypeSelection.currentText
+    logic.runApplyLandmarksType(self.markupsFiducialView, label)
+    
 #
 # MergeCurvesLogic
 #
@@ -126,7 +203,32 @@ class MergeCurvesLogic(ScriptedLoadableModuleLogic):
     Uses ScriptedLoadableModuleLogic base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
-  def run(self, markupsTreeView, continuousCurveOption):
+  def runApplyLandmarksType(self, markupsTreeView, label):
+    nodeIDs=markupsTreeView.selectedIndexes()
+    for id in nodeIDs:
+      if id.column() == 0:
+        currentNode = slicer.util.getNode(id.data())
+        self.setAllLandmarkDescriptions(currentNode, label)
+  
+  def setAllLandmarkDescriptions(self,landmarkNode, landmarkDescription):
+    for controlPointIndex in range(landmarkNode.GetNumberOfControlPoints()):
+      landmarkNode.SetNthControlPointDescription(controlPointIndex, landmarkDescription)
+      
+  def runFiducials(self, markupsTreeView):
+    nodeIDs=markupsTreeView.selectedIndexes()
+    nodeList = vtk.vtkCollection()
+    for id in nodeIDs:
+      if id.column() == 0:
+        currentNode = slicer.util.getNode(id.data())
+        nodeList.AddItem(currentNode)
+    mergedNodeName = "mergedMarkupsNode"
+    mergedNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode', mergedNodeName)
+    purple=[1,0,1]
+    mergedNode.GetDisplayNode().SetSelectedColor(purple)
+    self.mergeList(nodeList, mergedNode)
+    return True
+    
+  def runCurves(self, markupsTreeView, continuousCurveOption):
     nodeIDs=markupsTreeView.selectedIndexes()
     nodeList = vtk.vtkCollection()
     for id in nodeIDs:
@@ -140,7 +242,7 @@ class MergeCurvesLogic(ScriptedLoadableModuleLogic):
     self.mergeList(nodeList, mergedNode, continuousCurveOption)
     return True
   
-  def mergeList(self, nodeList,mergedNode, continuousCurveOption):
+  def mergeList(self, nodeList,mergedNode, continuousCurveOption=False):
     pointList=[]          
     connectingNode=False
     # Add semi-landmark points within triangle patches
@@ -153,7 +255,7 @@ class MergeCurvesLogic(ScriptedLoadableModuleLogic):
             pointList.append(pt_array)
             fiducialLabel = currentNode.GetNthControlPointLabel(index)
             fiducialDescription = currentNode.GetNthControlPointDescription(index)
-            #fiducialMeasurement = currentNode.GetNthMeasurement(index)
+            fiducialMeasurement = currentNode.GetNthMeasurement(index)
             mergedNode.AddControlPoint(pt,fiducialLabel)
             mergedIndex = mergedNode.GetNumberOfControlPoints()-1
             mergedNode.SetNthControlPointDescription(mergedIndex,fiducialDescription)
