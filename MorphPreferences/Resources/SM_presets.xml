@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<MRML>
+<VolumeProperty id="vtkMRMLVolumeProperty1" name="Mouse_CT"     references="IconVolume:vtkMRMLVectorVolumeNode1;" interpolation="1" shade="1" diffuse="0.9" ambient="0.1" specular="0.2" specularPower="10" effectiveRange="0 255"
+scalarOpacity="12 0 0 25 0 72.3597412109375 1 236.931869506836 1 806.920776367188 1 1024 1" 
+gradientOpacity="10 0 1 0 1 46.9644546508789 0.1 128.360549926758 1 255 1" 
+colorTransfer="16 0 0 0 0 43.8543891906738 0.780392156862745 0.462745098039216 0.188235294117647 114.021408081055 0.982130513713827 0.96809021468468 0.94958254408399 1024 1 1 1" />
+</MRML>
