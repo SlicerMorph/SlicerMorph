@@ -11,23 +11,23 @@ import math
 
 
 #
-# MergeCurves
+# MergeMarkups
 #
 
-class MergeCurves(ScriptedLoadableModule):
+class MergeMarkups(ScriptedLoadableModule):
   """Uses ScriptedLoadableModule base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
   
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
-    self.parent.title = "MergeCurves" # TODO make this more human readable by adding spaces
+    self.parent.title = "MergeMarkups" # TODO make this more human readable by adding spaces
     self.parent.categories = ["SlicerMorph.SlicerMorph Utilities"]
     self.parent.dependencies = []
     self.parent.contributors = ["Sara Rolfe (UW), Murat Maga (UW)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """
       This module interactively merges markups nodes.
-      <p>For more information see the <a href="https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/MergeCurves">online documentation.</a>.</p> 
+      <p>For more information see the <a href="https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/MergeMarkups">online documentation.</a>.</p> 
       """
     #self.parent.helpText += self.getDefaultModuleDocumentationLink()
     self.parent.acknowledgementText = """
@@ -37,10 +37,10 @@ class MergeCurves(ScriptedLoadableModule):
       """ # replace with organization, grant and thanks.
 
 #
-# MergeCurvesWidget
+# MergeMarkupsWidget
 #
 
-class MergeCurvesWidget(ScriptedLoadableModuleWidget):
+class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
   """Uses ScriptedLoadableModuleWidget base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
@@ -164,7 +164,7 @@ class MergeCurvesWidget(ScriptedLoadableModuleWidget):
     pass
   
   def onMergeButton(self):
-    logic = MergeCurvesLogic()
+    logic = MergeMarkupsLogic()
     logic.runCurves(self.markupsView, self.continuousCurvesCheckBox.checked)
     
   def updateMergeButton(self):
@@ -176,14 +176,14 @@ class MergeCurvesWidget(ScriptedLoadableModuleWidget):
     self.mergeLMButton.enabled = bool(nodes)
       
   def onMergeLMButton(self):
-    logic = MergeCurvesLogic()
+    logic = MergeMarkupsLogic()
     logic.runFiducials(self.markupsFiducialView)
   
   def updateApplyLMButton(self):
     self.ApplyLMButton.enabled = not bool(self.LandmarkTypeSelection.currentText == "Select")
         
   def onApplyLMButton(self):
-    logic = MergeCurvesLogic()
+    logic = MergeMarkupsLogic()
     if self.LandmarkTypeSelection.currentText == "No description":
       label = ""
     else:
@@ -191,10 +191,10 @@ class MergeCurvesWidget(ScriptedLoadableModuleWidget):
     logic.runApplyLandmarksType(self.markupsFiducialView, label)
     
 #
-# MergeCurvesLogic
+# MergeMarkupsLogic
 #
 
-class MergeCurvesLogic(ScriptedLoadableModuleLogic):
+class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
   """This class should implement all the actual
     computation done by your module.  The interface
     should be such that other python code can import
@@ -263,7 +263,7 @@ class MergeCurvesLogic(ScriptedLoadableModuleLogic):
       connectingNode=True  
     return True
   
-class MergeCurvesTest(ScriptedLoadableModuleTest):
+class MergeMarkupsTest(ScriptedLoadableModuleTest):
   """
     This is the test case for your scripted module.
     Uses ScriptedLoadableModuleTest base class, available at:
@@ -279,9 +279,9 @@ class MergeCurvesTest(ScriptedLoadableModuleTest):
     """Run as few or as many tests as needed here.
       """
     self.setUp()
-    self.test_MergeCurves1()
+    self.test_MergeMarkups1()
   
-  def test_MergeCurves1(self):
+  def test_MergeMarkups1(self):
     """ Ideally you should have several levels of tests.  At the lowest level
       tests should exercise the functionality of the logic with different inputs
       (both valid and invalid).  At higher levels your tests should emulate the
@@ -312,6 +312,6 @@ class MergeCurvesTest(ScriptedLoadableModuleTest):
     self.delayDisplay('Finished with download and loading')
     
     volumeNode = slicer.util.getNode(pattern="FA")
-    logic = MergeCurvesLogic()
+    logic = MergeMarkupsLogic()
     self.assertIsNotNone( logic.hasImageData(volumeNode) )
     self.delayDisplay('Test passed!')
