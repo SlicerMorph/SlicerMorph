@@ -55,9 +55,12 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     curvesTabLayout = qt.QFormLayout(curvesTab)
     fiducialsTab = qt.QWidget()
     fiducialsTabLayout = qt.QFormLayout(fiducialsTab)
+    batchTab = qt.QWidget()
+    batchTabLayout = qt.QFormLayout(batchTab)
 
     tabsWidget.addTab(curvesTab, "Merge Curves")
     tabsWidget.addTab(fiducialsTab, "Merge Landmark Sets")
+    tabsWidget.addTab(batchTab, "Batch Merge Landmark Sets")
     self.layout.addWidget(tabsWidget)
     ################## Curves Tab
     #
@@ -157,6 +160,88 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     self.markupsFiducialView.connect('currentItemChanged(vtkIdType)', self.updateMergeLMButton)
     self.LandmarkTypeSelection.connect('currentIndexChanged(int)', self.updateApplyLMButton)
     
+    ################ Batch Run LM Merge Tab
+    #
+    # Fixed LM Area
+    #
+    fixedBatchCollapsibleButton = ctk.ctkCollapsibleButton()
+    fixedBatchCollapsibleButton.text = "Batch LM File Selection"
+    batchTabLayout.addRow(fixedBatchCollapsibleButton)
+    
+    # Layout within the dummy collapsible button
+    fixedBatchLayout = qt.QFormLayout(fixedBatchCollapsibleButton)
+    
+    #
+    # Browse Fixed LM Button
+    #
+    self.browseFixedLMButton = qt.QPushButton("Select files...")
+    self.browseFixedLMButton.toolTip = "Select one fixed landmark file for each subject"
+    self.browseFixedLMButton.enabled = True
+    fixedBatchLayout.addRow(self.browseFixedLMButton)
+    
+    #
+    # File viewer box
+    #
+    self.fixedFileTable = qt.QTextBrowser()
+    fixedBatchLayout.addRow(self.fixedFileTable)
+    
+    #
+    # Semi LM Area
+    #
+    semiBatchCollapsibleButton = ctk.ctkCollapsibleButton()
+    semiBatchCollapsibleButton.text = "Semi LM File Selection"
+    batchTabLayout.addRow(semiBatchCollapsibleButton)
+    
+    # Layout within the dummy collapsible button
+    semiBatchLayout = qt.QFormLayout(semiBatchCollapsibleButton)
+    
+    #
+    # Browse Fixed LM Button
+    #
+    self.browseSemiLMButton = qt.QPushButton("Select files...")
+    self.browseSemiLMButton.toolTip = "Select one semi-landmark file for each subject, in the same order as the fixed landmarks"
+    self.browseSemiLMButton.enabled = True
+    semiBatchLayout.addRow(self.browseSemiLMButton)
+    
+    #
+    # File viewer box
+    #
+    self.semiFileTable = qt.QTextBrowser()
+    semiBatchLayout.addRow(self.semiFileTable)
+    
+    #
+    # Merge LM Area
+    #
+    batchMergeCollapsibleButton = ctk.ctkCollapsibleButton()
+    batchMergeCollapsibleButton.text = "Run merge"
+    batchTabLayout.addRow(batchMergeCollapsibleButton)
+    
+    # Layout within the dummy collapsible button
+    batchMergeLayout = qt.QFormLayout(batchMergeCollapsibleButton)
+    
+    #
+    # Select output landmark directory
+    #
+    self.outputDirectorySelector = ctk.ctkPathLineEdit()
+    self.outputDirectorySelector.filters = ctk.ctkPathLineEdit.Dirs
+    self.outputDirectorySelector.toolTip = "Select the output directory where the merged landmark nodes will be saved"
+    batchMergeLayout.addRow("Select output landmark directory: ", self.outputDirectorySelector)
+    
+    #
+    # Batch Merge Button
+    #
+    self.batchMergeButton = qt.QPushButton("Merge fixed and semi-landmark nodes")
+    self.batchMergeButton.toolTip = "Generate a single merged markup file from the selected nodes"
+    self.batchMergeButton.enabled = False
+    batchMergeLayout.addRow(self.batchMergeButton)
+    
+    
+    # connections
+    self.browseFixedLMButton.connect('clicked(bool)', self.addFixedByBrowsing)
+    self.browseSemiLMButton.connect('clicked(bool)', self.addSemiByBrowsing)
+    self.outputDirectorySelector.connect('validInputChanged(bool)', self.onSelectDirectory)
+    self.batchMergeButton.connect('clicked(bool)', self.onBatchMergeButton)
+    
     # Add vertical spacer
     self.layout.addStretch(1)
   
@@ -190,6 +275,49 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
       label = self.LandmarkTypeSelection.currentText
     logic.runApplyLandmarksType(self.markupsFiducialView, label)
     
+  def addFixedByBrowsing(self):
+    self.fixedFileTable.clear()
+    self.fixedFilePaths = []
+    filter = "landmark files (*.fcsv *.json)"
+    self.fixedFilePaths = qt.QFileDialog().getOpenFileNames(None, "Window name", "", filter)
+    self.fixedFileTable.plainText = '\n'.join(self.fixedFilePaths)
+
+  def addSemiByBrowsing(self):
+    self.semiFileTable.clear()
+    self.semiFilePaths = []
+    filter = "landmark files (*.fcsv *.json)"
+    self.semiFilePaths = qt.QFileDialog().getOpenFileNames(None, "Window name", "", filter)
+    self.semiFileTable.plainText = '\n'.join(self.semiFilePaths)
+
+  def onSelectDirectory(self):
+    self.batchMergeButton.enabled = bool (self.outputDirectorySelector.currentPath)
+    
+  def onBatchMergeButton(self):
+    logic = MergeMarkupsLogic()
+    if len(self.fixedFilePaths) == 0 or len(self.semiFilePaths)==0:
+      warning = "Error: There are 0 files selected to merge."
+      logging.debug(warning)
+      slicer.util.messageBox(warning)
+      return False
+    if len(self.fixedFilePaths) != len(self.semiFilePaths):
+      warning = "Error: The number of files in the fixed and semi-landmark selection boxes needs to be equal."
+      logging.debug(warning)
+      slicer.util.messageBox(warning)
+      return False
+    for index in range(len(self.fixedFilePaths)):
+      fixed =  slicer.util.loadMarkups(self.fixedFilePaths[index])
+      semi =  slicer.util.loadMarkups(self.semiFilePaths[index])
+      logic.mergeLMNodes(fixed,semi)
+      fixed.SetName(fixed.GetName()+'_merged')
+      print("node name: ", fixed.GetName())
+      rootName, ext = os.path.splitext(self.fixedFilePaths[index])
+      outputFilePath = os.path.join(self.outputDirectorySelector.currentPath, rootName + "_merged" + ext)
+      print("outputPath: ", outputFilePath)
+      slicer.util.saveNode(fixed, outputFilePath)
+      slicer.mrmlScene.RemoveNode(fixed)
+      slicer.mrmlScene.RemoveNode(semi)
+    return True
+
 #
 # MergeMarkupsLogic
 #
@@ -203,12 +331,25 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
     Uses ScriptedLoadableModuleLogic base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
+  def mergeLMNodes(self, fixedLM, semiLM):
+    #merges semilandmarks into the fixed landmark set
+    for index in range(semiLM.GetNumberOfControlPoints()):
+      pt = semiLM.GetNthControlPointPositionVector(index)
+      fiducialLabel = semiLM.GetNthControlPointLabel(index)
+      fiducialDescription = semiLM.GetNthControlPointDescription(index)
+      #fiducialMeasurement = currentNode.GetNthMeasurement(index)
+      fixedLM.AddControlPoint(pt,fiducialLabel)
+      mergedIndex = fixedLM.GetNumberOfControlPoints()-1
+      fixedLM.SetNthControlPointDescription(mergedIndex,fiducialDescription)
+      #mergedNode.SetNthMeasurement(mergedIndex, fiducialMeasurement)
+      
   def runApplyLandmarksType(self, markupsTreeView, label):
     nodeIDs=markupsTreeView.selectedIndexes()
     for id in nodeIDs:
       if id.column() == 0:
         currentNode = slicer.util.getNode(id.data())
         self.setAllLandmarkDescriptions(currentNode, label)
+        mergedNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode', mergedNodeName)
   
   def setAllLandmarkDescriptions(self,landmarkNode, landmarkDescription):
     for controlPointIndex in range(landmarkNode.GetNumberOfControlPoints()):
