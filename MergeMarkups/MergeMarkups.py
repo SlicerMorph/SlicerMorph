@@ -1,3 +1,4 @@
+
 import os
 import unittest
 import vtk, qt, ctk, slicer
@@ -181,7 +182,7 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     #
     # File viewer box
     #
-    self.fixedFileTable = qt.QTextBrowser()
+    self.fixedFileTable = qt.QTextEdit()
     fixedBatchLayout.addRow(self.fixedFileTable)
     
     #
@@ -205,7 +206,7 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     #
     # File viewer box
     #
-    self.semiFileTable = qt.QTextBrowser()
+    self.semiFileTable = qt.QTextEdit()
     semiBatchLayout.addRow(self.semiFileTable)
     
     #
