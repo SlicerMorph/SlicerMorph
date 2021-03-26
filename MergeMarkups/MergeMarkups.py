@@ -235,12 +235,20 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     self.batchMergeButton.enabled = False
     batchMergeLayout.addRow(self.batchMergeButton)
     
+    #
+    # Clear Button
+    #
+    self.clearButton = qt.QPushButton("Clear landmark file selections")
+    self.clearButton.toolTip = "Clear the landmark files selected in the viewer boxes"
+    self.clearButton.enabled = False
+    batchMergeLayout.addRow(self.clearButton)
     
     # connections
     self.browseFixedLMButton.connect('clicked(bool)', self.addFixedByBrowsing)
     self.browseSemiLMButton.connect('clicked(bool)', self.addSemiByBrowsing)
     self.outputDirectorySelector.connect('validInputChanged(bool)', self.onSelectDirectory)
     self.batchMergeButton.connect('clicked(bool)', self.onBatchMergeButton)
+    self.clearButton.connect('clicked(bool)', self.onClearButton)
     
     # Add vertical spacer
     self.layout.addStretch(1)
@@ -281,6 +289,7 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     filter = "landmark files (*.fcsv *.json)"
     self.fixedFilePaths = qt.QFileDialog().getOpenFileNames(None, "Window name", "", filter)
     self.fixedFileTable.plainText = '\n'.join(self.fixedFilePaths)
+    self.clearButton.enabled = True
 
   def addSemiByBrowsing(self):
     self.semiFileTable.clear()
@@ -288,6 +297,7 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     filter = "landmark files (*.fcsv *.json)"
     self.semiFilePaths = qt.QFileDialog().getOpenFileNames(None, "Window name", "", filter)
     self.semiFileTable.plainText = '\n'.join(self.semiFilePaths)
+    self.clearButton.enabled = True
 
   def onSelectDirectory(self):
     self.batchMergeButton.enabled = bool (self.outputDirectorySelector.currentPath)
@@ -315,6 +325,13 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
       slicer.mrmlScene.RemoveNode(fixed)
       slicer.mrmlScene.RemoveNode(semi)
     return True
+    
+  def onClearButton(self):
+    self.fixedFileTable.clear()
+    self.fixedFilePaths = []
+    self.semiFileTable.clear()
+    self.semiFilePaths = []
+    self.clearButton.enabled = False
 
 #
 # MergeMarkupsLogic
@@ -330,16 +347,23 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
   def mergeLMNodes(self, fixedLM, semiLM):
-    #merges semilandmarks into the fixed landmark set
+    # merges semilandmarks into the fixed landmark set
+    # if there are no landmark descriptions, these will be set according to the 
+    # fixed/semiLM box they were entered in
+    for index in range(fixedLM.GetNumberOfControlPoints()):
+      fiducialDescription = fixedLM.GetNthControlPointDescription(index)    
+      if fiducialDescription == "":
+        fixedLM.SetNthControlPointDescription(index,"Fixed")   
     for index in range(semiLM.GetNumberOfControlPoints()):
       pt = semiLM.GetNthControlPointPositionVector(index)
       fiducialLabel = semiLM.GetNthControlPointLabel(index)
       fiducialDescription = semiLM.GetNthControlPointDescription(index)
-      #fiducialMeasurement = currentNode.GetNthMeasurement(index)
       fixedLM.AddControlPoint(pt,fiducialLabel)
       mergedIndex = fixedLM.GetNumberOfControlPoints()-1
-      fixedLM.SetNthControlPointDescription(mergedIndex,fiducialDescription)
-      #mergedNode.SetNthMeasurement(mergedIndex, fiducialMeasurement)
+      if fiducialDescription == "":
+        fixedLM.SetNthControlPointDescription(mergedIndex,"Semi")  
+      else: 
+        fixedLM.SetNthControlPointDescription(mergedIndex,fiducialDescription)
       
   def runApplyLandmarksType(self, markupsTreeView, label):
     nodeIDs=markupsTreeView.selectedIndexes()
@@ -393,11 +417,9 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
             pointList.append(pt_array)
             fiducialLabel = currentNode.GetNthControlPointLabel(index)
             fiducialDescription = currentNode.GetNthControlPointDescription(index)
-            fiducialMeasurement = currentNode.GetNthMeasurement(index)
             mergedNode.AddControlPoint(pt,fiducialLabel)
             mergedIndex = mergedNode.GetNumberOfControlPoints()-1
             mergedNode.SetNthControlPointDescription(mergedIndex,fiducialDescription)
-            #mergedNode.SetNthMeasurement(mergedIndex, fiducialMeasurement)
       connectingNode=True  
     return True
   
