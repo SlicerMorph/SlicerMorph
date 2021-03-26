@@ -1,4 +1,3 @@
-
 import os
 import unittest
 import vtk, qt, ctk, slicer
@@ -309,10 +308,8 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
       semi =  slicer.util.loadMarkups(self.semiFilePaths[index])
       logic.mergeLMNodes(fixed,semi)
       fixed.SetName(fixed.GetName()+'_merged')
-      print("node name: ", fixed.GetName())
       rootName, ext = os.path.splitext(self.fixedFilePaths[index])
-      outputFilePath = os.path.join(self.outputDirectorySelector.currentPath, rootName + "_merged" + ext)
-      print("outputPath: ", outputFilePath)
+      outputFilePath = os.path.join(self.outputDirectorySelector.currentPath, fixed.GetName() + ext)
       slicer.util.saveNode(fixed, outputFilePath)
       slicer.mrmlScene.RemoveNode(fixed)
       slicer.mrmlScene.RemoveNode(semi)
@@ -349,7 +346,6 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
       if id.column() == 0:
         currentNode = slicer.util.getNode(id.data())
         self.setAllLandmarkDescriptions(currentNode, label)
-        mergedNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode', mergedNodeName)
   
   def setAllLandmarkDescriptions(self,landmarkNode, landmarkDescription):
     for controlPointIndex in range(landmarkNode.GetNumberOfControlPoints()):
