@@ -165,7 +165,7 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     # Fixed LM Area
     #
     fixedBatchCollapsibleButton = ctk.ctkCollapsibleButton()
-    fixedBatchCollapsibleButton.text = "Batch LM File Selection"
+    fixedBatchCollapsibleButton.text = "Fixed LM File Selection"
     batchTabLayout.addRow(fixedBatchCollapsibleButton)
     
     # Layout within the dummy collapsible button
