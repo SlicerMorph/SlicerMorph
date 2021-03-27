@@ -13,6 +13,7 @@ set(MODULE_PYTHON_RESOURCES
   Resources/Icons/pointcloud.png
   Resources/Icons/auto3dgm_thumbnail.png
   Resources/Icons/microCT_stack_thumbnail.png
+  Resources/Icons/gorillaPatchSML.png
   )
 
 #-----------------------------------------------------------------------------
