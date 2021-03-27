@@ -88,3 +88,12 @@ This module was developed by Sara Rolfe and Murat Maga for SlicerMorph. SlicerMo
       thumbnailFileName=os.path.join(iconsPath, 'auto3dgm_thumbnail.png'),
       loadFileType='ZipFile',
 )
+    SampleData.SampleDataLogic.registerCustomSampleDataSource(
+      sampleName='Gorilla patch semi-landmarks',
+      category='SlicerMorph',
+      uris='https://github.com/SlicerMorph/SampleData/blob/c2698e7b40327bdbd509afec0f2973adea5b66aa/Gorilla%20patch%20semi-landmarks.zip?raw=true',
+      loadFiles=False,
+      fileNames='Gorilla patch semi-landmarks.zip',
+      thumbnailFileName=os.path.join(iconsPath, 'gorillaPatchSML.png'),
+      loadFileType='ZipFile',
+)
