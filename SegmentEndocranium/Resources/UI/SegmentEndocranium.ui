@@ -127,6 +127,29 @@
         </property>
        </widget>
       </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="label_4">
+        <property name="text">
+         <string>Maximum hole size:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="qMRMLSpinBox" name="splitCavitiesDiameterSliderWidget">
+        <property name="toolTip">
+         <string>Increase the value to prevent leaking into other cavities through small holes. Discontinuities in the surface that are smaller than this value will be considered as holes and the cavity will not leak into it.</string>
+        </property>
+        <property name="maximum">
+         <double>999.990000000000009</double>
+        </property>
+        <property name="value">
+         <double>15.000000000000000</double>
+        </property>
+        <property name="quantity">
+         <string>length</string>
+        </property>
+       </widget>
+      </item>
      </layout>
     </widget>
    </item>
@@ -160,6 +183,17 @@
  </widget>
  <customwidgets>
   <customwidget>
+   <class>ctkCollapsibleButton</class>
+   <extends>QWidget</extends>
+   <header>ctkCollapsibleButton.h</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>ctkDoubleSpinBox</class>
+   <extends>QWidget</extends>
+   <header>ctkDoubleSpinBox.h</header>
+  </customwidget>
+  <customwidget>
    <class>qMRMLNodeComboBox</class>
    <extends>QWidget</extends>
    <header>qMRMLNodeComboBox.h</header>
@@ -175,17 +209,6 @@
    <header>qMRMLWidget.h</header>
    <container>1</container>
   </customwidget>
-  <customwidget>
-   <class>ctkCollapsibleButton</class>
-   <extends>QWidget</extends>
-   <header>ctkCollapsibleButton.h</header>
-   <container>1</container>
-  </customwidget>
-  <customwidget>
-   <class>ctkDoubleSpinBox</class>
-   <extends>QWidget</extends>
-   <header>ctkDoubleSpinBox.h</header>
-  </customwidget>
  </customwidgets>
  <resources/>
  <connections>
@@ -200,8 +223,8 @@
      <y>132</y>
     </hint>
     <hint type="destinationlabel">
-     <x>140</x>
-     <y>66</y>
+     <x>230</x>
+     <y>83</y>
     </hint>
    </hints>
   </connection>
@@ -248,8 +271,24 @@
      <y>185</y>
     </hint>
     <hint type="destinationlabel">
-     <x>214</x>
-     <y>103</y>
+     <x>230</x>
+     <y>126</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>SegmentEndocranium</sender>
+   <signal>mrmlSceneChanged(vtkMRMLScene*)</signal>
+   <receiver>splitCavitiesDiameterSliderWidget</receiver>
+   <slot>setMRMLScene(vtkMRMLScene*)</slot>
+   <hints>
+    <hint type="sourcelabel">
+     <x>243</x>
+     <y>159</y>
+    </hint>
+    <hint type="destinationlabel">
+     <x>197</x>
+     <y>148</y>
     </hint>
    </hints>
   </connection>
