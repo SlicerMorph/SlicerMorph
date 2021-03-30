@@ -600,7 +600,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     except: 
       logging.debug('Load landmark data failed: Could not create an array from landmark files')
       return
-      
     shape = self.LM.lmOrig.shape
     print('Loaded ' + str(shape[2]) + ' subjects with ' + str(shape[0]) + ' landmark points.')
     
@@ -652,7 +651,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     try:
       os.makedirs(self.outputFolder)
       self.LM.writeOutData(self.outputFolder, self.files)
-      self.writeAnalysisLogFile(self.LM_dir_name, self.outputFolder, self.files, self.landmarkTypeArray)
+      self.writeAnalysisLogFile(self.LM_dir_name, self.outputFolder, self.files)
     except:
       logging.debug('Result directory failed: Could not access output folder')
       print("Error creating result directory")
@@ -692,7 +691,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.landmarkVisualizationType.enabled = True
     self.modelVisualizationType.enabled = True
   
-  def writeAnalysisLogFile(self, inputPath, outputPath, files, lmType):  
+  def writeAnalysisLogFile(self, inputPath, outputPath, files):  
     # generate log file
     logFile = open(outputPath+os.sep+"analysis.log","w") 
     logFile.write("Date=" + datetime.now().strftime('%Y-%m-%d') + "\n")
@@ -720,8 +719,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     logFile.write("eigenvectors=eigenvectors.csv" + "\n")
     logFile.write("OutputData=OutputData.csv" + "\n")
     logFile.write("pcScores=pcScores.csv" + "\n")
-    logFile.write("SemiLandmarks= ") 
-    logFile.write(lmType)
+    landmarkType_list = ",".join(self.landmarkTypeArray)
+    logFile.write("SemiLandmarks= " + joined_list)
     logFile.close()
     
   def populateDistanceTable(self, files):
@@ -1780,7 +1779,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
     isJSON=False
     if suffix == "fcsv":
       landmarks, landmarkTypeArray = self.initDataArray(dirs,files[0],len(matchList))
-      landmarkNumber = len(landmarkTypeArray)
+      landmarkNumber = landmarks.shape[0]
       matchedfiles=[]
       for i in range(len(matchList)):
         tmp1=self.importLandMarks(matchList[i]+'.'+ suffix)
@@ -1800,9 +1799,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
       landmarkTypeArray=[]
       for i in range(landmarkNumber):
         if tempTable['description'][i]=='Semi':
-          landmarkTypeArray.append('Semi')
-        else:
-          landmarkTypeArray.append('Fixed')
+          landmarkTypeArray.append(str(i+1))
       landmarks=np.zeros(shape=(landmarkNumber,3,len(matchList)))
       matchedfiles=[]
       for i in range(len(matchList)):
@@ -1826,7 +1823,6 @@ class GPALogic(ScriptedLoadableModuleLogic):
       for i in range(len(lmToRemove)):
         indexToRemove.append(lmToRemove[i]-1)
       landmarks=np.delete(landmarks,indexToRemove,axis=0)
-    
     return landmarks, matchedfiles, landmarkTypeArray, isJSON
 
   def createMatchList(self, topDir,suffix):
@@ -1897,14 +1893,14 @@ class GPALogic(ScriptedLoadableModuleLogic):
     # import data file
     datafile=open(dirs[0]+os.sep+file,'r')
     landmarkType = []
+    rowNumber=0
     for row in datafile:
       if not fnmatch.fnmatch(row[0],"#*"):
+        rowNumber+=1
         tmp=(row.strip().split(','))
         if tmp[12] == 'Semi':
-          landmarkType.append('Semi')
-        else:
-          landmarkType.append('Fixed')
-    i= len(landmarkType)    
+          landmarkType.append(str(rowNumber))
+    i = rowNumber  
     landmarks=np.zeros(shape=(i,j,k))
     return landmarks, landmarkType
 
