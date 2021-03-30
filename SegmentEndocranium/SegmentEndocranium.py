@@ -77,6 +77,7 @@ class SegmentEndocraniumWidget(ScriptedLoadableModuleWidget, VTKObservationMixin
     self.ui.inputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
     self.ui.outputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
     self.ui.smoothingKernelSizeSliderWidget.connect("valueChanged(double)", self.updateParameterNodeFromGUI)
+    self.ui.splitCavitiesDiameterSliderWidget.connect("valueChanged(double)", self.updateParameterNodeFromGUI)
 
     # Initial GUI update
     self.updateGUIFromParameterNode()
@@ -141,8 +142,14 @@ class SegmentEndocraniumWidget(ScriptedLoadableModuleWidget, VTKObservationMixin
     self.ui.outputSelector.blockSignals(wasBlocked)
 
     wasBlocked = self.ui.smoothingKernelSizeSliderWidget.blockSignals(True)
-    self.ui.smoothingKernelSizeSliderWidget.value = float(self._parameterNode.GetParameter("SmoothingKernelSize"))
+    if self._parameterNode.GetParameter("SmoothingKernelSize"):
+      self.ui.smoothingKernelSizeSliderWidget.value = float(self._parameterNode.GetParameter("SmoothingKernelSize"))
     self.ui.smoothingKernelSizeSliderWidget.blockSignals(wasBlocked)
+
+    wasBlocked = self.ui.splitCavitiesDiameterSliderWidget.blockSignals(True)
+    if self._parameterNode.GetParameter("SplitCavitiesDiameter"):
+      self.ui.splitCavitiesDiameterSliderWidget.value = float(self._parameterNode.GetParameter("SplitCavitiesDiameter"))
+    self.ui.splitCavitiesDiameterSliderWidget.blockSignals(wasBlocked)
 
     # Update buttons states and tooltips
     if self._parameterNode.GetNodeReference("InputVolume") and self._parameterNode.GetNodeReference("OutputSegmentation"):
@@ -164,6 +171,7 @@ class SegmentEndocraniumWidget(ScriptedLoadableModuleWidget, VTKObservationMixin
     self._parameterNode.SetNodeReferenceID("InputVolume", self.ui.inputSelector.currentNodeID)
     self._parameterNode.SetNodeReferenceID("OutputSegmentation", self.ui.outputSelector.currentNodeID)
     self._parameterNode.SetParameter("SmoothingKernelSize", str(self.ui.smoothingKernelSizeSliderWidget.value))
+    self._parameterNode.SetParameter("SplitCavitiesDiameter", str(self.ui.splitCavitiesDiameterSliderWidget.value))
 
   def onApplyButton(self):
     """
@@ -173,7 +181,7 @@ class SegmentEndocraniumWidget(ScriptedLoadableModuleWidget, VTKObservationMixin
     try:
       qt.QApplication.setOverrideCursor(qt.Qt.WaitCursor)
       self.logic.run(self.ui.inputSelector.currentNode(), self.ui.outputSelector.currentNode(),
-        self.ui.smoothingKernelSizeSliderWidget.value)
+        self.ui.smoothingKernelSizeSliderWidget.value, self.ui.splitCavitiesDiameterSliderWidget.value)
     except Exception as e:
       slicer.util.errorDisplay("Failed to compute results: "+str(e))
       import traceback
@@ -203,13 +211,14 @@ class SegmentEndocraniumLogic(ScriptedLoadableModuleLogic):
     if not parameterNode.GetParameter("SmoothingKernelSize"):
       parameterNode.SetParameter("SmoothingKernelSize", "3.0")
 
-  def run(self, inputVolume, outputSegmentation, smoothingKernelSize=3.0):
+  def run(self, inputVolume, outputSegmentation, smoothingKernelSize=3.0, splitCavitiesDiameter=15.0):
     """
     Run the processing algorithm.
     Can be used without GUI widget.
     :param inputVolume: volume to be segmented
     :param outputSegmentation: segmentation to sore the result in
     :param smoothingKernelSize: this is used for closing small holes in the segmentation
+    :param splitCavitiesDiameter: plugs in holes smaller than splitCavitiesDiamater.
     """
 
     if not inputVolume or not outputSegmentation:
@@ -221,7 +230,8 @@ class SegmentEndocraniumLogic(ScriptedLoadableModuleLogic):
     import vtkITK
     thresholdCalculator = vtkITK.vtkITKImageThresholdCalculator()
     thresholdCalculator.SetInputData(inputVolume.GetImageData())
-    thresholdCalculator.SetMethodToOtsu()
+    # thresholdCalculator.SetMethodToOtsu()  - this does not always work (see for example CTHead example data set)
+    thresholdCalculator.SetMethodToMaximumEntropy()
     thresholdCalculator.Update()
     boneThresholdValue = thresholdCalculator.GetThreshold()
     volumeScalarRange = inputVolume.GetImageData().GetScalarRange()
@@ -263,42 +273,16 @@ class SegmentEndocraniumLogic(ScriptedLoadableModuleLogic):
     # Solidify bone
     segmentEditorWidget.setActiveEffectByName("Wrap Solidify")
     effect = segmentEditorWidget.activeEffect()
-    effect.self().onApply()
-
-    # Create segment for cavity within bone region using thresholding
-    segmentEditorNode.SetOverwriteMode(slicer.vtkMRMLSegmentEditorNode.OverwriteNone)
-    segmentEditorNode.SetMaskMode(slicer.vtkMRMLSegmentEditorNode.PaintAllowedInsideAllSegments)
-    cavitySegmentID = outputSegmentation.GetSegmentation().AddEmptySegment("cavity")
-    segmentEditorNode.SetSelectedSegmentID(cavitySegmentID)
-    segmentEditorWidget.setActiveEffectByName("Threshold")
-    effect = segmentEditorWidget.activeEffect()
-    effect.setParameter("MinimumThreshold",str(volumeScalarRange[0]))
-    effect.setParameter("MaximumThreshold",str(boneThresholdValue))
-    effect.self().onApply()
-
-    # Cavity shrink
-    segmentEditorWidget.setActiveEffectByName("Margin")
-    effect = segmentEditorWidget.activeEffect()
-    effect.setParameter("MarginSizeMm", str(-smoothingKernelSize))
-    effect.self().onApply()
-
-    # Find largest cavity
-    segmentEditorWidget.setActiveEffectByName("Islands")
-    effect = segmentEditorWidget.activeEffect()
-    effect.setParameterDefault("Operation", "KEEP_LARGEST_ISLAND")
-    effect.self().onApply()
-
-    # Cavity restore
-    segmentEditorNode.SetMaskMode(slicer.vtkMRMLSegmentEditorNode.PaintAllowedInsideAllSegments)  # ensure we don't leak into bone
-    segmentEditorWidget.setActiveEffectByName("Margin")
-    effect = segmentEditorWidget.activeEffect()
-    effect.setParameter("MarginSizeMm", str(smoothingKernelSize))
+    effect.setParameter("region", "largestCavity")
+    effect.setParameter("splitCavities", "True" if splitCavitiesDiameter > 0 else "False")
+    effect.setParameter("splitCavitiesDiameter", str(splitCavitiesDiameter))  # in mm
+    effect.setParameter("outputType", "newSegment")  # in mm
     effect.self().onApply()
 
     # Clean up
-    slicer.mrmlScene.RemoveNode(segmentEditorNode)
-    outputSegmentation.RemoveSegment(boneSegmentID)
-    segmentEditorWidget = None
+    #slicer.mrmlScene.RemoveNode(segmentEditorNode)
+    #outputSegmentation.RemoveSegment(boneSegmentID)
+    #segmentEditorWidget = None
 
     logging.info('Processing completed')
 
