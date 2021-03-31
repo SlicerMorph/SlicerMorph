@@ -720,7 +720,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     logFile.write("OutputData=OutputData.csv" + "\n")
     logFile.write("pcScores=pcScores.csv" + "\n")
     landmarkType_list = ",".join(self.landmarkTypeArray)
-    logFile.write("SemiLandmarks= " + joined_list)
+    logFile.write("SemiLandmarks= " + landmarkType_list)
     logFile.close()
     
   def populateDistanceTable(self, files):
