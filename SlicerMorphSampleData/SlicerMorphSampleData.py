@@ -91,7 +91,7 @@ This module was developed by Sara Rolfe and Murat Maga for SlicerMorph. SlicerMo
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
       sampleName='Gorilla patch semi-landmarks',
       category='SlicerMorph',
-      uris='https://github.com/SlicerMorph/SampleData/blob/c2698e7b40327bdbd509afec0f2973adea5b66aa/Gorilla%20patch%20semi-landmarks.zip?raw=true',
+      uris='https://github.com/SlicerMorph/SampleData/blob/0c1e14bee7a4ea85614ba677b45bc693120a5bba/Gorilla%20patch%20semi-landmarks.zip?raw=true',
       loadFiles=False,
       fileNames='Gorilla patch semi-landmarks.zip',
       thumbnailFileName=os.path.join(iconsPath, 'gorillaPatchSML.png'),
