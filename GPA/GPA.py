@@ -192,7 +192,6 @@ class LMData:
       self.val = eigenValues.Scores.to_numpy()
       vectors = [name for name in eigenVectors.columns if 'PC ' in name]
       self.vec = eigenVectors[vectors].to_numpy()
-      print("mShape shape", self.mShape.shape)
       self.procdist=gpa_lib.procDist(self.lm, self.mShape)
       self.procdist=self.procdist.reshape(-1,1)
       return 1
@@ -221,18 +220,16 @@ class LMData:
       self.centriodSize[i]=np.linalg.norm(self.lmOrig[:,:,i]-self.lmOrig[:,:,i].mean(axis=0))
     if skipScalingCheckBox:
       print("Skipping Scaling")
-      self.lm, self.mShape=gpa_lib.doGPANoScale(self.lmOrig)
+      self.lm, self.mShape=gpa_lib.runGPANoScale(self.lmOrig)
     else:
-      self.lm, self.mShape=gpa_lib.doGPA(self.lmOrig)
+      self.lm, self.mShape=gpa_lib.runGPA(self.lmOrig)
 
   def calcEigen(self):
     twoDim=gpa_lib.makeTwoDim(self.lm)
     covMatrix=gpa_lib.calcCov(twoDim)
     self.val, self.vec=np.linalg.eig(covMatrix)
     self.vec=np.real(self.vec)
-    # scale eigen Vectors
-    i,j =self.vec.shape
-
+    self.sortedEig=gpa_lib.sortEig(self.val,self.vec)
 
   def ExpandAlongPCs(self, numVec,scaleFactor,SampleScaleFactor):
     b=0
@@ -498,7 +495,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     print('Loaded ' + str(shape[2]) + ' subjects with ' + str(shape[0]) + ' landmark points.')
     
     # GPA parameters
-    self.pcNumber=25
+    self.pcNumber=15
     self.updateList()
     
     # get mean landmarks as a fiducial node
@@ -555,7 +552,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     shape = self.LM.lm.shape
     self.scatterDataAll= np.zeros(shape=(shape[2],self.pcNumber))    
     for i in range(self.pcNumber):
-      data=gpa_lib.plotTanProj(self.LM.lm,i,1)
+      data=gpa_lib.plotTanProj(self.LM.lm,self.LM.sortedEig,i,1)
       self.scatterDataAll[:,i] = data[:,0]
 
     # Set up layout
@@ -607,7 +604,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.skipScalingOption=self.skipScalingCheckBox.checked
     self.LM.doGpa(self.skipScalingOption)
     self.LM.calcEigen()
-    self.pcNumber=25
+    self.pcNumber=15
     self.updateList()
     
     #set scaling factor using mean of landmarks
@@ -665,7 +662,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     shape = self.LM.lm.shape
     self.scatterDataAll= np.zeros(shape=(shape[2],self.pcNumber))    
     for i in range(self.pcNumber):
-      data=gpa_lib.plotTanProj(self.LM.lm,i,1)
+      data=gpa_lib.plotTanProj(self.LM.lm,self.LM.sortedEig,i,1)
       self.scatterDataAll[:,i] = data[:,0]
 
     # Set up layout
