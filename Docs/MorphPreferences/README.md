@@ -27,5 +27,6 @@
 * Data Probe tab collapse
 * Volume and segmentation files are saved uncompressed by default (user can choose to compress via Save As)
 * Default 3D model save format is set to PLY.
+* Allow overlap between segments during segmentation (Segment Editor)
 
 
