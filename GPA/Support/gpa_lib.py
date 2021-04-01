@@ -2,51 +2,7 @@ import numpy as np
 import os
 import fnmatch
 
-#center shape by removing the mean of each column
-def centerShape(shape):
-    shape=shape-shape.mean(axis=0)
-    return shape
-
-#scale shape by divinding by frobinius norm
-def scaleShape(shape):
-    shape=shape/np.linalg.norm(shape)
-    return shape
-
-#align one shape to a reference shape, soley by rotation
-def alignShape(refShape,shape):
-    """
-    Align the shape to the mean.
-    """
-    u,s,v=np.linalg.svd(np.dot(np.transpose(refShape),shape), full_matrices=True)
-    rotationMatrix=np.dot(np.transpose(v), np.transpose(u))
-    shape=np.dot(shape,rotationMatrix)
-
-    return shape
-
-def procrustesAlign(refShape,shape):
-   #center both shapes
-    refShape=centerShape(refShape)
-    shape=centerShape(shape)
-
-    #scale both shapes
-    refShape=scaleShape(refShape)
-    shape=scaleShape(shape)
-
-    # rotate shape to match the refshape
-    shape=alignShape(refShape,shape)
-
-    return shape
-
-def procrustesAlignNoScale(refShape,shape):
-   #center both shapes
-    refShape=centerShape(refShape)
-    shape=centerShape(shape)
-    shape=alignShape(refShape,shape)
-
-    return shape
-
-# <codecell>
-
+# PCA
 def makeTwoDim(monsters):
     i,j,k=monsters.shape
     tmp=np.zeros((i*j,k))
@@ -104,110 +60,105 @@ def plotTanProj(monsters,pcA,pcB):
     coords=np.dot(transform,twoDim)
     tmp=np.column_stack((coords[0,:],coords[1,:]))
     return tmp
+    
+def plotTanProj(monsters,eigSort,pcA,pcB):
+    twoDim=makeTwoDim(monsters)
+    transform=makeTransformMatrix(eigSort,pcA,pcB)
+    transform=np.transpose(transform)
+    coords=np.dot(transform,twoDim)
+    tmp=np.column_stack((coords[0,:],coords[1,:]))
+    return tmp
 
-#GPA
+############## GPA original
+#center shape by removing the mean of each column
+def centerShape(shape):
+    shape=shape-shape.mean(axis=0)
+    return shape
+
+#scale shape by divinding by frobinius norm
+def scaleShape(shape):
+    shape=shape/np.linalg.norm(shape)
+    return shape
+
+#align one shape to a reference shape, soley by rotation
+def alignShape(refShape,shape):
+    """
+    Align the shape to the mean.
+    """
+    u,s,v=np.linalg.svd(np.dot(np.transpose(refShape),shape), full_matrices=True)
+    #check that vh should be transposed
+    rotationMatrix=np.dot(np.transpose(v), np.transpose(u))
+    shape=np.dot(shape,rotationMatrix)
+    return shape
+    
 def meanShape(monsters):
     return monsters.mean(axis=2)
 
-def alignToOne(monsters):
-    i,j,k=monsters.shape
-    #scale and center the first monster
-    monsters[:,:,0]=centerShape(monsters[:,:,0])
-    monsters[:,:,0]=scaleShape(monsters[:,:,0])
-
-    #align other monster to it
-    for x in range(1,k):
-        monsters[:,:,x]=procrustesAlign(monsters[:,:,0],monsters[:,:,x])
-
-    return monsters
-def alignToOneNoScale(monsters):
-    i,j,k=monsters.shape
-    #scale and center the first monster
-    monsters[:,:,0]=centerShape(monsters[:,:,0])
-
-    #align other monster to it
-    for x in range(1,k):
-        monsters[:,:,x]=procrustesAlignNoScale(monsters[:,:,0],monsters[:,:,x])
-    return monsters
-
-def alignToMean(monsters,trys):
-    mean1=meanShape(monsters)
-    i,j,k=monsters.shape
-    for x in range(k):
-        monsters[:,:,x]=procrustesAlign(mean1,monsters[:,:,x])
-    mean2=meanShape(monsters)
-
-    diff=np.linalg.norm(mean1-mean2)
-    trys=trys+1
-    if diff>.00001 and trys< 50:
-        alignToMean(monsters, trys)
-
-    return monsters
-
-def alignToMeanNoScale(monsters,trys):
-    mean1=meanShape(monsters)
-    i,j,k=monsters.shape
-    for x in range(k):
-        monsters[:,:,x]=procrustesAlignNoScale(mean1,monsters[:,:,x])
-    mean2=meanShape(monsters)
-
-    diff=np.linalg.norm(mean1-mean2)
-    trys=trys+1
-    if diff>.00001 and trys< 50:
-        alignToMeanNoScale(monsters, trys)
-
-    return monsters
-
-def centSize(monsters):
-    i,j,k=monsters.shape
-    size=np.zeros(k)
-    for x in range(k):
-        size[x]=np.linalg.norm(monsters[:,:,x])
-    return size
-
-def doGPA(monsters):
-    monsters=alignToOne(monsters)
-    mShape=meanShape(monsters)
-    monsters=alignToMean(monsters,1)
-    mShape=meanShape(monsters)
-    return monsters, mShape
-
-def doGPANoScale(monsters):
-    monsters=alignToOneNoScale(monsters)
-    mShape=meanShape(monsters)
-    monsters=alignToMeanNoScale(monsters,1)
-    mShape=meanShape(monsters)
-    return monsters, mShape
-
 def procDist(monsters,mshape):
     i,j,k=monsters.shape
-
     procDists=np.zeros(k)
     for x in range(k):
         tmp=monsters[:,:,x]-mshape
         procDists[x]=np.linalg.norm(tmp,'fro')
-
     return procDists
+    
+################# GPA update
+def runGPA(allLandmarkSets):
+  i,j,k=allLandmarkSets.shape
+  for index in range(k):
+    landmarkSet=allLandmarkSets[:,:,index]
+    tempSet = applyCenterScale(landmarkSet) 
+    allLandmarkSets[:,:,index]=tempSet
+  allLandmarkSets = procrustesAlign(allLandmarkSets[:,:,0],allLandmarkSets)
+  initialMeanShape=meanShape(allLandmarkSets)
+  initialMeanShape = scaleShape(initialMeanShape)
+  diff=1
+  tries=0
+  while diff>0.0001 and tries<5:
+    allLandmarkSets = procrustesAlign(initialMeanShape,allLandmarkSets)
+    currentMeanShape=meanShape(allLandmarkSets)
+    currentMeanShape= scaleShape(currentMeanShape)
+    diff=np.linalg.norm(initialMeanShape-currentMeanShape)
+    initialMeanShape=currentMeanShape
+    tries=tries+1
+  return allLandmarkSets, currentMeanShape
+  
+def procrustesAlign(mean, allLandmarkSets):
+  mean = scaleShape(mean)
+  i,j,k=allLandmarkSets.shape
+  for index in range(k):
+    allLandmarkSets[:,:,index] = alignShape(mean, allLandmarkSets[:,:,index])
+  return allLandmarkSets
+   
+def applyCenterScale(landmarkSet):
+  landmarkSet=centerShape(landmarkSet)
+  landmarkSet=scaleShape(landmarkSet)
+  return landmarkSet
 
-def procDistPP(monsters):
-    i,j,k=monsters.shape
-
-    procDists=np.zeros((k,k))
-    for x in range(k):
-        for y in range(k):
-            tmp=monsters[:,:,x]-monsters[:,:,y]
-            procDists[x,y]=np.linalg.norm(tmp,'fro')
-
-    return procDists
-
-
-
-
-def makeTwoDim2(monsters):
-    i,j,k=monsters.shape
-    tmp=np.zeros((i*j,k))
-    for x in range(k):
-        vec=np.reshape(monsters[:,:,x],(i*j),order='C')
-        tmp[:,x]=vec
-    return tmp
-
+def runGPANoScale(allLandmarkSets):
+  i,j,k=allLandmarkSets.shape
+  for index in range(k):
+    landmarkSet=allLandmarkSets[:,:,index]
+    tempSet = applyCenter(landmarkSet) 
+    allLandmarkSets[:,:,index]=tempSet
+  allLandmarkSets = procrustesAlignNoScale(allLandmarkSets[:,:,0],allLandmarkSets)
+  initialMeanShape=meanShape(allLandmarkSets)
+  diff=1
+  tries=0
+  while diff>0.0001 and tries<5:
+    allLandmarkSets = procrustesAlignNoScale(initialMeanShape,allLandmarkSets)
+    currentMeanShape=meanShape(allLandmarkSets)
+    diff=np.linalg.norm(initialMeanShape-currentMeanShape)
+    initialMeanShape=currentMeanShape
+    tries=tries+1
+  return allLandmarkSets, currentMeanShape   
+  
+  def procrustesAlignNoScale(mean, allLandmarkSets):
+    i,j,k=allLandmarkSets.shape
+    for index in range(k):
+      allLandmarkSets[:,:,index] = alignShape(mean, allLandmarkSets[:,:,index])
+    return allLandmarkSets
+  
+  def applyCenter(landmarkSet):
+    landmarkSet=centerShape(landmarkSet)
+    return landmarkSet
