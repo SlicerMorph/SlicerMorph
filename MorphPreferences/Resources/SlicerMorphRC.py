@@ -33,7 +33,7 @@ slicer.mrmlScene.AddDefaultNode(defaultVolumeStorageNode)
 logging.info("  Volume nodes will be stored uncompressed by default")
 
 #
-#set the default volume storage to not compress by default
+#set the default segmentation storage to not compress by default
 #
 defaultVolumeStorageNode = slicer.vtkMRMLSegmentationStorageNode()
 defaultVolumeStorageNode.SetUseCompression(0)
@@ -86,7 +86,15 @@ settings.setValue("DefaultSliceView/RulerType", "thin")
 # units settings
 #
 revisionUserSettings = slicer.app.revisionUserSettings()
-revisionUserSettings.setValue("length/precision", 10)
+revisionUserSettings.setValue("length/precision", 8)
+
+#
+# Set the default Segmentation edit mode to allow overlap 
+#
+
+defaultSegmentEditorNode = slicer.vtkMRMLSegmentEditorNode()
+defaultSegmentEditorNode.SetOverwriteMode(slicer.vtkMRMLSegmentEditorNode.OverwriteNone)
+slicer.mrmlScene.AddDefaultNode(defaultSegmentEditorNode)
 
 #
 # Keyboard shortcuts
