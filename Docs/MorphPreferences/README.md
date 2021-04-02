@@ -19,6 +19,7 @@
 * **l:** Toggle Markups Lock on/off    
 
 ### List Other Customizations applied by SlicerMorph
+* Make Data module the default home module (instead of Welcome)
 * Volume Interpolation disabled (Volumes)
 * Default Volume Rendering methods set to GPU Raycasting (Volume Rendering)
 * Default Volume Rendering quality set to Normal (Volume Rendering)
