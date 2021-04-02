@@ -33,7 +33,7 @@ slicer.mrmlScene.AddDefaultNode(defaultVolumeStorageNode)
 logging.info("  Volume nodes will be stored uncompressed by default")
 
 #
-#set the default segmentation storage to not compress by default
+#set the default volume storage to not compress by default
 #
 defaultVolumeStorageNode = slicer.vtkMRMLSegmentationStorageNode()
 defaultVolumeStorageNode.SetUseCompression(0)
@@ -68,6 +68,12 @@ slicer.util.findChild(slicer.util.mainWindow(), 'LogoLabel').visible = False
 slicer.util.findChild(slicer.util.mainWindow(), name='DataProbeCollapsibleWidget').collapsed = True
 
 #
+#set the default module from Welcome to Data
+#
+qt.QSettings().setValue("Modules/HomeModule", "Data")
+
+
+#
 # set volume rendering modes
 #
 settings = slicer.app.settings()
@@ -86,15 +92,7 @@ settings.setValue("DefaultSliceView/RulerType", "thin")
 # units settings
 #
 revisionUserSettings = slicer.app.revisionUserSettings()
-revisionUserSettings.setValue("length/precision", 8)
-
-#
-# Set the default Segmentation edit mode to allow overlap 
-#
-
-defaultSegmentEditorNode = slicer.vtkMRMLSegmentEditorNode()
-defaultSegmentEditorNode.SetOverwriteMode(slicer.vtkMRMLSegmentEditorNode.OverwriteNone)
-slicer.mrmlScene.AddDefaultNode(defaultSegmentEditorNode)
+revisionUserSettings.setValue("length/precision", 10)
 
 #
 # Keyboard shortcuts
