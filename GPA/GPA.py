@@ -33,7 +33,7 @@ class GPA(ScriptedLoadableModule):
     self.parent.dependencies = []
     self.parent.contributors = [" Sara Rolfe (UW), Murat Maga (UW)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """
-This module preforms standard Generalized Procrustes Analysis (GPA) based on (citation)
+This module preforms standard Generalized Procrustes Analysis (GPA) based on Dryden and Mardia, 2016
 <p>For more information see the <a href="https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/GPA">online documentation.</a>.</p>
 """
     #self.parent.helpText += self.getDefaultModuleDocumentationLink()
