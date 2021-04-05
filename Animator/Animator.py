@@ -224,7 +224,7 @@ class ROIAction(AnimatorAction):
     super(ROIAction,self).gui(action, layout)
 
     self.startSelector = slicer.qMRMLNodeComboBox()
-    self.startSelector.nodeTypes = ["vtkMRMLAnnotationROINode"]
+    self.startSelector.nodeTypes = ["vtkMRMLAnnotationROINode", "vtkMRMLMarkupsROINode"]
     self.startSelector.addEnabled = True
     self.startSelector.renameEnabled = True
     self.startSelector.removeEnabled = True
@@ -238,7 +238,7 @@ class ROIAction(AnimatorAction):
     layout.addRow("Start ROI", self.startSelector)
 
     self.endSelector = slicer.qMRMLNodeComboBox()
-    self.endSelector.nodeTypes = ["vtkMRMLAnnotationROINode"]
+    self.endSelector.nodeTypes = ["vtkMRMLAnnotationROINode", "vtkMRMLMarkupsROINode"]
     self.endSelector.addEnabled = True
     self.endSelector.renameEnabled = True
     self.endSelector.removeEnabled = True
@@ -252,7 +252,7 @@ class ROIAction(AnimatorAction):
     layout.addRow("End ROI", self.endSelector)
 
     self.animatedSelector = slicer.qMRMLNodeComboBox()
-    self.animatedSelector.nodeTypes = ["vtkMRMLAnnotationROINode"]
+    self.animatedSelector.nodeTypes = ["vtkMRMLAnnotationROINode", "vtkMRMLMarkupsROINode"]
     self.animatedSelector.addEnabled = True
     self.animatedSelector.renameEnabled = True
     self.animatedSelector.removeEnabled = True
