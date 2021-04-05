@@ -94,7 +94,7 @@ class ExportAsSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin):
 
     writerFormat += ";(*)"
     fileName = qt.QFileDialog.getSaveFileName(slicer.util.mainWindow(),
-                                            "Export As...", node.GetName(), writerFormat)
+                                            "Export As...", node.GetName(), writerFormat, None, qt.QFileDialog.DontUseNativeDialog)
     extension = slicer.vtkDataFileFormatHelper.GetFileExtensionFromFormatString(writerFormat)
     if not fileName.endswith(extension):
         fileName = fileName + extension
