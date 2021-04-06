@@ -62,22 +62,37 @@ class ExportAsSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin):
     self.menu.clear()
     self.transformedMenu.clear()
     associatedNode = subjectHierarchyNode.GetItemDataNode(itemID)
-    if associatedNode is not None and associatedNode.IsA("vtkMRMLStorableNode"):
-        self.exportAsAction.enabled = True
-        writerExtensions = slicer.app.coreIOManager().fileWriterExtensions(associatedNode)
-        for writerFormat in writerExtensions:
-          a = self.menu.addAction(writerFormat)
-          a.connect("triggered()", lambda writerFormat=writerFormat : self.export(associatedNode, writerFormat, False))
+    writeFormats = slicer.app.coreIOManager().fileWriterExtensions(associatedNode)
 
+    # convert ('Markups JSON (.json)', 'Markups Fiducial CSV (.fcsv)')
+    # to "Markups *.mrk.json *.json *.fcsv"
+    # and {'.mrk.json': 'Markups JSON *.mrk.json', '.fcsv': 'Markups Fiducial CSV *.fcsv')
+    allExtensionsFilter = ""
+    filtersByExtension = {}
+    formatsByExtension = {}
+    for writerExtension in writeFormats:
+      extension = writerExtension.split()[-1][1:-1]
+      formatsByExtension[extension] = writerExtension
+      allExtensionsFilter += " *" + extension
+      filtersByExtension[extension] = f"{' '.join(writerExtension.split()[:-1])} *{extension}"
+
+    menuAndFlags = [[self.menu, False]]
     if associatedNode is not None and associatedNode.IsA("vtkMRMLTransformableNode") and associatedNode.GetTransformNodeID():
-        self.exportTransformedAsAction.visible = True
-        self.exportTransformedAsAction.enabled = True
-        writerExtensions = slicer.app.coreIOManager().fileWriterExtensions(associatedNode)
-        for writerFormat in writerExtensions:
-          b = self.transformedMenu.addAction(writerFormat)
-          b.connect("triggered()", lambda writerFormat=writerFormat : self.export(associatedNode, writerFormat, True))
+      self.exportTransformedAsAction.visible = True
+      self.exportTransformedAsAction.enabled = True
+      menuAndFlags.append([self.exportTransformedAsAction, True])
 
-  def export(self, node, writerFormat, transformedFlag):
+    # export without transforming menu entries
+    if associatedNode is not None and associatedNode.IsA("vtkMRMLStorableNode"):
+        allExtensionsFilter = associatedNode.GetNodeTagName() + allExtensionsFilter
+        self.exportAsAction.enabled = True
+        for menu,transformedFlag in menuAndFlags:
+          for extension in filtersByExtension.keys():
+            a = menu.addAction(formatsByExtension[extension])
+            a.connect("triggered()", lambda extension=extension, writerFilter=filtersByExtension[extension], allExtensionsFilter=allExtensionsFilter, transformedFlag=transformedFlag : self.export(associatedNode, extension, writerFilter, allExtensionsFilter, transformedFlag))
+
+
+  def export(self, node, extension, writerFilter, allExtensionsFilter = "", transformedFlag = False):
     if transformedFlag:
       shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
       itemIDToClone = shNode.GetItemByDataNode(node)
@@ -92,10 +107,9 @@ class ExportAsSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin):
 
       node = clonedNode
 
-    writerFormat += ";(*)"
+    fileFilter = allExtensionsFilter + ";;" + writerFilter + ";;All files *"
     fileName = qt.QFileDialog.getSaveFileName(slicer.util.mainWindow(),
-                                            "Export As...", node.GetName(), writerFormat)
-    extension = slicer.vtkDataFileFormatHelper.GetFileExtensionFromFormatString(writerFormat)
+                                            "Export As...", node.GetName()+extension, fileFilter, None, qt.QFileDialog.DontUseNativeDialog)
     if not fileName.endswith(extension):
         fileName = fileName + extension
     if fileName == "":
