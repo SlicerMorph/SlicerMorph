@@ -1000,7 +1000,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.loadButton.enabled = bool (filePathsExist and hasattr(self, 'outputDirectory'))
     if filePathsExist:
       self.LM_dir_name = os.path.dirname(self.inputFilePaths[0])
-      self.isJSON = bool(self.inputFilePaths[0].split('.')[-1] == "json")
+      basename, self.extension = os.path.splitext(self.inputFilePaths[0])
+      if self.extension == '.json':
+        basename, secondExtension = os.path.splitext(basename)
+        self.extension =  secondExtension + self.extension
       self.files=[]
       for path in self.inputFilePaths:
         basename =  os.path.basename(path).split('.')[0]
@@ -1167,7 +1170,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     else:
       self.LMExclusionList=[]
     try:
-      self.LM.lmOrig, self.landmarkTypeArray = logic.loadLandmarks(self.inputFilePaths, self.LMExclusionList, self.isJSON)    
+      self.LM.lmOrig, self.landmarkTypeArray = logic.loadLandmarks(self.inputFilePaths, self.LMExclusionList, self.extension)    
     except: 
       logging.debug('Load landmark data failed: Could not create an array from landmark files')
       return
@@ -1301,15 +1304,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     logFile.write("Time=" + datetime.now().strftime('%H:%M:%S') + "\n")
     logFile.write("InputPath=" + inputPath + "\n")
     logFile.write("OutputPath=" + outputPath.replace("\\","/") + "\n")
-    if self.isJSON:
-      extension = "json"
-    else:
-      extension = "fcsv"
     logFile.write("Files=") 
     for i in range(len(files)-1):
-      logFile.write(files[i] + "." + extension + ",")
-    logFile.write(files[len(files)-1] + "." + extension + "\n")
-    logFile.write("LM_format="  + extension + "\n")
+      logFile.write(files[i] + self.extension + ",")
+    logFile.write(files[len(files)-1] + self.extension + "\n")
+    logFile.write("LM_format="  + self.extension + "\n")
     [pointNumber, dim, subjectNumber] = self.LM.lmOrig.shape
     totalLandmarks = pointNumber + len(self.LMExclusionList)
     logFile.write("NumberLM=" + str(totalLandmarks) + "\n")
@@ -1840,9 +1839,9 @@ class GPALogic(ScriptedLoadableModuleLogic):
     annotationLogic = slicer.modules.annotations.logic()
     annotationLogic.CreateSnapShot(name, description, type, 1, imageData)
     
-  def loadLandmarks(self, filePathList, lmToRemove, isJSON):
+  def loadLandmarks(self, filePathList, lmToRemove, extension):
     # initial data array
-    if isJSON:
+    if 'json' in extension:
       import pandas
       tempTable = pandas.DataFrame.from_dict(pandas.read_json(filePathList[0])['markups'][0]['controlPoints'])
       landmarkNumber = len(tempTable)
