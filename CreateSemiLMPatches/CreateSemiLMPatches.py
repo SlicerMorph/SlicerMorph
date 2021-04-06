@@ -708,9 +708,6 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
     return True
     
   def projectPointsOutIn(self, sourcePolydata, targetPolydata, originalPoints, projectedPoints, rayLength):
-    #sourcePolydata = sourceMesh.GetPolyData()
-    #targetPolydata = targetMesh.GetPolyData()
-    
     #set up locater for intersection with normal vector rays
     obbTree = vtk.vtkOBBTree()
     obbTree.SetDataSet(targetPolydata)
