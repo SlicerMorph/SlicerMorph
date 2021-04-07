@@ -5,11 +5,17 @@
 #### Setup analysis: 
 This section of the module runs the GPA and PCA analysis on a directory of landmark files. For data sets with a large number of landmarks, please expect running this step to take several minutes.
 
-* __Landmark folder:__ Use landmarkfolder field to select the directory containing `.fcsv` files to be analyzed. There should be one `.fcsv` file per subject. 
+* __Select Landmark Files:__ Use file dialog box to highlight and select samples to be included in the analysis. The files can be `.fcsv` or `.mrk.json` format. There should be one  file per subject. Filenames are used as subject IDs in analysis. Selected files will be displayed in the table below the *View Selected Files*. 
 
-* __Output directory prefix:__ Use the output directory field to select the directory where the results will be written. Each time the `GPA` module is run, and new, timestamped results folder is created in this directory to prevent results from being overwritten. Please ensure that you have write access to the directory selected. Output folder will contain a log file that lists the files and the settings used in the analysis. This file can be parsed by convinence function [_log_parser.R_ ](https://raw.githubusercontent.com/muratmaga/SlicerMorph_Rexamples/main/log_parser.R) for further analysis in R. 
+* __Output directory prefix:__ Use the output directory field to select the directory where the results will be written. Each time the `GPA` module is run, a new timestamped results folder is created in this directory to prevent results from being overwritten. Please ensure that you have write access to the specified directory. Output folder will contain a log file that lists the files and the settings used in the analysis. This file can be parsed by convinence function [_log_parser.R_ ](https://raw.githubusercontent.com/muratmaga/SlicerMorph_Rexamples/main/log_parser.R) for further analysis in R. 
 
 * __Exclude landmarks:__ Optionally, landmarks can be excluded from analysis. Please enter the number of each landmark to exclude, seperated by commas (example: 25,27,29). If all landmarks will be used, this field can be left empty.
+
+* __Skip Scaling:__ Option to skip the scaling step in the GPA. Useful to keep the physical scale of the data. 
+
+* __Execute GPA + PCA:__ Initiates the GPA and also calculates the major axis of shape variaiton using PCA decomposition. PCA may take up to few minutes for large datasets. 
+
+* __View Output Folder:__ Pops up a file browser and shows the contents of specified output folder. 
 
 #### Load previous analysis
 As an alternative to running the GPA and PCA analysis, the module can be used to browse and visulize the results from a previous run of the module.
