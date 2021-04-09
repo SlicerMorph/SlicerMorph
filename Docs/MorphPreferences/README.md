@@ -2,9 +2,11 @@
 **Summary:** SlicerMorph preferences provides a convenient way for users to opt-in SlicerMorph specific customizations. Additional user specific customizations can be incorporated by editing the provided **SlicerMorphRC.py** file. 
 
 ### USAGE
-**Browse Files:** Navigate to Edit->Application Settings->SlicerMorph tab and chech the box _Use SlicerMorph Customizations._
+Navigate to **Edit->Application Settings->SlicerMorph** tab and chech the box _Use SlicerMorph Customizations._ Then, click the **Load now** button next to the Customization file location. Restart Slicer for changes to take effect. 
 
 **Download Directory:** Overwrites the TEMP and CACHE settings of Slicer to this user specified location. All downloaded files (e.g., SampleData) can be found in this folder. 
+
+If you want to revert to Slicer's default Application Settings, uncheck the _Use SlicerMorph Customizations_ button and then hit "Restore Defaults" button and restart your Slicer session. 
 
 ### List of Keyboard Shortcuts provided by SlicerMorph Customization
 
