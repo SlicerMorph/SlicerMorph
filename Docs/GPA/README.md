@@ -93,7 +93,11 @@ This section allows the user to capture a PC deformation as an animation. The an
 As implemented, GPA module does not allow sliding of the semi or pseudoLMs during superimposition. If sliding is required, we advise using the R/geomorph package for GPA superimposition.
 
 ### TUTORIAL
-For more information how to use the module, please see the [GPA tutorial](https://github.com/SlicerMorph/Spr_2021/blob/main/Day_3/GPA/GPA.md)
+For more information how to use the module, please see:
+
+1. [GPA Basics](https://github.com/SlicerMorph/Tutorials/tree/main/GPA_1)
+2. [GPA Exploring morphospaces](https://github.com/SlicerMorph/Tutorials/tree/main/GPA_2)
+3. [GPA Exporing Data to R](https://github.com/SlicerMorph/Tutorials/tree/main/GPA_3)
 
 There are also video tutorials available. Note that while the UI might be slightly different, the functionality is the same:
 1. [Basics of GPA](https://www.youtube.com/watch?v=FCeZ2J5Uvcw&t=215s)

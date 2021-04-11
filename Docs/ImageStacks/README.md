@@ -32,7 +32,7 @@ If you want to load all the images in a folder, drag either the folder or a sing
 MicroCT scans of whole specimens can contain regions of black space, or the user many not be interested in the entire content of the volume. In such cases, Preview quality allows for very fast import and exploration the data. After importing the full extend of the data in preview quality, user can draw a Region of Interest (ROI) to only import the region they are interested. After drawing the ROI, go back to `ImageStacks` output options, set the **Region of Interest** to the newly created ROI, and then change the quality to desired output (e.g., Full Volume). This will import only the region within the ROI at the full resolution of the data. 
 
 ### TUTORIAL
-Please see https://github.com/SlicerMorph/Spr_2021/blob/main/Day_1/ImageStacks/ImageStacks.md#imagestacks
+Please see https://github.com/SlicerMorph/Tutorials/tree/main/ImageStacks
 
 [A video tutorial of ImageStacks module highlighting preview and ROI selection functionality](https://www.youtube.com/watch?v=tjZUOqnrc_Y&t=2s)
 

@@ -23,7 +23,7 @@ Table will populated with the returned hits. If no hits were found, a **"No down
 **LIMITATIONS:** Query returns only the first 1000 results. Order names needs to spelled exactly as indicated on the Only publicly available mesh models are queried or retrieved. For volume and raw dataset, please download them directly from MorphoSource website after agreeing to their use policy. You can use the `ImageStacks` module to import volume datasets.  
 
 ### TUTORIAL
-Please see https://github.com/SlicerMorph/S_2020/blob/master/Day_1/MorphoSourceImport/MorphoSourceImport.md
+Please see https://github.com/SlicerMorph/Tutorials/tree/main/MorphoSourceImport
 
 
 

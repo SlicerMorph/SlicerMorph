@@ -23,7 +23,7 @@
 * It is recommended to use an average model as the base reference model, if one is available.
 
 ### TUTORIAL
-For more details, please see the [CreateSemiLMPatches tutorial](https://github.com/SlicerMorph/Spr_2021/blob/main/Day_3/Patch-based_semiLMs/Patch-based_semiLMs.md)
+For more details, please see the [CreateSemiLMPatches tutorial](https://github.com/SlicerMorph/Tutorials/tree/main/CreateSemiLMPatches)
 
 CreateSemiLMPatches video tutorials:
 1. [Creating Patches](https://www.youtube.com/watch?v=SArudRq-M4A)

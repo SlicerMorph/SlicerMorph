@@ -32,4 +32,5 @@ If you want to revert to Slicer's default Application Settings, uncheck the _Use
 * Default 3D model save format is set to PLY.
 * Allow overlap between segments during segmentation (Segment Editor)
 
-
+### TUTORIALS
+https://github.com/SlicerMorph/Tutorials/tree/main/MorphPrefs
