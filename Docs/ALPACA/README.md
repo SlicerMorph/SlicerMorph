@@ -68,5 +68,5 @@ __Summary__: This module provides fast landmark transfer from a 3D model and its
   
 ### TUTORIAL
 
-- [Latest ALPACA tutorial](https://github.com/SlicerMorph/Spr_2021/tree/main/Day_4/ALPACA)
+- [Latest ALPACA tutorial](https://github.com/SlicerMorph/Tutorials/tree/main/ALPACA)
 - [ALPACA Video tutorial](https://www.youtube.com/watch?v=ZRikzsUBeAE)
