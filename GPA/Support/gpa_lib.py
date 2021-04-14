@@ -86,7 +86,6 @@ def alignShape(refShape,shape):
     Align the shape to the mean.
     """
     u,s,v=np.linalg.svd(np.dot(np.transpose(refShape),shape), full_matrices=True)
-    #check that vh should be transposed
     rotationMatrix=np.dot(np.transpose(v), np.transpose(u))
     shape=np.dot(shape,rotationMatrix)
     return shape
