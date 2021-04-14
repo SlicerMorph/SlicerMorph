@@ -153,12 +153,12 @@ def runGPANoScale(allLandmarkSets):
     tries=tries+1
   return allLandmarkSets, currentMeanShape   
   
-  def procrustesAlignNoScale(mean, allLandmarkSets):
-    i,j,k=allLandmarkSets.shape
-    for index in range(k):
-      allLandmarkSets[:,:,index] = alignShape(mean, allLandmarkSets[:,:,index])
-    return allLandmarkSets
+def procrustesAlignNoScale(mean, allLandmarkSets):
+  i,j,k=allLandmarkSets.shape
+  for index in range(k):
+    allLandmarkSets[:,:,index] = alignShape(mean, allLandmarkSets[:,:,index])
+  return allLandmarkSets
   
-  def applyCenter(landmarkSet):
-    landmarkSet=centerShape(landmarkSet)
-    return landmarkSet
+def applyCenter(landmarkSet):
+  landmarkSet=centerShape(landmarkSet)
+  return landmarkSet
