@@ -343,8 +343,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     visualizeTabLayout = qt.QFormLayout(visualizeTab)
 
     tabsWidget.addTab(setupTab, "Setup Analysis")
-    tabsWidget.addTab(exploreTab, "Explore Data")
-    tabsWidget.addTab(visualizeTab, "Interactive Visualizion")
+    tabsWidget.addTab(exploreTab, "Explore Data/Results")
+    tabsWidget.addTab(visualizeTab, "Interactive 3D Visualization")
     self.layout.addWidget(tabsWidget)
     
     ################################### Setup Tab ###################################
