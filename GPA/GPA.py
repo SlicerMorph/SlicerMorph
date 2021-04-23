@@ -1051,16 +1051,24 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       logging.debug('Result import failed: Missing file')
       return
     
-    # Try to load skip scaling option from log file, if present
+    # Try to load skip scaling and skip LM options from log file, if present
     self.skipScalingOption = False
+    self.LMExclusionList=[] 
     logFilePath = os.path.join(self.resultsDirectory, 'analysis.log')
     try:
       with open(logFilePath) as f:
-        if 'Scale=False' in f.read():
-          self.skipScalingOption = True
+        for search in f:
+          if 'Scale=False' in search:
+            self.skipScalingOption = True
+          if 'ExcludedLM' in search:
+            line = search.rstrip() 
+            header, skippedText = line.split('=')
+            self.LMExclusionList = test_list = [int(i) for i in skippedText.split(',')]        
     except:
       logging.debug('Log import failed: Cannot read scaling option from log file')
+      logging.debug('Log import failed: Cannot read skipped landmarks from log file')
     print("Skip Scale option: ", self.skipScalingOption)
+    print("Skipped Landmarks: ", self.LMExclusionList)
     
     # Initialize variables
     self.LM=LMData() 
@@ -1068,7 +1076,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     if not success:
       return
       
-    self.LMExclusionList=[]  
     self.files = outputData.Sample_name.tolist()
     shape = self.LM.lmOrig.shape
     print('Loaded ' + str(shape[2]) + ' subjects with ' + str(shape[0]) + ' landmark points.')
