@@ -192,6 +192,7 @@ class LMData:
       self.val = eigenValues.Scores.to_numpy()
       vectors = [name for name in eigenVectors.columns if 'PC ' in name]
       self.vec = eigenVectors[vectors].to_numpy()
+      self.sortedEig=gpa_lib.sortEig(self.val,self.vec)
       self.procdist=gpa_lib.procDist(self.lm, self.mShape)
       self.procdist=self.procdist.reshape(-1,1)
       return 1
@@ -1067,6 +1068,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     if not success:
       return
       
+    self.LMExclusionList=[]  
     self.files = outputData.Sample_name.tolist()
     shape = self.LM.lmOrig.shape
     print('Loaded ' + str(shape[2]) + ' subjects with ' + str(shape[0]) + ' landmark points.')
