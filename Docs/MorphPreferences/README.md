@@ -13,10 +13,10 @@ If you want to revert to Slicer's default Application Settings, uncheck the _Use
 * **p:** Place a fiducial at the voxel under the mouse icon (both in 2D and 3D)
 * **`:** Move the active segment effect to right (Segment Editor) 
 * **~:** Move the active segment effect to the left (Segment Editor)
-* **b:** Change the layout to be Red Slice View Only
-* **n:** Change the layout to be Yellow Slice View Only
-* **m:** Change the layout to be Green Slice View Only
-* **,:** Change the layout to be Four Up View 
+* **z:** Change the layout to be Red Slice View Only
+* **x:** Change the layout to be Yellow Slice View Only
+* **c:** Change the layout to be Green Slice View Only
+* **v:** Change the layout to be Four Up View 
 * **t:**  Toggle Persistent Mode on/off for Markups 
 * **l:** Toggle Markups Lock on/off    
 
