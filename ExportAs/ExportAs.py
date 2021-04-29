@@ -80,7 +80,7 @@ class ExportAsSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin):
     if associatedNode is not None and associatedNode.IsA("vtkMRMLTransformableNode") and associatedNode.GetTransformNodeID():
       self.exportTransformedAsAction.visible = True
       self.exportTransformedAsAction.enabled = True
-      menuAndFlags.append([self.exportTransformedAsAction, True])
+      menuAndFlags.append([self.transformedMenu, True])
 
     # export without transforming menu entries
     if associatedNode is not None and associatedNode.IsA("vtkMRMLStorableNode"):
