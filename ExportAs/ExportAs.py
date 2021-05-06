@@ -37,6 +37,9 @@ class ExportAsSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin):
   def __init__(self, scriptedPlugin):
     AbstractScriptedSubjectHierarchyPlugin.__init__(self, scriptedPlugin)
 
+    pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler.instance()
+    self.subjectHierarchyNode = pluginHandlerSingleton.subjectHierarchyNode()
+
     self.exportAsAction = qt.QAction(f"Export as...", scriptedPlugin)
     self.exportTransformedAsAction = qt.QAction(f"Export transformed as...", scriptedPlugin)
     self.menu = qt.QMenu("Plugin Menu")
@@ -53,17 +56,22 @@ class ExportAsSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin):
 
   def showContextMenuActionsForItem(self, itemID):
     """Set actions visible that are valid for this itemID"""
-    pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler.instance()
-    subjectHierarchyNode = pluginHandlerSingleton.subjectHierarchyNode()
-    self.exportAsAction.visible = True
+    # reset all menus
+    self.exportAsAction.visible = False
     self.exportAsAction.enabled = False
     self.exportTransformedAsAction.visible = False
     self.exportTransformedAsAction.enabled = False
     self.menu.clear()
     self.transformedMenu.clear()
-    associatedNode = subjectHierarchyNode.GetItemDataNode(itemID)
-    writeFormats = slicer.app.coreIOManager().fileWriterExtensions(associatedNode)
+    # check if this is parent or leaf
+    childIdList = vtk.vtkIdList()
+    self.subjectHierarchyNode.GetItemChildren(itemID, childIdList)
+    if childIdList.GetNumberOfIds() > 0:
+      self.showContextMenuActionsForParentItem(itemID, childIdList)
+    else:
+      self.showContextMenuActionsForLeafItem(itemID)
 
+  def parseWriteFormats(self, writeFormats):
     # convert ('Markups JSON (.json)', 'Markups Fiducial CSV (.fcsv)')
     # to "Markups *.mrk.json *.json *.fcsv"
     # and {'.mrk.json': 'Markups JSON *.mrk.json', '.fcsv': 'Markups Fiducial CSV *.fcsv')
@@ -75,54 +83,86 @@ class ExportAsSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin):
       formatsByExtension[extension] = writerExtension
       allExtensionsFilter += " *" + extension
       filtersByExtension[extension] = f"{' '.join(writerExtension.split()[:-1])} *{extension}"
+    return allExtensionsFilter, filtersByExtension, formatsByExtension
 
+  def showContextMenuActionsForParentItem(self, itemID, childIdList):
+    # only enable if all children are same class
+    itemDataNodes = []
+    for childIDIndex in range(childIdList.GetNumberOfIds()):
+      childID = childIdList.GetId(childIDIndex)
+      itemDataNode = self.subjectHierarchyNode.GetItemDataNode(childID)
+      itemDataNodes.append(itemDataNode)
+      if itemDataNode is None or itemDataNode.GetClassName() != itemDataNodes[0].GetClassName():
+        return
+    self.exportAsAction.visible = True
+    self.exportAsAction.enabled = True
+    writeFormats = slicer.app.coreIOManager().fileWriterExtensions(itemDataNodes[0])
+    allExtensionsFilter, filtersByExtension, formatsByExtension = self.parseWriteFormats(writeFormats)
+    itemDataNode = itemDataNodes[0]
+    if itemDataNode is not None and itemDataNode.IsA("vtkMRMLStorableNode"):
+      allExtensionsFilter = itemDataNode.GetNodeTagName() + allExtensionsFilter
+      self.exportAsAction.enabled = True
+      for extension in filtersByExtension.keys():
+        a = self.menu.addAction(formatsByExtension[extension])
+        a.connect("triggered()", lambda extension=extension, writerFilter=filtersByExtension[extension], allExtensionsFilter=allExtensionsFilter, transformedFlag=False : self.exportNodes(itemDataNodes, extension, writerFilter, allExtensionsFilter))
+
+  def showContextMenuActionsForLeafItem(self, itemID):
+    self.exportAsAction.visible = True
+    self.exportAsAction.enabled = False
+    self.exportTransformedAsAction.visible = False
+    self.exportTransformedAsAction.enabled = False
+    self.menu.clear()
+    self.transformedMenu.clear()
+    itemDataNode = self.subjectHierarchyNode.GetItemDataNode(itemID)
+    writeFormats = slicer.app.coreIOManager().fileWriterExtensions(itemDataNode)
+    allExtensionsFilter, filtersByExtension, formatsByExtension = self.parseWriteFormats(writeFormats)
     menuAndFlags = [[self.menu, False]]
-    if associatedNode is not None and associatedNode.IsA("vtkMRMLTransformableNode") and associatedNode.GetTransformNodeID():
+    if itemDataNode is not None and itemDataNode.IsA("vtkMRMLTransformableNode") and itemDataNode.GetTransformNodeID():
       self.exportTransformedAsAction.visible = True
       self.exportTransformedAsAction.enabled = True
       menuAndFlags.append([self.transformedMenu, True])
-
     # export without transforming menu entries
-    if associatedNode is not None and associatedNode.IsA("vtkMRMLStorableNode"):
-        allExtensionsFilter = associatedNode.GetNodeTagName() + allExtensionsFilter
-        self.exportAsAction.enabled = True
-        for menu,transformedFlag in menuAndFlags:
-          for extension in filtersByExtension.keys():
-            a = menu.addAction(formatsByExtension[extension])
-            a.connect("triggered()", lambda extension=extension, writerFilter=filtersByExtension[extension], allExtensionsFilter=allExtensionsFilter, transformedFlag=transformedFlag : self.export(associatedNode, extension, writerFilter, allExtensionsFilter, transformedFlag))
+    if itemDataNode is not None and itemDataNode.IsA("vtkMRMLStorableNode"):
+      allExtensionsFilter = itemDataNode.GetNodeTagName() + allExtensionsFilter
+      self.exportAsAction.enabled = True
+      for menu,transformedFlag in menuAndFlags:
+        for extension in filtersByExtension.keys():
+          a = menu.addAction(formatsByExtension[extension])
+          a.connect("triggered()", lambda extension=extension, writerFilter=filtersByExtension[extension], allExtensionsFilter=allExtensionsFilter, transformedFlag=transformedFlag : self.exportNode(itemDataNode, extension, writerFilter, allExtensionsFilter, transformedFlag))
 
-
-  def export(self, node, extension, writerFilter, allExtensionsFilter = "", transformedFlag = False):
+  def exportNode(self, node, extension, writerFilter, allExtensionsFilter = "", transformedFlag = False, filePath = None):
     if transformedFlag:
       shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
       itemIDToClone = shNode.GetItemByDataNode(node)
       clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(shNode, itemIDToClone)
       clonedNode = shNode.GetItemDataNode(clonedItemID)
-
       transformNode = slicer.mrmlScene.GetNodeByID(node.GetTransformNodeID())
       clonedNode.SetAndObserveTransformNodeID(transformNode.GetID())
-
       transformLogic = slicer.vtkSlicerTransformLogic()
       transformLogic.hardenTransform(clonedNode)
-
       node = clonedNode
-
-    fileFilter = allExtensionsFilter + ";;" + writerFilter + ";;All files *"
-    fileName = qt.QFileDialog.getSaveFileName(slicer.util.mainWindow(),
+    if not filePath:
+      fileFilter = allExtensionsFilter + ";;" + writerFilter + ";;All files *"
+      filePath = qt.QFileDialog.getSaveFileName(slicer.util.mainWindow(),
                                             "Export As...", node.GetName()+extension, fileFilter, None, qt.QFileDialog.DontUseNativeDialog)
-    if not fileName.endswith(extension):
-        fileName = fileName + extension
-    if fileName == "":
+    if not filePath.endswith(extension):
+      filePath = filePath + extension
+    if filePath == "":
       return
     writerType = slicer.app.coreIOManager().fileWriterFileType(node)
-    success = slicer.app.coreIOManager().saveNodes(writerType, {"nodeID": node.GetID(), "fileName": fileName})
+    success = slicer.app.coreIOManager().saveNodes(writerType, {"nodeID": node.GetID(), "fileName": filePath})
     if success:
-      logging.info(f"Exported {node.GetName()} to {fileName}")
+      logging.info(f"Exported {node.GetName()} to {filePath}")
     else:
-      slicer.util.errorDisplay(f"Could not save {node.GetName()} to {fileName}")
-
+      slicer.util.errorDisplay(f"Could not save {node.GetName()} to {filePath}")
     if transformedFlag:
       slicer.mrmlScene.RemoveNode(clonedNode.GetStorageNode())
       slicer.mrmlScene.RemoveNode(clonedNode.GetDisplayNode())
       slicer.mrmlScene.RemoveNode(clonedNode)
+
+  def exportNodes(self, itemDataNodes, extension, writerFilter, allExtensionsFilter):
+    directoryPath = qt.QFileDialog.getExistingDirectory(slicer.util.mainWindow(),
+                                            "Export As...", qt.QFileDialog.DontUseNativeDialog)
+    for itemDataNode in itemDataNodes:
+      self.exportNode(itemDataNode, extension, writerFilter, allExtensionsFilter, transformedFlag=False, filePath=directoryPath+"/"+itemDataNode.GetName()+extension)
 
