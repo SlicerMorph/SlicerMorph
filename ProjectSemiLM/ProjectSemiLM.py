@@ -146,7 +146,16 @@ class ProjectSemiLMWidget(ScriptedLoadableModuleWidget):
     self.scaleProjection.setToolTip("Set scale of maximum point projection")
     parametersFormLayout.addRow("Projection scale: ", self.scaleProjection)
     
-
+    #
+    # Select output extension 
+    #
+    self.JSONType=qt.QRadioButton()
+    self.JSONType.setChecked(True)
+    parametersFormLayout.addRow("MRK.JSON output: ", self.JSONType)
+    self.FCSVType=qt.QRadioButton()
+    parametersFormLayout.addRow("FCSV output: ", self.FCSVType)
+    
+    
     #
     # Apply Button
     #
@@ -173,8 +182,12 @@ class ProjectSemiLMWidget(ScriptedLoadableModuleWidget):
   
   def onApplyButton(self):
     logic = ProjectSemiLMLogic()
+    if self.JSONType.checked:
+      extensionForOutput = '.mrk.json'
+    else:
+      extensionForOutput = '.fcsv'
     logic.run(self.modelSelector.currentNode(), self.baseLMSelect.currentNode(), self.baseSLMSelect.currentNode(), self.meshDirectory.currentPath, 
-      self.landmarkDirectory.currentPath, self.outputDirectory.currentPath, self.scaleProjection.value)
+      self.landmarkDirectory.currentPath, self.outputDirectory.currentPath, extensionForOutput, self.scaleProjection.value)
     
 #
 # ProjectSemiLMLogic
@@ -189,7 +202,7 @@ class ProjectSemiLMLogic(ScriptedLoadableModuleLogic):
     Uses ScriptedLoadableModuleLogic base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
-  def run(self, baseMeshNode, baseLMNode, semiLMNode, meshDirectory, lmDirectory,   ouputDirectory, scaleProjection):
+  def run(self, baseMeshNode, baseLMNode, semiLMNode, meshDirectory, lmDirectory, ouputDirectory, outputExtension, scaleProjection):
     SLLogic=CreateSemiLMPatches.CreateSemiLMPatchesLogic()
     targetPoints = vtk.vtkPoints()
     point=[0,0,0]
@@ -248,8 +261,15 @@ class ProjectSemiLMLogic(ScriptedLoadableModuleLogic):
             resampledLandmarkNode.SetAndObserveTransformNodeID(transformNode.GetID())  
             slicer.vtkSlicerTransformLogic().hardenTransform(resampledLandmarkNode)
             
+            # transfer point data
+            for index in range(semiLMNode.GetNumberOfControlPoints()):
+              fiducialLabel = semiLMNode.GetNthControlPointLabel(index)
+              fiducialDescription = semiLMNode.GetNthControlPointDescription(index)
+              resampledLandmarkNode.SetNthControlPointLabel(index, fiducialLabel)
+              resampledLandmarkNode.SetNthControlPointDescription(index,fiducialDescription)
+              
             # save output file
-            outputFileName = meshFileName + '_SL_warped.fcsv'
+            outputFileName = meshFileName + '_SL_warped' + outputExtension 
             outputFilePath = os.path.join(ouputDirectory, outputFileName) 
             slicer.util.saveNode(resampledLandmarkNode, outputFilePath)
             
