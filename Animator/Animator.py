@@ -147,24 +147,31 @@ class ROIAction(AnimatorAction):
       return None
     volumeRenderingNode.SetCroppingEnabled(True)
 
-    startROI = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLAnnotationROINode')
-    startROI.SetName('Start ROI')
-    endROI = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLAnnotationROINode')
-    endROI.SetName('End ROI')
-    for roi in [startROI, endROI]:
-      for index in range(roi.GetNumberOfDisplayNodes()):
-        roi.GetNthDisplayNode(index).SetVisibility(False)
+    startROIID = None
+    endROIID = None
+    if False:
+      # don't create start-and-end ROIs, but instead rely on
+      # user to create them so they can have more than
+      startROI = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLAnnotationROINode')
+      startROI.SetName('Start ROI')
+      endROI = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLAnnotationROINode')
+      endROI.SetName('End ROI')
+      for roi in [startROI, endROI]:
+        for index in range(roi.GetNumberOfDisplayNodes()):
+          roi.GetNthDisplayNode(index).SetVisibility(False)
+      startROIID = startROI.GetID()
+      endROIID = endROI.GetID()
 
-    start = [0.,]*3
-    animatedROI.GetXYZ(start)
-    startROI.SetXYZ(start)
-    endROI.SetXYZ(start)
-    animatedROI.GetRadiusXYZ(start)
-    startROI.SetRadiusXYZ(start)
-    end = [0.,]*3
-    for i in range(3):
-      end[i] = start[i] / 2.
-    endROI.SetRadiusXYZ(end)
+      start = [0.,]*3
+      animatedROI.GetXYZ(start)
+      startROI.SetXYZ(start)
+      endROI.SetXYZ(start)
+      animatedROI.GetRadiusXYZ(start)
+      startROI.SetRadiusXYZ(start)
+      end = [0.,]*3
+      for i in range(3):
+        end[i] = start[i] / 2.
+      endROI.SetRadiusXYZ(end)
 
     roiAction = {
       'name': 'ROI',
@@ -173,13 +180,15 @@ class ROIAction(AnimatorAction):
       'startTime': 0,
       'endTime': -1,
       'interpolation': 'linear',
-      'startROIID': startROI.GetID(),
-      'endROIID': endROI.GetID(),
+      'startROIID': startROIID,
+      'endROIID': endROIID,
       'animatedROIID': animatedROI.GetID(),
     }
     return(roiAction)
 
   def act(self, action, scriptTime):
+    if action['startROIID'] is None or action['startROIID'] is None:
+      return
     startROI = slicer.mrmlScene.GetNodeByID(action['startROIID'])
     endROI = slicer.mrmlScene.GetNodeByID(action['endROIID'])
     animatedROI = slicer.mrmlScene.GetNodeByID(action['animatedROIID'])
@@ -215,10 +224,10 @@ class ROIAction(AnimatorAction):
     super(ROIAction,self).gui(action, layout)
 
     self.startSelector = slicer.qMRMLNodeComboBox()
-    self.startSelector.nodeTypes = ["vtkMRMLAnnotationROINode"]
+    self.startSelector.nodeTypes = ["vtkMRMLAnnotationROINode", "vtkMRMLMarkupsROINode"]
     self.startSelector.addEnabled = True
     self.startSelector.renameEnabled = True
-    self.startSelector.removeEnabled = False
+    self.startSelector.removeEnabled = True
     self.startSelector.noneEnabled = False
     self.startSelector.selectNodeUponCreation = True
     self.startSelector.showHidden = True
@@ -229,10 +238,10 @@ class ROIAction(AnimatorAction):
     layout.addRow("Start ROI", self.startSelector)
 
     self.endSelector = slicer.qMRMLNodeComboBox()
-    self.endSelector.nodeTypes = ["vtkMRMLAnnotationROINode"]
+    self.endSelector.nodeTypes = ["vtkMRMLAnnotationROINode", "vtkMRMLMarkupsROINode"]
     self.endSelector.addEnabled = True
     self.endSelector.renameEnabled = True
-    self.endSelector.removeEnabled = False
+    self.endSelector.removeEnabled = True
     self.endSelector.noneEnabled = False
     self.endSelector.selectNodeUponCreation = True
     self.endSelector.showHidden = True
@@ -243,10 +252,10 @@ class ROIAction(AnimatorAction):
     layout.addRow("End ROI", self.endSelector)
 
     self.animatedSelector = slicer.qMRMLNodeComboBox()
-    self.animatedSelector.nodeTypes = ["vtkMRMLAnnotationROINode"]
+    self.animatedSelector.nodeTypes = ["vtkMRMLAnnotationROINode", "vtkMRMLMarkupsROINode"]
     self.animatedSelector.addEnabled = True
     self.animatedSelector.renameEnabled = True
-    self.animatedSelector.removeEnabled = False
+    self.animatedSelector.removeEnabled = True
     self.animatedSelector.noneEnabled = False
     self.animatedSelector.selectNodeUponCreation = True
     self.animatedSelector.showHidden = True
@@ -273,12 +282,20 @@ class VolumePropertyAction(AnimatorAction):
       logging.error("Can't add VolumePropertyAction, no volume rendering node in the scene")
       return None
     animatedVolumeProperty = volumeRenderingNode.GetVolumePropertyNode()
-    startVolumeProperty = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLVolumePropertyNode')
-    startVolumeProperty.SetName(slicer.mrmlScene.GetUniqueNameByString('Start VolumeProperty'))
-    endVolumeProperty = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLVolumePropertyNode')
-    endVolumeProperty.SetName(slicer.mrmlScene.GetUniqueNameByString('End VolumeProperty'))
-    startVolumeProperty.CopyParameterSet(animatedVolumeProperty)
-    endVolumeProperty.CopyParameterSet(animatedVolumeProperty)
+
+    startVolumePropertyID = None
+    endVolumePropertyID = None
+    if False:
+      # for now we prefer to have the user create the volume properties by hand,
+      # but in the future we may want to go back to making these for them
+      startVolumeProperty = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLVolumePropertyNode')
+      startVolumeProperty.SetName(slicer.mrmlScene.GetUniqueNameByString('Start VolumeProperty'))
+      endVolumeProperty = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLVolumePropertyNode')
+      endVolumeProperty.SetName(slicer.mrmlScene.GetUniqueNameByString('End VolumeProperty'))
+      startVolumeProperty.CopyParameterSet(animatedVolumeProperty)
+      endVolumeProperty.CopyParameterSet(animatedVolumeProperty)
+      startVolumePropertyID = startVolumeProperty.GetID()
+      endVolumePropertyID = endVolumeProperty.GetID()
 
     volumePropertyAction = {
       'name': 'Volume Property',
@@ -287,8 +304,8 @@ class VolumePropertyAction(AnimatorAction):
       'startTime': 0,
       'endTime': -1,
       'interpolation': 'linear',
-      'startVolumePropertyID': startVolumeProperty.GetID(),
-      'endVolumePropertyID': endVolumeProperty.GetID(),
+      'startVolumePropertyID': startVolumePropertyID,
+      'endVolumePropertyID': endVolumePropertyID,
       'animatedVolumePropertyID': animatedVolumeProperty.GetID(),
       'clampAtStart': True,
       'clampAtEnd': True,
@@ -296,6 +313,10 @@ class VolumePropertyAction(AnimatorAction):
     return(volumePropertyAction)
 
   def act(self, action, scriptTime):
+
+    if action['startVolumePropertyID'] is None or action['endVolumePropertyID'] is None:
+      return
+
     startVolumeProperty = slicer.mrmlScene.GetNodeByID(action['startVolumePropertyID'])
     endVolumeProperty = slicer.mrmlScene.GetNodeByID(action['endVolumePropertyID'])
     animatedVolumeProperty = slicer.mrmlScene.GetNodeByID(action['animatedVolumePropertyID'])
@@ -353,7 +374,7 @@ class VolumePropertyAction(AnimatorAction):
     self.startSelector.addEnabled = True
     self.startSelector.renameEnabled = True
     self.startSelector.editEnabled = True
-    self.startSelector.removeEnabled = False
+    self.startSelector.removeEnabled = True
     self.startSelector.noneEnabled = False
     self.startSelector.selectNodeUponCreation = True
     self.startSelector.showHidden = True
@@ -372,7 +393,7 @@ class VolumePropertyAction(AnimatorAction):
     self.endSelector.addEnabled = True
     self.endSelector.renameEnabled = True
     self.endSelector.editEnabled = True
-    self.endSelector.removeEnabled = False
+    self.endSelector.removeEnabled = True
     self.endSelector.noneEnabled = False
     self.endSelector.selectNodeUponCreation = True
     self.endSelector.showHidden = True

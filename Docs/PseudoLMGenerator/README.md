@@ -37,9 +37,9 @@ The parameters in this section allow the user to select and adjust the regularly
 * Pseudo-landmarks placed on samples independently using this module should not be compared, as the positions are random. 
 
 ### TUTORIAL
-For more detail, please see the [PseudoLMGenerator tutorial](https://github.com/SlicerMorph/S_2020/blob/master/Day_3/PseudoLMGenerator/PseudoLMGenerator.md).
+For more detail, please see the [PseudoLMGenerator tutorial](https://github.com/SlicerMorph/Tutorials/tree/main/PseudoLMGenerator).
 
-
+[Video tutorial for PseudoLMGenerator and MarkupEditor](https://www.youtube.com/watch?v=yvI65oyxYpA)
 
 
 

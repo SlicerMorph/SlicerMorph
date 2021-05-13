@@ -61,8 +61,12 @@ __Summary__: This module provides fast landmark transfer from a 3D model and its
 
   *  Same as single alignment.
 
+### KNOWN ISSUES
+**Linux specific:** 
+1. For Slicer Stable 4.11.20210226 (r29738), the [scipy library bundled has an issue, rendering ALPACA non-functional](https://discourse.slicer.org/t/slicer-stable-4-11-20210226-issue-with-scipy-package-in-linux/16354). Either use a later preview version on Linux, or use the windows or MacOS versions in stable stream. 
+2. open3d relies on a GCLIB2.7 (or newer), which is not available in older Linux distributions such as Centos 7.x. As such, ALPACA will not work any Linux distribution that doesn't fulfill this requirement. 
   
 ### TUTORIAL
 
-- [ALPACA tutorial](https://github.com/SlicerMorph/S_2020/tree/master/Lab_ALPACA)
-
+- [Latest ALPACA tutorial](https://github.com/SlicerMorph/Tutorials/tree/main/ALPACA)
+- [ALPACA Video tutorial](https://www.youtube.com/watch?v=ZRikzsUBeAE)

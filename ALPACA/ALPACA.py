@@ -60,7 +60,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       from pycpd import DeformableRegistration
       print('pycpd installed')
     except ModuleNotFoundError as e:
-      slicer.util.pip_install('pycpd')
+      slicer.util.pip_install('git+https://github.com/agporto/pycpd.git@development')
       print('trying to install pycpd')
       from pycpd import DeformableRegistration
     
@@ -415,7 +415,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
   def onCPDRegistration(self):
     logic = ALPACALogic()
     # Get source landmarks from file
-    sourceLM_vtk =  logic.loadAndScaleFiducials(self.sourceFiducialSelector.currentPath, self.scaling)
+    sourceLM_vtk, sourceLMNode =  logic.loadAndScaleFiducials(self.sourceFiducialSelector.currentPath, self.scaling)
     transform_vtk = self.ICPTransformNode.GetMatrixTransformToParent()
     self.alignedSourceLM_vtk = logic.applyTransform(transform_vtk, sourceLM_vtk)
     
@@ -440,18 +440,23 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     outputPoints.GetDisplayNode().SetPointLabelsVisibility(False)
     slicer.mrmlScene.RemoveNode(inputPoints)
     
+    if self.skipProjectionCheckBox.checked: 
+      logic.propagateLandmarkTypes(sourceLMNode, outputPoints)
     # Projection
-    if not self.skipProjectionCheckBox.checked:
+    else:
       print(":: Projecting landmarks to external surface")
       projectionFactor = self.projectionFactor.value/100
       projectedLandmarks = logic.runPointProjection(self.warpedSourceNode, self.targetModelNode, outputPoints, projectionFactor)
+      logic.propagateLandmarkTypes(sourceLMNode, projectedLandmarks)
       projectedLandmarks.GetDisplayNode().SetPointLabelsVisibility(False)
       outputPoints.GetDisplayNode().SetVisibility(False)
+    
       
     # Enable next step of analysis  
     self.displayWarpedModelButton.enabled = True
     
     # Update visualization
+    slicer.mrmlScene.RemoveNode(sourceLMNode)
     self.sourceModelNode.GetDisplayNode().SetVisibility(False)
         
   def onDisplayWarpedModel(self):    
@@ -694,7 +699,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         sourceData, targetData, sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, scaling = self.runSubsample(sourceModelPath, 
         	targetFilePath, skipScaling, parameters)
         # Rigid registration of source sampled points and landmarks
-        sourceLM_vtk = self.loadAndScaleFiducials(sourceLandmarkPath, scaling)
+        sourceLM_vtk, sourceLMNode = self.loadAndScaleFiducials(sourceLandmarkPath, scaling)
         ICPTransform = self.estimateTransform(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, parameters)
         ICPTransform_vtk = self.convertMatrixToVTK(ICPTransform)
         sourceSLM_vtk = self.convertPointsToVTK(sourcePoints.points)
@@ -709,6 +714,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         self.RAS2LPSTransform(outputFiducialNode)
         # Projection
         if projectionFactor == 0:
+          self.propagateLandmarkTypes(sourceLMNode, outputFiducialNode)
           # Save output landmarks
           rootName = os.path.splitext(targetFileName)[0]
           outputFilePath = os.path.join(outputDirectory, rootName + ".fcsv")
@@ -730,7 +736,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
           for i in range(projectedPoints.GetNumberOfPoints()):
             point = projectedPoints.GetPoint(i)
             projectedLMNode.AddFiducialFromArray(point)
-            
+          self.propagateLandmarkTypes(sourceLMNode, projectedLMNode) 
           # Save output landmarks
           rootName = os.path.splitext(targetFileName)[0]
           outputFilePath = os.path.join(outputDirectory, rootName + ".fcsv")
@@ -740,6 +746,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
           slicer.mrmlScene.RemoveNode(sourceModelNode)
           slicer.mrmlScene.RemoveNode(targetModelNode)
           slicer.mrmlScene.RemoveNode(sourceModelNode_warped)
+          slicer.mrmlScene.RemoveNode(sourceLMNode)
           
 
   def exportPointCloud(self, pointCloud, nodeName):
@@ -907,13 +914,17 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     for i in range(sourceLandmarkNode.GetNumberOfFiducials()):
       sourceLandmarkNode.GetMarkupPoint(0,i,point)
       sourceLandmarks_np[i,:]=point
-    slicer.mrmlScene.RemoveNode(sourceLandmarkNode)
     cloud = geometry.PointCloud()
     cloud.points = utility.Vector3dVector(sourceLandmarks_np)
     cloud.scale(scaling, center = (0,0,0))
     fiducialVTK = self.convertPointsToVTK (cloud.points)
-    return fiducialVTK
-
+    return fiducialVTK, sourceLandmarkNode
+  
+  def propagateLandmarkTypes(self,sourceNode, targetNode):
+     for i in range(sourceNode.GetNumberOfControlPoints()):
+       pointDescription = sourceNode.GetNthControlPointDescription(i)
+       targetNode.SetNthControlPointDescription(i,pointDescription)
+               
   def distanceMatrix(self, a):
     """
     Computes the euclidean distance matrix for n points in a 3D space
@@ -974,7 +985,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     
   def cpd_registration(self, targetArray, sourceArray, CPDIterations, CPDTolerence, alpha_parameter, beta_parameter):
     from pycpd import DeformableRegistration
-    output = DeformableRegistration(**{'X': targetArray, 'Y': sourceArray,'max_iterations': CPDIterations, 'tolerance': CPDTolerence}, alpha = alpha_parameter, beta  = beta_parameter)
+    output = DeformableRegistration(**{'X': targetArray, 'Y': sourceArray,'max_iterations': CPDIterations, 'tolerance': CPDTolerence, 'low_rank': True}, alpha = alpha_parameter, beta  = beta_parameter)
     return output
     
   def getFiducialPoints(self,fiducialNode):

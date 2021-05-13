@@ -32,7 +32,11 @@ The advanced parameters are settings that can be adjusted to improve the perform
 * The merged semi-landmarks can be transferred to other images in a data set using the `Alpaca` module. The images in the data set are not required to have manual landmarks for this method. 
 
 ### TUTORIAL
-For more details, please see the [CreateSemiLMPatches tutorial](https://github.com/SlicerMorph/S_2020/blob/master/Day_3/Patch-based_semiLMs/Patch-based_semiLMs.md)
+For more details, please see the [CreateSemiLMPatches tutorial](https://github.com/SlicerMorph/Tutorials/tree/main/CreateSemiLMPatches)
+
+CreateSemiLMPatches video tutorials:
+1. [Creating Patches](https://www.youtube.com/watch?v=SArudRq-M4A)
+2. [Applying Patches to new samples](https://www.youtube.com/watch?v=UD2tmFuaSJg)
 
 
 

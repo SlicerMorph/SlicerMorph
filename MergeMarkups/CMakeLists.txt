@@ -1,5 +1,5 @@
 #-----------------------------------------------------------------------------
-set(MODULE_NAME SlicerMorphSampleData)
+set(MODULE_NAME MergeMarkups)
 
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS
@@ -8,12 +8,6 @@ set(MODULE_PYTHON_SCRIPTS
 
 set(MODULE_PYTHON_RESOURCES
   Resources/Icons/${MODULE_NAME}.png
-  Resources/Icons/gorilla3D.png
-  Resources/Icons/mouse3D.png
-  Resources/Icons/pointcloud.png
-  Resources/Icons/auto3dgm_thumbnail.png
-  Resources/Icons/microCT_stack_thumbnail.png
-  Resources/Icons/gorillaPatchSML.png
   )
 
 #-----------------------------------------------------------------------------
@@ -25,9 +19,22 @@ slicerMacroBuildScriptedModule(
   )
 
 #-----------------------------------------------------------------------------
+if(CMAKE_CONFIGURATION_TYPES)
+  set(MODULE_BUILD_DIR "")
+  foreach(config ${CMAKE_CONFIGURATION_TYPES})
+    list(APPEND MODULE_BUILD_DIR "${CMAKE_BINARY_DIR}/${Slicer_QTLOADABLEMODULES_LIB_DIR}/${config}")
+  endforeach()
+else()
+  set(MODULE_BUILD_DIR "${CMAKE_BINARY_DIR}/${Slicer_QTLOADABLEMODULES_LIB_DIR}")
+endif()
+
+#-----------------------------------------------------------------------------
 if(BUILD_TESTING)
 
   # Register the unittest subclass in the main script as a ctest.
   # Note that the test will also be available at runtime.
   slicer_add_python_unittest(SCRIPT ${MODULE_NAME}.py)
+
+  # Additional build-time testing
+  add_subdirectory(Testing)
 endif()

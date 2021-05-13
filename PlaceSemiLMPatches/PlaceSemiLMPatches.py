@@ -170,11 +170,22 @@ class PlaceSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
             print("Number of merged landmark points", mergedLandmarkNode.GetNumberOfFiducials())
             if not success:
               print("Something went wrong in CreateSemiLMPatchesLogic.merge")
+            #Set all landmarks to semilandmark type
+            landmarkTypeSemi=True
+            self.setAllLandmarksType(mergedLandmarkNode, landmarkTypeSemi)
+             
             outputFileName = meshFileName + '_merged.fcsv'
             outputFilePath = os.path.join(ouputDirectory, outputFileName)
             slicer.util.saveNode(mergedLandmarkNode, outputFilePath)
             slicer.mrmlScene.Clear(0)
-    
+  
+  def setAllLandmarksType(self,landmarkNode, setToSemiType):
+    landmarkDescription = "Semi"
+    if setToSemiType is False:
+      landmarkDescription = "Fixed"
+    for controlPointIndex in range(landmarkNode.GetNumberOfControlPoints()):
+      landmarkNode.SetNthControlPointDescription(controlPointIndex, landmarkDescription)
+         
   def takeScreenshot(self,name,description,type=-1):
     # show the message even if not taking a screen shot
     slicer.util.delayDisplay('Take screenshot: '+description+'.\nResult is available in the Annotations module.', 3000)

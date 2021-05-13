@@ -1,4 +1,4 @@
-## MorphoSourceImport module is currently non-functional as MorphoSource is testing a new API as part of their v2.0 release. Once MorphoSource v2.0 is full production, we will update the module.
+## MorphoSourceImport module is currently non-functional as MorphoSource is testing a new API as part of their v2.0 beta release. Once MorphoSource v2.0 goes full production, we will update the module.
 
 ## MorphoSourceImport
 **Summary:** This module enables to query and download <a href="https://docs.google.com/spreadsheets/d/1fhdVv2JwvUJAC4dvSgKZi2pwSl7dPGaB-ksYsB64k4U/edit#gid=0"> publicly available 3D meshes</a> from MorphoSource website directly into the Slicer. The user has to register with the MorphoSource website. 
@@ -23,7 +23,7 @@ Table will populated with the returned hits. If no hits were found, a **"No down
 **LIMITATIONS:** Query returns only the first 1000 results. Order names needs to spelled exactly as indicated on the Only publicly available mesh models are queried or retrieved. For volume and raw dataset, please download them directly from MorphoSource website after agreeing to their use policy. You can use the `ImageStacks` module to import volume datasets.  
 
 ### TUTORIAL
-Please see https://github.com/SlicerMorph/S_2020/blob/master/Day_1/MorphoSourceImport/MorphoSourceImport.md
+Please see https://github.com/SlicerMorph/Tutorials/tree/main/MorphoSourceImport
 
 
 

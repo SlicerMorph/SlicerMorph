@@ -2,6 +2,27 @@ import logging
 
 logging.info("Customizing with SlicerMorphRC.py")
 
+# setting presets
+moduleDir = os.path.dirname(slicer.util.modulePath("MorphPreferences"))
+presetsScenePath = os.path.join(moduleDir, 'Resources/SM_presets.mrml')
+
+# Read presets scene
+customPresetsScene = slicer.vtkMRMLScene()
+vrPropNode = slicer.vtkMRMLVolumePropertyNode()
+customPresetsScene.RegisterNodeClass(vrPropNode)
+customPresetsScene.SetURL(presetsScenePath)
+customPresetsScene.Connect()
+
+# Add presets to volume rendering logic
+vrLogic = slicer.modules.volumerendering.logic()
+presetsScene = vrLogic.GetPresetsScene()
+vrNodes = customPresetsScene.GetNodesByClass("vtkMRMLVolumePropertyNode")
+vrNodes.UnRegister(None)
+for itemNum in range(vrNodes.GetNumberOfItems()):
+  node = vrNodes.GetItemAsObject(itemNum)
+  vrLogic.AddPreset(node)
+
+
 
 #
 #set the default volume storage to not compress by default
@@ -45,6 +66,12 @@ slicer.util.findChild(slicer.util.mainWindow(), 'LogoLabel').visible = False
 #collapse Data Probe tab by default to save space modules tab
 #
 slicer.util.findChild(slicer.util.mainWindow(), name='DataProbeCollapsibleWidget').collapsed = True
+
+#
+#set the default module from Welcome to Data
+#
+qt.QSettings().setValue("Modules/HomeModule", "Data")
+
 
 #
 # set volume rendering modes
@@ -153,10 +180,10 @@ def toggleMarkupLocks():
 shortcuts = [
     ('`', cycleEffectForward),
     ('~', cycleEffectBackward),
-    ('b', setLayoutOneUpRedSliceView),
-    ('n', setLayoutOneUpYellowSliceView),
-    ('m', setLayoutOneUpGreenSliceView),
-    (',', setLayoutFourUpView),
+    ('z', setLayoutOneUpRedSliceView),
+    ('x', setLayoutOneUpYellowSliceView),
+    ('c', setLayoutOneUpGreenSliceView),
+    ('y', setLayoutFourUpView),
     ('p', placeFiducial),
     ('t', togglePlaceModePersistence),
     ('l', toggleMarkupLocks),
@@ -171,3 +198,4 @@ logging.info(f"  {len(shortcuts)} keyboard shortcuts installed")
 
 logging.info("Done customizing with SlicerMorphRC.py")
 logging.info("On first load of customization, restart Slicer to take effect.")
+

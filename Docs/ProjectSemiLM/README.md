@@ -23,8 +23,11 @@
 * It is recommended to use an average model as the base reference model, if one is available.
 
 ### TUTORIAL
-For an example using the `CreatSemiLMPatches` module to create a semi-landmark set on a templateand the `ProjectSemiLM` module to transfer the semi-landmarks to each model in a directory, please see the [CreatSemiLMPatches tutorial](https://github.com/SlicerMorph/S_2020/blob/master/Day_3/Patch-based_semiLMs/Patch-based_semiLMs.md).
+For more details, please see the [CreateSemiLMPatches tutorial](https://github.com/SlicerMorph/Tutorials/tree/main/CreateSemiLMPatches)
 
+CreateSemiLMPatches video tutorials:
+1. [Creating Patches](https://www.youtube.com/watch?v=SArudRq-M4A)
+2. [Applying Patches to new samples](https://www.youtube.com/watch?v=UD2tmFuaSJg)
 
 
 
