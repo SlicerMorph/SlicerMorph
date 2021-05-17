@@ -490,9 +490,6 @@ class AnimatorWidget(ScriptedLoadableModuleWidget):
             "3840x2160": {"width": 3840, "height": 2160}
             }
     self.defaultSize = "640x480"
-    self.fileFormats = {
-            "GIF": ".gif",
-            "mp4 (H264)": ".mp4"}
     self.defaultFileFormat = "mp4 (H264)"
 
   def setup(self):
@@ -587,11 +584,13 @@ class AnimatorWidget(ScriptedLoadableModuleWidget):
     self.sizeSelector.currentText = self.defaultSize
     self.exportFormLayout.addRow("Animation size", self.sizeSelector)
 
-    self.fileFormatSelector = qt.QComboBox()
-    for format in self.fileFormats.keys():
-      self.fileFormatSelector.addItem(format)
-    self.fileFormatSelector.currentText = self.defaultFileFormat
-    self.exportFormLayout.addRow("Animation format", self.fileFormatSelector)
+    from ScreenCapture import ScreenCaptureLogic
+    logic = ScreenCaptureLogic()
+    self.videoFormatWidget = qt.QComboBox()
+    self.videoFormatWidget.setSizePolicy(qt.QSizePolicy.Expanding, qt.QSizePolicy.Preferred)
+    for videoFormatPreset in logic.videoFormatPresets:
+      self.videoFormatWidget.addItem(videoFormatPreset["name"])
+    self.exportFormLayout.addRow("Video format:", self.videoFormatWidget)
 
     self.outputFileButton = qt.QPushButton("Select a file...")
     self.exportFormLayout.addRow("Output file", self.outputFileButton)
@@ -718,11 +717,12 @@ class AnimatorWidget(ScriptedLoadableModuleWidget):
     sequenceNode = sequenceNodes.GetItemAsObject(0)
     frameCount = sequenceNode.GetNumberOfDataNodes()
     tempDir = qt.QTemporaryDir()
-    fileExtension = self.fileFormats[self.fileFormatSelector.currentText]
 
     # perform the screen capture and video creation
     from ScreenCapture import ScreenCaptureLogic
     logic = ScreenCaptureLogic()
+    videoFormatIndex = self.videoFormatWidget.currentIndex
+    videoFormat = logic.videoFormatPresets[videoFormatIndex]
     logic.captureSequence(
             viewNode,
             sequenceBrowserNode,
@@ -731,10 +731,10 @@ class AnimatorWidget(ScriptedLoadableModuleWidget):
             "Slicer-%04d.png")
     logic.createVideo(
             60,
-            "-pix_fmt yuv420p",
+            videoFormat['extraVideoOptions'],
             tempDir.path(),
             "Slicer-%04d.png",
-            self.outputFileButton.text+fileExtension)
+            self.outputFileButton.text+"."+videoFormat['fileExtension'])
 
     # reset the view
     threeDWidget.threeDController().visible = True
