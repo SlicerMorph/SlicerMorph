@@ -16,6 +16,10 @@ class AnimatorAction(object):
   def __init__(self):
     self.uuid = uuid.uuid4()
 
+  def cleanup(self, action):
+    """Called when the action is deleted"""
+    pass
+
   def act(self, action, scriptTime):
     pass
 
@@ -432,12 +436,46 @@ class VolumePropertyAction(AnimatorAction):
 class ExplodeModelsAction(AnimatorAction):
   """Explodes a model hierarchy in a selected subject hierarchy tree branch"""
 
-  # TODO: empty cache entry when corresponding action is removed
+  # Cache stores information that needs to be extracted from the scene once
+  # (list of nodes, positions, etc.)
+  # The cache stores information for all the actions, identified by 
+  # the action's id.
   cache = {}
 
   def __init__(self):
     super(ExplodeModelsAction,self).__init__()
     self.name = "Explode models"
+
+  def cleanup(self, action):
+    if action['id'] in ExplodeModelsAction.cache:
+      del(ExplodeModelsAction.cache[action['id']])
+
+    if ExplodeModelsAction.cache:
+      # there are still explode model actions, no more cleanup is needed
+      return
+
+    # No more explode models action are in the scene - remove all automatically added transforms.
+    # We only remove transforms when all the ExplodeModel actions are deleted because the transforms
+    # may be shared between multiple actions.
+
+    # Collect all transforms and transformed nodes first. Changing the parent transforms would change the list
+    # of references, so first we collect all information then make all the changes.
+    numberOfNodeReferences = slicer.mrmlScene.GetNumberOfNodeReferences()
+    transformNodesToRemove = set()
+    transformsToSet = []  # list of pairs of transformed nodes and the new transform to observe
+    for nodeReferenceIndex in range(numberOfNodeReferences):
+      transformNode = slicer.mrmlScene.GetNodeByID(slicer.mrmlScene.GetNthReferencedID(nodeReferenceIndex))
+      if transformNode and transformNode.GetAttribute("Animator.ExplodeModels.AutoCreated"):
+        transformNodesToRemove.add(transformNode)
+        transformsToSet.append([slicer.mrmlScene.GetNthReferencingNode(nodeReferenceIndex), transformNode.GetParentTransformNode()])
+
+    # restore original parent transforms
+    for transformedNode, transformNode in transformsToSet:
+      transformedNode.SetAndObserveTransformNodeID(transformNode.GetID() if transformNode else None)
+
+    # remove unused transforms
+    for transformNode in transformNodesToRemove:
+      slicer.mrmlScene.RemoveNode(transformNode)
 
   def allowMultiple(self):
     return True
@@ -1065,6 +1103,12 @@ class AnimatorLogic(ScriptedLoadableModuleLogic):
     """Remove an action from the script """
     script = self.getScript(animationNode)
     actions = self.getActions(animationNode)
+
+    # Notify the action that it will be deleted (gives a chance to clean up internal caches and scene modifications)
+    action = actions[action['id']]
+    actionInstance = slicer.modules.animatorActionPlugins[action['class']]()
+    actionInstance.cleanup(action)
+
     del(actions[action['id']])
     script['actions'] = actions
     self.setScript(animationNode, script)
