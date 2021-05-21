@@ -472,10 +472,17 @@ class ExplodeModelsAction(AnimatorAction):
 
     explodedViewDurationPercent = action['explodedViewDurationPercent']
     explosionDistanceScale = action['explosionScaleFactor']
-    explosionCenter = cache['explosionCenter']
+    modelsCenterOfGravity = cache['modelsCenterOfGravity']
     modelNodes = cache['modelNodes']
     transformNodes = cache['transformNodes']
     modelPositions = cache['modelPositions']
+
+    centerFiducialNode = slicer.mrmlScene.GetNodeByID(action['explosionCenterFiducialNodeID'])
+    if centerFiducialNode and centerFiducialNode.GetNumberOfDefinedControlPoints()>0:
+      explosionCenter = [0,0,0]
+      centerFiducialNode.GetNthControlPointPositionWorld(0, explosionCenter)
+    else:
+      explosionCenter = cache['modelsCenterOfGravity']
 
     animationDuration = (1.0-explodedViewDurationPercent/100.0)/2.0
     if normalizedActionTime < animationDuration:
@@ -579,12 +586,7 @@ class ExplodeModelsAction(AnimatorAction):
         modelNode.GetRASBounds(bounds)
         modelPositions.append(np.array([(bounds[0]+bounds[1])/2.0, (bounds[2]+bounds[3])/2.0, (bounds[4]+bounds[5])/2.0]))
 
-    centerFiducialNode = slicer.mrmlScene.GetNodeByID(action['explosionCenterFiducialNodeID'])
-    if centerFiducialNode and centerFiducialNode.GetNumberOfDefinedControlPoints()>0:
-      explosionCenter = np.zeros(3)
-      centerFiducialNode.GetNthControlPositionWorld(0, explosionCenter)
-    else:
-      explosionCenter = np.mean(np.array(modelPositions), axis=0)
+    modelsCenterOfGravity = np.mean(np.array(modelPositions), axis=0)
 
     import easing_functions
     expandScaleFactors = easing_functions.CircularEaseInOut(start=0, end=1, duration=1.0)
@@ -594,7 +596,7 @@ class ExplodeModelsAction(AnimatorAction):
       'modelNodes': modelNodes,
       'transformNodes': transformNodes,
       'modelPositions': modelPositions,
-      'explosionCenter': explosionCenter,
+      'modelsCenterOfGravity': modelsCenterOfGravity,
       'expandScaleFactors': expandScaleFactors,
       'contractScaleFactors': contractScaleFactors,
       }
