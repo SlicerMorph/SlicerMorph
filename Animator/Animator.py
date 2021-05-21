@@ -429,6 +429,177 @@ class VolumePropertyAction(AnimatorAction):
     action['clampAtStart'] = self.startClampCheckbox.checked
     action['clampAtEnd'] = self.endClampCheckbox.checked
 
+class ExplodeModelsAction(AnimatorAction):
+  """Explodes a model hierarchy in a selected subject hierarchy tree branch"""
+
+  # TODO: empty cache entry when corresponding action is removed
+  cache = {}
+
+  def __init__(self):
+    super(ExplodeModelsAction,self).__init__()
+    self.name = "Explode models"
+
+  def allowMultiple(self):
+    return True
+
+  def defaultAction(self):
+    shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+    action = {
+      'name': 'ExplodeModels',
+      'class': 'ExplodeModelsAction',
+      'id': 'explodeModels-'+str(self.uuid),
+      'startTime': 0,
+      'endTime': -1,
+      'subjectHierarchyFolderID': shNode.GetSceneItemID(),
+      'explosionCenterFiducialNodeID': '',
+      'explosionScaleFactor': 2.0,
+      'explodedViewDurationPercent': 10,
+      }
+    return action
+
+  def act(self, action, scriptTime):
+
+    if action['endTime'] <= action['startTime']:
+      return
+
+    if action['id'] not in ExplodeModelsAction.cache:
+      self.updateCache(action)
+    cache = ExplodeModelsAction.cache[action['id']]
+
+    normalizedActionTime = (scriptTime - action['startTime'])/(action['endTime']-action['startTime'])
+    if normalizedActionTime < 0.0 or normalizedActionTime > 1.0:
+      return
+
+    explodedViewDurationPercent = action['explodedViewDurationPercent']
+    explosionDistanceScale = action['explosionScaleFactor']
+    explosionCenter = cache['explosionCenter']
+    modelNodes = cache['modelNodes']
+    transformNodes = cache['transformNodes']
+    modelPositions = cache['modelPositions']
+
+    animationDuration = (1.0-explodedViewDurationPercent/100.0)/2.0
+    if normalizedActionTime < animationDuration:
+      # expansion animation
+      scaleFactor = cache['expandScaleFactors'](normalizedActionTime/animationDuration)
+    elif normalizedActionTime > 1.0-animationDuration:
+      # contraction animation
+      scaleFactor = cache['contractScaleFactors']((normalizedActionTime-1.0+animationDuration)/animationDuration)
+    else:
+      # in the middle, hold exploded view
+      scaleFactor = 1.0
+
+    for modelNode, transformNode, modelPosition in zip(modelNodes, transformNodes, modelPositions):
+        offset = explosionDistanceScale * scaleFactor * (modelPosition-explosionCenter)
+        transformMatrix = vtk.vtkMatrix4x4()
+        for i in range(3):
+            transformMatrix.SetElement(i, 3, offset[i])
+        transformNode.SetMatrixTransformToParent(transformMatrix)
+
+  def gui(self, action, layout):
+    super(ExplodeModelsAction,self).gui(action, layout)
+
+    self.shFolderSelector = slicer.qMRMLSubjectHierarchyComboBox()
+    self.shFolderSelector.setMRMLScene( slicer.mrmlScene )
+    self.shFolderSelector.setToolTip("Pick the folder that contains all the model nodes")
+    self.shFolderSelector.setCurrentItem(action['subjectHierarchyFolderID'])
+    self.shFolderSelector.minimumWidth=200
+    layout.addRow("Models folder", self.shFolderSelector)
+
+    self.explosionScaleFactor = ctk.ctkDoubleSpinBox()
+    self.explosionScaleFactor.suffix = "x"
+    self.explosionScaleFactor.decimals = 1
+    self.explosionScaleFactor.minimum = 1
+    self.explosionScaleFactor.maximum = 10
+    self.explosionScaleFactor.value = action['explosionScaleFactor']
+    layout.addRow("Explosion scale factor", self.explosionScaleFactor)
+
+    self.explodedViewDurationPercent = ctk.ctkDoubleSpinBox()
+    self.explodedViewDurationPercent.suffix = "%"
+    self.explodedViewDurationPercent.decimals = 0
+    self.explodedViewDurationPercent.minimum = 0
+    self.explodedViewDurationPercent.maximum = 100
+    self.explodedViewDurationPercent.value = action['explodedViewDurationPercent']
+    layout.addRow("Exploded view duration", self.explodedViewDurationPercent)
+
+    self.centerFiducialSelector = slicer.qMRMLNodeComboBox()
+    self.centerFiducialSelector.nodeTypes = ["vtkMRMLMarkupsFiducialNode"]
+    self.centerFiducialSelector.addEnabled = False
+    self.centerFiducialSelector.renameEnabled = False
+    self.centerFiducialSelector.removeEnabled = False
+    self.centerFiducialSelector.noneEnabled = True
+    self.centerFiducialSelector.noneDisplay = "auto"
+    self.centerFiducialSelector.selectNodeUponCreation = True
+    self.centerFiducialSelector.setMRMLScene( slicer.mrmlScene )
+    self.centerFiducialSelector.setToolTip( "Models will be moved away from this position." )
+    self.centerFiducialSelector.currentNodeID = action['explosionCenterFiducialNodeID']
+    layout.addRow("Epicenter of explosion", self.centerFiducialSelector)
+
+  def updateFromGUI(self, action):
+    action['subjectHierarchyFolderID'] = self.shFolderSelector.currentItem()
+    action['explosionScaleFactor'] = self.explosionScaleFactor.value
+    action['explodedViewDurationPercent'] = self.explodedViewDurationPercent.value
+    action['explosionCenterFiducialNodeID'] = self.centerFiducialSelector.currentNodeID
+    self.updateCache(action)
+
+  def updateCache(self, action):
+    try:
+      import easing_functions
+    except ModuleNotFoundError as e:
+      if slicer.util.confirmOkCancelDisplay(
+              "This module requires 'easing-functions' Python package. Click OK to install it now."):
+        slicer.util.pip_install("easing-functions")
+        import easing_functions
+      else:
+        return
+
+    # Insert transform node above the model so that we can move it
+    shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+    modelNodesCollection = vtk.vtkCollection()
+    shNode.GetDataNodesInBranch(action['subjectHierarchyFolderID'], modelNodesCollection, "vtkMRMLModelNode")
+    modelNodes = []
+    transformNodes = []
+    for i in range(modelNodesCollection.GetNumberOfItems()):
+      modelNode = modelNodesCollection.GetItemAsObject(i)
+      modelNodes.append(modelNode)
+      transformNode = modelNode.GetParentTransformNode()
+      if not transformNode or not transformNode.GetAttribute("Animator.ExplodeModels.AutoCreated"):
+        transformNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTransformNode")
+        transformNode.SetAttribute("Animator.ExplodeModels.AutoCreated", "1")
+        oldParentTransformNode = modelNode.GetParentTransformNode()
+        modelNode.SetAndObserveTransformNodeID(transformNode.GetID())
+        if oldParentTransformNode:
+          transformNode.SetAndObserveTransformNodeID(oldParentTransformNode.GetID())
+      transformNodes.append(transformNode)
+      transformNode.SetAndObserveMatrixTransformToParent(vtk.vtkMatrix4x4())
+
+    import numpy as np
+    modelPositions = []
+    for modelNode in modelNodes:
+        bounds = np.zeros(6)
+        modelNode.GetRASBounds(bounds)
+        modelPositions.append(np.array([(bounds[0]+bounds[1])/2.0, (bounds[2]+bounds[3])/2.0, (bounds[4]+bounds[5])/2.0]))
+
+    centerFiducialNode = slicer.mrmlScene.GetNodeByID(action['explosionCenterFiducialNodeID'])
+    if centerFiducialNode and centerFiducialNode.GetNumberOfDefinedControlPoints()>0:
+      explosionCenter = np.zeros(3)
+      centerFiducialNode.GetNthControlPositionWorld(0, explosionCenter)
+    else:
+      explosionCenter = np.mean(np.array(modelPositions), axis=0)
+
+    import easing_functions
+    expandScaleFactors = easing_functions.CircularEaseInOut(start=0, end=1, duration=1.0)
+    contractScaleFactors = easing_functions.CircularEaseInOut(start=1, end=0, duration=1.0)
+
+    cache = {
+      'modelNodes': modelNodes,
+      'transformNodes': transformNodes,
+      'modelPositions': modelPositions,
+      'explosionCenter': explosionCenter,
+      'expandScaleFactors': expandScaleFactors,
+      'contractScaleFactors': contractScaleFactors,
+      }
+
+    ExplodeModelsAction.cache[action['id']] = cache
 
 # add an module-specific dict for any module other to add animator plugins.
 # these must be subclasses (or duck types) of the
@@ -441,6 +612,7 @@ except AttributeError:
 slicer.modules.animatorActionPlugins['CameraRotationAction'] = CameraRotationAction
 slicer.modules.animatorActionPlugins['ROIAction'] = ROIAction
 slicer.modules.animatorActionPlugins['VolumePropertyAction'] = VolumePropertyAction
+slicer.modules.animatorActionPlugins['ExplodeModelsAction'] = ExplodeModelsAction
 
 
 #
@@ -930,10 +1102,16 @@ class AnimatorLogic(ScriptedLoadableModuleLogic):
 
   def act(self, animationNode, scriptTime):
     """Give each action in the script a chance to act at the current script time"""
-    actions = self.getActions(animationNode)
-    for action in actions.values():
-      actionInstance = slicer.modules.animatorActionPlugins[action['class']]()
-      actionInstance.act(action, scriptTime)
+    # Pause render while updating the scene to make sure that all changes appear at once
+    # and no time is spent with unnecessary intermediate rendering step.
+    slicer.app.pauseRender()
+    try:
+      actions = self.getActions(animationNode)
+      for action in actions.values():
+        actionInstance = slicer.modules.animatorActionPlugins[action['class']]()
+        actionInstance.act(action, scriptTime)
+    finally:
+      slicer.app.resumeRender()
 
 
 class AnimatorTest(ScriptedLoadableModuleTest):
