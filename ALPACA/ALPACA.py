@@ -60,7 +60,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       from pycpd import DeformableRegistration
       print('pycpd installed')
     except ModuleNotFoundError as e:
-      slicer.util.pip_install('git+https://github.com/agporto/pycpd.git@development')
+      slicer.util.pip_install('pycpd')
       print('trying to install pycpd')
       from pycpd import DeformableRegistration
     
