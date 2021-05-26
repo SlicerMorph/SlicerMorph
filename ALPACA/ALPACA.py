@@ -985,7 +985,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     
   def cpd_registration(self, targetArray, sourceArray, CPDIterations, CPDTolerence, alpha_parameter, beta_parameter):
     from pycpd import DeformableRegistration
-    output = DeformableRegistration(**{'X': targetArray, 'Y': sourceArray,'max_iterations': CPDIterations, 'tolerance': CPDTolerence, 'low_rank': True}, alpha = alpha_parameter, beta  = beta_parameter)
+    output = DeformableRegistration(**{'X': targetArray, 'Y': sourceArray,'max_iterations': CPDIterations, 'tolerance': CPDTolerence}, alpha = alpha_parameter, beta  = beta_parameter)
     return output
     
   def getFiducialPoints(self,fiducialNode):
