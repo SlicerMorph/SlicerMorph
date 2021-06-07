@@ -57,12 +57,12 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
         slicer.util.pip_install('open3d==0.10.0')
         import open3d as o3d
     try:
-      from pycpd import DeformableRegistration
-      print('pycpd installed')
+      from cpdalp import DeformableRegistration
+      print('cpdalp installed')
     except ModuleNotFoundError as e:
-      slicer.util.pip_install('pycpd')
-      print('trying to install pycpd')
-      from pycpd import DeformableRegistration
+      slicer.util.pip_install('cpdalp')
+      print('trying to install cpdalp')
+      from cpdalp import DeformableRegistration
     
   def onSelect(self):
     self.applyButton.enabled = bool (self.meshDirectory.currentPath and self.landmarkDirectory.currentPath and 
@@ -514,8 +514,8 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     
     # update the parameter dictionary from multi run parameters
     if hasattr(self, 'parameterDictionaryMulti'):
-      self.parameterDictionary["projectionFactor"] = self.projectionFactorMulti.value
-      self.parameterDictionary["pointDensity"] = self.pointDensityMulti.value
+      self.parameterDictionaryMulti["projectionFactor"] = self.projectionFactorMulti.value
+      self.parameterDictionaryMulti["pointDensity"] = self.pointDensityMulti.value
       self.parameterDictionaryMulti["normalSearchRadius"] = int(self.normalSearchRadiusMulti.value)
       self.parameterDictionaryMulti["FPFHSearchRadius"] = int(self.FPFHSearchRadiusMulti.value)
       self.parameterDictionaryMulti["distanceThreshold"] = self.distanceThresholdMulti.value
@@ -984,8 +984,8 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     return result
     
   def cpd_registration(self, targetArray, sourceArray, CPDIterations, CPDTolerence, alpha_parameter, beta_parameter):
-    from pycpd import DeformableRegistration
-    output = DeformableRegistration(**{'X': targetArray, 'Y': sourceArray,'max_iterations': CPDIterations, 'tolerance': CPDTolerence}, alpha = alpha_parameter, beta  = beta_parameter)
+    from cpdalp import DeformableRegistration
+    output = DeformableRegistration(**{'X': targetArray, 'Y': sourceArray,'max_iterations': CPDIterations, 'tolerance': CPDTolerence, 'low_rank':True}, alpha = alpha_parameter, beta  = beta_parameter)
     return output
     
   def getFiducialPoints(self,fiducialNode):
