@@ -22,10 +22,10 @@ class ALPACA(ScriptedLoadableModule):
   
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
-    self.parent.title = "ALPACA" # TODO make this more human readable by adding spaces
+    self.parent.title = "ALPACA" 
     self.parent.categories = ["SlicerMorph.Geometric Morphometrics"]
     self.parent.dependencies = []
-    self.parent.contributors = ["Arthur Porto, Sara Rolfe (UW), Murat Maga (UW)"] # replace with "Firstname Lastname (Organization)"
+    self.parent.contributors = ["Arthur Porto (LSU), Sara Rolfe (UW), Murat Maga (UW)"] 
     self.parent.helpText = """
       This module automatically transfers landmarks on a reference 3D model (mesh) to a target 3D model using dense correspondence and deformable registration. First optimize the parameters in single alignment analysis, then use them in batch mode to apply to all 3D models. 
       <p>For more information see the <a href="https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/ALPACA">online documentation.</a>.</p> 
@@ -35,7 +35,7 @@ class ALPACA(ScriptedLoadableModule):
       This module was developed by Arthur Porto, Sara Rolfe, and Murat Maga for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections" 
       awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839). 
       https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false 
-      """ # replace with organization, grant and thanks.      
+      """      
 
 #
 # ALPACAWidget
@@ -48,40 +48,52 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
 
   def __init__(self, parent=None):
     ScriptedLoadableModuleWidget.__init__(self, parent)
-    try:
-      import open3d as o3d
-      print('o3d installed')
-    except ModuleNotFoundError as e:
-      if slicer.util.confirmOkCancelDisplay("ALPACA requires the open3d library. Installation may take a few minutes"):
-        slicer.util.pip_install('notebook==6.0.3')
-        slicer.util.pip_install('open3d==0.10.0')
-        import open3d as o3d
-    try:
-      from cpdalp import DeformableRegistration
-      print('cpdalp installed')
-    except ModuleNotFoundError as e:
-      slicer.util.pip_install('cpdalp')
-      print('trying to install cpdalp')
-      from cpdalp import DeformableRegistration
     
-  def onSelect(self):
-    self.applyButton.enabled = bool (self.meshDirectory.currentPath and self.landmarkDirectory.currentPath and 
-      self.sourceModelSelector.currentNode() and self.baseLMSelector.currentNode() and self.baseSLMSelect.currentNode() 
-      and self.outputDirectory.currentPath)
-          
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
-    
+    # Ensure that correct version of open3d Python package is installed
+    needRestart = False
+    needInstall = False
+    Open3dVersion = "0.10.0"
+    try:
+      import open3d as o3d
+      import cpdalp
+      from packaging import version
+      if version.parse(o3d.__version__) != version.parse(Open3dVersion):
+        if not slicer.util.confirmOkCancelDisplay(f"ALPACA requires installation of open3d (version {Open3dVersion}).\nClick OK to upgrade open3d and restart the application."):
+          self.showBrowserOnEnter = False
+          return
+        needRestart = True
+        needInstall = True
+    except ModuleNotFoundError:
+      needInstall = True
+
+    if needInstall:
+      progressDialog = slicer.util.createProgressDialog(labelText='Upgrading open3d. This may take a minute...', maximum=0)
+      slicer.app.processEvents()
+      slicer.util.pip_install(f'open3d=={Open3dVersion}')
+      slicer.util.pip_install(f'cpdalp')
+      import open3d as o3d
+      import cpdalp
+      progressDialog.close()
+    if needRestart:
+      slicer.util.restart()
+
     # Set up tabs to split workflow
     tabsWidget = qt.QTabWidget()
     alignSingleTab = qt.QWidget()
     alignSingleTabLayout = qt.QFormLayout(alignSingleTab)
     alignMultiTab = qt.QWidget()
     alignMultiTabLayout = qt.QFormLayout(alignMultiTab)
-
+    advancedSettingsTab = qt.QWidget()
+    advancedSettingsTabLayout = qt.QFormLayout(advancedSettingsTab)
+    
+    [self.projectionFactor,self.pointDensity, self.normalSearchRadius, self.FPFHSearchRadius, self.distanceThreshold, self.maxRANSAC, self.maxRANSACValidation, 
+    self.ICPDistanceThreshold, self.alpha, self.beta, self.CPDIterations, self.CPDTolerance] = self.addAdvancedMenu(advancedSettingsTabLayout)
 
     tabsWidget.addTab(alignSingleTab, "Single Alignment")
     tabsWidget.addTab(alignMultiTab, "Batch processing")
+    tabsWidget.addTab(advancedSettingsTab, "Advanced Settings")
     self.layout.addWidget(tabsWidget)
     
     # Layout within the tab
@@ -113,20 +125,21 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.targetModelSelector.nameFilters=["*.ply"]
     alignSingleWidgetLayout.addRow("Target mesh: ", self.targetModelSelector)
 
+    # Select whether to skip scaling or not
+    #
     self.skipScalingCheckBox = qt.QCheckBox()
     self.skipScalingCheckBox.checked = 0
     self.skipScalingCheckBox.setToolTip("If checked, ALPACA will skip scaling during the alignment (Not recommended).")
     alignSingleWidgetLayout.addRow("Skip scaling", self.skipScalingCheckBox)
-    
+  
+    # Select whether to skip projection-to-surface or not
+    #
     self.skipProjectionCheckBox = qt.QCheckBox()
     self.skipProjectionCheckBox.checked = 0
     self.skipProjectionCheckBox.setToolTip("If checked, ALPACA will skip final refinement step placing landmarks on the target suface.")
     alignSingleWidgetLayout.addRow("Skip projection", self.skipProjectionCheckBox)
     
-
-    [self.projectionFactor,self.pointDensity, self.normalSearchRadius, self.FPFHSearchRadius, self.distanceThreshold, self.maxRANSAC, self.maxRANSACValidation, 
-    self.ICPDistanceThreshold, self.alpha, self.beta, self.CPDIterations, self.CPDTolerence] = self.addAdvancedMenu(alignSingleWidgetLayout)
-    
+   
     # Advanced tab connections
     self.projectionFactor.connect('valueChanged(double)', self.onChangeAdvanced)
     self.pointDensity.connect('valueChanged(double)', self.onChangeAdvanced)
@@ -139,7 +152,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.alpha.connect('valueChanged(double)', self.onChangeAdvanced)
     self.beta.connect('valueChanged(double)', self.onChangeAdvanced)
     self.CPDIterations.connect('valueChanged(double)', self.onChangeAdvanced)
-    self.CPDTolerence.connect('valueChanged(double)', self.onChangeAdvanced)
+    self.CPDTolerance.connect('valueChanged(double)', self.onChangeAdvanced)
     
     #
     # Subsample Button
@@ -180,15 +193,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.CPDRegistrationButton.toolTip = "Coherent point drift registration between source and target meshes"
     self.CPDRegistrationButton.enabled = False
     alignSingleWidgetLayout.addRow(self.CPDRegistrationButton)
-    
-    #
-    # DECA registration
-    #
-    #self.DECAButton = qt.QPushButton("Run DeCA non-rigid registration")
-    #self.DECAButton.toolTip = "DeCA registration between source and target meshes"
-    #self.DECAButton.enabled = False
-    #alignSingleWidgetLayout.addRow(self.DECAButton)
-    
+       
     #
     # Coherent point drift registration
     #
@@ -206,13 +211,12 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.alignButton.connect('clicked(bool)', self.onAlignButton)
     self.displayMeshButton.connect('clicked(bool)', self.onDisplayMeshButton)
     self.CPDRegistrationButton.connect('clicked(bool)', self.onCPDRegistration)
-    #self.DECAButton.connect('clicked(bool)', self.onDECARegistration)
     self.displayWarpedModelButton.connect('clicked(bool)', self.onDisplayWarpedModel)
     
     # Layout within the multiprocessing tab
     alignMultiWidget=ctk.ctkCollapsibleButton()
     alignMultiWidgetLayout = qt.QFormLayout(alignMultiWidget)
-    alignMultiWidget.text = "Transfer landmark points from a source mesh to a directory of target meshes "
+    alignMultiWidget.text = "Transfer landmark points from one or multiple source meshes to a directory of target meshes "
     alignMultiTabLayout.addRow(alignMultiWidget)
   
     #
@@ -256,10 +260,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.skipProjectionCheckBoxMulti.checked = 0
     self.skipProjectionCheckBoxMulti.setToolTip("If checked, ALPACA will skip final refinement step placing landmarks on the target suface.")
     alignMultiWidgetLayout.addRow("Skip projection", self.skipProjectionCheckBoxMulti)
-    
-    [self.projectionFactorMulti, self.pointDensityMulti, self.normalSearchRadiusMulti, self.FPFHSearchRadiusMulti, self.distanceThresholdMulti, self.maxRANSACMulti, self.maxRANSACValidationMulti, 
-    self.ICPDistanceThresholdMulti, self.alphaMulti, self.betaMulti, self.CPDIterationsMulti, self.CPDTolerenceMulti] = self.addAdvancedMenu(alignMultiWidgetLayout)
-        
+          
     #
     # Run landmarking Button
     #
@@ -278,21 +279,8 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.applyLandmarkMultiButton.connect('clicked(bool)', self.onApplyLandmarkMulti)
     
     # Add vertical spacer
-    self.layout.addStretch(1)
+    #self.layout.addStretch(1)
       
-    # Advanced tab connections
-    self.projectionFactorMulti.connect('valueChanged(double)', self.updateParameterDictionary)
-    self.pointDensityMulti.connect('valueChanged(double)', self.updateParameterDictionary)
-    self.normalSearchRadiusMulti.connect('valueChanged(double)', self.updateParameterDictionary)
-    self.FPFHSearchRadiusMulti.connect('valueChanged(double)', self.updateParameterDictionary)
-    self.distanceThresholdMulti.connect('valueChanged(double)', self.updateParameterDictionary)
-    self.maxRANSACMulti.connect('valueChanged(double)', self.updateParameterDictionary)
-    self.maxRANSACValidationMulti.connect('valueChanged(double)', self.updateParameterDictionary)
-    self.ICPDistanceThresholdMulti.connect('valueChanged(double)', self.updateParameterDictionary)
-    self.alphaMulti.connect('valueChanged(double)', self.updateParameterDictionary)
-    self.betaMulti.connect('valueChanged(double)', self.updateParameterDictionary)
-    self.CPDIterationsMulti.connect('valueChanged(double)', self.updateParameterDictionary)
-    self.CPDTolerenceMulti.connect('valueChanged(double)', self.updateParameterDictionary)
     
     # initialize the parameter dictionary from single run parameters
     self.parameterDictionary = {
@@ -307,23 +295,9 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       "alpha" : self.alpha.value,
       "beta" : self.beta.value,
       "CPDIterations" : int(self.CPDIterations.value),
-      "CPDTolerence" : self.CPDTolerence.value
+      "CPDTolerance" : self.CPDTolerance.value
       }
-    # initialize the parameter dictionary from multi run parameters
-    self.parameterDictionaryMulti = {
-      "projectionFactor": self.projectionFactorMulti.value,
-      "pointDensity": self.pointDensityMulti.value,
-      "normalSearchRadius" : self.normalSearchRadiusMulti.value,
-      "FPFHSearchRadius" : self.FPFHSearchRadiusMulti.value,
-      "distanceThreshold" : self.distanceThresholdMulti.value,
-      "maxRANSAC" : int(self.maxRANSACMulti.value),
-      "maxRANSACValidation" : int(self.maxRANSACValidationMulti.value),
-      "ICPDistanceThreshold"  : self.ICPDistanceThresholdMulti.value,
-      "alpha" : self.alphaMulti.value,
-      "beta" : self.betaMulti.value,
-      "CPDIterations" : int(self.CPDIterationsMulti.value),
-      "CPDTolerence" : self.CPDTolerenceMulti.value
-      }
+
   
   def cleanup(self):
     pass
@@ -339,7 +313,6 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       self.targetModelMultiSelector.currentPath = path
     self.skipScalingMultiCheckBox.checked = self.skipScalingCheckBox.checked
     self.skipProjectionCheckBoxMulti.checked = self.skipProjectionCheckBox.checked
-    self.projectionFactorMulti.value = self.projectionFactor.value
     
 
   def onSelectMultiProcess(self):
@@ -473,7 +446,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       projectionFactor = self.projectionFactor.value/100
       
     logic.runLandmarkMultiprocess(self.sourceModelMultiSelector.currentPath,self.sourceFiducialMultiSelector.currentPath, 
-    self.targetModelMultiSelector.currentPath, self.landmarkOutputSelector.currentPath, self.skipScalingMultiCheckBox.checked, projectionFactor,self.parameterDictionaryMulti )
+    self.targetModelMultiSelector.currentPath, self.landmarkOutputSelector.currentPath, self.skipScalingMultiCheckBox.checked, projectionFactor,self.parameterDictionary)
     
     
   def updateLayout(self):
@@ -483,17 +456,6 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     layoutManager.threeDWidget(0).threeDView().resetCamera()
     
   def onChangeAdvanced(self):
-    self.pointDensityMulti.value = self.pointDensity.value  
-    self.normalSearchRadiusMulti.value = self.normalSearchRadius.value
-    self.FPFHSearchRadiusMulti.value = self.FPFHSearchRadius.value
-    self.distanceThresholdMulti.value = self.distanceThreshold.value
-    self.maxRANSACMulti.value = self.maxRANSAC.value
-    self.maxRANSACValidationMulti.value = self.maxRANSACValidation.value
-    self.ICPDistanceThresholdMulti.value  = self.ICPDistanceThreshold.value
-    self.alphaMulti.value = self.alpha.value
-    self.betaMulti.value = self.beta.value
-    self.CPDTolerenceMulti.value = self.CPDTolerence.value    
-    
     self.updateParameterDictionary()
     
   def updateParameterDictionary(self):    
@@ -510,51 +472,27 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       self.parameterDictionary["alpha"] = self.alpha.value
       self.parameterDictionary["beta"] = self.beta.value
       self.parameterDictionary["CPDIterations"] = int(self.CPDIterations.value)
-      self.parameterDictionary["CPDTolerence"] = self.CPDTolerence.value
-    
-    # update the parameter dictionary from multi run parameters
-    if hasattr(self, 'parameterDictionaryMulti'):
-      self.parameterDictionaryMulti["projectionFactor"] = self.projectionFactorMulti.value
-      self.parameterDictionaryMulti["pointDensity"] = self.pointDensityMulti.value
-      self.parameterDictionaryMulti["normalSearchRadius"] = int(self.normalSearchRadiusMulti.value)
-      self.parameterDictionaryMulti["FPFHSearchRadius"] = int(self.FPFHSearchRadiusMulti.value)
-      self.parameterDictionaryMulti["distanceThreshold"] = self.distanceThresholdMulti.value
-      self.parameterDictionaryMulti["maxRANSAC"] = int(self.maxRANSACMulti.value)
-      self.parameterDictionaryMulti["maxRANSACValidation"] = int(self.maxRANSACValidationMulti.value)
-      self.parameterDictionaryMulti["ICPDistanceThreshold"] = self.ICPDistanceThresholdMulti.value
-      self.parameterDictionaryMulti["alpha"] = self.alphaMulti.value
-      self.parameterDictionaryMulti["beta"] = self.betaMulti.value
-      self.parameterDictionaryMulti["CPDIterations"] = int(self.CPDIterationsMulti.value)
-      self.parameterDictionaryMulti["CPDTolerence"] = self.CPDTolerenceMulti.value
+      self.parameterDictionary["CPDTolerance"] = self.CPDTolerance.value
       
 
       
   def addAdvancedMenu(self, currentWidgetLayout):
-    #
-    # Advanced menu for single run
-    #
-    advancedCollapsibleButton = ctk.ctkCollapsibleButton()
-    advancedCollapsibleButton.text = "Advanced parameter settings"
-    advancedCollapsibleButton.collapsed = True
-    currentWidgetLayout.addRow(advancedCollapsibleButton)
-    advancedFormLayout = qt.QFormLayout(advancedCollapsibleButton)
-
     # Point density label
     pointDensityCollapsibleButton=ctk.ctkCollapsibleButton()
     pointDensityCollapsibleButton.text = "Point density and max projection"
-    advancedFormLayout.addRow(pointDensityCollapsibleButton)
+    currentWidgetLayout.addRow(pointDensityCollapsibleButton)
     pointDensityFormLayout = qt.QFormLayout(pointDensityCollapsibleButton)
 
     # Rigid registration label
     rigidRegistrationCollapsibleButton=ctk.ctkCollapsibleButton()
     rigidRegistrationCollapsibleButton.text = "Rigid registration"
-    advancedFormLayout.addRow(rigidRegistrationCollapsibleButton)
+    currentWidgetLayout.addRow(rigidRegistrationCollapsibleButton)
     rigidRegistrationFormLayout = qt.QFormLayout(rigidRegistrationCollapsibleButton)
     
     # Deformable registration label
     deformableRegistrationCollapsibleButton=ctk.ctkCollapsibleButton()
     deformableRegistrationCollapsibleButton.text = "Deformable registration"
-    advancedFormLayout.addRow(deformableRegistrationCollapsibleButton)
+    currentWidgetLayout.addRow(deformableRegistrationCollapsibleButton)
     deformableRegistrationFormLayout = qt.QFormLayout(deformableRegistrationCollapsibleButton)
     
     # Point Density slider
@@ -664,16 +602,16 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     deformableRegistrationFormLayout.addRow("CPD iterations: ", CPDIterations)
 
     # # CPD tolerance slider
-    CPDTolerence = ctk.ctkSliderWidget()
-    CPDTolerence.setDecimals(4)
-    CPDTolerence.singleStep = .0001
-    CPDTolerence.minimum = 0.0001
-    CPDTolerence.maximum = 0.01
-    CPDTolerence.value = 0.001
-    CPDTolerence.setToolTip("Tolerance used to assess CPD convergence")
-    deformableRegistrationFormLayout.addRow("CPD tolerance: ", CPDTolerence)
+    CPDTolerance = ctk.ctkSliderWidget()
+    CPDTolerance.setDecimals(4)
+    CPDTolerance.singleStep = .0001
+    CPDTolerance.minimum = 0.0001
+    CPDTolerance.maximum = 0.01
+    CPDTolerance.value = 0.001
+    CPDTolerance.setToolTip("Tolerance used to assess CPD convergence")
+    deformableRegistrationFormLayout.addRow("CPD tolerance: ", CPDTolerance)
 
-    return projectionFactor, pointDensity, normalSearchRadius, FPFHSearchRadius, distanceThreshold, maxRANSAC, maxRANSACValidation, ICPDistanceThreshold, alpha, beta, CPDIterations, CPDTolerence
+    return projectionFactor, pointDensity, normalSearchRadius, FPFHSearchRadius, distanceThreshold, maxRANSAC, maxRANSACValidation, ICPDistanceThreshold, alpha, beta, CPDIterations, CPDTolerance
     
 #
 # ALPACALogic
@@ -790,7 +728,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     #Convert back to numpy for cpd
     sourceArrayCombined = np.asarray(sourceCloud.points,dtype=np.float32)
     targetArray = np.asarray(targetCloud.points,dtype=np.float32)
-    registrationOutput = self.cpd_registration(targetArray, sourceArrayCombined, parameters["CPDIterations"], parameters["CPDTolerence"], parameters["alpha"], parameters["beta"])
+    registrationOutput = self.cpd_registration(targetArray, sourceArrayCombined, parameters["CPDIterations"], parameters["CPDTolerance"], parameters["alpha"], parameters["beta"])
     deformed_array, _ = registrationOutput.register()
     #Capture output landmarks from source pointcloud
     fiducial_prediction = deformed_array[-len(sourceLM):]
@@ -983,9 +921,9 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         registration.TransformationEstimationPointToPlane())
     return result
     
-  def cpd_registration(self, targetArray, sourceArray, CPDIterations, CPDTolerence, alpha_parameter, beta_parameter):
+  def cpd_registration(self, targetArray, sourceArray, CPDIterations, CPDTolerance, alpha_parameter, beta_parameter):
     from cpdalp import DeformableRegistration
-    output = DeformableRegistration(**{'X': targetArray, 'Y': sourceArray,'max_iterations': CPDIterations, 'tolerance': CPDTolerence, 'low_rank':True}, alpha = alpha_parameter, beta  = beta_parameter)
+    output = DeformableRegistration(**{'X': targetArray, 'Y': sourceArray,'max_iterations': CPDIterations, 'tolerance': CPDTolerance, 'low_rank':True}, alpha = alpha_parameter, beta  = beta_parameter)
     return output
     
   def getFiducialPoints(self,fiducialNode):
