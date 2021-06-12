@@ -30,7 +30,6 @@ class ALPACA(ScriptedLoadableModule):
       This module automatically transfers landmarks on a reference 3D model (mesh) to a target 3D model using dense correspondence and deformable registration. First optimize the parameters in single alignment analysis, then use them in batch mode to apply to all 3D models. 
       <p>For more information see the <a href="https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/ALPACA">online documentation.</a>.</p> 
       """
-    #self.parent.helpText += self.getDefaultModuleDocumentationLink()
     self.parent.acknowledgementText = """
       This module was developed by Arthur Porto, Sara Rolfe, and Murat Maga for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections" 
       awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839). 
@@ -81,15 +80,18 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
 
     # Set up tabs to split workflow
     tabsWidget = qt.QTabWidget()
+
     alignSingleTab = qt.QWidget()
     alignSingleTabLayout = qt.QFormLayout(alignSingleTab)
+
     alignMultiTab = qt.QWidget()
     alignMultiTabLayout = qt.QFormLayout(alignMultiTab)
+
     advancedSettingsTab = qt.QWidget()
     advancedSettingsTabLayout = qt.QFormLayout(advancedSettingsTab)
     
     [self.projectionFactor,self.pointDensity, self.normalSearchRadius, self.FPFHSearchRadius, self.distanceThreshold, self.maxRANSAC, self.maxRANSACValidation, 
-    self.ICPDistanceThreshold, self.alpha, self.beta, self.CPDIterations, self.CPDTolerance] = self.addAdvancedMenu(advancedSettingsTabLayout)
+    self.ICPDistanceThreshold, self.alpha, self.beta, self.CPDIterations, self.CPDTolerance, self.Acceleration, self.BCPDFolder] = self.addAdvancedMenu(advancedSettingsTabLayout)
 
     tabsWidget.addTab(alignSingleTab, "Single Alignment")
     tabsWidget.addTab(alignMultiTab, "Batch processing")
@@ -129,14 +131,14 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     #
     self.skipScalingCheckBox = qt.QCheckBox()
     self.skipScalingCheckBox.checked = 0
-    self.skipScalingCheckBox.setToolTip("If checked, ALPACA will skip scaling during the alignment (Not recommended).")
+    self.skipScalingCheckBox.setToolTip("If checked, ALPACA will skip scaling during alignment (Not recommended).")
     alignSingleWidgetLayout.addRow("Skip scaling", self.skipScalingCheckBox)
   
     # Select whether to skip projection-to-surface or not
     #
     self.skipProjectionCheckBox = qt.QCheckBox()
     self.skipProjectionCheckBox.checked = 0
-    self.skipProjectionCheckBox.setToolTip("If checked, ALPACA will skip final refinement step placing landmarks on the target suface.")
+    self.skipProjectionCheckBox.setToolTip("If checked, ALPACA will skip landmark projection towards the target suface.")
     alignSingleWidgetLayout.addRow("Skip projection", self.skipProjectionCheckBox)
     
    
@@ -153,7 +155,9 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.beta.connect('valueChanged(double)', self.onChangeAdvanced)
     self.CPDIterations.connect('valueChanged(double)', self.onChangeAdvanced)
     self.CPDTolerance.connect('valueChanged(double)', self.onChangeAdvanced)
-    
+    self.Acceleration.connect('toggled(bool)', self.onChangeCPD)
+    self.BCPDFolder.connect('validInputChanged(bool)', self.onChangeAdvanced)
+
     #
     # Subsample Button
     #
@@ -279,7 +283,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.applyLandmarkMultiButton.connect('clicked(bool)', self.onApplyLandmarkMulti)
     
     # Add vertical spacer
-    #self.layout.addStretch(1)
+    self.layout.addStretch(1)
       
     
     # initialize the parameter dictionary from single run parameters
@@ -295,7 +299,9 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       "alpha" : self.alpha.value,
       "beta" : self.beta.value,
       "CPDIterations" : int(self.CPDIterations.value),
-      "CPDTolerance" : self.CPDTolerance.value
+      "CPDTolerance" : self.CPDTolerance.value,
+      "Acceleration" : self.Acceleration.checked,
+      "BCPDFolder" : self.BCPDFolder.currentPath
       }
 
   
@@ -305,7 +311,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
   def onSelect(self):
     self.subsampleButton.enabled = bool ( self.sourceModelSelector.currentPath and self.targetModelSelector.currentPath and self.sourceFiducialSelector.currentPath)
     if bool(self.sourceModelSelector.currentPath):
-      self.sourceModelMultiSelector.currentPath = self.sourceModelSelector.currentPath
+      self.sourceModelMultiSelector.currentPath = self.sourceModelSelector.currentPath  
     if bool(self.sourceFiducialSelector.currentPath):
       self.sourceFiducialMultiSelector.currentPath = self.sourceFiducialSelector.currentPath
     if bool(self.targetModelSelector.currentPath):
@@ -316,8 +322,13 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     
 
   def onSelectMultiProcess(self):
-    self.applyLandmarkMultiButton.enabled = bool ( self.sourceModelMultiSelector.currentPath and self.sourceFiducialMultiSelector.currentPath 
-    and self.targetModelMultiSelector.currentPath and self.landmarkOutputSelector.currentPath)
+    if self.Acceleration.checked != 0:
+      self.applyLandmarkMultiButton.enabled = bool ( self.sourceModelMultiSelector.currentPath and self.sourceFiducialMultiSelector.currentPath 
+      and self.targetModelMultiSelector.currentPath and self.landmarkOutputSelector.currentPath and self.BCPDFolder.currentPath )
+    else:
+      self.applyLandmarkMultiButton.enabled = bool ( self.sourceModelMultiSelector.currentPath and self.sourceFiducialMultiSelector.currentPath 
+      and self.targetModelMultiSelector.currentPath and self.landmarkOutputSelector.currentPath )
+
       
   def onSubsampleButton(self):
     logic = ALPACALogic()
@@ -387,6 +398,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     
   def onCPDRegistration(self):
     logic = ALPACALogic()
+
     # Get source landmarks from file
     sourceLM_vtk, sourceLMNode =  logic.loadAndScaleFiducials(self.sourceFiducialSelector.currentPath, self.scaling)
     transform_vtk = self.ICPTransformNode.GetMatrixTransformToParent()
@@ -396,13 +408,16 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.alignedSourceSLM_np = vtk_np.vtk_to_numpy(self.alignedSourceSLM_vtk.GetPoints().GetData())
     self.alignedSourceLM_np = vtk_np.vtk_to_numpy(self.alignedSourceLM_vtk.GetPoints().GetData())
     self.registeredSourceArray = logic.runCPDRegistration(self.alignedSourceLM_np, self.alignedSourceSLM_np, self.targetPoints.points, self.parameterDictionary)
+    self.registeredSourceLM_vtk = logic.convertPointsToVTK(self.registeredSourceArray)
+
     outputPoints = logic.exportPointCloud(self.registeredSourceArray, "Initial Predicted Landmarks")
     inputPoints = logic.exportPointCloud(self.alignedSourceLM_np, "Original Landmarks")
+    
     green=[0,1,0]
     outputPoints.GetDisplayNode().SetColor(green)
+
     logic.RAS2LPSTransform(outputPoints)
     logic.RAS2LPSTransform(inputPoints)
-    self.registeredSourceLM_vtk = logic.convertPointsToVTK(self.registeredSourceArray)
     
     outputPoints_vtk = logic.getFiducialPoints(outputPoints)
     inputPoints_vtk = logic.getFiducialPoints(inputPoints)
@@ -415,7 +430,6 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     
     if self.skipProjectionCheckBox.checked: 
       logic.propagateLandmarkTypes(sourceLMNode, outputPoints)
-    # Projection
     else:
       print(":: Projecting landmarks to external surface")
       projectionFactor = self.projectionFactor.value/100
@@ -424,7 +438,6 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       projectedLandmarks.GetDisplayNode().SetPointLabelsVisibility(False)
       outputPoints.GetDisplayNode().SetVisibility(False)
     
-      
     # Enable next step of analysis  
     self.displayWarpedModelButton.enabled = True
     
@@ -446,7 +459,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       projectionFactor = self.projectionFactor.value/100
       
     logic.runLandmarkMultiprocess(self.sourceModelMultiSelector.currentPath,self.sourceFiducialMultiSelector.currentPath, 
-    self.targetModelMultiSelector.currentPath, self.landmarkOutputSelector.currentPath, self.skipScalingMultiCheckBox.checked, projectionFactor,self.parameterDictionary)
+    self.targetModelMultiSelector.currentPath, self.landmarkOutputSelector.currentPath, self.skipScalingMultiCheckBox.checked, projectionFactor, self.parameterDictionary)
     
     
   def updateLayout(self):
@@ -457,6 +470,12 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     
   def onChangeAdvanced(self):
     self.updateParameterDictionary()
+  
+  def onChangeCPD(self):
+    if self.Acceleration.checked != 0:
+      self.BCPDFolder.enabled = True
+    else:
+      self.BCPDFolder.enabled = False
     
   def updateParameterDictionary(self):    
     # update the parameter dictionary from single run parameters
@@ -473,6 +492,8 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       self.parameterDictionary["beta"] = self.beta.value
       self.parameterDictionary["CPDIterations"] = int(self.CPDIterations.value)
       self.parameterDictionary["CPDTolerance"] = self.CPDTolerance.value
+      self.parameterDictionary["Acceleration"] = self.Acceleration.checked
+      self.parameterDictionary["BCPDFolder"] = self.BCPDFolder.currentPath
       
 
       
@@ -592,7 +613,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     beta.setToolTip("Width of gaussian filter used when applying smoothness constraint")
     deformableRegistrationFormLayout.addRow("Motion coherence (beta): ", beta)
 
-    # # CPD iterations slider
+    # CPD iterations slider
     CPDIterations = ctk.ctkSliderWidget()
     CPDIterations.singleStep = 1
     CPDIterations.minimum = 100
@@ -601,7 +622,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     CPDIterations.setToolTip("Maximum number of iterations of the CPD procedure")
     deformableRegistrationFormLayout.addRow("CPD iterations: ", CPDIterations)
 
-    # # CPD tolerance slider
+    # CPD tolerance slider
     CPDTolerance = ctk.ctkSliderWidget()
     CPDTolerance.setDecimals(4)
     CPDTolerance.singleStep = .0001
@@ -611,7 +632,21 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     CPDTolerance.setToolTip("Tolerance used to assess CPD convergence")
     deformableRegistrationFormLayout.addRow("CPD tolerance: ", CPDTolerance)
 
-    return projectionFactor, pointDensity, normalSearchRadius, FPFHSearchRadius, distanceThreshold, maxRANSAC, maxRANSACValidation, ICPDistanceThreshold, alpha, beta, CPDIterations, CPDTolerance
+    # Acceleration checkbox
+    Acceleration = qt.QCheckBox()
+    Acceleration.checked = 0
+    Acceleration.setToolTip("If checked, ALPACA will accelerate the deformable step using VBI.")
+    deformableRegistrationFormLayout.addRow("Acceleration", Acceleration)  
+
+    # Compiled BCPD directory
+    BCPDFolder = ctk.ctkPathLineEdit()
+    BCPDFolder.filters = ctk.ctkPathLineEdit.Dirs
+    BCPDFolder.toolTip = "Select the directory of containing the compiled BCPD"
+    BCPDFolder.enabled = False
+    deformableRegistrationFormLayout.addRow("BCPD directory: ", BCPDFolder)
+  
+
+    return projectionFactor, pointDensity, normalSearchRadius, FPFHSearchRadius, distanceThreshold, maxRANSAC, maxRANSACValidation, ICPDistanceThreshold, alpha, beta, CPDIterations, CPDTolerance, Acceleration, BCPDFolder
     
 #
 # ALPACALogic
@@ -728,8 +763,19 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     #Convert back to numpy for cpd
     sourceArrayCombined = np.asarray(sourceCloud.points,dtype=np.float32)
     targetArray = np.asarray(targetCloud.points,dtype=np.float32)
-    registrationOutput = self.cpd_registration(targetArray, sourceArrayCombined, parameters["CPDIterations"], parameters["CPDTolerance"], parameters["alpha"], parameters["beta"])
-    deformed_array, _ = registrationOutput.register()
+    if parameters['Acceleration'] == 0:
+      registrationOutput = self.cpd_registration(targetArray, sourceArrayCombined, parameters["CPDIterations"], parameters["CPDTolerance"], parameters["alpha"], parameters["beta"])
+      deformed_array, _ = registrationOutput.register()
+    else:
+      np.savetxt ('target.txt', targetArray, delimiter=',')
+      np.savetxt ('source.txt', sourceArrayCombined, delimiter=',')
+      path = os.path.join(parameters["BCPDFolder"], 'bcpd') 
+      cmd = f'{path} -x target.txt -y source.txt -l{parameters["alpha"]} -b{parameters["beta"]} -g0.1 -K140 -J500 -c1e-6 -p -d7 -e0.3 -f0.3 -ux'
+      os.system(cmd)
+      deformed_array = np.loadtxt('output_y.txt')
+      os.system('del output*.txt')
+      os.system('del target.txt')
+      os.system('del source.txt')
     #Capture output landmarks from source pointcloud
     fiducial_prediction = deformed_array[-len(sourceLM):]
     fiducialCloud = geometry.PointCloud()
@@ -1101,6 +1147,3 @@ class ALPACATest(ScriptedLoadableModuleTest):
     logic = ALPACALogic()
     self.assertIsNotNone( logic.hasImageData(volumeNode) )
     self.delayDisplay('Test passed!')
-
-
-
