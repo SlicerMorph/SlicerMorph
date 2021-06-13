@@ -826,9 +826,10 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
       cmd = f'{path} -x target.txt -y source.txt -l{parameters["alpha"]} -b{parameters["beta"]} -g0.1 -K140 -J500 -c1e-6 -p -d7 -e0.3 -f0.3 -ux'
       os.system(cmd)
       deformed_array = np.loadtxt('output_y.txt')
-      os.system('del output*.txt')
-      os.system('del target.txt')
-      os.system('del source.txt')
+      for fl in glob.glob("output*.txt"):
+        os.remove(fl)
+      os.remove('target.txt')
+      os.remove('source.txt')
     #Capture output landmarks from source pointcloud
     fiducial_prediction = deformed_array[-len(sourceLM):]
     fiducialCloud = geometry.PointCloud()
@@ -1200,3 +1201,4 @@ class ALPACATest(ScriptedLoadableModuleTest):
     logic = ALPACALogic()
     self.assertIsNotNone( logic.hasImageData(volumeNode) )
     self.delayDisplay('Test passed!')
+
