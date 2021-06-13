@@ -10,7 +10,6 @@ import copy
 import multiprocessing
 import vtk.util.numpy_support as vtk_np
 import numpy as np
-
 #
 # ALPACA
 #
@@ -90,7 +89,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     advancedSettingsTab = qt.QWidget()
     advancedSettingsTabLayout = qt.QFormLayout(advancedSettingsTab)
     
-    [self.projectionFactor,self.pointDensity, self.normalSearchRadius, self.FPFHSearchRadius, self.distanceThreshold, self.maxRANSAC, self.maxRANSACValidation, 
+    [self.MultiTemplate, self.projectionFactor,self.pointDensity, self.normalSearchRadius, self.FPFHSearchRadius, self.distanceThreshold, self.maxRANSAC, self.maxRANSACValidation, 
     self.ICPDistanceThreshold, self.alpha, self.beta, self.CPDIterations, self.CPDTolerance, self.Acceleration, self.BCPDFolder] = self.addAdvancedMenu(advancedSettingsTabLayout)
 
     tabsWidget.addTab(alignSingleTab, "Single Alignment")
@@ -143,6 +142,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     
    
     # Advanced tab connections
+    self.MultiTemplate.connect('toggled(bool)', self.onChangeMultiTemplate)
     self.projectionFactor.connect('valueChanged(double)', self.onChangeAdvanced)
     self.pointDensity.connect('valueChanged(double)', self.onChangeAdvanced)
     self.normalSearchRadius.connect('valueChanged(double)', self.onChangeAdvanced)
@@ -157,6 +157,8 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.CPDTolerance.connect('valueChanged(double)', self.onChangeAdvanced)
     self.Acceleration.connect('toggled(bool)', self.onChangeCPD)
     self.BCPDFolder.connect('validInputChanged(bool)', self.onChangeAdvanced)
+    self.BCPDFolder.connect('validInputChanged(bool)', self.onChangeCPD)
+
 
     #
     # Subsample Button
@@ -322,11 +324,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     
 
   def onSelectMultiProcess(self):
-    if self.Acceleration.checked != 0:
-      self.applyLandmarkMultiButton.enabled = bool ( self.sourceModelMultiSelector.currentPath and self.sourceFiducialMultiSelector.currentPath 
-      and self.targetModelMultiSelector.currentPath and self.landmarkOutputSelector.currentPath and self.BCPDFolder.currentPath )
-    else:
-      self.applyLandmarkMultiButton.enabled = bool ( self.sourceModelMultiSelector.currentPath and self.sourceFiducialMultiSelector.currentPath 
+    self.applyLandmarkMultiButton.enabled = bool ( self.sourceModelMultiSelector.currentPath and self.sourceFiducialMultiSelector.currentPath 
       and self.targetModelMultiSelector.currentPath and self.landmarkOutputSelector.currentPath )
 
       
@@ -471,11 +469,29 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
   def onChangeAdvanced(self):
     self.updateParameterDictionary()
   
+  def onChangeMultiTemplate(self):
+    if self.MultiTemplate.checked != 0:
+      self.sourceModelMultiSelector.currentPath = ''
+      self.sourceModelMultiSelector.filters  = ctk.ctkPathLineEdit.Dirs
+      self.sourceFiducialMultiSelector.currentPath = ''
+      self.sourceFiducialMultiSelector.filters  = ctk.ctkPathLineEdit.Dirs
+    else:
+      self.sourceModelMultiSelector.filters  = ctk.ctkPathLineEdit().Files
+      self.sourceModelMultiSelector.nameFilters  = ["*.ply"]
+      self.sourceFiducialMultiSelector.filters  = ctk.ctkPathLineEdit().Files
+      self.sourceFiducialMultiSelector.nameFilters  = ["*.fcsv"]
+  
   def onChangeCPD(self):
     if self.Acceleration.checked != 0:
       self.BCPDFolder.enabled = True
+      self.subsampleButton.enabled = bool ( self.sourceModelSelector.currentPath and self.targetModelSelector.currentPath and self.sourceFiducialSelector.currentPath and self.BCPDFolder.currentPath)
+      self.applyLandmarkMultiButton.enabled = bool ( self.sourceModelMultiSelector.currentPath and self.sourceFiducialMultiSelector.currentPath 
+      and self.targetModelMultiSelector.currentPath and self.landmarkOutputSelector.currentPath and self.BCPDFolder.currentPath)
     else:
       self.BCPDFolder.enabled = False
+      self.subsampleButton.enabled = bool ( self.sourceModelSelector.currentPath and self.targetModelSelector.currentPath and self.sourceFiducialSelector.currentPath)
+      self.applyLandmarkMultiButton.enabled = bool ( self.sourceModelMultiSelector.currentPath and self.sourceFiducialMultiSelector.currentPath 
+      and self.targetModelMultiSelector.currentPath and self.landmarkOutputSelector.currentPath)
     
   def updateParameterDictionary(self):    
     # update the parameter dictionary from single run parameters
@@ -498,6 +514,13 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
 
       
   def addAdvancedMenu(self, currentWidgetLayout):
+
+    # Multi-template label
+    multiTemplateCollapsibleButton=ctk.ctkCollapsibleButton()
+    multiTemplateCollapsibleButton.text = "Multi-template"
+    currentWidgetLayout.addRow(multiTemplateCollapsibleButton)
+    multiTemplateFormLayout = qt.QFormLayout(multiTemplateCollapsibleButton)
+
     # Point density label
     pointDensityCollapsibleButton=ctk.ctkCollapsibleButton()
     pointDensityCollapsibleButton.text = "Point density and max projection"
@@ -515,6 +538,12 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     deformableRegistrationCollapsibleButton.text = "Deformable registration"
     currentWidgetLayout.addRow(deformableRegistrationCollapsibleButton)
     deformableRegistrationFormLayout = qt.QFormLayout(deformableRegistrationCollapsibleButton)
+
+    # MultiTemplate checkbox
+    MultiTemplate = qt.QCheckBox()
+    MultiTemplate.checked = 0
+    MultiTemplate.setToolTip("If checked, ALPACA will use multiple source templates")
+    multiTemplateFormLayout.addRow("Use multiple sources in batch mode: ", MultiTemplate)  
     
     # Point Density slider
     pointDensity = ctk.ctkSliderWidget()
@@ -646,7 +675,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     deformableRegistrationFormLayout.addRow("BCPD directory: ", BCPDFolder)
   
 
-    return projectionFactor, pointDensity, normalSearchRadius, FPFHSearchRadius, distanceThreshold, maxRANSAC, maxRANSACValidation, ICPDistanceThreshold, alpha, beta, CPDIterations, CPDTolerance, Acceleration, BCPDFolder
+    return MultiTemplate, projectionFactor, pointDensity, normalSearchRadius, FPFHSearchRadius, distanceThreshold, maxRANSAC, maxRANSACValidation, ICPDistanceThreshold, alpha, beta, CPDIterations, CPDTolerance, Acceleration, BCPDFolder
     
 #
 # ALPACALogic
@@ -664,62 +693,86 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
  
   def runLandmarkMultiprocess(self, sourceModelPath, sourceLandmarkPath, targetModelDirectory, outputDirectory, skipScaling, projectionFactor, parameters):
     extensionModel = ".ply"
+    if os.path.isdir(sourceModelPath):
+        specimenOutput = os.path.join(outputDirectory,'individualEstimates')
+        medianOutput = os.path.join(outputDirectory,'medianEstimates')
+        os.makedirs(specimenOutput, exist_ok=True)
+        os.makedirs(medianOutput, exist_ok=True)
     # Iterate through target models
     for targetFileName in os.listdir(targetModelDirectory):
       if targetFileName.endswith(extensionModel):
         targetFilePath = os.path.join(targetModelDirectory, targetFileName)
-        # Subsample source and target models
-        sourceData, targetData, sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, scaling = self.runSubsample(sourceModelPath, 
-        	targetFilePath, skipScaling, parameters)
-        # Rigid registration of source sampled points and landmarks
-        sourceLM_vtk, sourceLMNode = self.loadAndScaleFiducials(sourceLandmarkPath, scaling)
-        ICPTransform = self.estimateTransform(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, parameters)
-        ICPTransform_vtk = self.convertMatrixToVTK(ICPTransform)
-        sourceSLM_vtk = self.convertPointsToVTK(sourcePoints.points)
-        alignedSourceSLM_vtk = self.applyTransform(ICPTransform_vtk, sourceSLM_vtk)
-        alignedSourceLM_vtk = self.applyTransform(ICPTransform_vtk, sourceLM_vtk)
-    
-        # Non-rigid Registration
-        alignedSourceSLM_np = vtk_np.vtk_to_numpy(alignedSourceSLM_vtk.GetPoints().GetData())
-        alignedSourceLM_np = vtk_np.vtk_to_numpy(alignedSourceLM_vtk.GetPoints().GetData())
-        registeredSourceLM_np = self.runCPDRegistration(alignedSourceLM_np, alignedSourceSLM_np, targetPoints.points, parameters)
-        outputFiducialNode = self.exportPointCloud(registeredSourceLM_np, "Initial Predicted Landmarks")
-        self.RAS2LPSTransform(outputFiducialNode)
-        # Projection
-        if projectionFactor == 0:
-          self.propagateLandmarkTypes(sourceLMNode, outputFiducialNode)
-          # Save output landmarks
-          rootName = os.path.splitext(targetFileName)[0]
-          outputFilePath = os.path.join(outputDirectory, rootName + ".fcsv")
-          slicer.util.saveNode(outputFiducialNode, outputFilePath)
-          slicer.mrmlScene.RemoveNode(outputFiducialNode)
-        else: 
-          outputPoints_vtk = self.getFiducialPoints(outputFiducialNode)
-          targetModelNode = slicer.util.loadModel(targetFilePath)
-          sourceModelNode = slicer.util.loadModel(sourceModelPath)
-          sourcePoints = slicer.util.arrayFromModelPoints(sourceModelNode)
-          sourcePoints[:] = np.asarray(sourceData.points)
-          sourceModelNode.GetPolyData().GetPoints().GetData().Modified()
-          sourceModelNode_warped = self.applyTPSTransform(sourceLM_vtk.GetPoints(), outputPoints_vtk, sourceModelNode, 'Warped Source Mesh')
-          
-          # project landmarks from template to model
-          maxProjection = (targetModelNode.GetPolyData().GetLength()) * projectionFactor
-          projectedPoints = self.projectPointsPolydata(sourceModelNode_warped.GetPolyData(), targetModelNode.GetPolyData(), outputPoints_vtk, maxProjection)
-          projectedLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"Refined Predicted Landmarks")
-          for i in range(projectedPoints.GetNumberOfPoints()):
+        rootName = os.path.splitext(targetFileName)[0]  
+        landmarkList = []
+        if os.path.isdir(sourceModelPath):
+          outputMedianPath = os.path.join(medianOutput, f'{rootName}_median.fcsv')
+          if not os.path.exists(outputMedianPath):
+            for file in os.listdir(sourceModelPath):
+              if file.endswith(extensionModel):
+                sourceFilePath = os.path.join(sourceModelPath,file)
+                (baseName, ext) = os.path.splitext(file)
+                sourceLandmarkFile = os.path.join(sourceLandmarkPath, f'{baseName}.fcsv')
+                outputFilePath = os.path.join(specimenOutput, f'{rootName}_{baseName}.fcsv')
+                array = self.pairwiseAlignment(sourceFilePath, sourceLandmarkFile, targetFilePath, outputFilePath, skipScaling, projectionFactor, parameters)
+                landmarkList.append(array)
+            medianLandmark = np.median(landmarkList, axis=0)
+            outputMedianNode = self.exportPointCloud(medianLandmark, "Median Predicted Landmarks")     
+            slicer.util.saveNode(outputMedianNode, outputMedianPath)
+            slicer.mrmlScene.RemoveNode(outputMedianNode)
+        elif os.path.isfile(sourceModelPath):
+            rootName = os.path.splitext(targetFileName)[0]
+            outputFilePath = os.path.join(outputDirectory, rootName + ".fcsv")
+            array = self.pairwiseAlignment(sourceModelPath, sourceLandmarkPath, targetFilePath, outputFilePath, skipScaling, projectionFactor, parameters)
+        else:
+            print('::::Could not find the file or directory in question')
+
+
+  def pairwiseAlignment (self, sourceFilePath, sourceLandmarkFile, targetFilePath, outputFilePath, skipScaling, projectionFactor, parameters):
+    sourceData, targetData, sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, scaling = self.runSubsample(sourceFilePath, 
+        targetFilePath, skipScaling, parameters)
+    ICPTransform = self.estimateTransform(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, parameters)
+    #vtk
+    sourceLM_vtk, sourceLMNode = self.loadAndScaleFiducials(sourceLandmarkFile, scaling)
+    ICPTransform_vtk = self.convertMatrixToVTK(ICPTransform)
+    sourceSLM_vtk = self.convertPointsToVTK(sourcePoints.points)
+    alignedSourceSLM_vtk = self.applyTransform(ICPTransform_vtk, sourceSLM_vtk)
+    alignedSourceLM_vtk = self.applyTransform(ICPTransform_vtk, sourceLM_vtk)
+    #numpy
+    alignedSourceSLM_np = vtk_np.vtk_to_numpy(alignedSourceSLM_vtk.GetPoints().GetData())
+    alignedSourceLM_np = vtk_np.vtk_to_numpy(alignedSourceLM_vtk.GetPoints().GetData())
+    registeredSourceLM_np = self.runCPDRegistration(alignedSourceLM_np, alignedSourceSLM_np, targetPoints.points, parameters)
+    outputFiducialNode = self.exportPointCloud(registeredSourceLM_np, "Initial Predicted Landmarks")
+    self.RAS2LPSTransform(outputFiducialNode)
+    if projectionFactor == 0:
+        self.propagateLandmarkTypes(sourceLMNode, outputFiducialNode)
+        slicer.util.saveNode(outputFiducialNode, outputFilePath)
+        slicer.mrmlScene.RemoveNode(outputFiducialNode)
+        slicer.mrmlScene.RemoveNode(sourceLMNode)
+        return registeredSourceLM_np
+    else: 
+        outputPoints_vtk = self.getFiducialPoints(outputFiducialNode)
+        targetModelNode = slicer.util.loadModel(targetFilePath)
+        sourceModelNode = slicer.util.loadModel(sourceFilePath)
+        sourcePoints = slicer.util.arrayFromModelPoints(sourceModelNode)
+        sourcePoints[:] = np.asarray(sourceData.points)
+        sourceModelNode.GetPolyData().GetPoints().GetData().Modified()
+        sourceModelNode_warped = self.applyTPSTransform(sourceLM_vtk.GetPoints(), outputPoints_vtk, sourceModelNode, 'Warped Source Mesh')
+        maxProjection = (targetModelNode.GetPolyData().GetLength()) * projectionFactor
+        projectedPoints = self.projectPointsPolydata(sourceModelNode_warped.GetPolyData(), targetModelNode.GetPolyData(), outputPoints_vtk, maxProjection)
+        projectedLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"Refined Predicted Landmarks")
+        for i in range(projectedPoints.GetNumberOfPoints()):
             point = projectedPoints.GetPoint(i)
             projectedLMNode.AddFiducialFromArray(point)
-          self.propagateLandmarkTypes(sourceLMNode, projectedLMNode) 
-          # Save output landmarks
-          rootName = os.path.splitext(targetFileName)[0]
-          outputFilePath = os.path.join(outputDirectory, rootName + ".fcsv")
-          slicer.util.saveNode(projectedLMNode, outputFilePath)
-          slicer.mrmlScene.RemoveNode(outputFiducialNode)
-          slicer.mrmlScene.RemoveNode(projectedLMNode)
-          slicer.mrmlScene.RemoveNode(sourceModelNode)
-          slicer.mrmlScene.RemoveNode(targetModelNode)
-          slicer.mrmlScene.RemoveNode(sourceModelNode_warped)
-          slicer.mrmlScene.RemoveNode(sourceLMNode)
+        self.propagateLandmarkTypes(sourceLMNode, projectedLMNode) 
+        slicer.util.saveNode(projectedLMNode, outputFilePath)
+        slicer.mrmlScene.RemoveNode(projectedLMNode)
+        slicer.mrmlScene.RemoveNode(outputFiducialNode)
+        slicer.mrmlScene.RemoveNode(sourceModelNode)
+        slicer.mrmlScene.RemoveNode(targetModelNode)
+        slicer.mrmlScene.RemoveNode(sourceModelNode_warped)
+        slicer.mrmlScene.RemoveNode(sourceLMNode)
+        np_array = vtk_np.vtk_to_numpy(projectedPoints.GetPoints().GetData())
+        return np_array
           
 
   def exportPointCloud(self, pointCloud, nodeName):
