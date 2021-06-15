@@ -157,6 +157,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.CPDIterations.connect('valueChanged(double)', self.onChangeAdvanced)
     self.CPDTolerance.connect('valueChanged(double)', self.onChangeAdvanced)
     self.Acceleration.connect('toggled(bool)', self.onChangeCPD)
+    self.Acceleration.connect('toggled(bool)', self.onChangeAdvanced)
     self.BCPDFolder.connect('validInputChanged(bool)', self.onChangeAdvanced)
     self.BCPDFolder.connect('validInputChanged(bool)', self.onChangeCPD)
 
