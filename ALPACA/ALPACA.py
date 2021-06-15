@@ -2,6 +2,7 @@
 import os
 import unittest
 import logging
+import json
 import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
@@ -156,7 +157,6 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.CPDIterations.connect('valueChanged(double)', self.onChangeAdvanced)
     self.CPDTolerance.connect('valueChanged(double)', self.onChangeAdvanced)
     self.Acceleration.connect('toggled(bool)', self.onChangeCPD)
-    self.Acceleration.connect('toggled(bool)', self.onChangeAdvanced)
     self.BCPDFolder.connect('validInputChanged(bool)', self.onChangeAdvanced)
     self.BCPDFolder.connect('validInputChanged(bool)', self.onChangeCPD)
 
@@ -693,6 +693,10 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     """
  
   def runLandmarkMultiprocess(self, sourceModelPath, sourceLandmarkPath, targetModelDirectory, outputDirectory, skipScaling, projectionFactor, parameters):
+    extras = {"Source" : sourceModelPath, "Target" : targetModelDirectory,'Skip scaling ?' : bool(skipScaling)}
+    extras.update(parameters)
+    parameterFile = os.path.join(outputDirectory, 'advancedParameters.txt')
+    json.dump(extras, open(parameterFile,'w'), indent = 2)
     extensionModel = ".ply"
     if os.path.isdir(sourceModelPath):
         specimenOutput = os.path.join(outputDirectory,'individualEstimates')
@@ -1202,4 +1206,3 @@ class ALPACATest(ScriptedLoadableModuleTest):
     logic = ALPACALogic()
     self.assertIsNotNone( logic.hasImageData(volumeNode) )
     self.delayDisplay('Test passed!')
-
