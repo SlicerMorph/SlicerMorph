@@ -3,6 +3,7 @@ import os
 import unittest
 import logging
 import json
+import subprocess
 import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
@@ -830,7 +831,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
       np.savetxt ('source.txt', sourceArrayCombined, delimiter=',')
       path = os.path.join(parameters["BCPDFolder"], 'bcpd') 
       cmd = f'{path} -x target.txt -y source.txt -l{parameters["alpha"]} -b{parameters["beta"]} -g0.1 -K140 -J500 -c1e-6 -p -d7 -e0.3 -f0.3 -ux'
-      os.system(cmd)
+      subprocess.run(cmd, shell = True)
       deformed_array = np.loadtxt('output_y.txt')
       for fl in glob.glob("output*.txt"):
         os.remove(fl)
