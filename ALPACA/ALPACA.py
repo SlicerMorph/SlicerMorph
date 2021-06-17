@@ -91,7 +91,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     advancedSettingsTab = qt.QWidget()
     advancedSettingsTabLayout = qt.QFormLayout(advancedSettingsTab)
     
-    [self.MultiTemplate, self.projectionFactor,self.pointDensity, self.normalSearchRadius, self.FPFHSearchRadius, self.distanceThreshold, self.maxRANSAC, self.maxRANSACValidation, 
+    [self.projectionFactor,self.pointDensity, self.normalSearchRadius, self.FPFHSearchRadius, self.distanceThreshold, self.maxRANSAC, self.maxRANSACValidation, 
     self.ICPDistanceThreshold, self.alpha, self.beta, self.CPDIterations, self.CPDTolerance, self.Acceleration, self.BCPDFolder] = self.addAdvancedMenu(advancedSettingsTabLayout)
 
     tabsWidget.addTab(alignSingleTab, "Single Alignment")
@@ -144,7 +144,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     
    
     # Advanced tab connections
-    self.MultiTemplate.connect('toggled(bool)', self.onChangeMultiTemplate)
+    
     self.projectionFactor.connect('valueChanged(double)', self.onChangeAdvanced)
     self.pointDensity.connect('valueChanged(double)', self.onChangeAdvanced)
     self.normalSearchRadius.connect('valueChanged(double)', self.onChangeAdvanced)
@@ -222,12 +222,19 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.CPDRegistrationButton.connect('clicked(bool)', self.onCPDRegistration)
     self.displayWarpedModelButton.connect('clicked(bool)', self.onDisplayWarpedModel)
     
+
     # Layout within the multiprocessing tab
     alignMultiWidget=ctk.ctkCollapsibleButton()
     alignMultiWidgetLayout = qt.QFormLayout(alignMultiWidget)
     alignMultiWidget.text = "Transfer landmark points from one or multiple source meshes to a directory of target meshes "
     alignMultiTabLayout.addRow(alignMultiWidget)
-  
+
+    # Layout within the multiprocessing tab
+    self.MethodBatchWidget= qt.QComboBox()
+    self.MethodBatchWidget.addItems(['Single-Template', 'Multi-Template'])
+    alignMultiWidgetLayout.addRow("Method:", self.MethodBatchWidget)
+
+
     #
     # Select source mesh
     #
@@ -235,7 +242,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.sourceModelMultiSelector.filters  = ctk.ctkPathLineEdit().Files
     self.sourceModelMultiSelector.nameFilters=["*.ply"]
     self.sourceModelMultiSelector.toolTip = "Select the source mesh"
-    alignMultiWidgetLayout.addRow("Source mesh: ", self.sourceModelMultiSelector)
+    alignMultiWidgetLayout.addRow("Source mesh(es): ", self.sourceModelMultiSelector)
     
     #
     # Select source landmark file
@@ -259,7 +266,8 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.landmarkOutputSelector.filters = ctk.ctkPathLineEdit.Dirs
     self.landmarkOutputSelector.toolTip = "Select the output directory where the landmarks will be saved"
     alignMultiWidgetLayout.addRow("Target output landmark directory: ", self.landmarkOutputSelector)
-    
+
+
     self.skipScalingMultiCheckBox = qt.QCheckBox()
     self.skipScalingMultiCheckBox.checked = 0
     self.skipScalingMultiCheckBox.setToolTip("If checked, ALPACA will skip scaling during the alignment.")
@@ -280,6 +288,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     
     
     # connections
+    self.MethodBatchWidget.connect('currentIndexChanged(int)', self.onChangeMultiTemplate)
     self.sourceModelMultiSelector.connect('validInputChanged(bool)', self.onSelectMultiProcess)
     self.sourceFiducialMultiSelector.connect('validInputChanged(bool)', self.onSelectMultiProcess)
     self.targetModelMultiSelector.connect('validInputChanged(bool)', self.onSelectMultiProcess)
@@ -473,16 +482,20 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.updateParameterDictionary()
   
   def onChangeMultiTemplate(self):
-    if self.MultiTemplate.checked != 0:
+    if self.MethodBatchWidget.currentText == 'Multi-Template':
       self.sourceModelMultiSelector.currentPath = ''
       self.sourceModelMultiSelector.filters  = ctk.ctkPathLineEdit.Dirs
+      self.sourceModelMultiSelector.toolTip = "Select a directory containing the source meshes (note: filenames must match with landmark filenames)"
       self.sourceFiducialMultiSelector.currentPath = ''
       self.sourceFiducialMultiSelector.filters  = ctk.ctkPathLineEdit.Dirs
+      self.sourceFiducialMultiSelector.toolTip = "Select a directory containing the landmark files (note:filenames must match with source meshes)"
     else:
       self.sourceModelMultiSelector.filters  = ctk.ctkPathLineEdit().Files
       self.sourceModelMultiSelector.nameFilters  = ["*.ply"]
+      self.sourceModelMultiSelector.toolTip = "Select the source mesh"
       self.sourceFiducialMultiSelector.filters  = ctk.ctkPathLineEdit().Files
       self.sourceFiducialMultiSelector.nameFilters  = ["*.fcsv"]
+      self.sourceFiducialMultiSelector.toolTip = "Select the source landmarks"
   
   def onChangeCPD(self):
     if self.Acceleration.checked != 0:
@@ -518,12 +531,6 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       
   def addAdvancedMenu(self, currentWidgetLayout):
 
-    # Multi-template label
-    multiTemplateCollapsibleButton=ctk.ctkCollapsibleButton()
-    multiTemplateCollapsibleButton.text = "Multi-template"
-    currentWidgetLayout.addRow(multiTemplateCollapsibleButton)
-    multiTemplateFormLayout = qt.QFormLayout(multiTemplateCollapsibleButton)
-
     # Point density label
     pointDensityCollapsibleButton=ctk.ctkCollapsibleButton()
     pointDensityCollapsibleButton.text = "Point density and max projection"
@@ -542,12 +549,6 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     currentWidgetLayout.addRow(deformableRegistrationCollapsibleButton)
     deformableRegistrationFormLayout = qt.QFormLayout(deformableRegistrationCollapsibleButton)
 
-    # MultiTemplate checkbox
-    MultiTemplate = qt.QCheckBox()
-    MultiTemplate.checked = 0
-    MultiTemplate.setToolTip("If checked, ALPACA will use multiple source templates")
-    multiTemplateFormLayout.addRow("Use multiple sources in batch mode: ", MultiTemplate)  
-    
     # Point Density slider
     pointDensity = ctk.ctkSliderWidget()
     pointDensity.singleStep = 0.1
@@ -678,7 +679,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     deformableRegistrationFormLayout.addRow("BCPD directory: ", BCPDFolder)
   
 
-    return MultiTemplate, projectionFactor, pointDensity, normalSearchRadius, FPFHSearchRadius, distanceThreshold, maxRANSAC, maxRANSACValidation, ICPDistanceThreshold, alpha, beta, CPDIterations, CPDTolerance, Acceleration, BCPDFolder
+    return projectionFactor, pointDensity, normalSearchRadius, FPFHSearchRadius, distanceThreshold, maxRANSAC, maxRANSACValidation, ICPDistanceThreshold, alpha, beta, CPDIterations, CPDTolerance, Acceleration, BCPDFolder
     
 #
 # ALPACALogic
