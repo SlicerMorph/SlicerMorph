@@ -145,8 +145,8 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.targetModelSelector.showHidden = False
     self.targetModelSelector.setMRMLScene( slicer.mrmlScene )
     self.targetModelSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onSelect)
-    alignSingleWidgetLayout.addRow("Source Model: ", self.targetModelSelector)
-    self.targetModelSelector.setToolTip( "Select source model" )
+    alignSingleWidgetLayout.addRow("Target Model: ", self.targetModelSelector)
+    self.targetModelSelector.setToolTip( "Select target model" )
 
     # Select whether to skip scaling or not
     #
