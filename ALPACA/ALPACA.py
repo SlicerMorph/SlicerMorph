@@ -394,7 +394,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     
   def onAlignButton(self):
     logic = ALPACALogic()
-    self.transformMatrix = logic.estimateTransform(self.sourcePoints, self.targetPoints, self.sourceFeatures, self.targetFeatures, self.voxelSize, self.parameterDictionary)
+    self.transformMatrix = logic.estimateTransform(self.sourcePoints, self.targetPoints, self.sourceFeatures, self.targetFeatures, self.voxelSize, self.skipScalingCheckBox.checked, self.parameterDictionary)
     self.ICPTransformNode = logic.convertMatrixToTransformNode(self.transformMatrix, 'Rigid Transformation Matrix')
     self.sourcePoints.transform(self.transformMatrix)
     self.sourceVTK = logic.convertPointsToVTK(self.sourcePoints.points)
@@ -786,7 +786,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     sourceModelNode.GetDisplayNode().SetVisibility(False)
     sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, scaling = self.runSubsample(sourceModelNode, 
         targetModelNode, skipScaling, parameters)
-    ICPTransform = self.estimateTransform(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, parameters)
+    ICPTransform = self.estimateTransform(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, skipScaling, parameters)
     #Rigid
     sourceLandmarks, sourceLMNode = self.loadAndScaleFiducials(sourceLandmarkFile, scaling)
     sourceLandmarks.transform(ICPTransform)
@@ -975,9 +975,9 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     modelNode.GetDisplayNode().SetColor(nodeColor) 
     return modelNode
     
-  def estimateTransform(self, sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, parameters):
+  def estimateTransform(self, sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, skipScaling, parameters):
     ransac = self.execute_global_registration(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize * 2.5, 
-      parameters["distanceThreshold"], parameters["maxRANSAC"], parameters["maxRANSACValidation"])
+      parameters["distanceThreshold"], parameters["maxRANSAC"], parameters["maxRANSACValidation"], skipScaling)
     
     # Refine the initial registration using an Iterative Closest Point (ICP) registration
     icp = self.refine_registration(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize * 2.5, ransac, parameters["ICPDistanceThreshold"]) 
@@ -1066,7 +1066,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
 
 
   def execute_global_registration(self, source_down, target_down, source_fpfh,
-                                target_fpfh, voxel_size, distance_threshold_factor, maxIter, maxValidation):
+                                target_fpfh, voxel_size, distance_threshold_factor, maxIter, maxValidation, skipScaling):
     from open3d import registration
     distance_threshold = voxel_size * distance_threshold_factor
     print(":: RANSAC registration on downsampled point clouds.")
@@ -1074,7 +1074,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     print("   we use a liberal distance threshold %.3f." % distance_threshold)
     result = registration.registration_ransac_based_on_feature_matching(
         source_down, target_down, source_fpfh, target_fpfh, distance_threshold,
-        registration.TransformationEstimationPointToPoint(True), 4, [
+        registration.TransformationEstimationPointToPoint(skipScaling == 0), 4, [
             registration.CorrespondenceCheckerBasedOnEdgeLength(0.9),
             registration.CorrespondenceCheckerBasedOnDistance(
                 distance_threshold)
