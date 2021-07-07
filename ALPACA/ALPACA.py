@@ -1034,6 +1034,8 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
      for i in range(sourceNode.GetNumberOfControlPoints()):
        pointDescription = sourceNode.GetNthControlPointDescription(i)
        targetNode.SetNthControlPointDescription(i,pointDescription)
+       pointLabel = sourceNode.GetNthFiducialLabel(i)
+       targetNode.SetNthFiducialLabel(i, pointLabel)
                
   def distanceMatrix(self, a):
     """
