@@ -28,7 +28,7 @@ Any number of these actions can be added as separate time-tracks.
 **Output File:** Specify the location of the output file. 
 
 ### KNOWN ISSUES
-Animator module needs the FFMPEG library to produce mp4 output. Slicer will automatically download the binaries for MacOS and WIndows. However, Linux users need to compile from the source. [See details here](https://www.slicer.org/wiki/Documentation/Nightly/Modules/ScreenCapture#Linux_setup_instructions)
+Animator module needs the FFMPEG library to produce mp4 output. Slicer will automatically download the binaries for Windows. For Mac & Linux [See instruction here here](https://slicer.readthedocs.io/en/latest/user_guide/modules/screencapture.html#setting-up-ffmpeg)
 
 ### TUTORIAL
 Please see https://github.com/SlicerMorph/Tutorials/tree/main/Animator
