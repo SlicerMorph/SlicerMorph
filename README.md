@@ -16,9 +16,8 @@ Alternatively, we maintain an archive of the latest Slicer stable with SlicerMor
 ## How to cite
 If you use SlicerMorph in your research, please cite one or more of these publications.
 
-* **SlicerMorph** as a general platform for digital morphology: Rolfe, S., Pieper, S., Porto, A., Diamond, K., Winchester, J., Shan, S., … Maga, A. M. (2020). _SlicerMorph: An open and extensible platform to retrieve, visualize and analyze 3D morphology._ Methods in Ecology and Evolution, https://doi.org/10.1111/2041-210X.13669 (early view)
-
-Note that there is an more extended version of this paper as preprint: Rolfe, S., Pieper, S., Porto, A., Diamond, K., Winchester, J., Shan, S., … Maga, A. M. (2020). _SlicerMorph: An open and extensible platform to retrieve, visualize and analyze 3D morphology._ BioRxiv, 2020.11.09.374926. https://doi.org/10.1101/2020.11.09.374926
+* **SlicerMorph** as a general platform for digital morphology: Rolfe, S., Pieper, S., Porto, A., Diamond, K., Winchester, J., Shan, S., … Maga, A. M. (2020). _SlicerMorph: An open and extensible platform to retrieve, visualize and analyze 3D morphology._ Methods in Ecology and Evolution, https://doi.org/10.1111/2041-210X.13669 (early view)   
+Note that there is an more extended version of the paper above on the biorxiv preprint server: Rolfe, S., Pieper, S., Porto, A., Diamond, K., Winchester, J., Shan, S., … Maga, A. M. (2020). _SlicerMorph: An open and extensible platform to retrieve, visualize and analyze 3D morphology._ BioRxiv, 2020.11.09.374926. https://doi.org/10.1101/2020.11.09.374926
 
 * For **CreateSemiLMPatches, ProjectSemiLMs, PseudoLMGenerator**: Rolfe, S., Davis, C., & Maga, A. M. (2021). _Comparing semi-landmarking approaches for analyzing three-dimensional cranial morphology. American Journal of Physical Anthropology_, (Early View). https://doi.org/10.1002/ajpa.24214
 
