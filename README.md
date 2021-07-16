@@ -13,14 +13,16 @@ Official method of obtaining SlicerMorph is through extension mechanism of 3D Sl
 
 Alternatively, we maintain an archive of the latest Slicer stable with SlicerMorph and other extensions are bundled with. These packages do not require installation, simply extract the archive and execute Slicer file within the top level of the folder. [You can find these packages here.](http://download.slicermorph.org)
 
-## Citations
+## How to cite
 If you use SlicerMorph in your research, please cite one or more of these publications.
 
-* **SlicerMorph** as a general platform for digital morphology: Rolfe, S., Pieper, S., Porto, A., Diamond, K., Winchester, J., Shan, S., … Maga, A. M. (2020). _SlicerMorph: An open and extensible platform to retrieve, visualize and analyze 3D morphology._ BioRxiv, 2020.11.09.374926. https://doi.org/10.1101/2020.11.09.374926
+* **SlicerMorph** as a general platform for digital morphology: Rolfe, S., Pieper, S., Porto, A., Diamond, K., Winchester, J., Shan, S., … Maga, A. M. (2020). _SlicerMorph: An open and extensible platform to retrieve, visualize and analyze 3D morphology._ Methods in Ecology and Evolution, https://doi.org/10.1111/2041-210X.13669 (early view)
+
+Note that there is an more extended version of this paper as preprint: Rolfe, S., Pieper, S., Porto, A., Diamond, K., Winchester, J., Shan, S., … Maga, A. M. (2020). _SlicerMorph: An open and extensible platform to retrieve, visualize and analyze 3D morphology._ BioRxiv, 2020.11.09.374926. https://doi.org/10.1101/2020.11.09.374926
 
 * For **CreateSemiLMPatches, ProjectSemiLMs, PseudoLMGenerator**: Rolfe, S., Davis, C., & Maga, A. M. (2021). _Comparing semi-landmarking approaches for analyzing three-dimensional cranial morphology. American Journal of Physical Anthropology_, (Early View). https://doi.org/10.1002/ajpa.24214
 
-* For **ALPACA**: Porto, A., Rolfe, S. M., & Maga, A. M. (2020). _ALPACA: A fast and accurate approach for automated landmarking of three-dimensional biological structures_. BioRxiv, 2020.09.18.303891. https://doi.org/10.1101/2020.09.18.303891
+* For **ALPACA**: Porto, A., Rolfe, S. M., & Maga, A. M. (2021). _ALPACA: A fast and accurate approach for automated landmarking of three-dimensional biological structures_. BioRxiv, Methods in Ecology and Evolution (in press)
 
 To cite 3D Slicer as a general purpose biomedical visualization platform, please use: Kikinis, R., Pieper, S. D., & Vosburgh, K. G. (2014). 3D Slicer: A Platform for Subject-Specific Image Analysis, Visualization, and Clinical Support. In Intraoperative Imaging and Image-Guided Therapy (pp. 277–289). Springer, New York, NY. https://doi.org/10.1007/978-1-4614-7657-3_19
 
