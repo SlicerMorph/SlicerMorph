@@ -21,7 +21,7 @@ Note that there is an more extended version of the paper above on the biorxiv pr
 
 * For **CreateSemiLMPatches, ProjectSemiLMs, PseudoLMGenerator**: Rolfe, S., Davis, C., & Maga, A. M. (2021). _Comparing semi-landmarking approaches for analyzing three-dimensional cranial morphology. American Journal of Physical Anthropology_, (Early View). https://doi.org/10.1002/ajpa.24214
 
-* For **ALPACA**: Porto, A., Rolfe, S. M., & Maga, A. M. (2021). _ALPACA: A fast and accurate approach for automated landmarking of three-dimensional biological structures_. BioRxiv, Methods in Ecology and Evolution (in press)
+* For **ALPACA**: Porto, A., Rolfe, S. M., & Maga, A. M. (2021). _ALPACA: A fast and accurate approach for automated landmarking of three-dimensional biological structures_. Methods in Ecology and Evolution (in press)
 
 To cite 3D Slicer as a general purpose biomedical visualization platform, please use: Kikinis, R., Pieper, S. D., & Vosburgh, K. G. (2014). 3D Slicer: A Platform for Subject-Specific Image Analysis, Visualization, and Clinical Support. In Intraoperative Imaging and Image-Guided Therapy (pp. 277–289). Springer, New York, NY. https://doi.org/10.1007/978-1-4614-7657-3_19
 
