@@ -22,7 +22,9 @@ If you want to load all the images in a folder, drag either the folder or a sing
 
 **Quality:** There are three presets options: **Preview:** downsamples dataset by 4 in each axis (64 folds reduction in data volume); **Half resolution:** downsamples dataset by 2 in each axis (8 folds reduction in data volume); **Full Volumes:** does not modify the resolution. 
 
-**Skip Slice:** Allows alternatively to import only every (N+1)th slice to further downsample the volume. 0 means no skipping slice. 
+**Slice skip:** Allows alternatively to import only every (N+1)th slice to further downsample the volume. 0 means no skipping slice. 
+
+**Grayscale:** Force output image to be grayscale (single scalar component). This is particularly useful when grayscale images are stored using RGB (or RGBA) voxels. Most processing and analysis algorithms require grayscale input, therefore it is recommended to enable this option.
 
 **Output Size:** Reports the image dimensions and data type of the files along with its estimated memory usage at the specified quality setting.
 

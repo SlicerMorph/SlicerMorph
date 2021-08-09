@@ -141,7 +141,7 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # output volume selector
     #
     self.outputSelector = slicer.qMRMLNodeComboBox()
-    self.outputSelector.nodeTypes = ["vtkMRMLScalarVolumeNode"]
+    self.outputSelector.nodeTypes = ["vtkMRMLScalarVolumeNode", "vtkMRMLVectorVolumeNode"]
     self.outputSelector.showChildNodeTypes = False
     self.outputSelector.showHidden = False
     self.outputSelector.showChildNodeTypes = False
@@ -189,6 +189,12 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.sliceSkipSpinBox.toolTip = "Skips the selected number of slices between each pair of output volume slices (use, for example, on long thin samples with more slices than in-plane resolution)"
     outputFormLayout.addRow("Slice skip: ", self.sliceSkipSpinBox)
 
+    # Force grayscale output
+    self.grayscaleCheckBox = qt.QCheckBox()
+    self.grayscaleCheckBox.toolTip = "Force reading the image in grayscale. Only makes a difference if the input has color (RGB or RGBA) voxels."
+    self.grayscaleCheckBox.checked = True
+    outputFormLayout.addRow("Grayscale: ", self.grayscaleCheckBox)
+
     # output volume size
     self.outputVolumeSizeLabel = qt.QLabel()
     outputFormLayout.addRow("Output size: ", self.outputVolumeSizeLabel)
@@ -219,6 +225,7 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.qualityPreviewRadioButton.connect("toggled(bool)", lambda toggled, widget=self.qualityPreviewRadioButton: self.onQualityToggled(toggled, widget))
     self.qualityHalfRadioButton.connect("toggled(bool)", lambda toggled, widget=self.qualityHalfRadioButton: self.onQualityToggled(toggled, widget))
     self.qualityFullRadioButton.connect("toggled(bool)", lambda toggled, widget=self.qualityFullRadioButton: self.onQualityToggled(toggled, widget))
+    self.grayscaleCheckBox.connect('toggled(bool)', self.updateLogicFromWidget)
     self.outputROISelector.connect("currentNodeChanged(vtkMRMLNode*)", self.setOutputROINode)
     self.addByBrowsingButton.connect('clicked()', self.addByBrowsing)
     self.addFromArchetype.connect('clicked()', self.selectArchetype)
@@ -245,11 +252,11 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       self.loadButton.enabled = False
       return
 
-    self.originalVolumeSizeLabel.text = ImageStacksLogic.humanizeImageSize(self.logic.originalVolumeDimensions, self.logic.originalVolumeVoxelDataType)
+    self.originalVolumeSizeLabel.text = ImageStacksLogic.humanizeImageSize(self.logic.originalVolumeDimensions, self.logic.originalVolumeNumberOfScalarComponents, self.logic.originalVolumeVoxelDataType)
 
-    outputIJKToRAS, outputExtent = self.logic.outputVolumeGeometry()
+    outputIJKToRAS, outputExtent, outputNumberOfScalarComponents = self.logic.outputVolumeGeometry()
     outputVolumeDimensions = [outputExtent[i*2+1]-outputExtent[i*2]+1 for i in range(3)]
-    self.outputVolumeSizeLabel.text = ImageStacksLogic.humanizeImageSize(outputVolumeDimensions, self.logic.originalVolumeVoxelDataType)
+    self.outputVolumeSizeLabel.text = ImageStacksLogic.humanizeImageSize(outputVolumeDimensions, outputNumberOfScalarComponents, self.logic.originalVolumeVoxelDataType)
     outputSpacing = [numpy.linalg.norm(outputIJKToRAS[0:3,i]) for i in range(3)]
     self.outputSpacingWidget.coordinates = f"{outputSpacing[0]},{outputSpacing[1]},{outputSpacing[2]}"
 
@@ -258,6 +265,7 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
   def updateLogicFromWidget(self):
     self.logic.reverseSliceOrder = self.reverseCheckBox.checked
+    self.logic.outputGrayscale = self.grayscaleCheckBox.checked
     self.logic.sliceSkip = self.sliceSkipSpinBox.value
     spacingString = self.spacingWidget.coordinates
     self.logic.setOriginalVolumeSpacing([float(element) for element in spacingString.split(",")])
@@ -492,6 +500,7 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
     self.originalVolumeVoxelDataType = numpy.dtype('uint8')
     self.sliceSkip = 0
     self.reverseSliceOrder = False
+    self.outputGrayscale = True  # force loading image as grayscale
     self.outputQuality = 'preview' # valid values: preview, half, full
     # Bounds is stored as None (no bounds)
     # or [min_R, max_R, min_A, max_A, min_S, max_S] if there is a valid bounding box.
@@ -510,12 +519,15 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
     return(byteCount, units)
 
   @staticmethod
-  def humanizeImageSize(dimensions, scalarType):
+  def humanizeImageSize(dimensions, numberOfScalarComponents, scalarType):
     """Create human-readable string explaining the image extent and size"""
     itemsize = scalarType.itemsize
-    volumeSize = (itemsize * dimensions[0] * dimensions[1] * dimensions[2])
+    volumeSize = (itemsize * dimensions[0] * dimensions[1] * dimensions[2] * numberOfScalarComponents)
     byteCount, units = ImageStacksLogic.humanizeByteCount(volumeSize)
-    return f"{dimensions[0]} x {dimensions[1]} x {dimensions[2]} x {scalarType} = {byteCount:.3f} {units}"
+    if numberOfScalarComponents == 1:
+      return f"{dimensions[0]} x {dimensions[1]} x {dimensions[2]} x {scalarType} = {byteCount:.3f} {units}"
+    else:
+      return f"{dimensions[0]} x {dimensions[1]} x {dimensions[2]} x {numberOfScalarComponents} x {scalarType} = {byteCount:.3f} {units}"
 
   @property
   def filePaths(self):
@@ -538,11 +550,12 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
     sliceArray = sitk.GetArrayFromImage(image)
 
     self.originalVolumeDimensions = [sliceArray.shape[1], sliceArray.shape[0], len(filePaths)]
+    self.originalVolumeNumberOfScalarComponents = sliceArray.shape[2] if len(sliceArray.shape) == 3 else 1
     self.originalVolumeVoxelDataType = numpy.dtype(sliceArray.dtype)
 
     firstSliceSpacing = image.GetSpacing()
     self.originalVolumeRecommendedSpacing = [firstSliceSpacing[1], firstSliceSpacing[0], 1.0]
-    
+
     if firstSliceSpacing[0] == firstSliceSpacing[1]:
       # If x and y spacing are the same then we assume that it is an isotropic volume
       # and set z spacing to the same value
@@ -588,7 +601,9 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
     originRAS = numpy.dot(ijkToRAS, [extent[0], extent[2], extent[4], 1.0])[0:3]
     ijkToRAS[0:3,3] = originRAS
 
-    return ijkToRAS, extent
+    numberOfScalarComponents = 1 if self.outputGrayscale else self.originalVolumeNumberOfScalarComponents
+
+    return ijkToRAS, extent, numberOfScalarComponents
 
   def loadVolume(self, outputNode=None):
     """
@@ -602,7 +617,7 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
     and give good results for a pixel aligned 50% scale operation.
     """
 
-    ijkToRAS, extent = self.outputVolumeGeometry()
+    ijkToRAS, extent, numberOfScalarComponents = self.outputVolumeGeometry()
     outputSpacing = [numpy.linalg.norm(ijkToRAS[0:3,i]) for i in range(3)]
     originalVolumeSpacing = [numpy.linalg.norm(self.originalVolumeIJKToRAS[0:3, i]) for i in range(3)]
 
@@ -624,36 +639,65 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
       reader.SetFileName(path)
       image = reader.Execute()
       sliceArray = sitk.GetArrayFromImage(image)
-      if len(sliceArray.shape) == 3:
+      if len(sliceArray.shape) == 3 and self.outputGrayscale:
+        # We convert to grayscale by simply taking the first component, which is appropriate for cases when grayscale image is stored as R=G=B,
+        # but to convert real RGB images it could better to compute the mean or luminance.
         sliceArray = sitk.GetArrayFromImage(image)[:,:,0]
-      currentArrayFullShape = sliceArray.shape 
+      currentArrayFullShape = sliceArray.shape
       if firstArrayFullShape is None:
         firstArrayFullShape = currentArrayFullShape
 
       if volumeArray is None:
         shape = [extent[5]-extent[4]+1, extent[3]-extent[2]+1, extent[1]-extent[0]+1]
+        if len(sliceArray.shape) == 3:
+          shape.append(sliceArray.shape[2])
         volumeArray = numpy.zeros(shape, dtype=sliceArray.dtype)
-      sliceArray = sliceArray[
-        extent[2]*stepSize[1]:(extent[3]+1)*stepSize[1]:stepSize[1],
-        extent[0]*stepSize[0]:(extent[1]+1)*stepSize[0]:stepSize[0]]
+      if len(sliceArray.shape) == 3:
+        # vector volume
+        sliceArray = sliceArray[
+          extent[2]*stepSize[1]:(extent[3]+1)*stepSize[1]:stepSize[1],
+          extent[0]*stepSize[0]:(extent[1]+1)*stepSize[0]:stepSize[0], :]
+      else:
+        # grayscale volume
+        sliceArray = sliceArray[
+                     extent[2] * stepSize[1]:(extent[3] + 1) * stepSize[1]:stepSize[1],
+                     extent[0] * stepSize[0]:(extent[1] + 1) * stepSize[0]:stepSize[0]]
       if (sliceIndex > 0) and (volumeArray[sliceIndex].shape != sliceArray.shape):
-        logging.debug("After downsampling, {0} size is {1} x {2}\n\n{3} size is {4} x {5}".format(
+        logging.debug("After downsampling, {0} size is {1} x {2}\n\n{3} size is {4} x {5} ({6} scalar components)".format(
           paths[0], volumeArray[0].shape[0], volumeArray[0].shape[1],
-          path, sliceArray.shape[0], sliceArray.shape[1]))
-        message = "There are multiple datasets in the folder. Please select a single file as a sample or specify a pattern.\nDetails:\n{0} size is {1} x {2}\n\n{3} size is {4} x {5}".format(
+          path, sliceArray.shape[0], sliceArray.shape[1]),
+          sliceArray.shape[2] if len(sliceArray.shape)==3 else 1)
+        message = "There are multiple datasets in the folder. Please select a single file as a sample or specify a pattern.\nDetails:\n{0} size is {1} x {2} ({6} scalar components)\n\n{3} size is {4} x {5} ({7} scalar components)".format(
           paths[0], firstArrayFullShape[0], firstArrayFullShape[1],
-          path, currentArrayFullShape[0], currentArrayFullShape[1])
+          path, currentArrayFullShape[0], currentArrayFullShape[1],
+          firstArrayFullShape.shape[2] if len(firstArrayFullShape.shape)==3 else 1,
+          currentArrayFullShape.shape[2] if len(currentArrayFullShape.shape)==3 else 1)
         raise ValueError(message)
       volumeArray[sliceIndex] = sliceArray
       sliceIndex += 1
 
     if not outputNode:
-      outputNode = slicer.vtkMRMLScalarVolumeNode()
+      if len(volumeArray.shape) == 3:
+        outputNode = slicer.vtkMRMLScalarVolumeNode()
+      else:
+        outputNode = slicer.vtkMRMLVectorVolumeNode()
+        if volumeArray.shape[3] == 3:
+          outputNode.SetVoxelVectorType(outputNode.VoxelVectorTypeColorRGB)
+        elif volumeArray.shape[3] == 4:
+          outputNode.SetVoxelVectorType(outputNode.VoxelVectorTypeColorRGBA)
       slicer.mrmlScene.AddNode(outputNode)
       path = paths[0]
       fileName = os.path.basename(path)
       name = os.path.splitext(fileName)[0]
       outputNode.SetName(name)
+    else:
+      # Output volume already exists, check if it is the correct type
+      if len(volumeArray.shape) == 4:
+        if outputNode.IsA("vtkMRMLScalarVolumeNode"):
+          raise ValueError("Select a vector volume as output volume or force grayscale output.")
+      else:
+        if outputNode.IsA("vtkMRMLVectorVolumeNode"):
+          raise ValueError("Select a scalar volume as output volume.")
 
     ijkToRAS = slicer.util.vtkMatrixFromArray(ijkToRAS)
     outputNode.SetIJKToRASMatrix(ijkToRAS)
