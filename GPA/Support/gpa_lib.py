@@ -1,7 +1,8 @@
 import numpy as np
 import os
 import fnmatch
-
+import scipy.linalg as sp
+ 
 # PCA
 def makeTwoDim(monsters):
     i,j,k=monsters.shape
@@ -37,6 +38,13 @@ def sortEig(eVal, eVec):
         ePair[y].reverse()
     return ePair
 
+def pairEig(eVal, eVec):
+    i,j=eVec.shape
+    ePair=list(range(j))
+    for y in range(j):
+        ePair[y]=[(np.abs(eVal[y]), eVec[:,y])]
+    return ePair
+
 def makeTransformMatrix(ePair,pcA,pcB):
     tmp=ePair[0][0][1]
     i=tmp.shape
@@ -50,11 +58,14 @@ def makeTransformMatrix(ePair,pcA,pcB):
     return transform
 
 def plotTanProj(monsters,pcA,pcB):
+    i, j, k = monsters.shape
     twoDim=makeTwoDim(monsters)
     mShape=calcMean(twoDim)
     covMatrix=calcCov(twoDim)
-    eigVal, eigVec=np.linalg.eig(covMatrix)
-    eigPair=sortEig(eigVal,eigVec)
+    eigVal, eigVec=np.linalg.eigh(covMatrix, eigvals=(i*j-k,i*j-1))
+    eigVal=eigVal[::-1]
+    eigVec=eigVec[:, ::-1]
+    eigPair=pairEig(eigVal,eigVec)
     transform=makeTransformMatrix(eigPair,pcA,pcB)
     transform=np.transpose(transform)
     coords=np.dot(transform,twoDim)
@@ -85,7 +96,7 @@ def alignShape(refShape,shape):
     """
     Align the shape to the mean.
     """
-    u,s,v=np.linalg.svd(np.dot(np.transpose(refShape),shape), full_matrices=True)
+    u,s,v=sp.svd(np.dot(np.transpose(refShape),shape), full_matrices=True)
     rotationMatrix=np.dot(np.transpose(v), np.transpose(u))
     shape=np.dot(shape,rotationMatrix)
     return shape
