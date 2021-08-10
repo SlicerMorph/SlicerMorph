@@ -14,6 +14,7 @@ import Support.vtk_lib as vtk_lib
 import Support.gpa_lib as gpa_lib
 import  numpy as np
 from datetime import datetime
+import scipy.linalg as sp
 
 #
 # GPA
@@ -192,7 +193,6 @@ class LMData:
       self.val = eigenValues.Scores.to_numpy()
       vectors = [name for name in eigenVectors.columns if 'PC ' in name]
       self.vec = eigenVectors[vectors].to_numpy()
-      self.sortedEig=gpa_lib.sortEig(self.val,self.vec)
       self.procdist=gpa_lib.procDist(self.lm, self.mShape)
       self.procdist=self.procdist.reshape(-1,1)
       return 1
@@ -226,11 +226,13 @@ class LMData:
       self.lm, self.mShape=gpa_lib.runGPA(self.lmOrig)
 
   def calcEigen(self):
+    i, j, k = self.lmOrig.shape
     twoDim=gpa_lib.makeTwoDim(self.lm)
     covMatrix=gpa_lib.calcCov(twoDim)
-    self.val, self.vec=np.linalg.eig(covMatrix)
-    self.vec=np.real(self.vec)
-    self.sortedEig=gpa_lib.sortEig(self.val,self.vec)
+    self.val, self.vec=sp.eigh(covMatrix, eigvals=(i*j-k,i*j-1))
+    self.val=self.val[::-1]
+    self.vec=self.vec[:, ::-1]
+    self.sortedEig = gpa_lib.pairEig(self.val, self.vec)
 
   def ExpandAlongPCs(self, numVec,scaleFactor,SampleScaleFactor):
     b=0
@@ -248,69 +250,73 @@ class LMData:
 
     self.shift=tmp
 
-  def writeOutData(self,outputFolder,files):
- # make headers for eigenvector matrix
-    headerPC=[]
-    headerLM=[""]
-    for i in range(self.vec.shape[0]):
-      headerPC.append("PC "+str(i+1))
-    for i in range(int(self.vec.shape[0]/3)):
-      headerLM.append("LM "+str(i+1)+"_X")
-      headerLM.append("LM "+str(i+1)+"_Y")
-      headerLM.append("LM "+str(i+1)+"_Z")
+  def writeOutData(self, outputFolder, files):
+    # make headers for eigenvector matrix
+    headerPC = []
+    headerLM = [""]
+    for i in range(self.vec.shape[1]):
+      headerPC.append("PC " + str(i + 1))
+    for i in range(int(self.vec.shape[0] / 3)):
+      headerLM.append("LM " + str(i + 1) + "_X")
+      headerLM.append("LM " + str(i + 1) + "_Y")
+      headerLM.append("LM " + str(i + 1) + "_Z")
+    r,c=self.vec.shape
+    temp=np.empty(shape=(r+1,c), dtype = object)
+    temp[0,:] = np.array(headerPC)
+    for currentRow in range(r-1):
+      temp[currentRow+1,:] = self.vec[currentRow,:]
+    #temp = np.vstack((np.array(headerPC), self.vec))
+    temp = np.column_stack((np.array(headerLM), temp))
+    np.savetxt(outputFolder + os.sep + "eigenvector.csv", temp, delimiter=",", fmt='%s')
+    temp = np.column_stack((np.array(headerPC), self.val))
+    np.savetxt(outputFolder + os.sep + "eigenvalues.csv", temp, delimiter=",", fmt='%s')
 
-    temp = np.vstack((np.array(headerPC),self.vec))
-    temp = np.column_stack((np.array(headerLM),temp))
-    np.savetxt(outputFolder+os.sep+"eigenvector.csv", temp, delimiter=",",fmt='%s')
-    temp = np.column_stack((np.array(headerPC),self.val))
-    np.savetxt(outputFolder+os.sep+"eigenvalues.csv", temp, delimiter=",",fmt='%s')
-
-    headerLM=[]
-    headerCoordinate = ["","X","Y","Z"]
+    headerLM = []
+    headerCoordinate = ["", "X", "Y", "Z"]
     for i in range(len(self.mShape)):
-      headerLM.append("LM " +str(i+1))
-    temp = np.column_stack((np.array(headerLM),self.mShape))
-    temp = np.vstack((np.array(headerCoordinate),temp))
-    np.savetxt(outputFolder+os.sep+"MeanShape.csv", temp, delimiter=",",fmt='%s')
+      headerLM.append("LM " + str(i + 1))
+    temp = np.column_stack((np.array(headerLM), self.mShape))
+    temp = np.vstack((np.array(headerCoordinate), temp))
+    np.savetxt(outputFolder + os.sep + "MeanShape.csv", temp, delimiter=",", fmt='%s')
 
-    percentVar=self.val/self.val.sum()
+    percentVar = self.val / self.val.sum()
     print("lm shape", self.lm.shape)
     print("mShape shape", self.mShape.shape)
-    self.procdist=gpa_lib.procDist(self.lm, self.mShape)
-    files=np.array(files)
-    i=files.shape
-    files=files.reshape(i[0],1)
-    k,j,i=self.lmOrig.shape
+    self.procdist = gpa_lib.procDist(self.lm, self.mShape)
+    files = np.array(files)
+    i = files.shape
+    files = files.reshape(i[0], 1)
+    k, j, i = self.lmOrig.shape
 
-    coords=gpa_lib.makeTwoDim(self.lm)
-    self.procdist=self.procdist.reshape(i,1)
-    self.centriodSize=self.centriodSize.reshape(i,1)
-    tmp=np.column_stack((files, self.procdist, self.centriodSize, np.transpose(coords)))
-    header=np.array(['Sample_name','proc_dist','centeroid'])
-    i1,j=tmp.shape
-    coodrsL=(j-3)/3.0
-    l=np.zeros(int(3*coodrsL))
+    coords = gpa_lib.makeTwoDim(self.lm)
+    self.procdist = self.procdist.reshape(i, 1)
+    self.centriodSize = self.centriodSize.reshape(i, 1)
+    tmp = np.column_stack((files, self.procdist, self.centriodSize, np.transpose(coords)))
+    header = np.array(['Sample_name', 'proc_dist', 'centeroid'])
+    i1, j = tmp.shape
+    coodrsL = (j - 3) / 3.0
+    l = np.zeros(int(3 * coodrsL))
 
-    l=list(l)
+    l = list(l)
 
     for x in range(int(coodrsL)):
-      loc=x+1
-      l[3*x]="LM " +str(loc) + "_X"
-      l[3*x+1]="LM " +str(loc) + "_Y"
-      l[3*x+2]="LM " +str(loc) + "_Z"
-    l=np.array(l)
-    header=np.column_stack((header.reshape(1,3),l.reshape(1,int(3*coodrsL))))
-    tmp1=np.vstack((header,tmp))
-    np.savetxt(outputFolder+os.sep+"OutputData.csv", tmp1, fmt="%s" , delimiter=",")
+      loc = x + 1
+      l[3 * x] = "LM " + str(loc) + "_X"
+      l[3 * x + 1] = "LM " + str(loc) + "_Y"
+      l[3 * x + 2] = "LM " + str(loc) + "_Z"
+    l = np.array(l)
+    header = np.column_stack((header.reshape(1, 3), l.reshape(1, int(3 * coodrsL))))
+    tmp1 = np.vstack((header, tmp))
+    np.savetxt(outputFolder + os.sep + "OutputData.csv", tmp1, fmt="%s", delimiter=",")
 
     # calc PC scores
-    twoDcoors=gpa_lib.makeTwoDim(self.lm)
-    scores=np.dot(np.transpose(twoDcoors),self.vec)
-    scores=np.real(scores)
-    headerPC.insert(0,"Sample_name")
-    temp=np.column_stack((files.reshape(i,1),scores))
-    temp=np.vstack((headerPC,temp))
-    np.savetxt(outputFolder+os.sep+"pcScores.csv", temp, fmt="%s", delimiter=",")
+    twoDcoors = gpa_lib.makeTwoDim(self.lm)
+    scores = np.dot(np.transpose(twoDcoors), self.vec)
+    scores = np.real(scores)
+    headerPC.insert(0, "Sample_name")
+    temp = np.column_stack((files.reshape(i, 1), scores))
+    temp = np.vstack((headerPC, temp))
+    np.savetxt(outputFolder + os.sep + "pcScores.csv", temp, fmt="%s", delimiter=",")
 
   def closestSample(self,files):
     import operator
@@ -778,11 +784,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     # make clickable button
     button=qt.QPushButton("..")
     return textInLine, lineLabel, button
-    
-    
-    
-    
-    
 
   def updateList(self):
     i,j,k=self.LM.lm.shape
@@ -813,32 +814,18 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.vectorOne.addItem(string)
       self.vectorTwo.addItem(string)
       self.vectorThree.addItem(string)
-      
-      
-      
-      
-      
-      
   
   def factorStringChanged(self):
     if self.factorName.text is not "":
       self.inputFactorButton.enabled = True
     else:
       self.inputFactorButton.enabled = False
-      
-      
-      
-      
-      
-      
-      
-  
+
   def populateDistanceTable(self, files):
     sortedArray = np.zeros(len(files), dtype={'names':('filename', 'procdist'),'formats':('U50','f8')})
     sortedArray['filename']=files
     sortedArray['procdist']=self.LM.procdist[:,0]
     sortedArray.sort(order='procdist')
-
 
     tableNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTableNode', 'Procrustes Distance Table')
     GPANodeCollection.AddItem(tableNode)
@@ -907,10 +894,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     #reset text field for names
     self.factorName.setText("")
     self.inputFactorButton.enabled = False
-    
-    
-    
-  
+
   def reset(self):
     # delete the two data objects
 
@@ -1007,7 +991,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         self.extension =  secondExtension + self.extension
       self.files=[]
       for path in self.inputFilePaths:
-        basename =  os.path.basename(path).split('.')[0]
+        basename =  os.path.basename(path).rpartition('.')[0]
         self.files.append(basename)
 
   def onSelectOutputDirectory(self):
@@ -1163,7 +1147,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.selectorButton.enabled = True
     self.landmarkVisualizationType.enabled = True
     self.modelVisualizationType.enabled = True
-       
+         
   def onLoad(self):
     self.initializeOnLoad() #clean up module from previous runs
     logic = GPALogic()
@@ -1210,11 +1194,12 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       GPANodeCollection.AddItem(modelDisplayNode)
     self.meanLandmarkNode.GetDisplayNode().SetSliceProjection(True)
     self.meanLandmarkNode.GetDisplayNode().SetSliceProjectionOpacity(1)
-
-    for landmarkNumber in range (shape[0]):
+    self.meanLandmarkNode.StartModify()
+    for landmarkNumber in range(shape[0]):
       name = str(landmarkNumber+1) #start numbering at 1
-      self.meanLandmarkNode.AddFiducialFromArray(self.rawMeanLandmarks[landmarkNumber,:], name)
-    self.meanLandmarkNode.SetDisplayVisibility(1) 
+      self.meanLandmarkNode.AddControlPoint(vtk.vtkVector3d(self.rawMeanLandmarks[landmarkNumber,:]), name)
+    self.meanLandmarkNode.EndModify(True)
+    self.meanLandmarkNode.SetDisplayVisibility(1)
     self.meanLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(1)
     self.meanLandmarkNode.GetDisplayNode().SetTextScale(3)
     self.meanLandmarkNode.LockedOn() #lock position so when displayed they cannot be moved
