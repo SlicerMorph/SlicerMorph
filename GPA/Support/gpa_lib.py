@@ -62,7 +62,10 @@ def plotTanProj(monsters,pcA,pcB):
     twoDim=makeTwoDim(monsters)
     mShape=calcMean(twoDim)
     covMatrix=calcCov(twoDim)
-    eigVal, eigVec=np.linalg.eigh(covMatrix, eigvals=(i*j-k,i*j-1))
+    if k > i * j:  # limit results returned if sample number is less than observations
+        self.val, self.vec = sp.eigh(covMatrix)
+    else:
+        self.val, self.vec = sp.eigh(covMatrix, eigvals=(i * j - k, i * j - 1))
     eigVal=eigVal[::-1]
     eigVec=eigVec[:, ::-1]
     eigPair=pairEig(eigVal,eigVec)
