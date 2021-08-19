@@ -229,7 +229,10 @@ class LMData:
     i, j, k = self.lmOrig.shape
     twoDim=gpa_lib.makeTwoDim(self.lm)
     covMatrix=gpa_lib.calcCov(twoDim)
-    self.val, self.vec=sp.eigh(covMatrix, eigvals=(i*j-k,i*j-1))
+    if k>i*j: # limit results returned if sample number is less than observations
+      self.val, self.vec = sp.eigh(covMatrix)
+    else:
+      self.val, self.vec=sp.eigh(covMatrix, eigvals=(i * j - k, i * j - 1))
     self.val=self.val[::-1]
     self.vec=self.vec[:, ::-1]
     self.sortedEig = gpa_lib.pairEig(self.val, self.vec)
