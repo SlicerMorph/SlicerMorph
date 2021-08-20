@@ -1851,14 +1851,14 @@ class GPALogic(ScriptedLoadableModuleLogic):
         try:
           tmp1=pandas.DataFrame.from_dict(pandas.read_json(filePathList[i])['markups'][0]['controlPoints'])
         except:
-          warning = "Error: Load file {} failed:.".format(filePathList[i])  
-          slicer.util.messageBox(warning)  
+          slicer.util.messageBox("Error: Load file {} failed:.".format(filePathList[i]))
+          logging.debug("Error: Load file {} failed:.".format(filePathList[i]))
         if len(tmp1) == landmarkNumber:
           lmArray = tmp1['position'].to_numpy()
           for j in range(landmarkNumber):
             landmarks[j,:,i]=lmArray[j]
         else:
-          warning = "Error: Load file {} failed. There are {} landmarks instead of the expected {}.".format(filename,len(tmp1),landmarkNumber)
+          warning = "Error: Load file {} failed. There are {} landmarks instead of the expected {}.".format(filePathList[i],len(tmp1),landmarkNumber)
           slicer.util.messageBox(warning)
           return
     else:
@@ -1869,7 +1869,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
         if len(tmp1) == landmarkNumber:
           landmarks[:,:,i] = tmp1
         else:
-          warning = "Error: Load file {} failed. There are {} landmarks instead of the expected {}.".format(matchList[i],len(tmp1),landmarkNumber)
+          warning = "Error: Load file {} failed. There are {} landmarks instead of the expected {}.".format(filePathList[i],len(tmp1),landmarkNumber)
           slicer.util.messageBox(warning)
           return      
     if len(lmToRemove)>0:
