@@ -995,6 +995,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.files=[]
       for path in self.inputFilePaths:
         basename =  os.path.basename(path).rpartition('.')[0]
+        if self.extension == '.mrk.json':
+          basename, secondExtension = os.path.splitext(basename)
         self.files.append(basename)
 
   def onSelectOutputDirectory(self):
