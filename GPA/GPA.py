@@ -2006,7 +2006,11 @@ class GPALogic(ScriptedLoadableModuleLogic):
       plotSeriesNode.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeScatter)
       plotSeriesNode.SetLineStyle(slicer.vtkMRMLPlotSeriesNode.LineStyleNone)
       plotSeriesNode.SetMarkerStyle(slicer.vtkMRMLPlotSeriesNode.MarkerStyleSquare)
-      plotSeriesNode.SetUniqueColor()
+      # Set color determined by series index
+      randomColorTable = slicer.util.getFirstNodeByName('Random')
+      seriesColor=[0,0,0,0]
+      randomColorTable.GetColor(factorIndex+1,seriesColor)
+      plotSeriesNode.SetColor(seriesColor[0:3])
       # Add data series to chart
       plotChartNode.AddAndObservePlotSeriesNodeID(plotSeriesNode.GetID())
 
