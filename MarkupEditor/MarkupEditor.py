@@ -147,11 +147,17 @@ class MarkupEditorSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin)
                 viewNode.IsA("vtkMRMLViewNode")):
             pluginHandler = slicer.qSlicerSubjectHierarchyPluginHandler.instance()
             pluginLogic = pluginHandler.pluginLogic()
-            menuActions = list(pluginLogic.availableViewMenuActionNames())
+            if int(slicer.app.revision)>=30033:
+              menuActions = list(pluginLogic.registeredViewContextMenuActionNames)
+            else:
+              menuActions = list(pluginLogic.availableViewMenuActionNames())
             menuActions.append('SelectViewAction')
             menuActions.append('EditViewAction')
             menuActions.append('DeleteViewAction')
-            pluginLogic.setDisplayedViewMenuActionNames(menuActions)
+            if int(slicer.app.revision)>=30033:
+              pluginLogic.setAllowedViewContextMenuActionNamesForItem(itemID, menuActions)
+            else:
+              pluginLogic.setDisplayedViewMenuActionNames(menuActions)
             self.selectViewAction.visible = True
             self.editViewAction.visible = True
             self.deleteViewAction.visible = True
@@ -159,7 +165,6 @@ class MarkupEditorSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin)
             self.fiducialNodeFromEvent = associatedNode
         else:
             self.reset()
-
 
 #
 # MarkupEditorWidget
