@@ -193,6 +193,7 @@ class LMData:
       self.val = eigenValues.Scores.to_numpy()
       vectors = [name for name in eigenVectors.columns if 'PC ' in name]
       self.vec = eigenVectors[vectors].to_numpy()
+      self.sortedEig = gpa_lib.pairEig(self.val, self.vec)
       self.procdist=gpa_lib.procDist(self.lm, self.mShape)
       self.procdist=self.procdist.reshape(-1,1)
       return 1
@@ -266,7 +267,7 @@ class LMData:
     r,c=self.vec.shape
     temp=np.empty(shape=(r+1,c), dtype = object)
     temp[0,:] = np.array(headerPC)
-    for currentRow in range(r-1):
+    for currentRow in range(r):
       temp[currentRow+1,:] = self.vec[currentRow,:]
     #temp = np.vstack((np.array(headerPC), self.vec))
     temp = np.column_stack((np.array(headerLM), temp))
@@ -1048,9 +1049,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
           if 'Scale=False' in search:
             self.skipScalingOption = True
           if 'ExcludedLM' in search:
-            line = search.rstrip() 
+            line = search.rstrip()
             header, skippedText = line.split('=')
-            self.LMExclusionList = test_list = [int(i) for i in skippedText.split(',')]        
+            if skippedText is not '':
+              self.LMExclusionList = [int(i) for i in skippedText.split(',')]        
     except:
       logging.debug('Log import failed: Cannot read scaling option from log file')
       logging.debug('Log import failed: Cannot read skipped landmarks from log file')
