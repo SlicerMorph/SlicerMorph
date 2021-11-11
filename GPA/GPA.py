@@ -650,7 +650,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.FudSelectLabel.enabled = False
     self.FudSelect = ctk.ctkPathLineEdit()
     self.FudSelect.filters  = ctk.ctkPathLineEdit().Files
-    self.FudSelect.nameFilters=["*.fcsv"]
+    self.FudSelect.nameFilters=["Landmarks (*.json *.mrk.json *.fcsv )"]
     self.FudSelect.enabled = False
     self.FudSelect.connect('validInputChanged(bool)', self.onModelSelected)
     selectTemplatesLayout.addWidget(self.FudSelectLabel,5,2)
@@ -980,7 +980,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
   def onSelectLandmarkFiles(self):
     self.inputFileTable.clear()
     self.inputFilePaths = []
-    filter = "FCSV files (*.fcsv);;JSON files (*.json)"
+    filter = ["Landmarks (*.json *.mrk.json *.fcsv )"]
     self.inputFilePaths = qt.QFileDialog().getOpenFileNames(None, "Window name", "", filter)
     self.inputFileTable.plainText = '\n'.join(self.inputFilePaths)
     self.clearButton.enabled = True
@@ -995,7 +995,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         self.extension =  secondExtension + self.extension
       self.files=[]
       for path in self.inputFilePaths:
-        basename =  os.path.basename(path).rpartition('.')[0]
+        basename =  os.path.basename(path).rpartition('.')[0].rpartition('.')[0]
         self.files.append(basename)
 
   def onSelectOutputDirectory(self):
@@ -1882,7 +1882,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
     return landmarks, landmarkTypeArray
 
   def importLandMarks(self, filePath):
-    """Imports the landmarks from a .fcsv file. Does not import sample if a  landmark is -1000
+    """Imports the landmarks from file. Does not import sample if a  landmark is -1000
     Adjusts the resolution is log(nhrd) file is found returns kXd array of landmark data. k=# of landmarks d=dimension
     """
     # import data file
