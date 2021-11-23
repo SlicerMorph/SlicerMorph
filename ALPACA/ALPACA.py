@@ -10,6 +10,8 @@ from slicer.ScriptedLoadableModule import *
 import glob
 import vtk.util.numpy_support as vtk_np
 import numpy as np
+import SampleData
+
 #
 # ALPACA
 #
@@ -52,15 +54,19 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     # Ensure that correct version of open3d Python package is installed
     needRestart = False
     needInstall = False
-    Open3dVersion = "0.10.0"
+    Open3dVersion = "0.13.0"
+    Open3dVersion_linux = "0.13.0+847afd512"
+    self.bcpdExePath = ""
     try:
       import open3d as o3d
       import cpdalp
       from packaging import version
-      if version.parse(o3d.__version__) != version.parse(Open3dVersion):
-        if not slicer.util.confirmOkCancelDisplay(f"ALPACA requires installation of open3d (version {Open3dVersion}).\nClick OK to upgrade open3d and restart the application."):
-          self.showBrowserOnEnter = False
-          return
+      currentO3d = version.parse(o3d.__version__) == version.parse(Open3dVersion)
+      currentO3d_linux = version.parse(o3d.__version__) == version.parse(Open3dVersion_linux)
+      if not (currentO3d or currentO3d_linux):
+        slicer.util.confirmOkCancelDisplay(f"ALPACA requires installation of open3d (version {Open3dVersion}).\nClick OK to upgrade open3d and restart the application.")
+        self.showBrowserOnEnter = False
+        return
         needRestart = True
         needInstall = True
     except ModuleNotFoundError:
@@ -69,7 +75,20 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     if needInstall:
       progressDialog = slicer.util.createProgressDialog(labelText='Upgrading open3d. This may take a minute...', maximum=0)
       slicer.app.processEvents()
-      slicer.util.pip_install(f'open3d=={Open3dVersion}')
+      if(slicer.app.os == 'linux'):
+        url = "https://github.com/smrolfe/o3d/raw/master/open3d-0.13.0%2B847afd512-cp36-cp36m-manylinux_2_31_x86_64.whl" 
+        wheelName = "open3d-0.13.0+847afd512-cp36-cp36m-manylinux_2_31_x86_64.whl"
+        sampleDataLogic = SampleData.SampleDataLogic()
+        wheelPath = sampleDataLogic.downloadFile(url, slicer.app.cachePath, wheelName)
+        slicer.util.pip_install(wheelPath)
+      else:
+        slicer.util.pip_install(f'open3d=={Open3dVersion}')     
+      if(slicer.app.os == 'win'):
+        url = "https://github.com/ohirose/bcpd/blob/master/win/bcpd.exe"
+        bcpdExeName = "bcpd.exe"
+        sampleDataLogic = SampleData.SampleDataLogic()
+        self.bcpdExePath = sampleDataLogic.downloadFile(url, slicer.app.cachePath, bcpdExeName)
+        print("Downloaded BCPD to: ", slicer.app.cachePath)
       slicer.util.pip_install(f'cpdalp')
       import open3d as o3d
       import cpdalp
@@ -542,11 +561,18 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
 
 
   def onChangeCPD(self):
-    if self.Acceleration.checked != 0:
+    if self.Acceleration.checked != False:
       self.BCPDFolder.enabled = True
+      if(self.bcpdExePath != ""):
+        self.BCPDFolder.currentPath = slicer.app.cachePath
+      elif(slicer.app.os == "win"):
+        slicer.util.confirmOkCancelDisplay("Please download the BCPD Windows executable from: https://github.com/ohirose/bcpd/blob/master/win/bcpd.exe")
+      else:
+        slicer.util.confirmOkCancelDisplay("Please follow the instructions to download and compile BCPD for Mac/Linux at: https://github.com/ohirose/bcpd#macos-and-linux")
       self.subsampleButton.enabled = bool ( self.sourceModelSelector.currentNode() and self.targetModelSelector.currentNode() and self.sourceFiducialSelector.currentNode() and self.BCPDFolder.currentPath)
       self.applyLandmarkMultiButton.enabled = bool ( self.sourceModelMultiSelector.currentPath and self.sourceFiducialMultiSelector.currentPath 
       and self.targetModelMultiSelector.currentPath and self.landmarkOutputSelector.currentPath and self.BCPDFolder.currentPath)
+      
     else:
       self.BCPDFolder.enabled = False
       self.subsampleButton.enabled = bool ( self.sourceModelSelector.currentPath and self.targetModelSelector.currentPath and self.sourceFiducialSelector.currentPath)
@@ -576,6 +602,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
   def addAdvancedMenu(self, currentWidgetLayout):
 
     # Point density label
+    
     pointDensityCollapsibleButton=ctk.ctkCollapsibleButton()
     pointDensityCollapsibleButton.text = "Point density and max projection"
     currentWidgetLayout.addRow(pointDensityCollapsibleButton)
@@ -1051,7 +1078,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     
   def preprocess_point_cloud(self, pcd, voxel_size, radius_normal_factor, radius_feature_factor):
     from open3d import geometry
-    from open3d import registration
+    from open3d import pipelines
     print(":: Downsample with a voxel size %.3f." % voxel_size)
     pcd_down = pcd.voxel_down_sample(voxel_size)
     radius_normal = voxel_size * radius_normal_factor
@@ -1060,7 +1087,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         geometry.KDTreeSearchParamHybrid(radius=radius_normal, max_nn=30))
     radius_feature = voxel_size * radius_feature_factor
     print(":: Compute FPFH feature with search radius %.3f." % radius_feature)
-    pcd_fpfh = registration.compute_fpfh_feature(
+    pcd_fpfh = pipelines.registration.compute_fpfh_feature(
         pcd_down,
         geometry.KDTreeSearchParamHybrid(radius=radius_feature, max_nn=100))
     return pcd_down, pcd_fpfh
@@ -1069,30 +1096,30 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
 
   def execute_global_registration(self, source_down, target_down, source_fpfh,
                                 target_fpfh, voxel_size, distance_threshold_factor, maxIter, maxValidation, skipScaling):
-    from open3d import registration
+    from open3d import pipelines
     distance_threshold = voxel_size * distance_threshold_factor
     print(":: RANSAC registration on downsampled point clouds.")
     print("   Since the downsampling voxel size is %.3f," % voxel_size)
     print("   we use a liberal distance threshold %.3f." % distance_threshold)
-    result = registration.registration_ransac_based_on_feature_matching(
-        source_down, target_down, source_fpfh, target_fpfh, distance_threshold,
-        registration.TransformationEstimationPointToPoint(skipScaling == 0), 4, [
-            registration.CorrespondenceCheckerBasedOnEdgeLength(0.9),
-            registration.CorrespondenceCheckerBasedOnDistance(
+    result = pipelines.registration.registration_ransac_based_on_feature_matching(
+        source_down, target_down, source_fpfh, target_fpfh, False, distance_threshold,
+        pipelines.registration.TransformationEstimationPointToPoint(skipScaling == 0), 4, [
+            pipelines.registration.CorrespondenceCheckerBasedOnEdgeLength(0.9),
+            pipelines.registration.CorrespondenceCheckerBasedOnDistance(
                 distance_threshold)
-        ], registration.RANSACConvergenceCriteria(maxIter, maxValidation))
+        ], pipelines.registration.RANSACConvergenceCriteria(maxIter, maxValidation), int(1))
     return result
 
 
   def refine_registration(self, source, target, source_fpfh, target_fpfh, voxel_size, result_ransac, ICPThreshold_factor):
-    from open3d import registration
+    from open3d import pipelines
     distance_threshold = voxel_size * ICPThreshold_factor
     print(":: Point-to-plane ICP registration is applied on original point")
     print("   clouds to refine the alignment. This time we use a strict")
     print("   distance threshold %.3f." % distance_threshold)
-    result = registration.registration_icp(
+    result = pipelines.registration.registration_icp(
         source, target, distance_threshold, result_ransac.transformation,
-        registration.TransformationEstimationPointToPlane())
+        pipelines.registration.TransformationEstimationPointToPlane())
     return result
     
   def cpd_registration(self, targetArray, sourceArray, CPDIterations, CPDTolerance, alpha_parameter, beta_parameter):
@@ -1275,3 +1302,5 @@ class ALPACATest(ScriptedLoadableModuleTest):
     logic = ALPACALogic()
     self.assertIsNotNone( logic.hasImageData(volumeNode) )
     self.delayDisplay('Test passed!')
+
+
