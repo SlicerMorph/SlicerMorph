@@ -429,9 +429,9 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.spacingFactor = ctk.ctkSliderWidget()
     self.spacingFactor.singleStep = 0.01
     self.spacingFactor.minimum = 0
-    self.spacingFactor.maximum = 1
+    self.spacingFactor.maximum = 0.1
     self.spacingFactor.value = 0.04
-    self.spacingFactor.setToolTip("Setting up spacing factor for downsampling the original pointclouds")
+    self.spacingFactor.setToolTip("Setting up spacing factor for downsampling the original pointclouds. Moving right (decreasing spacing factor) will result in sparser point clouds. Moving left (increasing spacing factor) will result in denser point clouds")
     downMatchingPCDWidgetLayout.addRow("Spacing factor: ", self.spacingFactor)
 
 
