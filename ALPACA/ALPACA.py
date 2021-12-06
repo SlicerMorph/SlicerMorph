@@ -1773,7 +1773,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
       sourceModelNode.SetAndObserveTransformNodeID(ICPTransformNode.GetID())
       slicer.vtkSlicerTransformLogic().hardenTransform(sourceModelNode)
       #Save aligned models
-      slicer.util.saveNode(sourceModelNode, "C:/Users/czhan2/Desktop/Mouse MALPACA/Mouse data/Aligned_models/{}.ply".format(rootName))
+      #slicer.util.saveNode(sourceModelNode, "C:/Users/czhan2/Desktop/Mouse MALPACA/Mouse data/Aligned_models/{}.ply".format(rootName))
       alignedSubjectPolydata = sourceModelNode.GetPolyData()
       ID, correspondingSubjectPoints = self.GetCorrespondingPoints(sparseTemplate, alignedSubjectPolydata)
       ID_list.append(ID)
