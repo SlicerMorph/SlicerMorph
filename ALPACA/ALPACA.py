@@ -427,7 +427,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
 
     #User input point cloud sparsing factor
     self.spacingFactor = ctk.ctkSliderWidget()
-    self.spacingFactor.singleStep = 0.001
+    self.spacingFactor.singleStep = 0.01
     self.spacingFactor.minimum = 0
     self.spacingFactor.maximum = 1
     self.spacingFactor.value = 0.04
