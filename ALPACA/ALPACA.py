@@ -35,7 +35,7 @@ class ALPACA(ScriptedLoadableModule):
       https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false 
       """      
 
-    #Define custom layouts for multi-templates selection tab in slicer global namespace
+  # Define custom layouts for GPA modules in slicer global namespace
     slicer.customLayoutSM = """
       <layout type=\"horizontal\" split=\"true\" >
        <item splitSize=\"500\">
@@ -54,6 +54,7 @@ class ALPACA(ScriptedLoadableModule):
       </layout>
   """
 
+
     slicer.customLayoutTableOnly = """
       <layout type=\"horizontal\" >
        <item>
@@ -63,7 +64,7 @@ class ALPACA(ScriptedLoadableModule):
        </item>"
       </layout>
   """
-
+  
     slicer.customLayoutPlotOnly = """
       <layout type=\"horizontal\" >
        <item>
@@ -427,8 +428,9 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
 
     #User input point cloud sparsing factor
     self.spacingFactor = ctk.ctkSliderWidget()
-    self.spacingFactor.singleStep = 0.01
+    self.spacingFactor.singleStep = 0.001
     self.spacingFactor.minimum = 0
+    self.spacingFactor.decimals = 3
     self.spacingFactor.maximum = 0.1
     self.spacingFactor.value = 0.04
     self.spacingFactor.setToolTip("Setting up spacing factor for downsampling the original pointclouds. Moving right (decreasing spacing factor) will result in sparser point clouds. Moving left (increasing spacing factor) will result in denser point clouds")
@@ -536,10 +538,10 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     # Add vertical spacer
     self.layout.addStretch(1)
     
-    #Add menu buttons
-    self.addLayoutButton(500, 'MALPACA multi-templates View', 'Custom layout for MALPACA multi-templates tab', 'LayoutSlicerMorphView.png', slicer.customLayoutSM)
-    self.addLayoutButton(501, 'Table Only View', 'Custom layout for GPA module', 'LayoutTableOnlyView.png', slicer.customLayoutTableOnly)
-    self.addLayoutButton(502, 'Plot Only View', 'Custom layout for GPA module', 'LayoutPlotOnlyView.png', slicer.customLayoutPlotOnly)
+    # Add menu buttons
+    self.addLayoutButton(503, 'MALPACA multi-templates View', 'Custom layout for MALPACA multi-templates tab', 'LayoutSlicerMorphView.png', slicer.customLayoutSM)
+    self.addLayoutButton(504, 'Table Only View', 'Custom layout for GPA module', 'LayoutTableOnlyView.png', slicer.customLayoutTableOnly)
+    self.addLayoutButton(505, 'Plot Only View', 'Custom layout for GPA module', 'LayoutPlotOnlyView.png', slicer.customLayoutPlotOnly)
 
     
     
@@ -796,9 +798,18 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       col2=self.factorTableNode.AddColumn()
       col2.SetName('Group')
       #add table to new layout
+      # slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveTableID(self.factorTableNode.GetID())
+      # slicer.app.applicationLogic().PropagateTableSelection()
+
+      # slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutFourUpPlotTableView)
+      slicer.app.layoutManager().setLayout(503)
       slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveTableID(self.factorTableNode.GetID())
       slicer.app.applicationLogic().PropagateTableSelection()
+
       self.factorTableNode.GetTable().Modified()
+    # else:
+    #   slicer.app.layoutManager().setLayout(503)
+
 
   def resetFactors(self):
     if hasattr(self, 'factorTableNode'):
@@ -815,61 +826,14 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     col2=self.factorTableNode.AddColumn()
     col2.SetName('Group')
     #add table to new layout
+    # slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveTableID(self.factorTableNode.GetID())
+    # slicer.app.applicationLogic().PropagateTableSelection()
+    
+    # slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutFourUpPlotTableView)
+    slicer.app.layoutManager().setLayout(503)
     slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveTableID(self.factorTableNode.GetID())
     slicer.app.applicationLogic().PropagateTableSelection()
-    self.factorTableNode.GetTable().Modified()
-
-  def clusterTable(self, files, clusterID):
-    # if hasattr(self, 'factorTableNode'):
-    #   self.factorTableNode.GetDisplayNode().SetVisibility(False)
-    if hasattr(self, 'factorTableNode2'):
-      slicer.mrmlScene.RemoveNode(self.factorTableNode2) 
-    sortedArray = np.zeros(len(files), dtype={'names':('filename', 'procdist'),'formats':('U50','f8')})
-    sortedArray['filename']=files
-    self.factorTableNode2 = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTableNode', 'Cluster table no group input')
-    col1=self.factorTableNode2.AddColumn()
-    col1.SetName('ID')
-    for i in range(len(files)):
-      self.factorTableNode2.AddEmptyRow()
-      self.factorTableNode2.SetCellText(i,0, sortedArray['filename'][i])
-      print(sortedArray['filename'][i])
-    #Add cluster ID from kmeans to the table
-    col2 = self.factorTableNode2.AddColumn()
-    col2.SetName('Cluster ID')
-    clusterID = np.array(clusterID)
-    for i in range(len(files)):
-      #self.factorTableNode2.AddEmptyRow()
-      self.factorTableNode2.SetCellText(i, 1, clusterID[i])
-    slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveTableID(self.factorTableNode2.GetID())
-    slicer.app.applicationLogic().PropagateTableSelection()
-    self.factorTableNode2.GetTable().Modified()    
-
-  def clusterTableWithGroups(self, files, groupFactorArray, groupClusterIDs):
-    if hasattr(self, 'factorTableNode'):
-    # self.factorTableNode.RemoveAllColumns()
-      slicer.mrmlScene.RemoveNode(self.factorTableNode)
-    # sortedArray = np.zeros(len(files), dtype={'names':('filename', 'procdist'),'formats':('U50','f8')})
-    # sortedArray['filename']=files
-    self.factorTableNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTableNode', 'Table with input groups')
-    col1=self.factorTableNode.AddColumn()
-    col1.SetName('ID')
-    for i in range(len(files)):
-      self.factorTableNode.AddEmptyRow()
-      self.factorTableNode.SetCellText(i, 0, files[i])
-    col2=self.factorTableNode.AddColumn()
-    col2.SetName('Group')
-    for i in range(len(files)):
-      #self.factorTableNode.AddEmptyRow()
-      self.factorTableNode.SetCellText(i, 1, groupFactorArray[i])
-    #self.factorTableNode.RemoveColumn(2)
-    col3 = self.factorTableNode.AddColumn()
-    col3.SetName('Cluster ID')
-    for i in range(len(files)):
-      #self.factorTableNode.AddEmptyRow()
-      self.factorTableNode.SetCellText(i, 2, groupClusterIDs[i])
-    #add table to new layout
-    slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveTableID(self.factorTableNode.GetID())
-    slicer.app.applicationLogic().PropagateTableSelection()
+    
     self.factorTableNode.GetTable().Modified()
 
 
@@ -1998,7 +1962,13 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     plotChartNode.SetTitle('PCA Scatter Plot with kmeans clusters')
     plotChartNode.SetXAxisTitle(xAxis)
     plotChartNode.SetYAxisTitle(yAxis)
+    
+    #Switch to a Slicer layout that contains a plot view for plotwidget
+    # layoutManager = slicer.app.layoutManager()
     layoutManager = slicer.app.layoutManager()
+    # layoutWithPlot = slicer.modules.plots.logic().GetLayoutWithPlot(layoutManager.layout)
+    # layoutManager.setLayout(layoutWithPlot)
+    layoutManager.setLayout(503)
 
     plotWidget = layoutManager.plotWidget(0)
     plotViewNode = plotWidget.mrmlPlotViewNode()
@@ -2095,8 +2065,15 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     plotChartNode.SetTitle('PCA Scatter Plot with templates')
     plotChartNode.SetXAxisTitle(xAxis)
     plotChartNode.SetYAxisTitle(yAxis)
+    
+    #Switch to a Slicer layout that contains a plot view for plotwidget
+    # layoutManager = slicer.app.layoutManager()
     layoutManager = slicer.app.layoutManager()
+    # layoutWithPlot = slicer.modules.plots.logic().GetLayoutWithPlot(layoutManager.layout)
+    # layoutManager.setLayout(layoutWithPlot)
+    layoutManager.setLayout(503)
 
+    #Select chart in plot view
     plotWidget = layoutManager.plotWidget(0)
     plotViewNode = plotWidget.mrmlPlotViewNode()
     plotViewNode.SetPlotChartNodeID(plotChartNode.GetID())
