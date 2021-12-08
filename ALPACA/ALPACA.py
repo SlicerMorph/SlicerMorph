@@ -1417,13 +1417,13 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
       np.savetxt (targetPath, targetArray, delimiter=',')
       np.savetxt (sourcePath, sourceArrayCombined, delimiter=',')
       path = os.path.join(parameters["BCPDFolder"], 'bcpd') 
-      cmd = f'{path} -x "{targetPath} -y {sourcePath}" -l{parameters["alpha"]} -b{parameters["beta"]} -g0.1 -K140 -J500 -c1e-6 -p -d7 -e0.3 -f0.3 -ux -N1'
+      cmd = f'"{path}" -x "{targetPath}" -y "{sourcePath}" -l{parameters["alpha"]} -b{parameters["beta"]} -g0.1 -K140 -J500 -c1e-6 -p -d7 -e0.3 -f0.3 -ux -N1'
       cp = subprocess.run(cmd, shell = True, check = True,universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
       deformed_array = np.loadtxt('output_y.txt')
       for fl in glob.glob("output*.txt"):
         os.remove(fl)
-      os.remove('target.txt')
-      os.remove('source.txt')
+      os.remove(targetPath)
+      os.remove(sourcePath)
     #Capture output landmarks from source pointcloud
     fiducial_prediction = deformed_array[-len(sourceLM):]
     fiducialCloud = geometry.PointCloud()
