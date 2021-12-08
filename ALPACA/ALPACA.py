@@ -35,7 +35,7 @@ class ALPACA(ScriptedLoadableModule):
       https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false 
       """      
 
-  # Define custom layouts for GPA modules in slicer global namespace
+    #Define custom layouts for multi-templates selection tab in slicer global namespace
     slicer.customLayoutSM = """
       <layout type=\"horizontal\" split=\"true\" >
        <item splitSize=\"500\">
@@ -54,7 +54,6 @@ class ALPACA(ScriptedLoadableModule):
       </layout>
   """
 
-
     slicer.customLayoutTableOnly = """
       <layout type=\"horizontal\" >
        <item>
@@ -64,7 +63,7 @@ class ALPACA(ScriptedLoadableModule):
        </item>"
       </layout>
   """
-  
+
     slicer.customLayoutPlotOnly = """
       <layout type=\"horizontal\" >
        <item>
@@ -455,12 +454,12 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
 
 
     #Display printing 
-    self.subsampleInfo = qt.QPlainTextEdit()
-    self.subsampleInfo.setPlaceholderText("Point clouds information")
-    self.subsampleInfo.setReadOnly(True)
-    self.subsampleInfo.setSizePolicy(qt.QSizePolicy.Preferred, qt.QSizePolicy.MinimumExpanding)
-    self.subsampleInfo.setMaximumHeight(100)
-    downMatchingPCDWidgetLayout.addRow(self.subsampleInfo)
+    self.subsampleInfo2 = qt.QPlainTextEdit()
+    self.subsampleInfo2.setPlaceholderText("Point clouds information")
+    self.subsampleInfo2.setReadOnly(True)
+    self.subsampleInfo2.setSizePolicy(qt.QSizePolicy.Preferred, qt.QSizePolicy.MinimumExpanding)
+    self.subsampleInfo2.setMaximumHeight(100)
+    downMatchingPCDWidgetLayout.addRow(self.subsampleInfo2)
 
     #Templates selection section layout
     templatesSelectionWidget=ctk.ctkCollapsibleButton()
@@ -538,7 +537,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     # Add vertical spacer
     self.layout.addStretch(1)
     
-    # Add menu buttons
+    #Add menu buttons
     self.addLayoutButton(503, 'MALPACA multi-templates View', 'Custom layout for MALPACA multi-templates tab', 'LayoutSlicerMorphView.png', slicer.customLayoutSM)
     self.addLayoutButton(504, 'Table Only View', 'Custom layout for GPA module', 'LayoutTableOnlyView.png', slicer.customLayoutTableOnly)
     self.addLayoutButton(505, 'Plot Only View', 'Custom layout for GPA module', 'LayoutPlotOnlyView.png', slicer.customLayoutPlotOnly)
@@ -740,9 +739,9 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.sparseTemplate, template_density, self.referenceNode = logic.downReference(referencePath, self.spacingFactor.value)
     self.refName = os.path.basename(referencePath)
     self.refName = os.path.splitext(self.refName)[0]
-    self.subsampleInfo.clear()
-    self.subsampleInfo.insertPlainText("The reference is {} \n".format(self.refName))
-    self.subsampleInfo.insertPlainText("The number of points in the downsampled reference pointcloud is {}".format(template_density))
+    self.subsampleInfo2.clear()
+    self.subsampleInfo2.insertPlainText("The reference is {} \n".format(self.refName))
+    self.subsampleInfo2.insertPlainText("The number of points in the downsampled reference pointcloud is {}".format(template_density))
     self.matchingPointsButton.enabled = True
   
   def onMatchingPointsButton(self):
@@ -750,24 +749,24 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     template_density, matchedPoints, indices, files = logic.matchingPCD(self.modelsMultiSelector.currentPath, self.sparseTemplate, self.referenceNode, self.pcdOutputSelector.currentPath, self.spacingFactor.value, self.parameterDictionary)
     # Print results
     correspondent_threshold = 0.01
-    self.subsampleInfo.clear()
-    self.subsampleInfo.insertPlainText("The reference is {} \n".format(self.refName))
-    self.subsampleInfo.insertPlainText("The number of points in the downsampled reference pointcloud is {}. The error threshold for finding correspondent points is {}% \n".format(template_density, 
+    self.subsampleInfo2.clear()
+    self.subsampleInfo2.insertPlainText("The reference is {} \n".format(self.refName))
+    self.subsampleInfo2.insertPlainText("The number of points in the downsampled reference pointcloud is {}. The error threshold for finding correspondent points is {}% \n".format(template_density, 
       correspondent_threshold*100))
     if len(indices) >0:
-      self.subsampleInfo.insertPlainText("There are {} files have points repeatedly matched with the same point(s) template, these are: \n".format(len(indices)))
+      self.subsampleInfo2.insertPlainText("There are {} files have points repeatedly matched with the same point(s) template, these are: \n".format(len(indices)))
       for i in indices:
-        self.subsampleInfo.insertPlainText("{}: {} unique points are sampled to match the template pointcloud \n".format(files[i], matchedPoints[i]))
+        self.subsampleInfo2.insertPlainText("{}: {} unique points are sampled to match the template pointcloud \n".format(files[i], matchedPoints[i]))
       indices_error = [i for i in indices if (template_density - matchedPoints[i]) > template_density*correspondent_threshold]
       if len(indices_error) > 0:
-        self.subsampleInfo.insertPlainText("The specimens with sampling error larger than the threshold are: \n")
+        self.subsampleInfo2.insertPlainText("The specimens with sampling error larger than the threshold are: \n")
         for i in indices_error:
-          self.subsampleInfo.insertPlainText("{}: {} unique points are sampled. \n".format(files[i], matchedPoints[i]))
-          self.subsampleInfo.insertPlainText("It is recommended to check the alignment of these specimens with the template or experimenting with a higher spacing factor \n")
+          self.subsampleInfo2.insertPlainText("{}: {} unique points are sampled. \n".format(files[i], matchedPoints[i]))
+          self.subsampleInfo2.insertPlainText("It is recommended to check the alignment of these specimens with the template or experimenting with a higher spacing factor \n")
       else:
-        self.subsampleInfo.insertPlainText("All error rates smaller than the threshold \n")
+        self.subsampleInfo2.insertPlainText("All error rates smaller than the threshold \n")
     else:
-      self.subsampleInfo.insertPlainText("{} unique points are sampled from each model to match the template pointcloud \n")
+      self.subsampleInfo2.insertPlainText("{} unique points are sampled from each model to match the template pointcloud \n")
 
   #If select multiple group input radiobutton, execute enterFactors function
   def onToggleGroupInput(self):
@@ -800,16 +799,13 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       #add table to new layout
       # slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveTableID(self.factorTableNode.GetID())
       # slicer.app.applicationLogic().PropagateTableSelection()
-
       # slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutFourUpPlotTableView)
       slicer.app.layoutManager().setLayout(503)
       slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveTableID(self.factorTableNode.GetID())
       slicer.app.applicationLogic().PropagateTableSelection()
-
       self.factorTableNode.GetTable().Modified()
     # else:
     #   slicer.app.layoutManager().setLayout(503)
-
 
   def resetFactors(self):
     if hasattr(self, 'factorTableNode'):
@@ -826,14 +822,68 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     col2=self.factorTableNode.AddColumn()
     col2.SetName('Group')
     #add table to new layout
+    #add table to new layout
     # slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveTableID(self.factorTableNode.GetID())
     # slicer.app.applicationLogic().PropagateTableSelection()
-    
     # slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutFourUpPlotTableView)
     slicer.app.layoutManager().setLayout(503)
     slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveTableID(self.factorTableNode.GetID())
     slicer.app.applicationLogic().PropagateTableSelection()
-    
+    self.factorTableNode.GetTable().Modified()
+
+#Display a table with Kmeans cluster labels without user-input group information
+  def clusterTable(self, files, clusterID):
+    # if hasattr(self, 'factorTableNode'):
+    #   self.factorTableNode.GetDisplayNode().SetVisibility(False)
+    if hasattr(self, 'factorTableNode2'):
+      slicer.mrmlScene.RemoveNode(self.factorTableNode2) 
+    sortedArray = np.zeros(len(files), dtype={'names':('filename', 'procdist'),'formats':('U50','f8')})
+    sortedArray['filename']=files
+    self.factorTableNode2 = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTableNode', 'Cluster table no group input')
+    col1=self.factorTableNode2.AddColumn()
+    col1.SetName('ID')
+    for i in range(len(files)):
+      self.factorTableNode2.AddEmptyRow()
+      self.factorTableNode2.SetCellText(i,0, sortedArray['filename'][i])
+      print(sortedArray['filename'][i])
+    #Add cluster ID from kmeans to the table
+    col2 = self.factorTableNode2.AddColumn()
+    col2.SetName('Cluster ID')
+    clusterID = np.array(clusterID)
+    for i in range(len(files)):
+      #self.factorTableNode2.AddEmptyRow()
+      self.factorTableNode2.SetCellText(i, 1, clusterID[i])
+    slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveTableID(self.factorTableNode2.GetID())
+    slicer.app.applicationLogic().PropagateTableSelection()
+    self.factorTableNode2.GetTable().Modified()    
+
+#Display a table with Kmeans cluster labels with user-input group information
+  def clusterTableWithGroups(self, files, groupFactorArray, groupClusterIDs):
+    if hasattr(self, 'factorTableNode'):
+    # self.factorTableNode.RemoveAllColumns()
+      slicer.mrmlScene.RemoveNode(self.factorTableNode)
+    # sortedArray = np.zeros(len(files), dtype={'names':('filename', 'procdist'),'formats':('U50','f8')})
+    # sortedArray['filename']=files
+    self.factorTableNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTableNode', 'Table with input groups')
+    col1=self.factorTableNode.AddColumn()
+    col1.SetName('ID')
+    for i in range(len(files)):
+      self.factorTableNode.AddEmptyRow()
+      self.factorTableNode.SetCellText(i, 0, files[i])
+    col2=self.factorTableNode.AddColumn()
+    col2.SetName('Group')
+    for i in range(len(files)):
+      #self.factorTableNode.AddEmptyRow()
+      self.factorTableNode.SetCellText(i, 1, groupFactorArray[i])
+    #self.factorTableNode.RemoveColumn(2)
+    col3 = self.factorTableNode.AddColumn()
+    col3.SetName('Cluster ID')
+    for i in range(len(files)):
+      #self.factorTableNode.AddEmptyRow()
+      self.factorTableNode.SetCellText(i, 2, groupClusterIDs[i])
+    #add table to new layout
+    slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveTableID(self.factorTableNode.GetID())
+    slicer.app.applicationLogic().PropagateTableSelection()
     self.factorTableNode.GetTable().Modified()
 
 
@@ -1975,6 +2025,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     plotViewNode.SetPlotChartNodeID(plotChartNode.GetID())
 
 
+
   def makeScatterPlot(self, data, files, title, xAxis, yAxis, pcNumber, templatesIndices):
     numPoints = len(data)
     #Scatter plot for all specimens with no group input
@@ -2077,7 +2128,6 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     plotWidget = layoutManager.plotWidget(0)
     plotViewNode = plotWidget.mrmlPlotViewNode()
     plotViewNode.SetPlotChartNodeID(plotChartNode.GetID())
-
 
 class ALPACATest(ScriptedLoadableModuleTest):
   """
