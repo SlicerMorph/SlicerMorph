@@ -734,7 +734,8 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     if bool(self.referenceSelector.currentPath):
       referencePath = self.referenceSelector.currentPath
     else:
-      referenceFile = os.listdir(self.modelsMultiSelector.currentPath)[0]
+      referenceList = [f for f in os.listdir(self.modelsMultiSelector.currentPath) if f.endswith(('.ply', '.stl', '.obj', '.vtk', '.vtp'))]
+      referenceFile = referenceList[0]
       referencePath = os.path.join(self.modelsMultiSelector.currentPath, referenceFile)
     self.sparseTemplate, template_density, self.referenceNode = logic.downReference(referencePath, self.spacingFactor.value)
     self.refName = os.path.basename(referencePath)
@@ -1417,7 +1418,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
       np.savetxt (targetPath, targetArray, delimiter=',')
       np.savetxt (sourcePath, sourceArrayCombined, delimiter=',')
       path = os.path.join(parameters["BCPDFolder"], 'bcpd') 
-      cmd = f'{path} -x "{targetPath} -y {sourcePath}" -l{parameters["alpha"]} -b{parameters["beta"]} -g0.1 -K140 -J500 -c1e-6 -p -d7 -e0.3 -f0.3 -ux -N1'
+      cmd = f'"{path}" -x "{targetPath} -y {sourcePath}" -l{parameters["alpha"]} -b{parameters["beta"]} -g0.1 -K140 -J500 -c1e-6 -p -d7 -e0.3 -f0.3 -ux -N1'
       cp = subprocess.run(cmd, shell = True, check = True,universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
       deformed_array = np.loadtxt('output_y.txt')
       for fl in glob.glob("output*.txt"):
@@ -1776,7 +1777,8 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     template_density = sparseTemplate.GetNumberOfPoints()
     ID_list = list()
     #Alignment and matching points
-    for file in os.listdir(modelsDir):
+    referenceFileList = [f for f in os.listdir(modelsDir) if f.endswith(('.ply', '.stl', '.obj', '.vtk', '.vtp'))]
+    for file in referenceFileList:
       sourceFilePath = os.path.join(modelsDir, file)
       sourceModelNode = slicer.util.loadModel(sourceFilePath)
       sourceModelNode.GetDisplayNode().SetVisibility(False)
@@ -1807,7 +1809,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     #Printing results of points matching
     matchedPoints = [len(set(x)) for x in ID_list]
     indices = [i for i, x in enumerate(matchedPoints) if x < template_density]
-    files = [os.path.splitext(file)[0] for file in os.listdir(modelsDir)]
+    files = [os.path.splitext(file)[0] for file in referenceFileList]
     return template_density, matchedPoints, indices, files
 
   #inputFilePaths: file paths of pcd files
