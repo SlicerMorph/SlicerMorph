@@ -995,7 +995,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         self.extension =  secondExtension + self.extension
       self.files=[]
       for path in self.inputFilePaths:
-        basename =  os.path.basename(path).rpartition('.')[0].rpartition('.')[0]
+        basename =  os.path.basename(path).partition('.')[0]
         self.files.append(basename)
 
   def onSelectOutputDirectory(self):
