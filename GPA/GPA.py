@@ -137,7 +137,7 @@ class sliderGroup(qt.QGroupBox):
     self.comboBox.clear()
 
   def __init__(self, parent=None, onChanged=None):
-    super(sliderGroup, self).__init__( parent)
+    super().__init__( parent)
 
     # slider
     self.slider = qt.QSlider(qt.Qt.Horizontal)
@@ -246,7 +246,7 @@ class LMData:
     self.vec=np.real(self.vec)
     # scale eigenvector
     for y in range(len(numVec)):
-      if numVec[y] is not 0:
+      if numVec[y] != 0:
         pcComponent = numVec[y] - 1
         tmp[:,0]=tmp[:,0]+float(scaleFactor[y])*self.vec[0:i,pcComponent]*SampleScaleFactor/3
         tmp[:,1]=tmp[:,1]+float(scaleFactor[y])*self.vec[i:2*i,pcComponent]*SampleScaleFactor/3
@@ -671,11 +671,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.applyEnabled=False
 
     def warpOnChangePC1(value):
-      if self.applyEnabled and self.slider1.boxValue() is not 'None':
+      if self.applyEnabled and self.slider1.boxValue() != 'None':
         self.onApply()
    
     def warpOnChangePC2(value):
-      if self.applyEnabled and self.slider2.boxValue() is not 'None':
+      if self.applyEnabled and self.slider2.boxValue() != 'None':
         self.onApply()
 
     self.PCList=[]
@@ -810,7 +810,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     if len(percentVar)<self.pcNumber:
       self.pcNumber=len(percentVar)
     for x in range(self.pcNumber):
-      tmp="{:.1f}".format(percentVar[x]*100)
+      tmp=f"{percentVar[x]*100:.1f}"
       string='PC '+str(x+1)+': '+str(tmp)+"%" +" var"
       self.PCList.append(string)
       self.XcomboBox.addItem(string)
@@ -820,7 +820,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.vectorThree.addItem(string)
   
   def factorStringChanged(self):
-    if self.factorName.text is not "":
+    if self.factorName.text != "":
       self.inputFactorButton.enabled = True
     else:
       self.inputFactorButton.enabled = False
@@ -1051,7 +1051,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
           if 'ExcludedLM' in search:
             line = search.rstrip()
             header, skippedText = line.split('=')
-            if skippedText is not '':
+            if skippedText != '':
               self.LMExclusionList = [int(i) for i in skippedText.split(',')]        
     except:
       logging.debug('Log import failed: Cannot read scaling option from log file')
@@ -1418,7 +1418,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.FudSelect.enabled = True
       print(self.grayscaleSelector.currentPath)
       print(self.FudSelect.currentPath )
-      self.selectorButton.enabled = bool( self.grayscaleSelector.currentPath is not "") and bool(self.FudSelect.currentPath is not "") 
+      self.selectorButton.enabled = bool( self.grayscaleSelector.currentPath != "") and bool(self.FudSelect.currentPath != "") 
       
       
   
@@ -1669,7 +1669,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     # get scale values for each pc.
     sf1=self.slider1.sliderValue()
     sf2=self.slider2.sliderValue()
-    scaleFactors=np.zeros((2))
+    scaleFactors=np.zeros(2)
     scaleFactors[0]=sf1/100.0
     scaleFactors[1]=sf2/100.0
 
@@ -1853,14 +1853,14 @@ class GPALogic(ScriptedLoadableModuleLogic):
         try:
           tmp1=pandas.DataFrame.from_dict(pandas.read_json(filePathList[i])['markups'][0]['controlPoints'])
         except:
-          slicer.util.messageBox("Error: Load file {} failed:.".format(filePathList[i]))
-          logging.debug("Error: Load file {} failed:.".format(filePathList[i]))
+          slicer.util.messageBox(f"Error: Load file {filePathList[i]} failed:.")
+          logging.debug(f"Error: Load file {filePathList[i]} failed:.")
         if len(tmp1) == landmarkNumber:
           lmArray = tmp1['position'].to_numpy()
           for j in range(landmarkNumber):
             landmarks[j,:,i]=lmArray[j]
         else:
-          warning = "Error: Load file {} failed. There are {} landmarks instead of the expected {}.".format(filePathList[i],len(tmp1),landmarkNumber)
+          warning = f"Error: Load file {filePathList[i]} failed. There are {len(tmp1)} landmarks instead of the expected {landmarkNumber}."
           slicer.util.messageBox(warning)
           return
     else:
@@ -1871,7 +1871,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
         if len(tmp1) == landmarkNumber:
           landmarks[:,:,i] = tmp1
         else:
-          warning = "Error: Load file {} failed. There are {} landmarks instead of the expected {}.".format(filePathList[i],len(tmp1),landmarkNumber)
+          warning = f"Error: Load file {filePathList[i]} failed. There are {len(tmp1)} landmarks instead of the expected {landmarkNumber}."
           slicer.util.messageBox(warning)
           return      
     if len(lmToRemove)>0:
@@ -1886,7 +1886,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
     Adjusts the resolution is log(nhrd) file is found returns kXd array of landmark data. k=# of landmarks d=dimension
     """
     # import data file
-    datafile=open(filePath,'r')
+    datafile=open(filePath)
     data=[]
     for row in datafile:
       if not fnmatch.fnmatch(row[0],"#*"):
@@ -1911,7 +1911,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
     dim=3
     subjectNumber = len(files)
     # import data file
-    datafile=open(files[0],'r')
+    datafile=open(files[0])
     landmarkType = []
     rowNumber=0
     for row in datafile:
@@ -2099,7 +2099,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
       color = [0,0,1]
       modelNodeName = 'Lollipop Vector Plot 3'
 
-    if pc is not 0:
+    if pc != 0:
       pc=pc-1 # get current component
       endpoints=self.calcEndpoints(LMObj,LM,pc,scaleFactor)
       i,j=LM.shape

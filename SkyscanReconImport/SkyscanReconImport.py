@@ -139,7 +139,7 @@ class LogDataObject:
 
   def ImportFromFile(self, LogFilename):
     lines = [] 					#Declare an empty list to read file into
-    with open (LogFilename, 'rt') as in_file:
+    with open (LogFilename) as in_file:
       for line in in_file:
         lines.append(line.strip("\n"))     # add that line list, get rid of line endings
       for element in lines:  # For each element in list

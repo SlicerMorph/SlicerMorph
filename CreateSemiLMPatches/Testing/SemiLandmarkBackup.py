@@ -1,4 +1,3 @@
-
 import os
 import unittest
 import vtk, qt, ctk, slicer
@@ -349,7 +348,7 @@ class SemiLandmarkLogic(ScriptedLoadableModuleLogic):
     return landmarkArray
 
   def readLandmarkFile(self, landmarkFilename):
-    datafile=open(landmarkFilename,'r')
+    datafile=open(landmarkFilename)
     data=[]
     for row in datafile:
       if not fnmatch.fnmatch(row[0],"#*"):  #if not a commented line

@@ -188,7 +188,7 @@ class MorphologikaLMConverterLogic(ScriptedLoadableModuleLogic):
     """
     Run the actual conversion
     """
-    f=open(morphFileName,'r')
+    f=open(morphFileName)
     data=f.readlines()
     f.close
 

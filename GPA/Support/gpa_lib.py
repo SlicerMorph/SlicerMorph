@@ -14,7 +14,7 @@ def makeTwoDim(monsters):
 
 def calcMean(vec):
     i,j=vec.shape
-    meanVec=np.zeros((i))
+    meanVec=np.zeros(i)
     for x in range(j):
         meanVec+=vec[:,x]/float(j)
     return meanVec

@@ -235,7 +235,7 @@ class SegmentEndocraniumLogic(ScriptedLoadableModuleLogic):
     thresholdCalculator.Update()
     boneThresholdValue = thresholdCalculator.GetThreshold()
     volumeScalarRange = inputVolume.GetImageData().GetScalarRange()
-    logging.debug("Volume minimum = {0}, maximum = {1}, bone threshold = {2}".format(volumeScalarRange[0], volumeScalarRange[1], boneThresholdValue))
+    logging.debug(f"Volume minimum = {volumeScalarRange[0]}, maximum = {volumeScalarRange[1]}, bone threshold = {boneThresholdValue}")
 
     # Set up segmentation
     outputSegmentation.CreateDefaultDisplayNodes()
