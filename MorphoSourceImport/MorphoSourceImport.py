@@ -188,17 +188,17 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
     pass
 
   def onLoginStringChanged(self):
-    self.loginButton.enabled = bool(self.userNameInput.text is not "") and bool(self.passwordInput.text is not "")
+    self.loginButton.enabled = bool(self.userNameInput.text != "") and bool(self.passwordInput.text != "")
 
   def onQueryStringChanged(self):
     if hasattr(self, 'session'):
-      self.submitQueryButton.enabled = bool(self.orderInput.text is not "") and bool(self.elementInput.text is not "")
+      self.submitQueryButton.enabled = bool(self.orderInput.text != "") and bool(self.elementInput.text != "")
 
   def onLogin(self):
     logic = MorphoSourceImportLogic()
     self.session = logic.runLogin(self.userNameInput.text, self.passwordInput.text)
     # Allow query submission if parameters not empty
-    self.submitQueryButton.enabled = bool(self.orderInput.text is not "") and bool(self.elementInput.text is not "")
+    self.submitQueryButton.enabled = bool(self.orderInput.text != "") and bool(self.elementInput.text != "")
 
   def onSubmitQuery(self):
       self.resultsTable.model().clear() # clear result from any previous run
@@ -455,10 +455,10 @@ class MorphoSourceImportTest(ScriptedLoadableModuleTest):
     for url,name,loader in downloads:
       filePath = slicer.app.temporaryPath + '/' + name
       if not os.path.exists(filePath) or os.stat(filePath).st_size == 0:
-        logging.info('Requesting download %s from %s...\n' % (name, url))
+        logging.info(f'Requesting download {name} from {url}...\n')
         urllib.urlretrieve(url, filePath)
       if loader:
-        logging.info('Loading %s...' % (name,))
+        logging.info(f'Loading {name}...')
         loader(filePath)
     self.delayDisplay('Finished with download and loading')
 

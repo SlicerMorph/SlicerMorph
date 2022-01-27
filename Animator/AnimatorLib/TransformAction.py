@@ -1,4 +1,3 @@
-
 import numpy
 
 """
@@ -24,7 +23,7 @@ slicer.util.selectModule(moduleName)
 
 """
 
-class animateThinPlate(object):
+class animateThinPlate:
 
     def __init__(self):
         self.name = "preduraUS_resampledTointraopUS_reseampled-ThinPlate"

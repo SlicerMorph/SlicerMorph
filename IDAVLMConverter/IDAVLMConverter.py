@@ -176,7 +176,7 @@ class IDAVLMConverterLogic(ScriptedLoadableModuleLogic):
     fiducialNode.SetName(landmarkFileBase)
 
     # read landmarks
-    landmarkFile = open(landmarkFilePath, "r")
+    landmarkFile = open(landmarkFilePath)
     lines = landmarkFile.readlines()
     landmarkFile.close()
 

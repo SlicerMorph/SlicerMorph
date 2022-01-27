@@ -308,7 +308,7 @@ class MeshDistanceMeasurementLogic(ScriptedLoadableModuleLogic):
         slicer.mrmlScene.RemoveNode(currentLMNode)
 
   def rmse(self, signedDistanceArray):
-    return np.sqrt((np.square(signedDistanceArray).mean()))
+    return np.sqrt(np.square(signedDistanceArray).mean())
     
   def takeScreenshot(self,name,description,type=-1):
     # show the message even if not taking a screen shot
@@ -388,10 +388,10 @@ class MeshDistanceMeasurementTest(ScriptedLoadableModuleTest):
     for url,name,loader in downloads:
       filePath = slicer.app.temporaryPath + '/' + name
       if not os.path.exists(filePath) or os.stat(filePath).st_size == 0:
-        logging.info('Requesting download %s from %s...\n' % (name, url))
+        logging.info(f'Requesting download {name} from {url}...\n')
         urllib.urlretrieve(url, filePath)
       if loader:
-        logging.info('Loading %s...' % (name,))
+        logging.info(f'Loading {name}...')
         loader(filePath)
     self.delayDisplay('Finished with download and loading')
     

@@ -114,17 +114,17 @@ class MorphoSourceBrowseLogic(ScriptedLoadableModuleLogic):
 
   def onFinishLoading(self, username, password):
     loginJS = """
-        function fillInLogin() {
-          document.querySelector('input[name="username"]').value = "%s";
-          document.querySelector('input[name="password"]').value = "%s";
-        }
+        function fillInLogin() {{
+          document.querySelector('input[name="username"]').value = "{}";
+          document.querySelector('input[name="password"]').value = "{}";
+        }}
 
-        if (document.readyState === "loading") {
+        if (document.readyState === "loading") {{
           document.addEventListener("DOMContentLoaded", fillInLogin);
-        } else {
+        }} else {{
           fillInLogin();
-        }
-    """ % (username,password)
+        }}
+    """.format(username,password)
 
     self.webWidget.connect("evalResult(QString,QString)", self.onEvalResult)
     self.webWidget.evalJS(loginJS)
