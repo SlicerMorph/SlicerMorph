@@ -1,5 +1,5 @@
 #-----------------------------------------------------------------------------
-set(MODULE_NAME ExportMorpoJLandmarkFile)
+set(MODULE_NAME ExportMorphoJLandmarkFile)
 
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS
