@@ -54,6 +54,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     except ModuleNotFoundError as e:
       if slicer.util.confirmOkCancelDisplay("ALPACA requires the open3d library. Installation may take a few minutes"):
         slicer.util.pip_install('notebook==6.0.3')
+        slicer.util.pip_install('pywinpty==1.1.6')
         slicer.util.pip_install('open3d==0.10.0')
         import open3d as o3d
     try:
