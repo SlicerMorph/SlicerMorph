@@ -48,22 +48,38 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
 
   def __init__(self, parent=None):
     ScriptedLoadableModuleWidget.__init__(self, parent)
+    needRestart = False
+    needInstall = False
+    if slicer.app.majorVersion*100+slicer.app.minorVersion < 412:
+      Open3dVersion = "0.10.0"
+    else:
+      Open3dVersion = "0.15.1"
     try:
       import open3d as o3d
-      print('o3d installed')
-    except ModuleNotFoundError as e:
-      if slicer.util.confirmOkCancelDisplay("ALPACA requires the open3d library. Installation may take a few minutes"):
-        slicer.util.pip_install('notebook==6.0.3')
-        slicer.util.pip_install('pywinpty==1.1.6')
-        slicer.util.pip_install('open3d==0.10.0')
-        import open3d as o3d
-    try:
-      from cpdalp import DeformableRegistration
-      print('cpdalp installed')
-    except ModuleNotFoundError as e:
-      slicer.util.pip_install('cpdalp')
-      print('trying to install cpdalp')
-      from cpdalp import DeformableRegistration
+      import cpdalp
+      from packaging import version
+      if version.parse(o3d.__version__) != version.parse(Open3dVersion):
+        if not slicer.util.confirmOkCancelDisplay(f"ALPACA requires installation of open3d (version {Open3dVersion}).\nClick OK to upgrade open3d and restart the application."):
+          self.showBrowserOnEnter = False
+          return
+        needRestart = True
+        needInstall = True
+    except ModuleNotFoundError:
+      needInstall = True
+
+    if needInstall:
+      progressDialog = slicer.util.createProgressDialog(labelText='Upgrading open3d. This may take a minute...', maximum=0)
+      slicer.app.processEvents()
+      slicer.util.pip_install('pywinpty==1.1.6')
+      slicer.util.pip_install('notebook==6.0.3')
+      slicer.util.pip_install(f'open3d=={Open3dVersion}')
+      slicer.util.pip_install(f'cpdalp')
+      import open3d as o3d
+      import cpdalp
+      progressDialog.close()
+    if needRestart:
+      slicer.util.restart()
+
     
   def onSelect(self):
     self.applyButton.enabled = bool (self.meshDirectory.currentPath and self.landmarkDirectory.currentPath and 
@@ -125,9 +141,13 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     alignSingleWidgetLayout.addRow("Skip projection", self.skipProjectionCheckBox)
     
 
-    [self.projectionFactor,self.pointDensity, self.normalSearchRadius, self.FPFHSearchRadius, self.distanceThreshold, self.maxRANSAC, self.maxRANSACValidation, 
-    self.ICPDistanceThreshold, self.alpha, self.beta, self.CPDIterations, self.CPDTolerence] = self.addAdvancedMenu(alignSingleWidgetLayout)
-    
+    if slicer.app.majorVersion*100+slicer.app.minorVersion < 412:
+      [self.projectionFactor,self.pointDensity, self.normalSearchRadius, self.FPFHSearchRadius, self.distanceThreshold, self.maxRANSAC, self.maxRANSACValidation, 
+      self.ICPDistanceThreshold, self.alpha, self.beta, self.CPDIterations, self.CPDTolerence] = self.addAdvancedMenu(alignSingleWidgetLayout)
+    else:
+      [self.projectionFactor,self.pointDensity, self.normalSearchRadius, self.FPFHSearchRadius, self.distanceThreshold, self.maxRANSAC, self.RANSACConfidence, 
+      self.ICPDistanceThreshold, self.alpha, self.beta, self.CPDIterations, self.CPDTolerence] = self.addAdvancedMenu(alignSingleWidgetLayout)
+      
     # Advanced tab connections
     self.projectionFactor.connect('valueChanged(double)', self.onChangeAdvanced)
     self.pointDensity.connect('valueChanged(double)', self.onChangeAdvanced)
@@ -135,7 +155,10 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.FPFHSearchRadius.connect('valueChanged(double)', self.onChangeAdvanced)
     self.distanceThreshold.connect('valueChanged(double)', self.onChangeAdvanced)
     self.maxRANSAC.connect('valueChanged(double)', self.onChangeAdvanced)
-    self.maxRANSACValidation.connect('valueChanged(double)', self.onChangeAdvanced)
+    if slicer.app.majorVersion*100+slicer.app.minorVersion < 412:
+      self.maxRANSACValidation.connect('valueChanged(double)', self.onChangeAdvanced)
+    else:
+      self.RANSACConfidence.connect('valueChanged(double)', self.onChangeAdvanced)
     self.ICPDistanceThreshold.connect('valueChanged(double)', self.onChangeAdvanced)
     self.alpha.connect('valueChanged(double)', self.onChangeAdvanced)
     self.beta.connect('valueChanged(double)', self.onChangeAdvanced)
@@ -258,9 +281,13 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.skipProjectionCheckBoxMulti.setToolTip("If checked, ALPACA will skip final refinement step placing landmarks on the target suface.")
     alignMultiWidgetLayout.addRow("Skip projection", self.skipProjectionCheckBoxMulti)
     
-    [self.projectionFactorMulti, self.pointDensityMulti, self.normalSearchRadiusMulti, self.FPFHSearchRadiusMulti, self.distanceThresholdMulti, self.maxRANSACMulti, self.maxRANSACValidationMulti, 
-    self.ICPDistanceThresholdMulti, self.alphaMulti, self.betaMulti, self.CPDIterationsMulti, self.CPDTolerenceMulti] = self.addAdvancedMenu(alignMultiWidgetLayout)
-        
+    if slicer.app.majorVersion*100+slicer.app.minorVersion < 412:
+      [self.projectionFactorMulti, self.pointDensityMulti, self.normalSearchRadiusMulti, self.FPFHSearchRadiusMulti, self.distanceThresholdMulti, self.maxRANSACMulti, self.maxRANSACValidationMulti, 
+      self.ICPDistanceThresholdMulti, self.alphaMulti, self.betaMulti, self.CPDIterationsMulti, self.CPDTolerenceMulti] = self.addAdvancedMenu(alignMultiWidgetLayout)
+    else:
+      [self.projectionFactorMulti, self.pointDensityMulti, self.normalSearchRadiusMulti, self.FPFHSearchRadiusMulti, self.distanceThresholdMulti, self.maxRANSACMulti, self.RANSACConfidenceMulti, 
+      self.ICPDistanceThresholdMulti, self.alphaMulti, self.betaMulti, self.CPDIterationsMulti, self.CPDTolerenceMulti] = self.addAdvancedMenu(alignMultiWidgetLayout)
+      
     #
     # Run landmarking Button
     #
@@ -288,7 +315,10 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.FPFHSearchRadiusMulti.connect('valueChanged(double)', self.updateParameterDictionary)
     self.distanceThresholdMulti.connect('valueChanged(double)', self.updateParameterDictionary)
     self.maxRANSACMulti.connect('valueChanged(double)', self.updateParameterDictionary)
-    self.maxRANSACValidationMulti.connect('valueChanged(double)', self.updateParameterDictionary)
+    if slicer.app.majorVersion*100+slicer.app.minorVersion < 412:
+      self.maxRANSACValidationMulti.connect('valueChanged(double)', self.updateParameterDictionary)
+    else:
+      self.RANSACConfidenceMulti.connect('valueChanged(double)', self.updateParameterDictionary)
     self.ICPDistanceThresholdMulti.connect('valueChanged(double)', self.updateParameterDictionary)
     self.alphaMulti.connect('valueChanged(double)', self.updateParameterDictionary)
     self.betaMulti.connect('valueChanged(double)', self.updateParameterDictionary)
@@ -296,35 +326,68 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.CPDTolerenceMulti.connect('valueChanged(double)', self.updateParameterDictionary)
     
     # initialize the parameter dictionary from single run parameters
-    self.parameterDictionary = {
-      "projectionFactor": self.projectionFactor.value,
-      "pointDensity": self.pointDensity.value,
-      "normalSearchRadius" : self.normalSearchRadius.value,
-      "FPFHSearchRadius" : self.FPFHSearchRadius.value,
-      "distanceThreshold" : self.distanceThreshold.value,
-      "maxRANSAC" : int(self.maxRANSAC.value),
-      "maxRANSACValidation" : int(self.maxRANSACValidation.value),
-      "ICPDistanceThreshold"  : self.ICPDistanceThreshold.value,
-      "alpha" : self.alpha.value,
-      "beta" : self.beta.value,
-      "CPDIterations" : int(self.CPDIterations.value),
-      "CPDTolerence" : self.CPDTolerence.value
-      }
+    if slicer.app.majorVersion*100+slicer.app.minorVersion < 412:
+      self.parameterDictionary = {
+        "projectionFactor": self.projectionFactor.value,
+        "pointDensity": self.pointDensity.value,
+        "normalSearchRadius" : self.normalSearchRadius.value,
+        "FPFHSearchRadius" : self.FPFHSearchRadius.value,
+        "distanceThreshold" : self.distanceThreshold.value,
+        "maxRANSAC" : int(self.maxRANSAC.value),
+        "maxRANSACValidation" : int(self.maxRANSACValidation.value),
+        "ICPDistanceThreshold"  : self.ICPDistanceThreshold.value,
+        "alpha" : self.alpha.value,
+        "beta" : self.beta.value,
+        "CPDIterations" : int(self.CPDIterations.value),
+        "CPDTolerence" : self.CPDTolerence.value
+        }
+    else:
+      self.parameterDictionary = {
+        "projectionFactor": self.projectionFactor.value,
+        "pointDensity": self.pointDensity.value,
+        "normalSearchRadius" : self.normalSearchRadius.value,
+        "FPFHSearchRadius" : self.FPFHSearchRadius.value,
+        "distanceThreshold" : self.distanceThreshold.value,
+        "maxRANSAC" : int(self.maxRANSAC.value),
+        "RANSACConfidence" : int(self.RANSACConfidence.value),
+        "ICPDistanceThreshold"  : self.ICPDistanceThreshold.value,
+        "alpha" : self.alpha.value,
+        "beta" : self.beta.value,
+        "CPDIterations" : int(self.CPDIterations.value),
+        "CPDTolerence" : self.CPDTolerence.value
+        }      
+    #
     # initialize the parameter dictionary from multi run parameters
-    self.parameterDictionaryMulti = {
-      "projectionFactor": self.projectionFactorMulti.value,
-      "pointDensity": self.pointDensityMulti.value,
-      "normalSearchRadius" : self.normalSearchRadiusMulti.value,
-      "FPFHSearchRadius" : self.FPFHSearchRadiusMulti.value,
-      "distanceThreshold" : self.distanceThresholdMulti.value,
-      "maxRANSAC" : int(self.maxRANSACMulti.value),
-      "maxRANSACValidation" : int(self.maxRANSACValidationMulti.value),
-      "ICPDistanceThreshold"  : self.ICPDistanceThresholdMulti.value,
-      "alpha" : self.alphaMulti.value,
-      "beta" : self.betaMulti.value,
-      "CPDIterations" : int(self.CPDIterationsMulti.value),
-      "CPDTolerence" : self.CPDTolerenceMulti.value
-      }
+    if slicer.app.majorVersion*100+slicer.app.minorVersion < 412:
+      self.parameterDictionaryMulti = {
+        "projectionFactor": self.projectionFactorMulti.value,
+        "pointDensity": self.pointDensityMulti.value,
+        "normalSearchRadius" : self.normalSearchRadiusMulti.value,
+        "FPFHSearchRadius" : self.FPFHSearchRadiusMulti.value,
+        "distanceThreshold" : self.distanceThresholdMulti.value,
+        "maxRANSAC" : int(self.maxRANSACMulti.value),
+        "maxRANSACValidation" : int(self.maxRANSACValidationMulti.value),
+        "ICPDistanceThreshold"  : self.ICPDistanceThresholdMulti.value,
+        "alpha" : self.alphaMulti.value,
+        "beta" : self.betaMulti.value,
+        "CPDIterations" : int(self.CPDIterationsMulti.value),
+        "CPDTolerence" : self.CPDTolerenceMulti.value
+        }
+    else:
+      self.parameterDictionaryMulti = {
+        "projectionFactor": self.projectionFactorMulti.value,
+        "pointDensity": self.pointDensityMulti.value,
+        "normalSearchRadius" : self.normalSearchRadiusMulti.value,
+        "FPFHSearchRadius" : self.FPFHSearchRadiusMulti.value,
+        "distanceThreshold" : self.distanceThresholdMulti.value,
+        "maxRANSAC" : int(self.maxRANSACMulti.value),
+        "RANSACConfidence" : int(self.RANSACConfidenceMulti.value),
+        "ICPDistanceThreshold"  : self.ICPDistanceThresholdMulti.value,
+        "alpha" : self.alphaMulti.value,
+        "beta" : self.betaMulti.value,
+        "CPDIterations" : int(self.CPDIterationsMulti.value),
+        "CPDTolerence" : self.CPDTolerenceMulti.value
+        }      
   
   def cleanup(self):
     pass
@@ -489,13 +552,17 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.FPFHSearchRadiusMulti.value = self.FPFHSearchRadius.value
     self.distanceThresholdMulti.value = self.distanceThreshold.value
     self.maxRANSACMulti.value = self.maxRANSAC.value
-    self.maxRANSACValidationMulti.value = self.maxRANSACValidation.value
+    if slicer.app.majorVersion*100+slicer.app.minorVersion < 412:
+      self.maxRANSACValidationMulti.value = self.maxRANSACValidation.value
+    else:
+      self.RANSACConfidenceMulti.value = self.RANSACConfidence.value
     self.ICPDistanceThresholdMulti.value  = self.ICPDistanceThreshold.value
     self.alphaMulti.value = self.alpha.value
     self.betaMulti.value = self.beta.value
     self.CPDTolerenceMulti.value = self.CPDTolerence.value    
     
     self.updateParameterDictionary()
+
     
   def updateParameterDictionary(self):    
     # update the parameter dictionary from single run parameters
@@ -506,7 +573,10 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       self.parameterDictionary["FPFHSearchRadius"] = int(self.FPFHSearchRadius.value)
       self.parameterDictionary["distanceThreshold"] = self.distanceThreshold.value
       self.parameterDictionary["maxRANSAC"] = int(self.maxRANSAC.value)
-      self.parameterDictionary["maxRANSACValidation"] = int(self.maxRANSACValidation.value)
+      if slicer.app.majorVersion*100+slicer.app.minorVersion < 412:
+        self.parameterDictionary["maxRANSACValidation"] = int(self.maxRANSACValidation.value)
+      else:
+        self.parameterDictionary["RANSACConfidence"] = int(self.RANSACConfidence.value)
       self.parameterDictionary["ICPDistanceThreshold"] = self.ICPDistanceThreshold.value
       self.parameterDictionary["alpha"] = self.alpha.value
       self.parameterDictionary["beta"] = self.beta.value
@@ -521,7 +591,10 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       self.parameterDictionaryMulti["FPFHSearchRadius"] = int(self.FPFHSearchRadiusMulti.value)
       self.parameterDictionaryMulti["distanceThreshold"] = self.distanceThresholdMulti.value
       self.parameterDictionaryMulti["maxRANSAC"] = int(self.maxRANSACMulti.value)
-      self.parameterDictionaryMulti["maxRANSACValidation"] = int(self.maxRANSACValidationMulti.value)
+      if slicer.app.majorVersion*100+slicer.app.minorVersion < 412:
+        self.parameterDictionaryMulti["maxRANSACValidation"] = int(self.maxRANSACValidationMulti.value)
+      else:
+        self.parameterDictionaryMulti["RANSACConfidence"] = int(self.RANSACConfidenceMulti.value)
       self.parameterDictionaryMulti["ICPDistanceThreshold"] = self.ICPDistanceThresholdMulti.value
       self.parameterDictionaryMulti["alpha"] = self.alphaMulti.value
       self.parameterDictionaryMulti["beta"] = self.betaMulti.value
@@ -617,15 +690,25 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     rigidRegistrationFormLayout.addRow("Maximum RANSAC iterations: ", maxRANSAC)
 
     # Maximum RANSAC validation steps
-    maxRANSACValidation = ctk.ctkDoubleSpinBox()
-    maxRANSACValidation.singleStep = 1
-    maxRANSACValidation.setDecimals(0)
-    maxRANSACValidation.minimum = 1
-    maxRANSACValidation.maximum = 500000000
-    maxRANSACValidation.value = 500
-    maxRANSACValidation.setToolTip("Maximum number of RANSAC validation steps")
-    rigidRegistrationFormLayout.addRow("Maximum RANSAC validation steps: ", maxRANSACValidation)
-
+    if slicer.app.majorVersion*100+slicer.app.minorVersion < 412:
+      maxRANSACValidation = ctk.ctkDoubleSpinBox()
+      maxRANSACValidation.singleStep = 1
+      maxRANSACValidation.setDecimals(0)
+      maxRANSACValidation.minimum = 1
+      maxRANSACValidation.maximum = 500000000
+      maxRANSACValidation.value = 500
+      maxRANSACValidation.setToolTip("Maximum number of RANSAC validation steps")
+      rigidRegistrationFormLayout.addRow("Maximum RANSAC validation steps: ", maxRANSACValidation)
+    else:
+      RANSACConfidence = ctk.ctkDoubleSpinBox()
+      RANSACConfidence.singleStep = 0.000001
+      RANSACConfidence.setDecimals(6)
+      RANSACConfidence.minimum = 0.99
+      RANSACConfidence.maximum = 0.999999
+      RANSACConfidence.value = 0.9999
+      RANSACConfidence.setToolTip("Set up confidence (convergence criteria) for RANSAC global registration")
+      rigidRegistrationFormLayout.addRow("Set up RANSAC confidence: ", RANSACConfidence)
+      
     # ICP distance threshold slider
     ICPDistanceThreshold = ctk.ctkSliderWidget()
     ICPDistanceThreshold.singleStep = .1
@@ -674,8 +757,11 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     CPDTolerence.setToolTip("Tolerance used to assess CPD convergence")
     deformableRegistrationFormLayout.addRow("CPD tolerance: ", CPDTolerence)
 
-    return projectionFactor, pointDensity, normalSearchRadius, FPFHSearchRadius, distanceThreshold, maxRANSAC, maxRANSACValidation, ICPDistanceThreshold, alpha, beta, CPDIterations, CPDTolerence
-    
+    if slicer.app.majorVersion*100+slicer.app.minorVersion < 412:
+      return projectionFactor, pointDensity, normalSearchRadius, FPFHSearchRadius, distanceThreshold, maxRANSAC, maxRANSACValidation, ICPDistanceThreshold, alpha, beta, CPDIterations, CPDTolerence
+    else:
+      return projectionFactor, pointDensity, normalSearchRadius, FPFHSearchRadius, distanceThreshold, maxRANSAC, RANSACConfidence, ICPDistanceThreshold, alpha, beta, CPDIterations, CPDTolerence
+      
 #
 # ALPACALogic
 #
@@ -882,9 +968,13 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     return modelNode
     
   def estimateTransform(self, sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, skipScaling, parameters):
-    ransac = self.execute_global_registration(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize * 2.5, 
-      parameters["distanceThreshold"], parameters["maxRANSAC"], parameters["maxRANSACValidation"], skipScaling)
-    
+    if slicer.app.majorVersion*100+slicer.app.minorVersion < 412:
+      ransac = self.execute_global_registration(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize * 2.5, 
+        parameters["distanceThreshold"], parameters["maxRANSAC"], parameters["maxRANSACValidation"], skipScaling)
+    else:
+      ransac = self.execute_global_registration_2(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize * 2.5, 
+        parameters["distanceThreshold"], parameters["maxRANSAC"], parameters["RANSACConfidence"], skipScaling)
+      
     # Refine the initial registration using an Iterative Closest Point (ICP) registration
     icp = self.refine_registration(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize * 2.5, ransac, parameters["ICPDistanceThreshold"]) 
     return icp.transformation                                     
@@ -942,7 +1032,11 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     
   def preprocess_point_cloud(self, pcd, voxel_size, radius_normal_factor, radius_feature_factor):
     from open3d import geometry
-    from open3d import registration
+    if slicer.app.majorVersion*100+slicer.app.minorVersion < 412:
+      from open3d import registration
+    else:
+      from open3d import pipelines
+      registration = pipelines.registration
     print(":: Downsample with a voxel size %.3f." % voxel_size)
     pcd_down = pcd.voxel_down_sample(voxel_size)
     radius_normal = voxel_size * radius_normal_factor
@@ -974,9 +1068,29 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         ], registration.RANSACConvergenceCriteria(maxIter, maxValidation))
     return result
 
+  def execute_global_registration_2(self, source_down, target_down, source_fpfh,
+                                target_fpfh, voxel_size, distance_threshold_factor, maxIter, confidence, skipScaling):
+    from open3d import pipelines
+    registration = pipelines.registration
+    distance_threshold = voxel_size * distance_threshold_factor
+    print(":: RANSAC registration on downsampled point clouds.")
+    print("   Since the downsampling voxel size is %.3f," % voxel_size)
+    print("   we use a liberal distance threshold %.3f." % distance_threshold)
+    result = registration.registration_ransac_based_on_feature_matching(
+        source_down, target_down, source_fpfh, target_fpfh, False, distance_threshold,
+        registration.TransformationEstimationPointToPoint(skipScaling == 0), 4, [
+            registration.CorrespondenceCheckerBasedOnEdgeLength(0.9),
+            registration.CorrespondenceCheckerBasedOnDistance(
+                distance_threshold)
+        ], registration.RANSACConvergenceCriteria(maxIter, confidence))
+    return result
 
   def refine_registration(self, source, target, source_fpfh, target_fpfh, voxel_size, result_ransac, ICPThreshold_factor):
-    from open3d import registration
+    if slicer.app.majorVersion*100+slicer.app.minorVersion < 412:
+      from open3d import registration
+    else:
+      from open3d import pipelines
+      registration = pipelines.registration      
     distance_threshold = voxel_size * ICPThreshold_factor
     print(":: Point-to-plane ICP registration is applied on original point")
     print("   clouds to refine the alignment. This time we use a strict")
@@ -985,6 +1099,8 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         source, target, distance_threshold, result_ransac.transformation,
         registration.TransformationEstimationPointToPlane())
     return result
+
+
     
   def cpd_registration(self, targetArray, sourceArray, CPDIterations, CPDTolerence, alpha_parameter, beta_parameter):
     from cpdalp import DeformableRegistration
