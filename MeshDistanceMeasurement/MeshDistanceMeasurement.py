@@ -18,7 +18,7 @@ class MeshDistanceMeasurement(ScriptedLoadableModule):
   """Uses ScriptedLoadableModule base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
-  
+
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "MeshDistanceMeasurement" # TODO make this more human readable by adding spaces
@@ -30,8 +30,8 @@ class MeshDistanceMeasurement(ScriptedLoadableModule):
       """
     self.parent.helpText += self.getDefaultModuleDocumentationLink()
     self.parent.acknowledgementText = """
-      This module was developed by Sara Rolfe for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections" 
-      awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839). 
+      This module was developed by Sara Rolfe for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections"
+      awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839).
       https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
       """ # replace with organization, grant and thanks.
 
@@ -45,14 +45,14 @@ class MeshDistanceMeasurementWidget(ScriptedLoadableModuleWidget):
     """
   def onSelect(self):
     self.applyButton.enabled = bool (self.meshDirectory.currentPath and self.landmarkDirectory.currentPath and self.modelSelector.currentNode() and self.baseLMSelect.currentNode()) and (bool(self.semilandmarkDirectory.currentPath)==bool(self.baseSLMSelect.currentNode()))
-  
+
   def onSelectBaseSLM(self):
     self.semilandmarkDirectory.enabled = bool(self.baseSLMSelect.currentNode())
     self.applyButton.enabled = bool (self.meshDirectory.currentPath and self.landmarkDirectory.currentPath and self.modelSelector.currentNode() and self.baseLMSelect.currentNode()) and (bool(self.semilandmarkDirectory.currentPath)==bool(self.baseSLMSelect.currentNode()))
-    
+
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
-    
+
     # Instantiate and connect widgets ...
     #
     # Parameters Area
@@ -60,10 +60,10 @@ class MeshDistanceMeasurementWidget(ScriptedLoadableModuleWidget):
     parametersCollapsibleButton = ctk.ctkCollapsibleButton()
     parametersCollapsibleButton.text = "Parameters"
     self.layout.addWidget(parametersCollapsibleButton)
-    
+
     # Layout within the dummy collapsible button
     parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
-  
+
     #
     # Select base mesh
     #
@@ -76,7 +76,7 @@ class MeshDistanceMeasurementWidget(ScriptedLoadableModuleWidget):
     self.modelSelector.showHidden = False
     self.modelSelector.setMRMLScene( slicer.mrmlScene )
     parametersFormLayout.addRow("Base mesh: ", self.modelSelector)
-    
+
     #
     # Select base landmark file
     #
@@ -93,7 +93,7 @@ class MeshDistanceMeasurementWidget(ScriptedLoadableModuleWidget):
     self.baseLMSelect.showChildNodeTypes = False
     self.baseLMSelect.setMRMLScene( slicer.mrmlScene )
     parametersFormLayout.addRow("Base landmarks: ", self.baseLMSelect)
-    
+
     #
     # Select base semi-landmark file
     #
@@ -110,16 +110,16 @@ class MeshDistanceMeasurementWidget(ScriptedLoadableModuleWidget):
     self.baseSLMSelect.showChildNodeTypes = False
     self.baseSLMSelect.setMRMLScene( slicer.mrmlScene )
     parametersFormLayout.addRow("Base semi-landmarks: ", self.baseSLMSelect)
-    
-    
+
+
     #
     # Select meshes directory
-    #  
+    #
     self.meshDirectory=ctk.ctkPathLineEdit()
     self.meshDirectory.filters = ctk.ctkPathLineEdit.Dirs
     self.meshDirectory.setToolTip( "Select directory containing meshes" )
     parametersFormLayout.addRow("Mesh directory: ", self.meshDirectory)
-    
+
     #
     # Select landmarks directory
     #
@@ -127,7 +127,7 @@ class MeshDistanceMeasurementWidget(ScriptedLoadableModuleWidget):
     self.landmarkDirectory.filters = ctk.ctkPathLineEdit.Dirs
     self.landmarkDirectory.setToolTip( "Select directory containing landmarks" )
     parametersFormLayout.addRow("Landmark directory: ", self.landmarkDirectory)
-    
+
     #
     # Select semi-landmarks directory
     #
@@ -136,7 +136,7 @@ class MeshDistanceMeasurementWidget(ScriptedLoadableModuleWidget):
     self.semilandmarkDirectory.setToolTip( "Select directory containing semi-landmarks" )
     self.semilandmarkDirectory.enabled = False
     parametersFormLayout.addRow("Semi-landmark directory: ", self.semilandmarkDirectory)
-    
+
     #
     # Select output directory
     #
@@ -145,7 +145,7 @@ class MeshDistanceMeasurementWidget(ScriptedLoadableModuleWidget):
     self.outputDirectory.currentPath = slicer.app.temporaryPath
     self.outputDirectory.setToolTip( "Select directory to save output distance maps" )
     parametersFormLayout.addRow("Output directory: ", self.outputDirectory)
-    
+
     #
     # Select distance metric
     #
@@ -155,7 +155,7 @@ class MeshDistanceMeasurementWidget(ScriptedLoadableModuleWidget):
     self.signedDistanceOption=qt.QRadioButton()
     self.signedDistanceOption.setChecked(False)
     parametersFormLayout.addRow("Signed Distance: ", self.signedDistanceOption)
-    
+
     #
     # Apply Button
     #
@@ -163,28 +163,28 @@ class MeshDistanceMeasurementWidget(ScriptedLoadableModuleWidget):
     self.applyButton.toolTip = "Generate MeshDistanceMeasurements."
     self.applyButton.enabled = False
     parametersFormLayout.addRow(self.applyButton)
-    
+
     # connections
     self.modelSelector.connect('currentNodeChanged(vtkMRMLNode*)', self.onSelect)
     self.baseLMSelect.connect('currentNodeChanged(vtkMRMLNode*)', self.onSelect)
     self.meshDirectory.connect('validInputChanged(bool)', self.onSelect)
-    self.baseSLMSelect.connect('currentNodeChanged(bool)', self.onSelectBaseSLM) 
+    self.baseSLMSelect.connect('currentNodeChanged(bool)', self.onSelectBaseSLM)
     self.semilandmarkDirectory.connect('validInputChanged(bool)', self.onSelect)
-    
+
     self.applyButton.connect('clicked(bool)', self.onApplyButton)
-    
+
     # Add vertical spacer
     self.layout.addStretch(1)
-  
+
   def cleanup(self):
     pass
-  
-  
+
+
   def onApplyButton(self):
     logic = MeshDistanceMeasurementLogic()
     logic.run(self.modelSelector.currentNode(), self.baseLMSelect.currentNode(), self.baseSLMSelect.currentNode(), self.meshDirectory.currentPath,
       self.landmarkDirectory.currentPath, self.semilandmarkDirectory.currentPath, self.outputDirectory.currentPath, self.signedDistanceOption.checked)
-    
+
 #
 # MeshDistanceMeasurementLogic
 #
@@ -204,18 +204,18 @@ class MeshDistanceMeasurementLogic(ScriptedLoadableModuleLogic):
       templateLM.GetMarkupPoint(0,landmarkIndex,landmarkPoint)
       templateSLM.AddFiducialFromArray(landmarkPoint)
     return templateSLM
-    
+
   def findCorrespondingFilePath(self, searchDirectory, templateFileName):
-    fileList = os.listdir(searchDirectory)  
+    fileList = os.listdir(searchDirectory)
     regex = re.compile(r'\d+')
     subjectID = [int(x) for x in regex.findall(templateFileName)][0]
     for filename in fileList:
       if str(subjectID) in filename:
         return os.path.join(searchDirectory, filename), subjectID
-        
-        
+
+
   def run(self, templateMesh, templateLM, templateSLM, meshDirectory, lmDirectory, slmDirectory, outDirectory, signedDistanceOption):
-    
+
     if(bool(templateSLM) and bool(slmDirectory)):
       templateLMTotal = self.mergeLandmarks(templateLM, templateSLM)
     else:
@@ -226,7 +226,7 @@ class MeshDistanceMeasurementLogic(ScriptedLoadableModuleLogic):
     for i in range(templateLMTotal.GetNumberOfMarkups()):
       templateLMTotal.GetMarkupPoint(0,i,p)
       templatePoints.InsertNextPoint(p)
-     
+
     # write selected triangles to table
     tableNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTableNode', 'Mean Mesh Distances')
     col1=tableNode.AddColumn()
@@ -235,7 +235,7 @@ class MeshDistanceMeasurementLogic(ScriptedLoadableModuleLogic):
     col2.SetName('Mesh RMSE')
     tableNode.SetColumnType('Subject ID',vtk.VTK_STRING)
     tableNode.SetColumnType('Mean Mesh Distance',vtk.VTK_STRING)
-     
+
     subjectCount = 0
     for meshFileName in os.listdir(meshDirectory):
       if(not meshFileName.startswith(".")):
@@ -259,25 +259,25 @@ class MeshDistanceMeasurementLogic(ScriptedLoadableModuleLogic):
           # if mesh and lm file with same subject id exist, load into scene
         meshFilePath = os.path.join(meshDirectory, meshFileName)
         currentMeshNode = slicer.util.loadModel(meshFilePath)
-                
+
         #get subject points into vtk array
         subjectPoints = vtk.vtkPoints()
         p=[0,0,0]
         for i in range(currentLMTotal.GetNumberOfMarkups()):
           currentLMTotal.GetMarkupPoint(0,i,p)
           subjectPoints.InsertNextPoint(p)
-          
+
         transform = vtk.vtkThinPlateSplineTransform()
         transform.SetSourceLandmarks( subjectPoints )
         transform.SetTargetLandmarks( templatePoints )
         transform.SetBasisToR()  # for 3D transform
-        
+
         transformNode=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTransformNode","TPS")
         transformNode.SetAndObserveTransformToParent(transform)
-        
+
         currentMeshNode.SetAndObserveTransformNodeID(transformNode.GetID())
         slicer.vtkSlicerTransformLogic().hardenTransform(currentMeshNode)
-        
+
         distanceFilter = vtk.vtkDistancePolyDataFilter()
         distanceFilter.SetInputData(0,templateMesh.GetPolyData())
         distanceFilter.SetInputData(1,currentMeshNode.GetPolyData())
@@ -288,19 +288,19 @@ class MeshDistanceMeasurementLogic(ScriptedLoadableModuleLogic):
         distanceArray = distanceMap.GetPointData().GetArray('Distance')
         #meanDistance = np.average(distanceArray)
         meanDistance = self.rmse(distanceArray)
-        
+
         #save output distance map
         outputNode=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLModelNode","ouputDistanceMap")
         outputNode.SetAndObservePolyData(distanceMap)
-        outputFilename = os.path.join(outDirectory, str(subjectID) + '.vtp') 
-        slicer.util.saveNode(outputNode, outputFilename) 
-        
+        outputFilename = os.path.join(outDirectory, str(subjectID) + '.vtp')
+        slicer.util.saveNode(outputNode, outputFilename)
+
         #update table and subjectCount
         tableNode.AddEmptyRow()
         tableNode.SetCellText(subjectCount,0,str(subjectID))
         tableNode.SetCellText(subjectCount,1,str(meanDistance))
         subjectCount+=1
-        
+
         # clean up
         slicer.mrmlScene.RemoveNode(outputNode)
         slicer.mrmlScene.RemoveNode(transformNode)
@@ -309,11 +309,11 @@ class MeshDistanceMeasurementLogic(ScriptedLoadableModuleLogic):
 
   def rmse(self, signedDistanceArray):
     return np.sqrt(np.square(signedDistanceArray).mean())
-    
+
   def takeScreenshot(self,name,description,type=-1):
     # show the message even if not taking a screen shot
     slicer.util.delayDisplay('Take screenshot: '+description+'.\nResult is available in the Annotations module.', 3000)
-    
+
     lm = slicer.app.layoutManager()
     # switch on the type to get the requested window
     widget = 0
@@ -337,12 +337,12 @@ class MeshDistanceMeasurementLogic(ScriptedLoadableModuleLogic):
       widget = slicer.util.mainWindow()
       # reset the type so that the node is set correctly
       type = slicer.qMRMLScreenShotDialog.FullLayout
-    
+
     # grab and convert to vtk image data
     qimage = ctk.ctkWidgetsUtils.grabWidget(widget)
     imageData = vtk.vtkImageData()
     slicer.qMRMLUtils().qImageToVtkImageData(qimage,imageData)
-    
+
     annotationLogic = slicer.modules.annotations.logic()
     annotationLogic.CreateSnapShot(name, description, type, 1, imageData)
 
@@ -353,18 +353,18 @@ class MeshDistanceMeasurementTest(ScriptedLoadableModuleTest):
     Uses ScriptedLoadableModuleTest base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
-  
+
   def setUp(self):
     """ Do whatever is needed to reset the state - typically a scene clear will be enough.
       """
     slicer.mrmlScene.Clear(0)
-  
+
   def runTest(self):
     """Run as few or as many tests as needed here.
       """
     self.setUp()
     self.test_MeshDistanceMeasurement1()
-  
+
   def test_MeshDistanceMeasurement1(self):
     """ Ideally you should have several levels of tests.  At the lowest level
       tests should exercise the functionality of the logic with different inputs
@@ -376,7 +376,7 @@ class MeshDistanceMeasurementTest(ScriptedLoadableModuleTest):
       module.  For example, if a developer removes a feature that you depend on,
       your test should break so they know that the feature is needed.
       """
-    
+
     self.delayDisplay("Starting the test")
     #
     # first, get some data
@@ -394,7 +394,7 @@ class MeshDistanceMeasurementTest(ScriptedLoadableModuleTest):
         logging.info(f'Loading {name}...')
         loader(filePath)
     self.delayDisplay('Finished with download and loading')
-    
+
     volumeNode = slicer.util.getNode(pattern="FA")
     logic = MeshDistanceMeasurementLogic()
     self.assertIsNotNone( logic.hasImageData(volumeNode) )

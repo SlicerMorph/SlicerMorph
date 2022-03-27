@@ -17,7 +17,7 @@ class MergeMarkups(ScriptedLoadableModule):
   """Uses ScriptedLoadableModule base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
-  
+
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "MergeMarkups" # TODO make this more human readable by adding spaces
@@ -26,12 +26,12 @@ class MergeMarkups(ScriptedLoadableModule):
     self.parent.contributors = ["Sara Rolfe (UW), Murat Maga (UW)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """
       This module interactively merges markups nodes.
-      <p>For more information see the <a href="https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/MergeMarkups">online documentation.</a>.</p> 
+      <p>For more information see the <a href="https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/MergeMarkups">online documentation.</a>.</p>
       """
     #self.parent.helpText += self.getDefaultModuleDocumentationLink()
     self.parent.acknowledgementText = """
-      This module was developed by Sara Rolfe, and Murat Maga for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections" 
-      awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839). 
+      This module was developed by Sara Rolfe, and Murat Maga for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections"
+      awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839).
       https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
       """ # replace with organization, grant and thanks.
 
@@ -45,9 +45,9 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     """
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
-    
+
     # Instantiate and connect widgets ...
-    
+
     # Set up tabs to split workflow
     tabsWidget = qt.QTabWidget()
     curvesTab = qt.QWidget()
@@ -68,10 +68,10 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     parametersCurveCollapsibleButton = ctk.ctkCollapsibleButton()
     parametersCurveCollapsibleButton.text = "Curve Viewer"
     curvesTabLayout.addRow(parametersCurveCollapsibleButton)
-    
+
     # Layout within the dummy collapsible button
     parametersCurveFormLayout = qt.QFormLayout(parametersCurveCollapsibleButton)
-    
+
     #
     # check box to trigger taking screen shots for later use in tutorials
     #
@@ -79,7 +79,7 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     self.continuousCurvesCheckBox.checked = 0
     self.continuousCurvesCheckBox.setToolTip("If checked, redundant points will be removed on merging.")
     parametersCurveFormLayout.addRow("Contiuous curves", self.continuousCurvesCheckBox)
-    
+
     #
     # markups view
     #
@@ -91,7 +91,7 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     self.markupsView.setColumnHidden(self.markupsView.model().transformColumn, True)
     self.markupsView.sortFilterProxyModel().setNodeTypes(["vtkMRMLMarkupsCurveNode"])
     parametersCurveFormLayout.addRow(self.markupsView)
-    
+
     #
     # Merge Button
     #
@@ -99,11 +99,11 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     self.mergeButton.toolTip = "Generate a single merged markup file from the selected nodes"
     self.mergeButton.enabled = False
     parametersCurveFormLayout.addRow(self.mergeButton)
-    
+
     # connections
     self.mergeButton.connect('clicked(bool)', self.onMergeButton)
     self.markupsView.connect('currentItemChanged(vtkIdType)', self.updateMergeButton)
-    
+
     ################ Landmark Set Tab
     #
     # Parameters Area
@@ -111,10 +111,10 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     parametersLMCollapsibleButton = ctk.ctkCollapsibleButton()
     parametersLMCollapsibleButton.text = "Landmark Viewer"
     fiducialsTabLayout.addRow(parametersLMCollapsibleButton)
-    
+
     # Layout within the dummy collapsible button
     parametersLMFormLayout = qt.QGridLayout(parametersLMCollapsibleButton)
-    
+
     #
     # markups view
     #
@@ -126,7 +126,7 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     self.markupsFiducialView.setColumnHidden(self.markupsView.model().transformColumn, True)
     self.markupsFiducialView.sortFilterProxyModel().setNodeTypes(["vtkMRMLMarkupsFiducialNode"])
     parametersLMFormLayout.addWidget(self.markupsFiducialView,0,0,1,3)
- 
+
     #
     # Set landmark type menu
     #
@@ -135,8 +135,8 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     self.LandmarkTypeSelection.addItems(["Select","Fixed", "Semi", "No description"])
     parametersLMFormLayout.addWidget(boxLabel,1,0)
     parametersLMFormLayout.addWidget(self.LandmarkTypeSelection,1,1)
-    
-    
+
+
     #
     # Apply Landmark Type Button
     #
@@ -144,7 +144,7 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     self.ApplyLMButton.toolTip = "Apply the selected landmark type to points in the the selected nodes"
     self.ApplyLMButton.enabled = False
     parametersLMFormLayout.addWidget(self.ApplyLMButton,1,2)
-    
+
     #
     # Merge Button
     #
@@ -152,13 +152,13 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     self.mergeLMButton.toolTip = "Generate a single merged markup file from the selected nodes"
     self.mergeLMButton.enabled = False
     parametersLMFormLayout.addWidget(self.mergeLMButton,2,0,1,3)
-    
+
     # connections
     self.mergeLMButton.connect('clicked(bool)', self.onMergeLMButton)
     self.ApplyLMButton.connect('clicked(bool)', self.onApplyLMButton)
     self.markupsFiducialView.connect('currentItemChanged(vtkIdType)', self.updateMergeLMButton)
     self.LandmarkTypeSelection.connect('currentIndexChanged(int)', self.updateApplyLMButton)
-    
+
     ################ Batch Run LM Merge Tab
     #
     # Fixed LM Area
@@ -166,10 +166,10 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     fixedBatchCollapsibleButton = ctk.ctkCollapsibleButton()
     fixedBatchCollapsibleButton.text = "Fixed LM File Selection"
     batchTabLayout.addRow(fixedBatchCollapsibleButton)
-    
+
     # Layout within the dummy collapsible button
     fixedBatchLayout = qt.QFormLayout(fixedBatchCollapsibleButton)
-    
+
     #
     # Browse Fixed LM Button
     #
@@ -177,23 +177,23 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     self.browseFixedLMButton.toolTip = "Select one fixed landmark file for each subject"
     self.browseFixedLMButton.enabled = True
     fixedBatchLayout.addRow(self.browseFixedLMButton)
-    
+
     #
     # File viewer box
     #
     self.fixedFileTable = qt.QTextEdit()
     fixedBatchLayout.addRow(self.fixedFileTable)
-    
+
     #
     # Semi LM Area
     #
     semiBatchCollapsibleButton = ctk.ctkCollapsibleButton()
     semiBatchCollapsibleButton.text = "Semi LM File Selection"
     batchTabLayout.addRow(semiBatchCollapsibleButton)
-    
+
     # Layout within the dummy collapsible button
     semiBatchLayout = qt.QFormLayout(semiBatchCollapsibleButton)
-    
+
     #
     # Browse Fixed LM Button
     #
@@ -201,23 +201,23 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     self.browseSemiLMButton.toolTip = "Select one semi-landmark file for each subject, in the same order as the fixed landmarks"
     self.browseSemiLMButton.enabled = True
     semiBatchLayout.addRow(self.browseSemiLMButton)
-    
+
     #
     # File viewer box
     #
     self.semiFileTable = qt.QTextEdit()
     semiBatchLayout.addRow(self.semiFileTable)
-    
+
     #
     # Merge LM Area
     #
     batchMergeCollapsibleButton = ctk.ctkCollapsibleButton()
     batchMergeCollapsibleButton.text = "Run merge"
     batchTabLayout.addRow(batchMergeCollapsibleButton)
-    
+
     # Layout within the dummy collapsible button
     batchMergeLayout = qt.QFormLayout(batchMergeCollapsibleButton)
-    
+
     #
     # Select output landmark directory
     #
@@ -225,7 +225,7 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     self.outputDirectorySelector.filters = ctk.ctkPathLineEdit.Dirs
     self.outputDirectorySelector.toolTip = "Select the output directory where the merged landmark nodes will be saved"
     batchMergeLayout.addRow("Select output landmark directory: ", self.outputDirectorySelector)
-    
+
     #
     # Batch Merge Button
     #
@@ -233,7 +233,7 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     self.batchMergeButton.toolTip = "Generate a single merged markup file from the selected nodes"
     self.batchMergeButton.enabled = False
     batchMergeLayout.addRow(self.batchMergeButton)
-    
+
     #
     # Clear Button
     #
@@ -241,24 +241,24 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     self.clearButton.toolTip = "Clear the landmark files selected in the viewer boxes"
     self.clearButton.enabled = False
     batchMergeLayout.addRow(self.clearButton)
-    
+
     # connections
     self.browseFixedLMButton.connect('clicked(bool)', self.addFixedByBrowsing)
     self.browseSemiLMButton.connect('clicked(bool)', self.addSemiByBrowsing)
     self.outputDirectorySelector.connect('validInputChanged(bool)', self.onSelectDirectory)
     self.batchMergeButton.connect('clicked(bool)', self.onBatchMergeButton)
     self.clearButton.connect('clicked(bool)', self.onClearButton)
-    
+
     # Add vertical spacer
     self.layout.addStretch(1)
-  
+
   def cleanup(self):
     pass
-  
+
   def onMergeButton(self):
     logic = MergeMarkupsLogic()
     logic.runCurves(self.markupsView, self.continuousCurvesCheckBox.checked)
-    
+
   def updateMergeButton(self):
     nodes=self.markupsView.selectedIndexes()
     self.mergeButton.enabled = bool(nodes)
@@ -266,14 +266,14 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
   def updateMergeLMButton(self):
     nodes=self.markupsFiducialView.selectedIndexes()
     self.mergeLMButton.enabled = bool(nodes)
-      
+
   def onMergeLMButton(self):
     logic = MergeMarkupsLogic()
     logic.runFiducials(self.markupsFiducialView)
-  
+
   def updateApplyLMButton(self):
     self.ApplyLMButton.enabled = not bool(self.LandmarkTypeSelection.currentText == "Select")
-        
+
   def onApplyLMButton(self):
     logic = MergeMarkupsLogic()
     if self.LandmarkTypeSelection.currentText == "No description":
@@ -281,7 +281,7 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     else:
       label = self.LandmarkTypeSelection.currentText
     logic.runApplyLandmarksType(self.markupsFiducialView, label)
-    
+
   def addFixedByBrowsing(self):
     self.fixedFileTable.clear()
     self.fixedFilePaths = []
@@ -300,7 +300,7 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
 
   def onSelectDirectory(self):
     self.batchMergeButton.enabled = bool (self.outputDirectorySelector.currentPath)
-    
+
   def onBatchMergeButton(self):
     logic = MergeMarkupsLogic()
     if len(self.fixedFilePaths) == 0 or len(self.semiFilePaths)==0:
@@ -325,7 +325,7 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
       slicer.mrmlScene.RemoveNode(fixed)
       slicer.mrmlScene.RemoveNode(semi)
     return True
-    
+
   def onClearButton(self):
     self.fixedFileTable.clear()
     self.fixedFilePaths = []
@@ -348,12 +348,12 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
     """
   def mergeLMNodes(self, fixedLM, semiLM):
     # merges semilandmarks into the fixed landmark set
-    # if there are no landmark descriptions, these will be set according to the 
+    # if there are no landmark descriptions, these will be set according to the
     # fixed/semiLM box they were entered in
     for index in range(fixedLM.GetNumberOfControlPoints()):
-      fiducialDescription = fixedLM.GetNthControlPointDescription(index)    
+      fiducialDescription = fixedLM.GetNthControlPointDescription(index)
       if fiducialDescription == "":
-        fixedLM.SetNthControlPointDescription(index,"Fixed")   
+        fixedLM.SetNthControlPointDescription(index,"Fixed")
     for index in range(semiLM.GetNumberOfControlPoints()):
       pt = semiLM.GetNthControlPointPositionVector(index)
       fiducialLabel = semiLM.GetNthControlPointLabel(index)
@@ -361,21 +361,21 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
       fixedLM.AddControlPoint(pt,fiducialLabel)
       mergedIndex = fixedLM.GetNumberOfControlPoints()-1
       if fiducialDescription == "":
-        fixedLM.SetNthControlPointDescription(mergedIndex,"Semi")  
-      else: 
+        fixedLM.SetNthControlPointDescription(mergedIndex,"Semi")
+      else:
         fixedLM.SetNthControlPointDescription(mergedIndex,fiducialDescription)
-      
+
   def runApplyLandmarksType(self, markupsTreeView, label):
     nodeIDs=markupsTreeView.selectedIndexes()
     for id in nodeIDs:
       if id.column() == 0:
         currentNode = slicer.util.getNode(id.data())
         self.setAllLandmarkDescriptions(currentNode, label)
-  
+
   def setAllLandmarkDescriptions(self,landmarkNode, landmarkDescription):
     for controlPointIndex in range(landmarkNode.GetNumberOfControlPoints()):
       landmarkNode.SetNthControlPointDescription(controlPointIndex, landmarkDescription)
-      
+
   def runFiducials(self, markupsTreeView):
     nodeIDs=markupsTreeView.selectedIndexes()
     nodeList = vtk.vtkCollection()
@@ -389,7 +389,7 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
     mergedNode.GetDisplayNode().SetSelectedColor(purple)
     self.mergeList(nodeList, mergedNode)
     return True
-    
+
   def runCurves(self, markupsTreeView, continuousCurveOption):
     nodeIDs=markupsTreeView.selectedIndexes()
     nodeList = vtk.vtkCollection()
@@ -403,9 +403,9 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
     mergedNode.GetDisplayNode().SetSelectedColor(purple)
     self.mergeList(nodeList, mergedNode, continuousCurveOption)
     return True
-  
+
   def mergeList(self, nodeList,mergedNode, continuousCurveOption=False):
-    pointList=[]          
+    pointList=[]
     connectingNode=False
     # Add semi-landmark points within triangle patches
     for currentNode in nodeList:
@@ -420,27 +420,27 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
             mergedNode.AddControlPoint(pt,fiducialLabel)
             mergedIndex = mergedNode.GetNumberOfControlPoints()-1
             mergedNode.SetNthControlPointDescription(mergedIndex,fiducialDescription)
-      connectingNode=True  
+      connectingNode=True
     return True
-  
+
 class MergeMarkupsTest(ScriptedLoadableModuleTest):
   """
     This is the test case for your scripted module.
     Uses ScriptedLoadableModuleTest base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
-  
+
   def setUp(self):
     """ Do whatever is needed to reset the state - typically a scene clear will be enough.
       """
     slicer.mrmlScene.Clear(0)
-  
+
   def runTest(self):
     """Run as few or as many tests as needed here.
       """
     self.setUp()
     self.test_MergeMarkups1()
-  
+
   def test_MergeMarkups1(self):
     """ Ideally you should have several levels of tests.  At the lowest level
       tests should exercise the functionality of the logic with different inputs
@@ -452,7 +452,7 @@ class MergeMarkupsTest(ScriptedLoadableModuleTest):
       module.  For example, if a developer removes a feature that you depend on,
       your test should break so they know that the feature is needed.
       """
-    
+
     self.delayDisplay("Starting the test")
     #
     # first, get some data
@@ -470,7 +470,7 @@ class MergeMarkupsTest(ScriptedLoadableModuleTest):
         logging.info(f'Loading {name}...')
         loader(filePath)
     self.delayDisplay('Finished with download and loading')
-    
+
     volumeNode = slicer.util.getNode(pattern="FA")
     logic = MergeMarkupsLogic()
     self.assertIsNotNone( logic.hasImageData(volumeNode) )

@@ -17,7 +17,7 @@ class CreateSemiLMPatches(ScriptedLoadableModule):
   """Uses ScriptedLoadableModule base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
-  
+
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "CreateSemiLMPatches" # TODO make this more human readable by adding spaces
@@ -26,12 +26,12 @@ class CreateSemiLMPatches(ScriptedLoadableModule):
     self.parent.contributors = ["Sara Rolfe (UW), Murat Maga (UW)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """
       This module interactively places patches of semi-landmarks between user-specified anatomical landmarks.
-      <p>For more information see the <a href="https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/CreateSemiLMPatches">online documentation.</a>.</p> 
+      <p>For more information see the <a href="https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/CreateSemiLMPatches">online documentation.</a>.</p>
       """
     #self.parent.helpText += self.getDefaultModuleDocumentationLink()
     self.parent.acknowledgementText = """
-      This module was developed by Sara Rolfe, and Murat Maga for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections" 
-      awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839). 
+      This module was developed by Sara Rolfe, and Murat Maga for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections"
+      awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839).
       https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
       """ # replace with organization, grant and thanks.
 
@@ -47,27 +47,27 @@ class CreateSemiLMPatchesWidget(ScriptedLoadableModuleWidget):
     self.applyButton.enabled = bool (self.meshSelect.currentNode() and self.LMSelect.currentNode())
     nodes=self.fiducialView.selectedIndexes()
     self.mergeButton.enabled = bool (nodes and self.LMSelect.currentNode() and self.meshSelect.currentNode())
-    
+
   def onLMSelect(self):
     self.applyButton.enabled = bool (self.meshSelect.currentNode() and self.LMSelect.currentNode())
     nodes=self.fiducialView.selectedIndexes()
     self.mergeButton.enabled = bool (nodes and self.LMSelect.currentNode() and self.meshSelect.currentNode())
-    
+
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
-    
+
     # Instantiate and connect widgets ...
-    
+
     #
     # Parameters Area
     #
     parametersCollapsibleButton = ctk.ctkCollapsibleButton()
     parametersCollapsibleButton.text = "Parameters"
     self.layout.addWidget(parametersCollapsibleButton)
-    
+
     # Layout within the dummy collapsible button
     parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
-    
+
     # 3D view set up tab
     self.meshSelect = slicer.qMRMLNodeComboBox()
     self.meshSelect.nodeTypes = ( ("vtkMRMLModelNode"), "" )
@@ -103,25 +103,25 @@ class CreateSemiLMPatchesWidget(ScriptedLoadableModuleWidget):
     self.landmarkGridPoint1.singleStep = 1
     self.landmarkGridPoint1.setDecimals(0)
     self.landmarkGridPoint1.setToolTip("Input the landmark numbers to create grid")
-    
+
     self.landmarkGridPoint2 = ctk.ctkDoubleSpinBox()
     self.landmarkGridPoint2.minimum = 0
     self.landmarkGridPoint2.singleStep = 1
     self.landmarkGridPoint2.setDecimals(0)
     self.landmarkGridPoint2.setToolTip("Input the landmark numbers to create grid")
-    
+
     self.landmarkGridPoint3 = ctk.ctkDoubleSpinBox()
     self.landmarkGridPoint3.minimum = 0
     self.landmarkGridPoint3.singleStep = 1
     self.landmarkGridPoint3.setDecimals(0)
     self.landmarkGridPoint3.setToolTip("Input the landmark numbers to create grid")
-    
+
     gridPointsLayout.addWidget(self.landmarkGridPoint1,1,2)
     gridPointsLayout.addWidget(self.landmarkGridPoint2,1,3)
     gridPointsLayout.addWidget(self.landmarkGridPoint3,1,4)
-    
+
     parametersFormLayout.addRow("Semi-landmark grid points:", gridPointsLayout)
-    
+
     #
     # set number of sample points in each triangle
     #
@@ -141,7 +141,7 @@ class CreateSemiLMPatchesWidget(ScriptedLoadableModuleWidget):
     self.enableScreenshotsFlagCheckBox.checked = 0
     self.enableScreenshotsFlagCheckBox.setToolTip("If checked, take screen shots for tutorials. Use Save Data to write them to disk.")
     parametersFormLayout.addRow("Enable Screenshots", self.enableScreenshotsFlagCheckBox)
-    
+
     #
     # Advanced menu
     #
@@ -149,10 +149,10 @@ class CreateSemiLMPatchesWidget(ScriptedLoadableModuleWidget):
     advancedCollapsibleButton.text = "Advanced"
     advancedCollapsibleButton.collapsed = True
     parametersFormLayout.addRow(advancedCollapsibleButton)
-    
+
     # Layout within the dummy collapsible button
     advancedFormLayout = qt.QFormLayout(advancedCollapsibleButton)
-    
+
     #
     # Maximum projection slider
     #
@@ -163,7 +163,7 @@ class CreateSemiLMPatchesWidget(ScriptedLoadableModuleWidget):
     self.projectionDistanceSlider.value = 25
     self.projectionDistanceSlider.setToolTip("Set maximum projection distance as a percentage of image size")
     advancedFormLayout.addRow("Set maximum projection distance: ", self.projectionDistanceSlider)
-    
+
     #
     # Normal smoothing slider
     #
@@ -174,7 +174,7 @@ class CreateSemiLMPatchesWidget(ScriptedLoadableModuleWidget):
     self.smoothingSlider.value = 0
     self.smoothingSlider.setToolTip("Set smothing of normal vectors for projection")
     advancedFormLayout.addRow("Set smoothing of projection vectors: ", self.smoothingSlider)
-    
+
     #
     # Apply Button
     #
@@ -182,7 +182,7 @@ class CreateSemiLMPatchesWidget(ScriptedLoadableModuleWidget):
     self.applyButton.toolTip = "Generate semilandmarks."
     self.applyButton.enabled = False
     parametersFormLayout.addRow(self.applyButton)
-    
+
     #
     # Fiducials view
     #
@@ -194,7 +194,7 @@ class CreateSemiLMPatchesWidget(ScriptedLoadableModuleWidget):
     self.fiducialView.setColumnHidden(self.fiducialView.model().transformColumn, True);
     self.fiducialView.sortFilterProxyModel().setNodeTypes(["vtkMRMLMarkupsFiducialNode"])
     parametersFormLayout.addRow(self.fiducialView)
-    
+
     #
     # Apply Button
     #
@@ -202,18 +202,18 @@ class CreateSemiLMPatchesWidget(ScriptedLoadableModuleWidget):
     self.mergeButton.toolTip = "Generate a single merged landmark file from the selected nodes"
     self.mergeButton.enabled = False
     parametersFormLayout.addRow(self.mergeButton)
-    
+
     # connections
     self.applyButton.connect('clicked(bool)', self.onApplyButton)
     self.mergeButton.connect('clicked(bool)', self.onMergeButton)
     self.fiducialView.connect('currentItemChanged(vtkIdType)', self.updateMergeButton)
-    
+
     # Add vertical spacer
     self.layout.addStretch(1)
-  
+
   def cleanup(self):
     pass
-  
+
   def onApplyButton(self):
     logic = CreateSemiLMPatchesLogic()
     enableScreenshotsFlag = self.enableScreenshotsFlagCheckBox.checked
@@ -221,12 +221,12 @@ class CreateSemiLMPatchesWidget(ScriptedLoadableModuleWidget):
     smoothingIterations =  int(self.smoothingSlider.value)
     projectionRayTolerance = self.projectionDistanceSlider.value/100
     logic.run(self.meshSelect.currentNode(), self.LMSelect.currentNode(), gridLandmarks, int(self.gridSamplingRate.value)+1, smoothingIterations, projectionRayTolerance)
-  
+
   def onMergeButton(self):
     logic = CreateSemiLMPatchesLogic()
     enableScreenshotsFlag = self.enableScreenshotsFlagCheckBox.checked
     logic.mergeTree(self.fiducialView, self.LMSelect.currentNode(), self.meshSelect.currentNode(),int(self.gridSamplingRate.value))
-    
+
   def updateMergeButton(self):
     nodes=self.fiducialView.selectedIndexes()
     self.mergeButton.enabled = bool (nodes and self.LMSelect.currentNode() and self.meshSelect.currentNode())
@@ -256,14 +256,14 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
         normalArray = normalFilter.GetOutput().GetPointData().GetArray("Normals")
         if(not normalArray):
           print("Error: no normal array")
-    else:  
+    else:
       print('smoothing normals')
-      normalArray = self.getSmoothNormals(meshNode,smoothingIterations)     
+      normalArray = self.getSmoothNormals(meshNode,smoothingIterations)
     semiLandmarks = self.applyPatch(meshNode, LMNode, gridLandmarks, sampleRate, normalArray, maximumProjectionDistance)
 
-    
-    return True 
-    
+
+    return True
+
   def applyPatch(self, meshNode, LMNode, gridLandmarks, sampleRate, polydataNormalArray, maximumProjectionDistance=.25):
     surfacePolydata = meshNode.GetPolyData()
 
@@ -282,7 +282,7 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
 
     sourcePoints = vtk.vtkPoints()
     targetPoints = vtk.vtkPoints()
-    
+
     sourcePoints.InsertNextPoint(gridPoints.GetPoint(0))
     sourcePoints.InsertNextPoint(gridPoints.GetPoint(1))
     sourcePoints.InsertNextPoint(gridPoints.GetPoint(2))
@@ -291,7 +291,7 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
     for gridVertex in gridLandmarks:
       LMNode.GetMarkupPoint(0,int(gridVertex-1),point)
       targetPoints.InsertNextPoint(point)
-      
+
     #transform grid to triangle
     transform = vtk.vtkThinPlateSplineTransform()
     transform.SetSourceLandmarks( sourcePoints )
@@ -314,7 +314,7 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
 
     #get surface normal from each landmark point
     rayDirection=[0,0,0]
-      
+
     for gridVertex in gridLandmarks:
       LMNode.GetMarkupPoint(0,int(gridVertex-1),point)
       closestPointId = pointLocator.FindClosestPoint(point)
@@ -322,11 +322,11 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
       rayDirection[0] += tempNormal[0]
       rayDirection[1] += tempNormal[1]
       rayDirection[2] += tempNormal[2]
-    
+
     #normalize
     vtk.vtkMath().Normalize(rayDirection)
-      
-    # # get normal at each grid point  
+
+    # # get normal at each grid point
     # gridNormals = np.zeros((3,3))
     # gridIndex=0
     # for gridVertex in gridLandmarks:
@@ -338,7 +338,7 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
       # gridNormals[gridIndex] = tempNormal
       # gridIndex+=1
     # print(gridNormals)
-    
+
     #set up locater for intersection with normal vector rays
     obbTree = vtk.vtkOBBTree()
     obbTree.SetDataSet(surfacePolydata)
@@ -356,17 +356,17 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
     d2 = math.sqrt(vtk.vtkMath().Distance2BetweenPoints(m2, m3))
     d3 = math.sqrt(vtk.vtkMath().Distance2BetweenPoints(m1, m3))
     sampleDistance = (d1 + d2 + d3)
-    
+
     # set initial three grid points
     for index in range(0,3):
       origLMPoint=resampledPolydata.GetPoint(index)
       #landmarkLabel = LMNode.GetNthFiducialLabel(gridLandmarks[index]-1)
       landmarkLabel = str(gridLandmarks[index])
       semilandmarkPoints.AddFiducialFromArray(origLMPoint, landmarkLabel)
-    
+
     # calculate maximum projection distance
     projectionTolerance = maximumProjectionDistance/.25
-    #boundingBox = vtk.vtkBoundingBox() 
+    #boundingBox = vtk.vtkBoundingBox()
     #boundingBox.AddBounds(surfacePolydata.GetBounds())
     #diagonalDistance = boundingBox.GetDiagonalLength()
     #rayLength = math.sqrt(diagonalDistance) * projectionTolerance
@@ -375,7 +375,7 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
     # get normal projection intersections for remaining semi-landmarks
     for index in range(3,resampledPolydata.GetNumberOfPoints()):
       modelPoint=resampledPolydata.GetPoint(index)
-      
+
       # ## get estimated normal vector
       # rayDirection = [0,0,0]
       # distance1=math.sqrt(vtk.vtkMath().Distance2BetweenPoints(modelPoint,resampledPolydata.GetPoint(0)))
@@ -383,12 +383,12 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
       # distance3=math.sqrt(vtk.vtkMath().Distance2BetweenPoints(modelPoint,resampledPolydata.GetPoint(2)))
       # distanceTotal = distance1 + distance2 + distance3
       # weights=[(distance3+distance2)/distanceTotal, (distance1+distance3)/distanceTotal,(distance1+distance2)/distanceTotal]
-      
+
       # for gridIndex in range(0,3):
         # rayDirection+=(weights[gridIndex]*gridNormals[gridIndex])
       # vtk.vtkMath().Normalize(rayDirection)
       # ##
-      
+
       rayEndPoint=[0,0,0]
       for dim in range(len(rayEndPoint)):
         rayEndPoint[dim] = modelPoint[dim] + rayDirection[dim]* rayLength
@@ -400,7 +400,7 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
         exteriorPoint = intersectionPoints.GetPoint(intersectionPoints.GetNumberOfPoints()-1)
         semilandmarkPoints.AddFiducialFromArray(exteriorPoint)
       #if there are no intersections, reverse the normal vector
-      else: 
+      else:
         for dim in range(len(rayEndPoint)):
           rayEndPoint[dim] = modelPoint[dim] + rayDirection[dim]* -rayLength
         obbTree.IntersectWithLine(modelPoint,rayEndPoint,intersectionPoints,intersectionIds)
@@ -412,8 +412,8 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
           closestPointId = pointLocator.FindClosestPoint(modelPoint)
           rayOrigin = surfacePolydata.GetPoint(closestPointId)
           semilandmarkPoints.AddFiducialFromArray(rayOrigin)
-    
-    # update lock status and color    
+
+    # update lock status and color
     semilandmarkPoints.SetLocked(True)
     semilandmarkPoints.GetDisplayNode().SetColor(random.random(), random.random(), random.random())
     semilandmarkPoints.GetDisplayNode().SetSelectedColor(random.random(), random.random(), random.random())
@@ -423,7 +423,7 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
     slicer.mrmlScene.RemoveNode(model)
     print("Total points:", semilandmarkPoints.GetNumberOfFiducials() )
     return semilandmarkPoints
-  
+
   def getSmoothNormals(self, surfaceNode,iterations):
     smoothFilter = vtk.vtkSmoothPolyDataFilter()
     smoothFilter.SetInputData(surfaceNode.GetPolyData())
@@ -438,24 +438,24 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
     normalGenerator.Update()
     normalArray = normalGenerator.GetOutput().GetPointData().GetArray("Normals")
     return normalArray
-    
+
   def getLandmarks(self, landmarkDirectory):
     files_to_open=[]
     for path, dir, files in os.walk(landmarkDirectory):
       for filename in files:
         if fnmatch.fnmatch(filename,"*.fcsv"):
           files_to_open.append(filename)
-    
+
     tmp = self.readLandmarkFile(os.path.join(landmarkDirectory, files_to_open[0]))    #check size of landmark data array
-    
+
     [i,j]=tmp.shape
     landmarkArray=np.zeros(shape=(i,j,len(files_to_open)))  # initialize landmark array
-    
-    for i in range(len(files_to_open)):      
+
+    for i in range(len(files_to_open)):
       tmp = self.readLandmarkFile(os.path.join(landmarkDirectory, files_to_open[i]))
-      landmarkArray[:,:,i]=tmp  
+      landmarkArray[:,:,i]=tmp
     return landmarkArray
-  
+
   def readLandmarkFile(self, landmarkFilename):
     datafile=open(landmarkFilename)
     data=[]
@@ -472,18 +472,18 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
       j=j+1
     slicer.app.processEvents()
     return dataArray
-  
+
   def getGridPoints(self, landmarkArray, gridLandmarkNumbers):
     gridArray=[]
     return gridArray
-  
+
   def setAllLandmarksType(self,landmarkNode, setToSemiType):
     landmarkDescription = "Semi"
     if setToSemiType is False:
       landmarkDescription = "Fixed"
     for controlPointIndex in range(landmarkNode.GetNumberOfControlPoints()):
       landmarkNode.SetNthControlPointDescription(controlPointIndex, landmarkDescription)
- 
+
   def mergeTree(self, treeWidget, landmarkNode, modelNode,rowColNumber):
     nodeIDs=treeWidget.selectedIndexes()
     nodeList = vtk.vtkCollection()
@@ -495,20 +495,20 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
     mergedNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode', mergedNodeName)
     self.mergeList(nodeList, landmarkNode, modelNode,rowColNumber,mergedNode)
     return True
-  
+
   def mergeList(self, nodeList, landmarkNode, modelNode,rowColNumber,mergedNode):
     pt=[0,0,0]
     triangleList=[]
     lineSegmentList=[]
-    pointList=[] 
-              
+    pointList=[]
+
     # Add semi-landmark points within triangle patches
     for currentNode in nodeList:
       if currentNode != landmarkNode:
         for index in range(3,currentNode.GetNumberOfFiducials()):
           currentNode.GetNthFiducialPosition(index,pt)
           fiducialLabel = currentNode.GetNthFiducialLabel(index)
-          mergedNode.AddFiducialFromArray(pt,fiducialLabel) 
+          mergedNode.AddFiducialFromArray(pt,fiducialLabel)
         p1=currentNode.GetNthFiducialLabel(0)
         p2=currentNode.GetNthFiducialLabel(1)
         p3=currentNode.GetNthFiducialLabel(2)
@@ -520,9 +520,9 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
         pointList.append(p1)
         pointList.append(p2)
         pointList.append(p3)
-    
+
     # Add semilandmark points on curves betweeen landmark points
-    seenVertices=set()  
+    seenVertices=set()
     lineSegmentList_edit=[]
     # Remove duplicate line segments
     for segment in lineSegmentList:
@@ -530,7 +530,7 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
       if segmentTuple not in seenVertices:
         lineSegmentList_edit.append(segment)
         seenVertices.add(segmentTuple)
-        
+
     seenPoints=set()
     pointList_edit=[]
     # Remove duplicate points
@@ -539,11 +539,11 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
       if lmTuple not in seenPoints:
         pointList_edit.append(originalLandmarkPoint)
         seenPoints.add(lmTuple)
-    
+
     # add line segments between triangles
     controlPoint=vtk.vtkVector3d()
     edgePoints=vtk.vtkPoints()
-    tempCurve = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsCurveNode', 'temporaryCurve')    
+    tempCurve = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsCurveNode', 'temporaryCurve')
     for segment in lineSegmentList_edit:
       landmarkIndex = int(segment[0])
       landmarkNode.GetMarkupPoint(0,int(landmarkIndex-1),controlPoint)
@@ -555,23 +555,23 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
       tempCurve.ResampleCurveSurface(sampleDist, modelNode, .99)
       tempCurve.GetControlPointPositionsWorld(edgePoints)
       for i in range(1,edgePoints.GetNumberOfPoints()-1):
-        mergedNode.AddFiducialFromArray(edgePoints.GetPoint(i)) 
+        mergedNode.AddFiducialFromArray(edgePoints.GetPoint(i))
       tempCurve.RemoveAllControlPoints()
-    
+
     # ------ removing manual points from SL set, leaving this as a placeholder while testing
     # add original landmark points
     #for originalLandmarkPoint in pointList_edit:
     #  landmarkIndex = int(originalLandmarkPoint)
     #  landmarkNode.GetMarkupPoint(0,int(landmarkIndex-1),controlPoint)
     #  mergedNode.AddFiducialFromArray(controlPoint)
-     
-    # update lock status and color of merged node    
+
+    # update lock status and color of merged node
     mergedNode.SetLocked(True)
     mergedNode.GetDisplayNode().SetColor(random.random(), random.random(), random.random())
     mergedNode.GetDisplayNode().SetSelectedColor(random.random(), random.random(), random.random())
-    mergedNode.GetDisplayNode().PointLabelsVisibilityOff() 
+    mergedNode.GetDisplayNode().PointLabelsVisibilityOff()
     landmarkTypeSemi=True
-    self.setAllLandmarksType(mergedNode, landmarkTypeSemi) 
+    self.setAllLandmarksType(mergedNode, landmarkTypeSemi)
 
     # clean up
     slicer.mrmlScene.RemoveNode(tempCurve)
@@ -592,29 +592,29 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
       tableNode.AddEmptyRow()
       triangle=triangleList[i]
       tableNode.SetCellText(i,0,str(triangle[0]))
-      tableNode.SetCellText(i,1,str(triangle[1]))   
-      tableNode.SetCellText(i,2,str(triangle[2]))    
-  
+      tableNode.SetCellText(i,1,str(triangle[1]))
+      tableNode.SetCellText(i,2,str(triangle[2]))
+
     return True
-  
+
   def projectPoints(self, sourceMesh, targetMesh, originalPoints, projectedPoints, rayLength):
     sourcePolydata = sourceMesh.GetPolyData()
     targetPolydata = targetMesh.GetPolyData()
-    
+
     #set up locater for intersection with normal vector rays
     obbTree = vtk.vtkOBBTree()
     obbTree.SetDataSet(targetPolydata)
     obbTree.BuildLocator()
-    
+
     #set up point locator for finding surface normals and closest point
     pointLocator = vtk.vtkPointLocator()
     pointLocator.SetDataSet(sourcePolydata)
     pointLocator.BuildLocator()
-    
+
     targetPointLocator = vtk.vtkPointLocator()
     targetPointLocator.SetDataSet(targetPolydata)
     targetPointLocator.BuildLocator()
-    
+
     #get surface normal from each landmark point
     rayDirection=[0,0,0]
     normalArray = sourcePolydata.GetPointData().GetArray("Normals")
@@ -626,7 +626,7 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
       normalArray = normalFilter.GetOutput().GetPointData().GetArray("Normals")
       if(not normalArray):
         print("Error: no normal array")
-    
+
     for index in range(originalPoints.GetNumberOfMarkups()):
       originalPoint=[0,0,0]
       originalPoints.GetMarkupPoint(0,index,originalPoint)
@@ -644,7 +644,7 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
         exteriorPoint = intersectionPoints.GetPoint(intersectionPoints.GetNumberOfPoints()-1)
         projectedPoints.AddFiducialFromArray(exteriorPoint)
       #if there are no intersections, reverse the normal vector
-      else: 
+      else:
         for dim in range(len(rayEndPoint)):
           rayEndPoint[dim] = originalPoint[dim] + rayDirection[dim]* -rayLength
         obbTree.IntersectWithLine(originalPoint,rayEndPoint,intersectionPoints,intersectionIds)
@@ -657,25 +657,25 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
           rayOrigin = targetPolydata.GetPoint(closestPointId)
           projectedPoints.AddFiducialFromArray(rayOrigin)
     return True
-  
+
   def projectPointsOut(self, sourcePolydata, targetPolydata, originalPoints, projectedPoints, rayLength):
     #sourcePolydata = sourceMesh.GetPolyData()
     #targetPolydata = targetMesh.GetPolyData()
-    
+
     #set up locater for intersection with normal vector rays
     obbTree = vtk.vtkOBBTree()
     obbTree.SetDataSet(targetPolydata)
     obbTree.BuildLocator()
-    
+
     #set up point locator for finding surface normals and closest point
     pointLocator = vtk.vtkPointLocator()
     pointLocator.SetDataSet(sourcePolydata)
     pointLocator.BuildLocator()
-    
+
     targetPointLocator = vtk.vtkPointLocator()
     targetPointLocator.SetDataSet(targetPolydata)
     targetPointLocator.BuildLocator()
-    
+
     #get surface normal from each landmark point
     rayDirection=[0,0,0]
     normalArray = sourcePolydata.GetPointData().GetArray("Normals")
@@ -687,7 +687,7 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
       normalArray = normalFilter.GetOutput().GetPointData().GetArray("Normals")
       if(not normalArray):
         print("Error: no normal array")
-    
+
     for index in range(originalPoints.GetNumberOfMarkups()):
       originalPoint=[0,0,0]
       originalPoints.GetMarkupPoint(0,index,originalPoint)
@@ -705,22 +705,22 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
         exteriorPoint = intersectionPoints.GetPoint(intersectionPoints.GetNumberOfPoints()-1)
         projectedPoints.AddFiducialFromArray(exteriorPoint)
     return True
-    
+
   def projectPointsOutIn(self, sourcePolydata, targetPolydata, originalPoints, projectedPoints, rayLength):
     #set up locater for intersection with normal vector rays
     obbTree = vtk.vtkOBBTree()
     obbTree.SetDataSet(targetPolydata)
     obbTree.BuildLocator()
-    
+
     #set up point locator for finding surface normals and closest point
     pointLocator = vtk.vtkPointLocator()
     pointLocator.SetDataSet(sourcePolydata)
     pointLocator.BuildLocator()
-    
+
     targetPointLocator = vtk.vtkPointLocator()
     targetPointLocator.SetDataSet(targetPolydata)
     targetPointLocator.BuildLocator()
-    
+
     #get surface normal from each landmark point
     rayDirection=[0,0,0]
     normalArray = sourcePolydata.GetPointData().GetArray("Normals")
@@ -732,7 +732,7 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
       normalArray = normalFilter.GetOutput().GetPointData().GetArray("Normals")
       if(not normalArray):
         print("Error: no normal array")
-    
+
     for index in range(originalPoints.GetNumberOfMarkups()):
       originalPoint=[0,0,0]
       originalPoints.GetMarkupPoint(0,index,originalPoint)
@@ -750,7 +750,7 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
         exteriorPoint = intersectionPoints.GetPoint(intersectionPoints.GetNumberOfPoints()-1)
         projectedPoints.AddFiducialFromArray(exteriorPoint)
       #if there are no intersections, reverse the normal vector
-      else: 
+      else:
         for dim in range(len(rayEndPoint)):
           rayEndPoint[dim] = originalPoint[dim] + rayDirection[dim]* -rayLength
         obbTree.IntersectWithLine(originalPoint,rayEndPoint,intersectionPoints,intersectionIds)
@@ -758,11 +758,11 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
           exteriorPoint = intersectionPoints.GetPoint(0)
           projectedPoints.AddFiducialFromArray(exteriorPoint)
     return True
-    
+
   def takeScreenshot(self,name,description,type=-1):
     # show the message even if not taking a screen shot
     slicer.util.delayDisplay('Take screenshot: '+description+'.\nResult is available in the Annotations module.', 3000)
-    
+
     lm = slicer.app.layoutManager()
     # switch on the type to get the requested window
     widget = 0
@@ -786,12 +786,12 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
       widget = slicer.util.mainWindow()
       # reset the type so that the node is set correctly
       type = slicer.qMRMLScreenShotDialog.FullLayout
-    
+
     # grab and convert to vtk image data
     qimage = ctk.ctkWidgetsUtils.grabWidget(widget)
     imageData = vtk.vtkImageData()
     slicer.qMRMLUtils().qImageToVtkImageData(qimage,imageData)
-    
+
     annotationLogic = slicer.modules.annotations.logic()
     annotationLogic.CreateSnapShot(name, description, type, 1, imageData)
 
@@ -802,18 +802,18 @@ class CreateSemiLMPatchesTest(ScriptedLoadableModuleTest):
     Uses ScriptedLoadableModuleTest base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
-  
+
   def setUp(self):
     """ Do whatever is needed to reset the state - typically a scene clear will be enough.
       """
     slicer.mrmlScene.Clear(0)
-  
+
   def runTest(self):
     """Run as few or as many tests as needed here.
       """
     self.setUp()
     self.test_CreateSemiLMPatches1()
-  
+
   def test_CreateSemiLMPatches1(self):
     """ Ideally you should have several levels of tests.  At the lowest level
       tests should exercise the functionality of the logic with different inputs
@@ -825,7 +825,7 @@ class CreateSemiLMPatchesTest(ScriptedLoadableModuleTest):
       module.  For example, if a developer removes a feature that you depend on,
       your test should break so they know that the feature is needed.
       """
-    
+
     self.delayDisplay("Starting the test")
     #
     # first, get some data
@@ -843,7 +843,7 @@ class CreateSemiLMPatchesTest(ScriptedLoadableModuleTest):
         logging.info(f'Loading {name}...')
         loader(filePath)
     self.delayDisplay('Finished with download and loading')
-    
+
     volumeNode = slicer.util.getNode(pattern="FA")
     logic = CreateSemiLMPatchesLogic()
     self.assertIsNotNone( logic.hasImageData(volumeNode) )

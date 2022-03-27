@@ -28,12 +28,12 @@ class PlaceSemiLMPatches(ScriptedLoadableModule):
     self.parent.contributors = ["Sara Rolfe (UW), Murat Maga (UW)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """
       This module places semi-landmark patches between anatomical landmarks as described by a user-provided connectivity file.
-      <p>For more information see the <a href="https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/PlaceSemiLMPatches">online documentation.</a>.</p> 
+      <p>For more information see the <a href="https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/PlaceSemiLMPatches">online documentation.</a>.</p>
       """
     #self.parent.helpText += self.getDefaultModuleDocumentationLink()
     self.parent.acknowledgementText = """
-      This module was developed by Sara Rolfe for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections" 
-      awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839). 
+      This module was developed by Sara Rolfe for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections"
+      awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839).
       https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
       """ # replace with organization, grant and thanks.
 
@@ -156,7 +156,7 @@ class PlaceSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
         for lmFileName in lmFileList:
           if str(subjectID) in lmFileName:
             meshNode =slicer.util.loadModel(meshFilePath)
-            smoothNormalArray = SLLogic.getSmoothNormals(meshNode,smoothingIterations) 
+            smoothNormalArray = SLLogic.getSmoothNormals(meshNode,smoothingIterations)
             lmFilePath = os.path.join(lmDirectory, lmFileName)
             landmarkNode = slicer.util.loadMarkupsFiducialList(lmFilePath)
             landmarkNumber=landmarkNode.GetNumberOfControlPoints()
@@ -173,19 +173,19 @@ class PlaceSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
             #Set all landmarks to semilandmark type
             landmarkTypeSemi=True
             self.setAllLandmarksType(mergedLandmarkNode, landmarkTypeSemi)
-             
+
             outputFileName = meshFileName + '_merged.fcsv'
             outputFilePath = os.path.join(ouputDirectory, outputFileName)
             slicer.util.saveNode(mergedLandmarkNode, outputFilePath)
             slicer.mrmlScene.Clear(0)
-  
+
   def setAllLandmarksType(self,landmarkNode, setToSemiType):
     landmarkDescription = "Semi"
     if setToSemiType is False:
       landmarkDescription = "Fixed"
     for controlPointIndex in range(landmarkNode.GetNumberOfControlPoints()):
       landmarkNode.SetNthControlPointDescription(controlPointIndex, landmarkDescription)
-         
+
   def takeScreenshot(self,name,description,type=-1):
     # show the message even if not taking a screen shot
     slicer.util.delayDisplay('Take screenshot: '+description+'.\nResult is available in the Annotations module.', 3000)

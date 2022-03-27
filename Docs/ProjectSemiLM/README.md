@@ -1,5 +1,5 @@
 ## ProjectSemiLM
-**Summary:** This module provides a utility to transfer a template of semilandmarks from a base 3D model to new 3D models using Thin Plate Splines (TPS) warp. A set of corresponding anatomical landmarks in the template and each target model is required. 
+**Summary:** This module provides a utility to transfer a template of semilandmarks from a base 3D model to new 3D models using Thin Plate Splines (TPS) warp. A set of corresponding anatomical landmarks in the template and each target model is required.
 
 ### USAGE
 #### ProjectSemiLM PARAMETERS

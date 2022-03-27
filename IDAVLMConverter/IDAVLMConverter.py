@@ -20,14 +20,14 @@ class IDAVLMConverter(ScriptedLoadableModule):
     self.parent.dependencies = []
     self.parent.contributors = ["Murat Maga (UW), Sara Rolfe (UW)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """
-This module converts raw landmark coordinates (.pts format) exported from the IDAV Landmark Editor into fcsv format. 
+This module converts raw landmark coordinates (.pts format) exported from the IDAV Landmark Editor into fcsv format.
 It does not accept the Landmark Editor's project files (.land format).
 <p>For more information about usage and potential issues, please see <a href="https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/IDAVLMConverter">online documentation.</A>
 """
     #self.parent.helpText += self.getDefaultModuleDocumentationLink()
     self.parent.acknowledgementText = """
-      This module was developed by Sara Rolfe for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections" 
-      awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839). 
+      This module was developed by Sara Rolfe for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections"
+      awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839).
       https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
 """ # replace with organization, grant and thanks.
 
@@ -62,7 +62,7 @@ class IDAVLMConverterWidget(ScriptedLoadableModuleWidget):
     self.inputFileSelector.filters  = ctk.ctkPathLineEdit().Files
     self.inputFileSelector.setToolTip( "Select landmark file for import" )
     parametersFormLayout.addRow("Select file containing landmark names and coordinates to load:", self.inputFileSelector)
-    
+
     #
     # output directory selector
     #
@@ -191,7 +191,7 @@ class IDAVLMConverterLogic(ScriptedLoadableModuleLogic):
         fiducialNode.AddFiducialFromArray(coordinates, name)
       else:
         logging.debug("Error: not a supported landmark file format")
-    
+
     outputPath = os.path.join(outputDirectory, landmarkFileBase + '.fcsv')
     slicer.util.saveNode(fiducialNode, outputPath)
     if not loadFileOption:

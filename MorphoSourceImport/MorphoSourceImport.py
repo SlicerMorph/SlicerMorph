@@ -49,8 +49,8 @@ This module provides a keyword search to query and load 3D models from the Morph
 <p>For more information about usage and limitations see <a href="https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/MorphoSourceImport"> online documentation.</a>
 """
     self.parent.acknowledgementText = """
-      This module was developed by Sara Rolfe and Arthur Porto with guidance from Julie Winchester for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections" 
-      awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839). 
+      This module was developed by Sara Rolfe and Arthur Porto with guidance from Julie Winchester for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections"
+      awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839).
       https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false"""
 
 #
@@ -208,14 +208,14 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
           "element": self.elementInput.text
         }
         logic = MorphoSourceImportLogic()
-      
+
         self.result_dataframe = logic.runQuery(queryDictionary, self.session)
         if not self.result_dataframe.empty:
           self.populateTable()
           self.loadResultsButton.enabled = True
       else:
         print("Error: No session exists. Please log-in first.")
-        
+
 
   def populateTable(self):
     self.resultsTable.horizontalHeader().visible = True
@@ -293,14 +293,14 @@ class MorphoSourceImportLogic(ScriptedLoadableModuleLogic):
           if file.endswith(extensions):
             modelPath = os.path.join(destFolderPath,file)
             if os.path.isfile(modelPath):
-              slicer.util.loadModel(modelPath)  
+              slicer.util.loadModel(modelPath)
               print("Found file in cache, reusing")
             else:
               model=[zip_file.extract(file,destFolderPath)  ]
               slicer.util.loadModel(model[0])
       except:
         print('Error downloading file. Please confirm login information is correct.')
-        
+
   def process_json(self,response_json, session):
     #Initializing the database
     database=[]

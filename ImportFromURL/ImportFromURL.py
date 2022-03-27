@@ -16,7 +16,7 @@ class ImportFromURL(ScriptedLoadableModule):
   """Uses ScriptedLoadableModule base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
-  
+
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "ImportFromURL" # TODO make this more human readable by adding spaces
@@ -25,12 +25,12 @@ class ImportFromURL(ScriptedLoadableModule):
     self.parent.contributors = ["Sara Rolfe (UW), Murat Maga (UW)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """
       This module imports data from a URL into the scene. This module requires the URL to reference a single file and the filename to be contained in the URL.
-    
+
       """
     #self.parent.helpText += self.getDefaultModuleDocumentationLink()
     self.parent.acknowledgementText = """
-      This module was developed by Sara Rolfe and Murat Maga for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections" 
-      awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839). 
+      This module was developed by Sara Rolfe and Murat Maga for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections"
+      awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839).
       https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
       """ # replace with organization, grant and thanks.
 
@@ -42,10 +42,10 @@ class ImportFromURLWidget(ScriptedLoadableModuleWidget):
   """Uses ScriptedLoadableModuleWidget base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
-          
+
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
-    
+
     # Instantiate and connect widgets ...
     #
     # Parameters Area
@@ -53,31 +53,31 @@ class ImportFromURLWidget(ScriptedLoadableModuleWidget):
     parametersCollapsibleButton = ctk.ctkCollapsibleButton()
     parametersCollapsibleButton.text = "Input Parameters"
     self.layout.addWidget(parametersCollapsibleButton)
-    
+
     # Layout within the dummy collapsible button
     parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
-  
+
     #
-    # Input URL 
+    # Input URL
     #
     self.InputURLText = qt.QLineEdit()
     self.InputURLText.setToolTip("Copy and paste the URL in this box")
     parametersFormLayout.addRow("URL: ", self.InputURLText)
-    
+
     #
-    # File Names 
+    # File Names
     #
     self.FileNameText = qt.QLineEdit()
     self.FileNameText.setToolTip("Enter the file name")
     parametersFormLayout.addRow("File name: ", self.FileNameText)
-    
+
     #
-    # Node Names 
+    # Node Names
     #
     self.NodeNameText = qt.QLineEdit()
     self.NodeNameText.setToolTip("Enter the node names")
     parametersFormLayout.addRow("Node name: ", self.NodeNameText)
-    
+
     #
     # Import button
     #
@@ -85,28 +85,28 @@ class ImportFromURLWidget(ScriptedLoadableModuleWidget):
     self.ImportButton.toolTip = "Import data from URL"
     self.ImportButton.enabled = False
     parametersFormLayout.addRow(self.ImportButton)
-    
+
     # Connections
     self.InputURLText.connect('textChanged(const QString &)', self.onEnterURL)
     self.ImportButton.connect('clicked(bool)', self.onImport)
-  
+
   def onEnterURL(self):
     url = self.InputURLText.text
     self.ImportButton.enabled = bool(url)
-    base = os.path.basename(url) 
+    base = os.path.basename(url)
     fileName = base.split('?')[0]
     nodeName = fileName.split('.')[0]
     self.FileNameText.text = fileName
     self.NodeNameText.text = nodeName
-    
-    
+
+
   def onImport(self):
     logic = ImportFromURLLogic()
     try:
       logic.runImport(self.InputURLText.text, self.FileNameText.text, self.NodeNameText.text)
     except:
       logging.debug('Could not import data. Please confirm that the URL and file name is valid.')
-  
+
 
 class ImportFromURLLogic(ScriptedLoadableModuleLogic):
   """This class should implement all the actual
@@ -130,14 +130,14 @@ class ImportFromURLLogic(ScriptedLoadableModuleLogic):
       if subextension == '.nii':
         fileTypes = 'VolumeFile'
       else:
-        logging.debug('Could not download data. Not a supported file type.')   
+        logging.debug('Could not download data. Not a supported file type.')
     elif(extension in ['.vtk', '.vtp', '.obj', '.ply', '.stl'] ):
-      fileTypes = 'ModelFile'   
+      fileTypes = 'ModelFile'
     elif(extension in ['.fcsv', '.json'] ):
       fileTypes = 'MarkupsFile'
     else:
       logging.debug('Could not download data. Not a supported file type.')
-      
+
     sampleDataLogic = SampleData.SampleDataLogic()
     loadedNodes = sampleDataLogic.downloadFromURL(
     nodeNames= nodeNames,
@@ -145,13 +145,13 @@ class ImportFromURLLogic(ScriptedLoadableModuleLogic):
     loadFileTypes=fileTypes,
     loadFiles = True,
     uris= url)
-            
+
     # Check if download from URL returned a node collection. If not, then file was downloaded but not imported.
     if isinstance(loadedNodes[0], str):
-      logging.debug('Could not import data into the scene. Downloaded to: ' + loadedNodes[0])  
+      logging.debug('Could not import data into the scene. Downloaded to: ' + loadedNodes[0])
     elif fileTypes == 'VolumeFile':
       self.autoRenderVolume(loadedNodes[0])
-        
+
   def autoRenderVolume(self, volumeNode):
     print("Auto-render node: "+volumeNode.GetName())
     volRenLogic = slicer.modules.volumerendering.logic()
@@ -164,25 +164,25 @@ class ImportFromURLLogic(ScriptedLoadableModuleLogic):
     else:
       # larger dynamic range, probably CT
       displayNode.GetVolumePropertyNode().Copy(volRenLogic.GetPresetByName('CT-Chest-Contrast-Enhanced'))
-        
+
 class ImportFromURLTest(ScriptedLoadableModuleTest):
   """
     This is the test case for your scripted module.
     Uses ScriptedLoadableModuleTest base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
-  
+
   def setUp(self):
     """ Do whatever is needed to reset the state - typically a scene clear will be enough.
       """
     slicer.mrmlScene.Clear(0)
-  
+
   def runTest(self):
     """Run as few or as many tests as needed here.
       """
     self.setUp()
     self.test_ImportFromURL1()
-  
+
   def test_ImportFromURL1(self):
     """ Ideally you should have several levels of tests.  At the lowest level
       tests should exercise the functionality of the logic with different inputs
@@ -194,7 +194,7 @@ class ImportFromURLTest(ScriptedLoadableModuleTest):
       module.  For example, if a developer removes a feature that you depend on,
       your test should break so they know that the feature is needed.
       """
-    
+
     self.delayDisplay("Starting the test")
     #
     # first, get some data
@@ -212,7 +212,7 @@ class ImportFromURLTest(ScriptedLoadableModuleTest):
         logging.info(f'Loading {name}...')
         loader(filePath)
     self.delayDisplay('Finished with download and loading')
-    
+
     volumeNode = slicer.util.getNode(pattern="FA")
     logic = ImportFromURLLogic()
     self.assertIsNotNone( logic.hasImageData(volumeNode) )

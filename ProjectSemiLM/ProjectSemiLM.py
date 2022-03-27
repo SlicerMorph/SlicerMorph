@@ -19,7 +19,7 @@ class ProjectSemiLM(ScriptedLoadableModule):
   """Uses ScriptedLoadableModule base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
-  
+
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "ProjectSemiLM" # TODO make this more human readable by adding spaces
@@ -28,12 +28,12 @@ class ProjectSemiLM(ScriptedLoadableModule):
     self.parent.contributors = ["Sara Rolfe (UW), Murat Maga (UW)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """
       This module takes a semi-landmark file from a template image and transfers the semi-landmarks to a group of specimen using TPS and projection.
-      <p>For more information see the <a href="https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/ProjectSemiLM">online documentation.</a>.</p> 
+      <p>For more information see the <a href="https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/ProjectSemiLM">online documentation.</a>.</p>
       """
     #self.parent.helpText += self.getDefaultModuleDocumentationLink()
     self.parent.acknowledgementText = """
-      This module was developed by Sara Rolfe for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections" 
-      awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839). 
+      This module was developed by Sara Rolfe for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections"
+      awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839).
       https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
       """ # replace with organization, grant and thanks.
 
@@ -46,13 +46,13 @@ class ProjectSemiLMWidget(ScriptedLoadableModuleWidget):
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
   def onSelect(self):
-    self.applyButton.enabled = bool (self.meshDirectory.currentPath and self.landmarkDirectory.currentPath and 
-      self.modelSelector.currentNode() and self.baseLMSelect.currentNode() and self.baseSLMSelect.currentNode() 
+    self.applyButton.enabled = bool (self.meshDirectory.currentPath and self.landmarkDirectory.currentPath and
+      self.modelSelector.currentNode() and self.baseLMSelect.currentNode() and self.baseSLMSelect.currentNode()
       and self.outputDirectory.currentPath)
-          
+
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
-    
+
     # Instantiate and connect widgets ...
     #
     # Parameters Area
@@ -60,10 +60,10 @@ class ProjectSemiLMWidget(ScriptedLoadableModuleWidget):
     parametersCollapsibleButton = ctk.ctkCollapsibleButton()
     parametersCollapsibleButton.text = "Parameters"
     self.layout.addWidget(parametersCollapsibleButton)
-    
+
     # Layout within the dummy collapsible button
     parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
-  
+
     #
     # Select base mesh
     #
@@ -76,7 +76,7 @@ class ProjectSemiLMWidget(ScriptedLoadableModuleWidget):
     self.modelSelector.showHidden = False
     self.modelSelector.setMRMLScene( slicer.mrmlScene )
     parametersFormLayout.addRow("Base mesh: ", self.modelSelector)
-    
+
     #
     # Select base landmark file
     #
@@ -93,7 +93,7 @@ class ProjectSemiLMWidget(ScriptedLoadableModuleWidget):
     self.baseLMSelect.showChildNodeTypes = False
     self.baseLMSelect.setMRMLScene( slicer.mrmlScene )
     parametersFormLayout.addRow("Base landmarks: ", self.baseLMSelect)
-    
+
     #
     # Select base semi-landmark file
     #
@@ -110,15 +110,15 @@ class ProjectSemiLMWidget(ScriptedLoadableModuleWidget):
     self.baseSLMSelect.showChildNodeTypes = False
     self.baseSLMSelect.setMRMLScene( slicer.mrmlScene )
     parametersFormLayout.addRow("Base semi-landmarks: ", self.baseSLMSelect)
-    
+
     #
     # Select meshes directory
-    #  
+    #
     self.meshDirectory=ctk.ctkPathLineEdit()
     self.meshDirectory.filters = ctk.ctkPathLineEdit.Dirs
     self.meshDirectory.setToolTip( "Select directory containing meshes" )
     parametersFormLayout.addRow("Mesh directory: ", self.meshDirectory)
-    
+
     #
     # Select landmarks directory
     #
@@ -126,7 +126,7 @@ class ProjectSemiLMWidget(ScriptedLoadableModuleWidget):
     self.landmarkDirectory.filters = ctk.ctkPathLineEdit.Dirs
     self.landmarkDirectory.setToolTip( "Select directory containing landmarks" )
     parametersFormLayout.addRow("Landmark directory: ", self.landmarkDirectory)
-    
+
     #
     # Select output directory
     #
@@ -134,7 +134,7 @@ class ProjectSemiLMWidget(ScriptedLoadableModuleWidget):
     self.outputDirectory.filters = ctk.ctkPathLineEdit.Dirs
     self.outputDirectory.setToolTip( "Select directory for output models: " )
     parametersFormLayout.addRow("Output directory: ", self.outputDirectory)
-    
+
     #
     # Set projection scale
     #
@@ -145,17 +145,17 @@ class ProjectSemiLMWidget(ScriptedLoadableModuleWidget):
     self.scaleProjection.value = 10
     self.scaleProjection.setToolTip("Set scale of maximum point projection")
     parametersFormLayout.addRow("Projection scale: ", self.scaleProjection)
-    
+
     #
-    # Select output extension 
+    # Select output extension
     #
     self.JSONType=qt.QRadioButton()
     self.JSONType.setChecked(True)
     parametersFormLayout.addRow("MRK.JSON output: ", self.JSONType)
     self.FCSVType=qt.QRadioButton()
     parametersFormLayout.addRow("FCSV output: ", self.FCSVType)
-    
-    
+
+
     #
     # Apply Button
     #
@@ -163,32 +163,32 @@ class ProjectSemiLMWidget(ScriptedLoadableModuleWidget):
     self.applyButton.toolTip = "Generate ProjectSemiLMs."
     self.applyButton.enabled = False
     parametersFormLayout.addRow(self.applyButton)
-    
+
     # connections
     self.modelSelector.connect('currentNodeChanged(vtkMRMLNode*)', self.onSelect)
     self.baseLMSelect.connect('currentNodeChanged(vtkMRMLNode*)', self.onSelect)
     self.baseSLMSelect.connect('currentNodeChanged(vtkMRMLNode*)', self.onSelect)
     self.meshDirectory.connect('validInputChanged(bool)', self.onSelect)
-    self.landmarkDirectory.connect('validInputChanged(bool)', self.onSelect) 
+    self.landmarkDirectory.connect('validInputChanged(bool)', self.onSelect)
     self.outputDirectory.connect('validInputChanged(bool)', self.onSelect)
     self.applyButton.connect('clicked(bool)', self.onApplyButton)
-    
+
     # Add vertical spacer
     self.layout.addStretch(1)
-  
+
   def cleanup(self):
     pass
-  
-  
+
+
   def onApplyButton(self):
     logic = ProjectSemiLMLogic()
     if self.JSONType.checked:
       extensionForOutput = '.mrk.json'
     else:
       extensionForOutput = '.fcsv'
-    logic.run(self.modelSelector.currentNode(), self.baseLMSelect.currentNode(), self.baseSLMSelect.currentNode(), self.meshDirectory.currentPath, 
+    logic.run(self.modelSelector.currentNode(), self.baseLMSelect.currentNode(), self.baseSLMSelect.currentNode(), self.meshDirectory.currentPath,
       self.landmarkDirectory.currentPath, self.outputDirectory.currentPath, extensionForOutput, self.scaleProjection.value)
-    
+
 #
 # ProjectSemiLMLogic
 #
@@ -214,13 +214,13 @@ class ProjectSemiLMLogic(ScriptedLoadableModuleLogic):
     sampleDistances = self.distanceMatrix(sampleArray)
     minimumMeshSpacing = sampleDistances[sampleDistances.nonzero()].min(axis=0)
     rayLength = minimumMeshSpacing * (scaleProjection)
-  
-    
+
+
     for i in range(baseLMNode.GetNumberOfFiducials()):
       baseLMNode.GetMarkupPoint(0,i,point)
       targetPoints.InsertNextPoint(point)
-    
-    
+
+
     for meshFileName in os.listdir(meshDirectory):
       if(not meshFileName.startswith(".")):
         print (meshFileName)
@@ -234,52 +234,52 @@ class ProjectSemiLMLogic(ScriptedLoadableModuleLogic):
             currentMeshNode = slicer.util.loadModel(meshFilePath)
             lmFilePath = os.path.join(lmDirectory, lmFileName)
             success, currentLMNode = slicer.util.loadMarkupsFiducialList(lmFilePath)
-            
+
             # set up transform between base lms and current lms
             sourcePoints = vtk.vtkPoints()
             for i in range(currentLMNode.GetNumberOfMarkups()):
               currentLMNode.GetMarkupPoint(0,i,point)
               sourcePoints.InsertNextPoint(point)
-          
+
             transform = vtk.vtkThinPlateSplineTransform()
             transform.SetSourceLandmarks( sourcePoints )
             transform.SetTargetLandmarks( targetPoints )
             transform.SetBasisToR()  # for 3D transform
-            
+
             transformNode=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTransformNode","TPS")
             transformNode.SetAndObserveTransformToParent(transform)
-           
-            # apply transform to the current surface mesh  
-            currentMeshNode.SetAndObserveTransformNodeID(transformNode.GetID())  
+
+            # apply transform to the current surface mesh
+            currentMeshNode.SetAndObserveTransformNodeID(transformNode.GetID())
             slicer.vtkSlicerTransformLogic().hardenTransform(currentMeshNode)
-            
+
             # project semi-landmarks
             resampledLandmarkNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode', meshFileName+'_SL_warped')
             success = SLLogic.projectPoints(baseMeshNode, currentMeshNode, semiLMNode, resampledLandmarkNode, rayLength)
-            
+
             transformNode.Inverse()
-            resampledLandmarkNode.SetAndObserveTransformNodeID(transformNode.GetID())  
+            resampledLandmarkNode.SetAndObserveTransformNodeID(transformNode.GetID())
             slicer.vtkSlicerTransformLogic().hardenTransform(resampledLandmarkNode)
-            
+
             # transfer point data
             for index in range(semiLMNode.GetNumberOfControlPoints()):
               fiducialLabel = semiLMNode.GetNthControlPointLabel(index)
               fiducialDescription = semiLMNode.GetNthControlPointDescription(index)
               resampledLandmarkNode.SetNthControlPointLabel(index, fiducialLabel)
               resampledLandmarkNode.SetNthControlPointDescription(index,fiducialDescription)
-              
+
             # save output file
-            outputFileName = meshFileName + '_SL_warped' + outputExtension 
-            outputFilePath = os.path.join(ouputDirectory, outputFileName) 
+            outputFileName = meshFileName + '_SL_warped' + outputExtension
+            outputFilePath = os.path.join(ouputDirectory, outputFileName)
             slicer.util.saveNode(resampledLandmarkNode, outputFilePath)
-            
+
             # clean up
             slicer.mrmlScene.RemoveNode(resampledLandmarkNode)
             slicer.mrmlScene.RemoveNode(currentLMNode)
             slicer.mrmlScene.RemoveNode(currentMeshNode)
             slicer.mrmlScene.RemoveNode(transformNode)
-            
-          
+
+
   def distanceMatrix(self, a):
     """
     Computes the euclidean distance matrix for n points in a 3D space
@@ -291,11 +291,11 @@ class ProjectSemiLMLogic(ScriptedLoadableModuleLogic):
     dy=fnx(a[:,1])
     dz=fnx(a[:,2])
     return (dx**2.0+dy**2.0+dz**2.0)**0.5
-    
+
   def takeScreenshot(self,name,description,type=-1):
     # show the message even if not taking a screen shot
     slicer.util.delayDisplay('Take screenshot: '+description+'.\nResult is available in the Annotations module.', 3000)
-    
+
     lm = slicer.app.layoutManager()
     # switch on the type to get the requested window
     widget = 0
@@ -319,12 +319,12 @@ class ProjectSemiLMLogic(ScriptedLoadableModuleLogic):
       widget = slicer.util.mainWindow()
       # reset the type so that the node is set correctly
       type = slicer.qMRMLScreenShotDialog.FullLayout
-    
+
     # grab and convert to vtk image data
     qimage = ctk.ctkWidgetsUtils.grabWidget(widget)
     imageData = vtk.vtkImageData()
     slicer.qMRMLUtils().qImageToVtkImageData(qimage,imageData)
-    
+
     annotationLogic = slicer.modules.annotations.logic()
     annotationLogic.CreateSnapShot(name, description, type, 1, imageData)
 
@@ -335,18 +335,18 @@ class ProjectSemiLMTest(ScriptedLoadableModuleTest):
     Uses ScriptedLoadableModuleTest base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
-  
+
   def setUp(self):
     """ Do whatever is needed to reset the state - typically a scene clear will be enough.
       """
     slicer.mrmlScene.Clear(0)
-  
+
   def runTest(self):
     """Run as few or as many tests as needed here.
       """
     self.setUp()
     self.test_ProjectSemiLM1()
-  
+
   def test_ProjectSemiLM1(self):
     """ Ideally you should have several levels of tests.  At the lowest level
       tests should exercise the functionality of the logic with different inputs
@@ -358,7 +358,7 @@ class ProjectSemiLMTest(ScriptedLoadableModuleTest):
       module.  For example, if a developer removes a feature that you depend on,
       your test should break so they know that the feature is needed.
       """
-    
+
     self.delayDisplay("Starting the test")
     #
     # first, get some data
@@ -376,7 +376,7 @@ class ProjectSemiLMTest(ScriptedLoadableModuleTest):
         logging.info(f'Loading {name}...')
         loader(filePath)
     self.delayDisplay('Finished with download and loading')
-    
+
     volumeNode = slicer.util.getNode(pattern="FA")
     logic = ProjectSemiLMLogic()
     self.assertIsNotNone( logic.hasImageData(volumeNode) )

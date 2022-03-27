@@ -52,19 +52,19 @@ class ExportMorphoJLandmarkFileWidget(ScriptedLoadableModuleWidget):
     #
     # Select landmark folder to import
     #
-    
+
     self.inputDirectory = ctk.ctkDirectoryButton()
     self.inputDirectory.directory = qt.QDir.homePath()
     self.inputDirectory.setToolTip('Select Directory with fcsv lanmark files')
     parametersFormLayout.addRow("Input Directory:", self.inputDirectory)
-       
+
     #
     # output directory selector
     #
     self.outputDirectory = ctk.ctkDirectoryButton()
     self.outputDirectory.directory = qt.QDir.homePath()
     parametersFormLayout.addRow("Output Directory:", self.outputDirectory)
-    
+
     #
     # enter filename for output
     #
@@ -83,7 +83,7 @@ class ExportMorphoJLandmarkFileWidget(ScriptedLoadableModuleWidget):
     # connections
     self.applyButton.connect('clicked(bool)', self.onApplyButton)
     self.inputDirectory.connect('validInputChanged(bool)', self.onSelectInput)
- 
+
     # Add vertical spacer
     self.layout.addStretch(1)
 
@@ -95,7 +95,7 @@ class ExportMorphoJLandmarkFileWidget(ScriptedLoadableModuleWidget):
     pass
 
   def onSelectInput(self):
-    self.applyButton.enabled = bool(self.inputDirectory.directory) 
+    self.applyButton.enabled = bool(self.inputDirectory.directory)
 
 
   def onApplyButton(self):
@@ -131,7 +131,7 @@ class ExportMorphoJLandmarkFileLogic(ScriptedLoadableModuleLogic):
     fileIndex=0
     fileStems=[];
     headerLM = ["Subject"]
-    for pointIndex in range(currentLMNode.GetNumberOfMarkups()):     
+    for pointIndex in range(currentLMNode.GetNumberOfMarkups()):
       headerLM.append(currentLMNode.GetNthControlPointLabel(pointIndex)+'_X')
       headerLM.append(currentLMNode.GetNthControlPointLabel(pointIndex)+'_Y')
       headerLM.append(currentLMNode.GetNthControlPointLabel(pointIndex)+'_Z')
@@ -140,7 +140,7 @@ class ExportMorphoJLandmarkFileLogic(ScriptedLoadableModuleLogic):
     point = [0,0,0]
     for file in fileList:
       if fileIndex>0:
-        success, currentLMNode = slicer.util.loadMarkupsFiducialList(file)     
+        success, currentLMNode = slicer.util.loadMarkupsFiducialList(file)
       fileStems.append(os.path.basename(file.split(extensionInput)[0]))
       for pointIndex in range(currentLMNode.GetNumberOfMarkups()):
         point=currentLMNode.GetNthControlPointPositionVector(pointIndex)
@@ -152,5 +152,5 @@ class ExportMorphoJLandmarkFileLogic(ScriptedLoadableModuleLogic):
     temp = np.column_stack((np.array(fileStems), LMArray.reshape(subjectNumber, int(3 * landmarkNumber))))
     temp = np.vstack((np.array(headerLM), temp))
     np.savetxt(outputLandmarkFile, temp, fmt="%s", delimiter=",")
-    logging.info("Processing complete")   
+    logging.info("Processing complete")
     return True
