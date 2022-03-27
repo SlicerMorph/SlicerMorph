@@ -35,6 +35,60 @@ class MeshDistanceMeasurement(ScriptedLoadableModule):
       https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
       """ # replace with organization, grant and thanks.
 
+    # Additional initialization step after application startup is complete
+    slicer.app.connect("startupCompleted()", registerSampleData)
+
+
+#
+# Register sample data sets in Sample Data module
+#
+
+def registerSampleData():
+  """
+  Add data sets to Sample Data module.
+  """
+  # It is always recommended to provide sample data for users to make it easy to try the module,
+  # but if no sample data is available then this method (and associated startupCompeted signal connection) can be removed.
+
+  import SampleData
+  iconsPath = os.path.join(os.path.dirname(__file__), 'Resources/Icons')
+
+  # To ensure that the source code repository remains small (can be downloaded and installed quickly)
+  # it is recommended to store data sets that are larger than a few MB in a Github release.
+
+  # TemplateKey1
+  SampleData.SampleDataLogic.registerCustomSampleDataSource(
+    # Category and sample name displayed in Sample Data module
+    category='TemplateKey',
+    sampleName='TemplateKey1',
+    # Thumbnail should have size of approximately 260x280 pixels and stored in Resources/Icons folder.
+    # It can be created by Screen Capture module, "Capture all views" option enabled, "Number of images" set to "Single".
+    thumbnailFileName=os.path.join(iconsPath, 'TemplateKey1.png'),
+    # Download URL and target file name
+    uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
+    fileNames='TemplateKey1.nrrd',
+    # Checksum to ensure file integrity. Can be computed by this command:
+    #  import hashlib; print(hashlib.sha256(open(filename, "rb").read()).hexdigest())
+    checksums = 'SHA256:998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95',
+    # This node name will be used when the data set is loaded
+    nodeNames='TemplateKey1'
+  )
+
+  # TemplateKey2
+  SampleData.SampleDataLogic.registerCustomSampleDataSource(
+    # Category and sample name displayed in Sample Data module
+    category='TemplateKey',
+    sampleName='TemplateKey2',
+    thumbnailFileName=os.path.join(iconsPath, 'TemplateKey2.png'),
+    # Download URL and target file name
+    uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
+    fileNames='TemplateKey2.nrrd',
+    checksums = 'SHA256:1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97',
+    # This node name will be used when the data set is loaded
+    nodeNames='TemplateKey2'
+  )
+
+
 #
 # MeshDistanceMeasurementWidget
 #
@@ -346,6 +400,38 @@ class MeshDistanceMeasurementLogic(ScriptedLoadableModuleLogic):
     annotationLogic = slicer.modules.annotations.logic()
     annotationLogic.CreateSnapShot(name, description, type, 1, imageData)
 
+  def process(self, inputVolume, outputVolume, imageThreshold, invert=False, showResult=True):
+    """
+    Run the processing algorithm.
+    Can be used without GUI widget.
+    :param inputVolume: volume to be thresholded
+    :param outputVolume: thresholding result
+    :param imageThreshold: values above/below this threshold will be set to 0
+    :param invert: if True then values above the threshold will be set to 0, otherwise values below are set to 0
+    :param showResult: show output volume in slice viewers
+    """
+
+    if not inputVolume or not outputVolume:
+      raise ValueError("Input or output volume is invalid")
+
+    import time
+    startTime = time.time()
+    logging.info('Processing started')
+
+    # Compute the thresholded output volume using the "Threshold Scalar Volume" CLI module
+    cliParams = {
+      'InputVolume': inputVolume.GetID(),
+      'OutputVolume': outputVolume.GetID(),
+      'ThresholdValue' : imageThreshold,
+      'ThresholdType' : 'Above' if invert else 'Below'
+      }
+    cliNode = slicer.cli.run(slicer.modules.thresholdscalarvolume, None, cliParams, wait_for_completion=True, update_display=showResult)
+    # We don't need the CLI module node anymore, remove it to not clutter the scene with it
+    slicer.mrmlScene.RemoveNode(cliNode)
+
+    stopTime = time.time()
+    logging.info(f'Processing completed in {stopTime-startTime:.2f} seconds')
+
 
 class MeshDistanceMeasurementTest(ScriptedLoadableModuleTest):
   """
@@ -367,38 +453,46 @@ class MeshDistanceMeasurementTest(ScriptedLoadableModuleTest):
 
   def test_MeshDistanceMeasurement1(self):
     """ Ideally you should have several levels of tests.  At the lowest level
-      tests should exercise the functionality of the logic with different inputs
-      (both valid and invalid).  At higher levels your tests should emulate the
-      way the user would interact with your code and confirm that it still works
-      the way you intended.
-      One of the most important features of the tests is that it should alert other
-      developers when their changes will have an impact on the behavior of your
-      module.  For example, if a developer removes a feature that you depend on,
-      your test should break so they know that the feature is needed.
-      """
+    tests should exercise the functionality of the logic with different inputs
+    (both valid and invalid).  At higher levels your tests should emulate the
+    way the user would interact with your code and confirm that it still works
+    the way you intended.
+    One of the most important features of the tests is that it should alert other
+    developers when their changes will have an impact on the behavior of your
+    module.  For example, if a developer removes a feature that you depend on,
+    your test should break so they know that the feature is needed.
+    """
 
     self.delayDisplay("Starting the test")
-    #
-    # first, get some data
-    #
-    import urllib
-    downloads = (
-                 ('http://slicer.kitware.com/midas3/download?items=5767', 'FA.nrrd', slicer.util.loadVolume),
-                 )
-    for url,name,loader in downloads:
-      filePath = slicer.app.temporaryPath + '/' + name
-      if not os.path.exists(filePath) or os.stat(filePath).st_size == 0:
-        logging.info(f'Requesting download {name} from {url}...\n')
-        urllib.urlretrieve(url, filePath)
-      if loader:
-        logging.info(f'Loading {name}...')
-        loader(filePath)
-    self.delayDisplay('Finished with download and loading')
 
-    volumeNode = slicer.util.getNode(pattern="FA")
+    # Get/create input data
+
+    import SampleData
+    registerSampleData()
+    inputVolume = SampleData.downloadSample('TemplateKey1')
+    self.delayDisplay('Loaded test data set')
+
+    inputScalarRange = inputVolume.GetImageData().GetScalarRange()
+    self.assertEqual(inputScalarRange[0], 0)
+    self.assertEqual(inputScalarRange[1], 695)
+
+    outputVolume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode")
+    threshold = 100
+
+    # Test the module logic
+
     logic = MeshDistanceMeasurementLogic()
-    self.assertIsNotNone( logic.hasImageData(volumeNode) )
-    self.delayDisplay('Test passed!')
 
+    # Test algorithm with non-inverted threshold
+    logic.process(inputVolume, outputVolume, threshold, True)
+    outputScalarRange = outputVolume.GetImageData().GetScalarRange()
+    self.assertEqual(outputScalarRange[0], inputScalarRange[0])
+    self.assertEqual(outputScalarRange[1], threshold)
 
+    # Test algorithm with inverted threshold
+    logic.process(inputVolume, outputVolume, threshold, False)
+    outputScalarRange = outputVolume.GetImageData().GetScalarRange()
+    self.assertEqual(outputScalarRange[0], inputScalarRange[0])
+    self.assertEqual(outputScalarRange[1], inputScalarRange[1])
 
+    self.delayDisplay('Test passed')
