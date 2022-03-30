@@ -744,7 +744,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     distanceThreshold.singleStep = .25
     distanceThreshold.minimum = 0.5
     distanceThreshold.maximum = 4
-    distanceThreshold.value = 1.5
+    distanceThreshold.value = 3
     distanceThreshold.setToolTip("Maximum correspondence points-pair distance threshold")
     rigidRegistrationFormLayout.addRow("Maximum corresponding point distance: ", distanceThreshold)
 
@@ -754,7 +754,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     maxRANSAC.setDecimals(0)
     maxRANSAC.minimum = 1
     maxRANSAC.maximum = 500000000
-    maxRANSAC.value = 4000000
+    maxRANSAC.value = 1000000
     maxRANSAC.setToolTip("Maximum number of iterations of the RANSAC algorithm")
     rigidRegistrationFormLayout.addRow("Maximum RANSAC iterations: ", maxRANSAC)
 
@@ -770,11 +770,11 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       rigidRegistrationFormLayout.addRow("Maximum RANSAC validation steps: ", maxRANSACValidation)
     else:
       RANSACConfidence = ctk.ctkDoubleSpinBox()
-      RANSACConfidence.singleStep = 0.000001
-      RANSACConfidence.setDecimals(6)
-      RANSACConfidence.minimum = 0.99
-      RANSACConfidence.maximum = 0.999999
-      RANSACConfidence.value = 0.9999
+      RANSACConfidence.singleStep = 0.001
+      RANSACConfidence.setDecimals(3)
+      RANSACConfidence.minimum = 0
+      RANSACConfidence.maximum = 1
+      RANSACConfidence.value = 0.999
       RANSACConfidence.setToolTip("Set up confidence (convergence criteria) for RANSAC global registration")
       rigidRegistrationFormLayout.addRow("Set up RANSAC confidence: ", RANSACConfidence)
 
@@ -783,7 +783,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     ICPDistanceThreshold.singleStep = .1
     ICPDistanceThreshold.minimum = 0.1
     ICPDistanceThreshold.maximum = 2
-    ICPDistanceThreshold.value = 0.4
+    ICPDistanceThreshold.value = 1.5
     ICPDistanceThreshold.setToolTip("Maximum ICP points-pair distance threshold")
     rigidRegistrationFormLayout.addRow("Maximum ICP distance: ", ICPDistanceThreshold)
 
@@ -1038,16 +1038,16 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
 
   def estimateTransform(self, sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, skipScaling, parameters):
     if slicer.app.majorVersion*100+slicer.app.minorVersion < 412:
-      ransac = self.execute_global_registration(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize * 2.5,
+      ransac = self.execute_global_registration(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, 
         parameters["distanceThreshold"], parameters["maxRANSAC"], parameters["maxRANSACValidation"], skipScaling)
     else:
-      ransac = self.execute_global_registration_2(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize * 2.5,
+      ransac = self.execute_global_registration_2(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, 
         parameters["distanceThreshold"], parameters["maxRANSAC"], parameters["RANSACConfidence"], skipScaling)
 
     # Refine the initial registration using an Iterative Closest Point (ICP) registration
-    icp = self.refine_registration(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize * 2.5, ransac, parameters["ICPDistanceThreshold"])
-    return icp.transformation
-
+    icp = self.refine_registration(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, ransac, parameters["ICPDistanceThreshold"]) 
+    return icp.transformation                                     
+  
   def runSubsample(self, sourcePath, targetPath, skipScaling, parameters):
     from open3d import io
     print(":: Loading point clouds and downsampling")
@@ -1128,13 +1128,19 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     print(":: RANSAC registration on downsampled point clouds.")
     print("   Since the downsampling voxel size is %.3f," % voxel_size)
     print("   we use a liberal distance threshold %.3f." % distance_threshold)
-    result = registration.registration_ransac_based_on_feature_matching(
-        source_down, target_down, source_fpfh, target_fpfh, distance_threshold,
-        registration.TransformationEstimationPointToPoint(skipScaling == 0), 4, [
-            registration.CorrespondenceCheckerBasedOnEdgeLength(0.9),
-            registration.CorrespondenceCheckerBasedOnDistance(
-                distance_threshold)
-        ], registration.RANSACConvergenceCriteria(maxIter, maxValidation))
+    fitness = 0
+    count = 0
+    maxAttempts = 30
+    while fitness < 0.99 and count < maxAttempts:
+      result = registration.registration_ransac_based_on_feature_matching(
+          source_down, target_down, source_fpfh, target_fpfh, True, distance_threshold,
+          registration.TransformationEstimationPointToPoint(skipScaling == 0), 3, [
+              registration.CorrespondenceCheckerBasedOnEdgeLength(0.9),
+              registration.CorrespondenceCheckerBasedOnDistance(
+                  distance_threshold)
+          ], registration.RANSACConvergenceCriteria(maxIter, maxValidation))
+      fitness = result.fitness
+      count += 1
     return result
 
   def execute_global_registration_2(self, source_down, target_down, source_fpfh,
@@ -1145,13 +1151,19 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     print(":: RANSAC registration on downsampled point clouds.")
     print("   Since the downsampling voxel size is %.3f," % voxel_size)
     print("   we use a liberal distance threshold %.3f." % distance_threshold)
-    result = registration.registration_ransac_based_on_feature_matching(
-        source_down, target_down, source_fpfh, target_fpfh, False, distance_threshold,
-        registration.TransformationEstimationPointToPoint(skipScaling == 0), 4, [
-            registration.CorrespondenceCheckerBasedOnEdgeLength(0.9),
-            registration.CorrespondenceCheckerBasedOnDistance(
-                distance_threshold)
-        ], registration.RANSACConvergenceCriteria(maxIter, confidence))
+    fitness = 0
+    count = 0
+    maxAttempts = 30
+    while fitness < 0.99 and count < maxAttempts:
+      result = registration.registration_ransac_based_on_feature_matching(
+          source_down, target_down, source_fpfh, target_fpfh, True, distance_threshold,
+          registration.TransformationEstimationPointToPoint(skipScaling == 0), 3, [
+              registration.CorrespondenceCheckerBasedOnEdgeLength(0.9),
+              registration.CorrespondenceCheckerBasedOnDistance(
+                  distance_threshold)
+          ], registration.RANSACConvergenceCriteria(maxIter, confidence))
+      fitness = result.fitness
+      count += 1 
     return result
 
   def refine_registration(self, source, target, source_fpfh, target_fpfh, voxel_size, result_ransac, ICPThreshold_factor):
