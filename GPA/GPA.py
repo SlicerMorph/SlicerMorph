@@ -1177,6 +1177,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     #Setup for scatter plots
     shape = self.LM.lm.shape
+    self.LM.calcEigen()
     self.scatterDataAll= np.zeros(shape=(shape[2],self.pcNumber))
     for i in range(self.pcNumber):
       data=gpa_lib.plotTanProj(self.LM.lm,self.LM.sortedEig,i,1)
