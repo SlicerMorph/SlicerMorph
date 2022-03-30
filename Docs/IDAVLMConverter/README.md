@@ -9,5 +9,5 @@ It should be noted that the 3D Models and coordinates exported from the IDAV Lan
 
 <img src="./model_RAS.png">
 
-We advise verifying the correct conversion by both loading the fcsv file created and the original PLY into SlicerMorph. Also note that, default missing landmark convention in Landmark Editor is to enter value 9999 for all three coordinates. Because Slicer adjusts the field of view of the 3D window to fit all data points, if the converted landmark set has missing landmarks, it will cause the specimen and landmarks to be off-centered in the 3D window.  
+We advise verifying the correct conversion by both loading the fcsv file created and the original PLY into SlicerMorph. Also note that, default missing landmark convention in Landmark Editor is to enter value 9999 for all three coordinates. Because Slicer adjusts the field of view of the 3D window to fit all data points, if the converted landmark set has missing landmarks, it will cause the specimen and landmarks to be off-centered in the 3D window.
 

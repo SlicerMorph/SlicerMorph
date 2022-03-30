@@ -11,7 +11,7 @@ import logging
 #
 # action classes
 #
-class AnimatorAction(object):
+class AnimatorAction:
   """Superclass for actions to be animated."""
   def __init__(self):
     self.uuid = uuid.uuid4()
@@ -32,7 +32,7 @@ class AnimatorAction(object):
 class CameraRotationAction(AnimatorAction):
   """Defines an animation of a transform"""
   def __init__(self):
-    super(CameraRotationAction,self).__init__()
+    super().__init__()
     self.name = "Camera Rotation"
     self.animationMethods = ['azimuth', 'elevation', 'roll']
 
@@ -81,7 +81,7 @@ class CameraRotationAction(AnimatorAction):
       # TODO: this->Renderer->UpdateLightsGeometryToFollowCamera()
 
   def gui(self, action, layout):
-    super(CameraRotationAction,self).gui(action, layout)
+    super().gui(action, layout)
 
     self.referenceSelector = slicer.qMRMLNodeComboBox()
     self.referenceSelector.nodeTypes = ["vtkMRMLCameraNode"]
@@ -134,7 +134,7 @@ class CameraRotationAction(AnimatorAction):
 class ROIAction(AnimatorAction):
   """Defines an animation of an roi (e.g. for volume cropping)"""
   def __init__(self):
-    super(ROIAction,self).__init__()
+    super().__init__()
     self.name = "ROI"
 
   def allowMultiple(self):
@@ -225,7 +225,7 @@ class ROIAction(AnimatorAction):
       animatedROI.SetRadiusXYZ(animated)
 
   def gui(self, action, layout):
-    super(ROIAction,self).gui(action, layout)
+    super().gui(action, layout)
 
     self.startSelector = slicer.qMRMLNodeComboBox()
     self.startSelector.nodeTypes = ["vtkMRMLAnnotationROINode", "vtkMRMLMarkupsROINode"]
@@ -277,7 +277,7 @@ class ROIAction(AnimatorAction):
 class VolumePropertyAction(AnimatorAction):
   """Defines an animation of an roi (e.g. for volume cropping)"""
   def __init__(self):
-    super(VolumePropertyAction,self).__init__()
+    super().__init__()
     self.name = "Volume Property"
 
   def defaultAction(self):
@@ -371,7 +371,7 @@ class VolumePropertyAction(AnimatorAction):
       animatedVolumeProperty.EndModify(disabledModify)
 
   def gui(self, action, layout):
-    super(VolumePropertyAction,self).gui(action, layout)
+    super().gui(action, layout)
 
     self.startSelector = slicer.qMRMLNodeComboBox()
     self.startSelector.nodeTypes = ["vtkMRMLVolumePropertyNode"]
@@ -438,12 +438,12 @@ class ExplodeModelsAction(AnimatorAction):
 
   # Cache stores information that needs to be extracted from the scene once
   # (list of nodes, positions, etc.)
-  # The cache stores information for all the actions, identified by 
+  # The cache stores information for all the actions, identified by
   # the action's id.
   cache = {}
 
   def __init__(self):
-    super(ExplodeModelsAction,self).__init__()
+    super().__init__()
     self.name = "Explode models"
 
   def cleanup(self, action):
@@ -541,7 +541,7 @@ class ExplodeModelsAction(AnimatorAction):
         transformNode.SetMatrixTransformToParent(transformMatrix)
 
   def gui(self, action, layout):
-    super(ExplodeModelsAction,self).gui(action, layout)
+    super().gui(action, layout)
 
     self.shFolderSelector = slicer.qMRMLSubjectHierarchyComboBox()
     self.shFolderSelector.setMRMLScene( slicer.mrmlScene )
@@ -676,9 +676,9 @@ A high-level animation interface that operates on top of the Sequences and Scree
 
 """
     self.parent.acknowledgementText = """
-This module was developed by Steve Pieper for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections" 
-awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839). 
-https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false 
+This module was developed by Steve Pieper for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections"
+awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839).
+https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
 """ # replace with organization, grant and thanks.
 
 
@@ -692,7 +692,7 @@ class AnimatorWidget(ScriptedLoadableModuleWidget):
   """
 
   def __init__(self, parent):
-    super(AnimatorWidget,self).__init__(parent)
+    super().__init__(parent)
     self.sizes = {
             "160x120": {"width": 160, "height": 120},
             "320x240": {"width": 320, "height": 240},
@@ -954,7 +954,7 @@ class AnimatorWidget(ScriptedLoadableModuleWidget):
     layoutManager.setLayout(oldLayout)
 
 
-class AnimatorActionsGUI(object):
+class AnimatorActionsGUI:
   """Manage the UI elements for animation script
      Gets the script from the animationNode and
      returns a QWidget.

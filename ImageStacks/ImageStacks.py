@@ -405,7 +405,7 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 #
 # File dialog to allow drag-and-drop of folders and files
 #
-class ImageStacksFileDialog(object):
+class ImageStacksFileDialog:
   """This specially named class is detected by the scripted loadable
   module and is the target for optional drag and drop operations.
   See: Base/QTGUI/qSlicerScriptedFileDialog.h
@@ -663,7 +663,7 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
                      extent[2] * stepSize[1]:(extent[3] + 1) * stepSize[1]:stepSize[1],
                      extent[0] * stepSize[0]:(extent[1] + 1) * stepSize[0]:stepSize[0]]
       if (sliceIndex > 0) and (volumeArray[sliceIndex].shape != sliceArray.shape):
-        logging.debug("After downsampling, {0} size is {1} x {2}\n\n{3} size is {4} x {5} ({6} scalar components)".format(
+        logging.debug("After downsampling, {} size is {} x {}\n\n{} size is {} x {} ({} scalar components)".format(
           paths[0], volumeArray[0].shape[0], volumeArray[0].shape[1],
           path, sliceArray.shape[0], sliceArray.shape[1]),
           sliceArray.shape[2] if len(sliceArray.shape)==3 else 1)

@@ -7,7 +7,7 @@
 # This is source code manager (i.e. svn)
 scm git
 scmurl https://github.com/SlicerMorph/SlicerMorph.git
-scmrevision master  
+scmrevision master
 
 # list dependencies
 # - These should be names of other modules that have .s4ext files
@@ -35,7 +35,7 @@ iconurl     https://raw.githubusercontent.com/SlicerMorph/SlicerMorph/master/Sli
 status      Beta
 
 # One line stating what the module does
-description This extension enables retrieval, visualization, measurement and annotation of high-resolution specimen data from volumetric scans (CTs and MRs) or 3D surface scans. 
+description This extension enables retrieval, visualization, measurement and annotation of high-resolution specimen data from volumetric scans (CTs and MRs) or 3D surface scans.
 
 # Space separated list of urls
 screenshoturls https://na-mic.github.io/ProjectWeek/PW30_2019_GranCanaria/Projects/SlicerMorphGeometricMorphometricToolset/SM_screen.png https://na-mic.github.io/ProjectWeek/PW30_2019_GranCanaria/Projects/SlicerMorphGeometricMorphometricToolset/SM2.png

@@ -1,24 +1,24 @@
 ## SlicerMorph Preferences
-**Summary:** SlicerMorph preferences provides a convenient way for users to opt-in SlicerMorph specific customizations. Additional user specific customizations can be incorporated by editing the provided **SlicerMorphRC.py** file. 
+**Summary:** SlicerMorph preferences provides a convenient way for users to opt-in SlicerMorph specific customizations. Additional user specific customizations can be incorporated by editing the provided **SlicerMorphRC.py** file.
 
 ### USAGE
-Navigate to **Edit->Application Settings->SlicerMorph** tab and chech the box _Use SlicerMorph Customizations._ Then, click the **Load now** button next to the Customization file location. Restart Slicer for changes to take effect. 
+Navigate to **Edit->Application Settings->SlicerMorph** tab and chech the box _Use SlicerMorph Customizations._ Then, click the **Load now** button next to the Customization file location. Restart Slicer for changes to take effect.
 
-**Download Directory:** Overwrites the TEMP and CACHE settings of Slicer to this user specified location. All downloaded files (e.g., SampleData) can be found in this folder. 
+**Download Directory:** Overwrites the TEMP and CACHE settings of Slicer to this user specified location. All downloaded files (e.g., SampleData) can be found in this folder.
 
-If you want to revert to Slicer's default Application Settings, uncheck the _Use SlicerMorph Customizations_ button and then hit "Restore Defaults" button and restart your Slicer session. 
+If you want to revert to Slicer's default Application Settings, uncheck the _Use SlicerMorph Customizations_ button and then hit "Restore Defaults" button and restart your Slicer session.
 
 ### List of Keyboard Shortcuts provided by SlicerMorph Customization
 
 * **p:** Place a fiducial at the voxel under the mouse icon (both in 2D and 3D)
-* **`:** Move the active segment effect to right (Segment Editor) 
+* **`:** Move the active segment effect to right (Segment Editor)
 * **~:** Move the active segment effect to the left (Segment Editor)
 * **z:** Change the layout to be Red Slice View Only
 * **x:** Change the layout to be Yellow Slice View Only
 * **c:** Change the layout to be Green Slice View Only
-* **v:** Change the layout to be Four Up View 
-* **t:**  Toggle Persistent Mode on/off for Markups 
-* **l:** Toggle Markups Lock on/off    
+* **v:** Change the layout to be Four Up View
+* **t:**  Toggle Persistent Mode on/off for Markups
+* **l:** Toggle Markups Lock on/off
 
 ### List Other Customizations applied by SlicerMorph
 * Make Data module the default home module (instead of Welcome)

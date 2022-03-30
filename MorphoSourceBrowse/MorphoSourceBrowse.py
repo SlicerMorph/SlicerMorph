@@ -24,8 +24,8 @@ Access to the MorphoSource web site via the Web Engine in Slicer.
 """
     self.parent.helpText += self.getDefaultModuleDocumentationLink()
     self.parent.acknowledgementText = """
-      This module was developed by Steve Pieper for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections" 
-      awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839). 
+      This module was developed by Steve Pieper for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections"
+      awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839).
       https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
 """ # replace with organization, grant and thanks.
 
@@ -114,17 +114,17 @@ class MorphoSourceBrowseLogic(ScriptedLoadableModuleLogic):
 
   def onFinishLoading(self, username, password):
     loginJS = """
-        function fillInLogin() {
-          document.querySelector('input[name="username"]').value = "%s";
-          document.querySelector('input[name="password"]').value = "%s";
-        }
+        function fillInLogin() {{
+          document.querySelector('input[name="username"]').value = "{}";
+          document.querySelector('input[name="password"]').value = "{}";
+        }}
 
-        if (document.readyState === "loading") {
+        if (document.readyState === "loading") {{
           document.addEventListener("DOMContentLoaded", fillInLogin);
-        } else {
+        }} else {{
           fillInLogin();
-        }
-    """ % (username,password)
+        }}
+    """.format(username,password)
 
     self.webWidget.connect("evalResult(QString,QString)", self.onEvalResult)
     self.webWidget.evalJS(loginJS)

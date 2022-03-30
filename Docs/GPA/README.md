@@ -1,21 +1,21 @@
 ## GPA
-**Summary:** This module performs Generalized Procrustes Analysis (GPA) with or without scaling shape configurations to unit size, conducts principal component analysis (PCA) of GPA aligned shape coordinates, provides graphical output of GPA results and real-time 3D visualization of PC warps either using the landmarks of mean shape, or using a reference model that is transformed into the mean shape. Visualization of 3D shape deformation of the reference model can be exported as video clips. The input into the module is a folder path containing a number of landmark files stored in Slicer’s fcsv format and optionally a 3D model and accompanying set of landmarks to be used as reference model in 3D visualization of PCA results. Aesthetics (label shape, text size etc) of the morphospace plots (aka PC scatter plot) can be further customized using the `Plots` module of Slicer. 
+**Summary:** This module performs Generalized Procrustes Analysis (GPA) with or without scaling shape configurations to unit size, conducts principal component analysis (PCA) of GPA aligned shape coordinates, provides graphical output of GPA results and real-time 3D visualization of PC warps either using the landmarks of mean shape, or using a reference model that is transformed into the mean shape. Visualization of 3D shape deformation of the reference model can be exported as video clips. The input into the module is a folder path containing a number of landmark files stored in Slicer’s fcsv format and optionally a 3D model and accompanying set of landmarks to be used as reference model in 3D visualization of PCA results. Aesthetics (label shape, text size etc) of the morphospace plots (aka PC scatter plot) can be further customized using the `Plots` module of Slicer.
 
 ### USAGE
-#### Setup analysis: 
+#### Setup analysis:
 This section of the module runs the GPA and PCA analysis on a directory of landmark files. For data sets with a large number of landmarks, please expect running this step to take several minutes.
 
-* __Select Landmark Files:__ Use file dialog box to highlight and select samples to be included in the analysis. The files can be `.fcsv` or `.mrk.json` format. There should be one  file per subject. Filenames are used as subject IDs in analysis. Selected files will be displayed in the table below the *View Selected Files*. 
+* __Select Landmark Files:__ Use file dialog box to highlight and select samples to be included in the analysis. The files can be `.fcsv` or `.mrk.json` format. There should be one  file per subject. Filenames are used as subject IDs in analysis. Selected files will be displayed in the table below the *View Selected Files*.
 
-* __Output directory prefix:__ Use the output directory field to select the directory where the results will be written. Each time the `GPA` module is run, a new timestamped results folder is created in this directory to prevent results from being overwritten. Please ensure that you have write access to the specified directory. Output folder will contain a log file that lists the files and the settings used in the analysis. This file can be parsed by convinence function [_log_parser.R_ ](https://raw.githubusercontent.com/muratmaga/SlicerMorph_Rexamples/main/log_parser.R) for further analysis in R. 
+* __Output directory prefix:__ Use the output directory field to select the directory where the results will be written. Each time the `GPA` module is run, a new timestamped results folder is created in this directory to prevent results from being overwritten. Please ensure that you have write access to the specified directory. Output folder will contain a log file that lists the files and the settings used in the analysis. This file can be parsed by convinence function [_log_parser.R_ ](https://raw.githubusercontent.com/muratmaga/SlicerMorph_Rexamples/main/log_parser.R) for further analysis in R.
 
 * __Exclude landmarks:__ Optionally, landmarks can be excluded from analysis. Please enter the number of each landmark to exclude, seperated by commas (example: 25,27,29). If all landmarks will be used, this field can be left empty.
 
-* __Skip Scaling:__ Option to skip the scaling step in the GPA. Useful to keep the physical scale of the data. 
+* __Skip Scaling:__ Option to skip the scaling step in the GPA. Useful to keep the physical scale of the data.
 
-* __Execute GPA + PCA:__ Initiates the GPA and also calculates the major axis of shape variaiton using PCA decomposition. PCA may take up to few minutes for large datasets. 
+* __Execute GPA + PCA:__ Initiates the GPA and also calculates the major axis of shape variaiton using PCA decomposition. PCA may take up to few minutes for large datasets.
 
-* __View Output Folder:__ Pops up a file browser and shows the contents of specified output folder. 
+* __View Output Folder:__ Pops up a file browser and shows the contents of specified output folder.
 
 #### Load previous analysis
 As an alternative to running the GPA and PCA analysis, the module can be used to browse and visulize the results from a previous run of the module.
@@ -23,7 +23,7 @@ As an alternative to running the GPA and PCA analysis, the module can be used to
 * __Results directory:__ Use the directory selector to choose the output results folder generated by a previous run of the `GPA` module. This folder name will include a timestamp documenting the date/time of the anlysis.
 
 #### Mean shape plot options
-This section provides options for quickly and easily interacting with the display of the Procrustes mean shape without leaving the `GPA` module. If there is a warped display of the mean shape in the second 3D viewer, it will also control the display properties for this model. If a more customized display is needed, more display properties are available in the `Markups` module. 
+This section provides options for quickly and easily interacting with the display of the Procrustes mean shape without leaving the `GPA` module. If there is a warped display of the mean shape in the second 3D viewer, it will also control the display properties for this model. If a more customized display is needed, more display properties are available in the `Markups` module.
 
 * __Mean shape visibility:__ Toggle the visibility of the mean shape landmark points.
 
@@ -43,7 +43,7 @@ This section creates a visualization of the Procrustes distance variance at each
 * __Point cloud:__ Plots GPA aligned landmark coordinates for the entire data set as a point cloud.
 
 #### PCA scatter plot options
-This section creates a 2D scatter plot of two selected principal component scores in the Plot Viewer. The menu options are used to select the principal components on each axis, or optionally group subjects using factor data. 
+This section creates a 2D scatter plot of two selected principal component scores in the Plot Viewer. The menu options are used to select the principal components on each axis, or optionally group subjects using factor data.
 
 * __X Axis:__ Select the PC on the X-axis.
 
@@ -75,8 +75,8 @@ This section sets up an interactive visualization demonstrating how selected pri
 
 * __Specify landmark set for selected model__ If the `3D model visualization` option was chosen, this field is used to select the `.fcsv` file containing the model's corresponding landmarks.
 
-#### PCA visualization parameters 
-This section allows the user to visualize the influence of select principal components on the mean shape landmarks or reference model displayed the second 3D viewer. The original mean shape or model remains in the first 3D viewer for comparison. The PC selectors allow up to two PCs to be selected and their influence to be modulated in both the positive and negative direction interactively using the slider bars. 
+#### PCA visualization parameters
+This section allows the user to visualize the influence of select principal components on the mean shape landmarks or reference model displayed the second 3D viewer. The original mean shape or model remains in the first 3D viewer for comparison. The PC selectors allow up to two PCs to be selected and their influence to be modulated in both the positive and negative direction interactively using the slider bars.
 
 * __PC Selector One__ Select the first principal component and scaling factor.
 

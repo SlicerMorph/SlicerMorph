@@ -51,7 +51,7 @@ class MorphPreferences(ScriptedLoadableModule):
         slicer.util.errorDisplay(errorMessage)
 
 
-class _ui_MorphPreferencesSettingsPanel(object):
+class _ui_MorphPreferencesSettingsPanel:
   def __init__(self, parent, rcPath):
     vBoxLayout = qt.QVBoxLayout(parent)
     # Add generic settings

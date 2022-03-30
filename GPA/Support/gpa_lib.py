@@ -2,7 +2,7 @@ import numpy as np
 import os
 import fnmatch
 import scipy.linalg as sp
- 
+
 # PCA
 def makeTwoDim(monsters):
     i,j,k=monsters.shape
@@ -14,7 +14,7 @@ def makeTwoDim(monsters):
 
 def calcMean(vec):
     i,j=vec.shape
-    meanVec=np.zeros((i))
+    meanVec=np.zeros(i)
     for x in range(j):
         meanVec+=vec[:,x]/float(j)
     return meanVec
@@ -74,7 +74,7 @@ def plotTanProj(monsters,pcA,pcB):
     coords=np.dot(transform,twoDim)
     tmp=np.column_stack((coords[0,:],coords[1,:]))
     return tmp
-    
+
 def plotTanProj(monsters,eigSort,pcA,pcB):
     twoDim=makeTwoDim(monsters)
     transform=makeTransformMatrix(eigSort,pcA,pcB)
@@ -103,7 +103,7 @@ def alignShape(refShape,shape):
     rotationMatrix=np.dot(np.transpose(v), np.transpose(u))
     shape=np.dot(shape,rotationMatrix)
     return shape
-    
+
 def meanShape(monsters):
     return monsters.mean(axis=2)
 
@@ -114,13 +114,13 @@ def procDist(monsters,mshape):
         tmp=monsters[:,:,x]-mshape
         procDists[x]=np.linalg.norm(tmp,'fro')
     return procDists
-    
+
 ################# GPA update
 def runGPA(allLandmarkSets):
   i,j,k=allLandmarkSets.shape
   for index in range(k):
     landmarkSet=allLandmarkSets[:,:,index]
-    tempSet = applyCenterScale(landmarkSet) 
+    tempSet = applyCenterScale(landmarkSet)
     allLandmarkSets[:,:,index]=tempSet
   allLandmarkSets = procrustesAlign(allLandmarkSets[:,:,0],allLandmarkSets)
   initialMeanShape=meanShape(allLandmarkSets)
@@ -135,14 +135,14 @@ def runGPA(allLandmarkSets):
     initialMeanShape=currentMeanShape
     tries=tries+1
   return allLandmarkSets, currentMeanShape
-  
+
 def procrustesAlign(mean, allLandmarkSets):
   mean = scaleShape(mean)
   i,j,k=allLandmarkSets.shape
   for index in range(k):
     allLandmarkSets[:,:,index] = alignShape(mean, allLandmarkSets[:,:,index])
   return allLandmarkSets
-   
+
 def applyCenterScale(landmarkSet):
   landmarkSet=centerShape(landmarkSet)
   landmarkSet=scaleShape(landmarkSet)
@@ -152,7 +152,7 @@ def runGPANoScale(allLandmarkSets):
   i,j,k=allLandmarkSets.shape
   for index in range(k):
     landmarkSet=allLandmarkSets[:,:,index]
-    tempSet = applyCenter(landmarkSet) 
+    tempSet = applyCenter(landmarkSet)
     allLandmarkSets[:,:,index]=tempSet
   allLandmarkSets = procrustesAlignNoScale(allLandmarkSets[:,:,0],allLandmarkSets)
   initialMeanShape=meanShape(allLandmarkSets)
@@ -164,14 +164,14 @@ def runGPANoScale(allLandmarkSets):
     diff=np.linalg.norm(initialMeanShape-currentMeanShape)
     initialMeanShape=currentMeanShape
     tries=tries+1
-  return allLandmarkSets, currentMeanShape   
-  
+  return allLandmarkSets, currentMeanShape
+
 def procrustesAlignNoScale(mean, allLandmarkSets):
   i,j,k=allLandmarkSets.shape
   for index in range(k):
     allLandmarkSets[:,:,index] = alignShape(mean, allLandmarkSets[:,:,index])
   return allLandmarkSets
-  
+
 def applyCenter(landmarkSet):
   landmarkSet=centerShape(landmarkSet)
   return landmarkSet
