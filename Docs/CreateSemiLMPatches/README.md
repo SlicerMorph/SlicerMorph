@@ -1,5 +1,5 @@
 ## CreateSemiLMPatches
-**Summary:** 
+**Summary:**
 Provides triangular patches of semi-landmarks that are constrained by three fixed anatomical landmarks. The input into the module is a 3D model and its accompanying set of fixed landmarks. Users generate, visualize, and edit the patches by specifying triplets of fixed landmarks that form a triangle. A template triangular grid with a user-specified number of semi-landmark points is registered to the vertices of the bounding triangle using a thin-plate-spline deformation. The vertices of the triangular sampling grid are then projected to the surface of the specimen along the estimated normal vectors. After placement, the patches can be merged together into a single landamark node and a table is generated specifying the final landmark point connectivity.
 
 ### USAGE
@@ -7,7 +7,7 @@ Provides triangular patches of semi-landmarks that are constrained by three fixe
 #### CreateSemiLMPatches PARAMETERS
 These parameters are required to be set to use the module.
 
-* __Model:__ This node selector specifies the model where the semi-landmarks will be placed. 
+* __Model:__ This node selector specifies the model where the semi-landmarks will be placed.
 
 * __Landmark set:__ This node selector specifies the fixed anatomical landmark set corresponding to the model.
 
@@ -29,7 +29,7 @@ The advanced parameters are settings that can be adjusted to improve the perform
 
 * The merged semi-landmarks can be projected to other images in a data set using the `ProjectSemiLM` module. Each image is required to have manual landmarks placed.
 
-* The merged semi-landmarks can be transferred to other images in a data set using the `Alpaca` module. The images in the data set are not required to have manual landmarks for this method. 
+* The merged semi-landmarks can be transferred to other images in a data set using the `Alpaca` module. The images in the data set are not required to have manual landmarks for this method.
 
 ### TUTORIAL
 For more details, please see the [CreateSemiLMPatches tutorial](https://github.com/SlicerMorph/Tutorials/tree/main/CreateSemiLMPatches)

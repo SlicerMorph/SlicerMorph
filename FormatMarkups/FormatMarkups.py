@@ -11,7 +11,7 @@ class FormatMarkups(ScriptedLoadableModule):
         ScriptedLoadableModule.__init__(self, parent)
         parent.title = "SlicerMorph Format Markups Plugin"
         parent.categories = [""]
-        parent.contributors = [" Sara Rolfe (UW), Murat Maga (UW)"] 
+        parent.contributors = [" Sara Rolfe (UW), Murat Maga (UW)"]
         parent.helpText = ""
         parent.hidden = not slicer.util.settingsValue('Developer/DeveloperMode', False, converter=slicer.util.toBool)
 
@@ -41,8 +41,8 @@ class FormatMarkupsSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin
     self.subjectHierarchyNode = pluginHandlerSingleton.subjectHierarchyNode()
     self.formatMarkupsAction = qt.QAction(f"Apply formatting to siblings", scriptedPlugin)
     self.menu = qt.QMenu("Plugin Menu")
-    self.formatMarkupsAction.setMenu(self.menu)    
-    
+    self.formatMarkupsAction.setMenu(self.menu)
+
   #
   # item context menus are what happens when you right click on a selected line
   #
@@ -59,12 +59,12 @@ class FormatMarkupsSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin
     # check if this is parent or leaf
     siblingIDList = vtk.vtkIdList()
     itemDataNode = self.subjectHierarchyNode.GetItemDataNode(itemID)
-    parentID = self.subjectHierarchyNode.GetItemParent(itemID)        
+    parentID = self.subjectHierarchyNode.GetItemParent(itemID)
     parentIsScene = bool(self.subjectHierarchyNode.GetItemName(parentID) == "Scene")
     markupNodeTypes=["vtkMRMLMarkupsFiducialNode", "vtkMRMLMarkupsNode"]
     if itemDataNode is not None and itemDataNode.IsA("vtkMRMLMarkupsFiducialNode") and not parentIsScene:
       self.subjectHierarchyNode.GetItemChildren(parentID, siblingIDList)
-      if siblingIDList.GetNumberOfIds()>0:    
+      if siblingIDList.GetNumberOfIds()>0:
         copyDisplayAction = self.menu.addAction(f"Copy display properties to siblings")
         copyVisibilityAction = self.menu.addAction(f"Copy point visibility to siblings")
         uniqueColorAction = self.menu.addAction(f"Apply unique node color to siblings")
@@ -95,8 +95,8 @@ class FormatMarkupsSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin
         else:
           for j in range(itemDataNode.GetNumberOfControlPoints()):
             siblingNode.SetNthControlPointLocked(j, itemDataNode.GetNthControlPointLocked(j))
-        
-  
+
+
   def copyPointVisibility(self, itemDataNode, itemID, siblingIDList):
     for i in range(siblingIDList.GetNumberOfIds()):
       siblingID = siblingIDList.GetId(i)
@@ -108,7 +108,7 @@ class FormatMarkupsSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin
       else:
         for j in range(itemDataNode.GetNumberOfControlPoints()):
           siblingNode.SetNthControlPointVisibility(j, itemDataNode.GetNthControlPointVisibility(j))
-          
+
   def applyUniqueColors(self, siblingIDList):
     colorTableList = slicer.mrmlScene.GetNodesByClassByName('vtkMRMLColorTableNode', 'GenericColors')
     colorTable = colorTableList.GetItemAsObject(0)
@@ -116,11 +116,11 @@ class FormatMarkupsSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin
     colorIndex = 1
     for i in range(siblingIDList.GetNumberOfIds()):
       siblingID = siblingIDList.GetId(i)
-      siblingNode = self.subjectHierarchyNode.GetItemDataNode(siblingID)  
+      siblingNode = self.subjectHierarchyNode.GetItemDataNode(siblingID)
       colorTable.GetColor(colorIndex,color)
-      siblingNode.GetDisplayNode().SetSelectedColor(color[0:3])  
+      siblingNode.GetDisplayNode().SetSelectedColor(color[0:3])
       if colorIndex < 307:
         colorIndex+=1
       else:
         colorIndex=1
-          
+

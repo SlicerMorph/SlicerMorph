@@ -438,7 +438,7 @@ class ExplodeModelsAction(AnimatorAction):
 
   # Cache stores information that needs to be extracted from the scene once
   # (list of nodes, positions, etc.)
-  # The cache stores information for all the actions, identified by 
+  # The cache stores information for all the actions, identified by
   # the action's id.
   cache = {}
 
@@ -676,9 +676,9 @@ A high-level animation interface that operates on top of the Sequences and Scree
 
 """
     self.parent.acknowledgementText = """
-This module was developed by Steve Pieper for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections" 
-awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839). 
-https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false 
+This module was developed by Steve Pieper for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections"
+awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839).
+https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
 """ # replace with organization, grant and thanks.
 
 

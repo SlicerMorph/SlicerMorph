@@ -39,8 +39,8 @@ This module preforms standard Generalized Procrustes Analysis (GPA) based on Dry
 """
     #self.parent.helpText += self.getDefaultModuleDocumentationLink()
     self.parent.acknowledgementText = """
-      This module was developed by Sara Rolfe, and Murat Maga for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections" 
-      awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839). 
+      This module was developed by Sara Rolfe, and Murat Maga for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections"
+      awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839).
       https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
 """ # replace with organization, grant and thanks.
 
@@ -94,7 +94,7 @@ This module preforms standard Generalized Procrustes Analysis (GPA) based on Dry
        </item>"
       </layout>
   """
-  
+
     slicer.customLayoutPlotOnly = """
       <layout type=\"horizontal\" >
        <item>
@@ -104,6 +104,58 @@ This module preforms standard Generalized Procrustes Analysis (GPA) based on Dry
        </item>"
       </layout>
   """
+    # Additional initialization step after application startup is complete
+    slicer.app.connect("startupCompleted()", registerSampleData)
+
+
+#
+# Register sample data sets in Sample Data module
+#
+
+def registerSampleData():
+  """
+  Add data sets to Sample Data module.
+  """
+  # It is always recommended to provide sample data for users to make it easy to try the module,
+  # but if no sample data is available then this method (and associated startupCompeted signal connection) can be removed.
+
+  import SampleData
+  iconsPath = os.path.join(os.path.dirname(__file__), 'Resources/Icons')
+
+  # To ensure that the source code repository remains small (can be downloaded and installed quickly)
+  # it is recommended to store data sets that are larger than a few MB in a Github release.
+
+  # TemplateKey1
+  SampleData.SampleDataLogic.registerCustomSampleDataSource(
+    # Category and sample name displayed in Sample Data module
+    category='TemplateKey',
+    sampleName='TemplateKey1',
+    # Thumbnail should have size of approximately 260x280 pixels and stored in Resources/Icons folder.
+    # It can be created by Screen Capture module, "Capture all views" option enabled, "Number of images" set to "Single".
+    thumbnailFileName=os.path.join(iconsPath, 'TemplateKey1.png'),
+    # Download URL and target file name
+    uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
+    fileNames='TemplateKey1.nrrd',
+    # Checksum to ensure file integrity. Can be computed by this command:
+    #  import hashlib; print(hashlib.sha256(open(filename, "rb").read()).hexdigest())
+    checksums = 'SHA256:998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95',
+    # This node name will be used when the data set is loaded
+    nodeNames='TemplateKey1'
+  )
+
+  # TemplateKey2
+  SampleData.SampleDataLogic.registerCustomSampleDataSource(
+    # Category and sample name displayed in Sample Data module
+    category='TemplateKey',
+    sampleName='TemplateKey2',
+    thumbnailFileName=os.path.join(iconsPath, 'TemplateKey2.png'),
+    # Download URL and target file name
+    uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
+    fileNames='TemplateKey2.nrrd',
+    checksums = 'SHA256:1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97',
+    # This node name will be used when the data set is loaded
+    nodeNames='TemplateKey2'
+  )
 
 #
 # GPAWidget
@@ -200,8 +252,8 @@ class LMData:
     except:
       print("Error loading results")
       return 0
-    
-      
+
+
   def calcLMVariation(self, SampleScaleFactor, skipScalingCheckBox):
     i,j,k=self.lmOrig.shape
     varianceMat=np.zeros((i,j))
@@ -343,7 +395,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     ScriptedLoadableModuleWidget.setup(self)
     # Initialize zoom factor for widget
     self.widgetZoomFactor = 0
-    
+
     # Set up tabs to split workflow
     tabsWidget = qt.QTabWidget()
     setupTab = qt.QWidget()
@@ -357,7 +409,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     tabsWidget.addTab(exploreTab, "Explore Data/Results")
     tabsWidget.addTab(visualizeTab, "Interactive 3D Visualization")
     self.layout.addWidget(tabsWidget)
-    
+
     ################################### Setup Tab ###################################
     inbutton=ctk.ctkCollapsibleButton()
     inbutton.text="Setup Analysis"
@@ -368,18 +420,18 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.LMbutton.setToolTip("Select one landmark file for each subject. Files must contain the identical number of landmark points.")
     inputLayout.addWidget(self.LMbutton,1,1,1,3)
     self.LMbutton.connect('clicked(bool)', self.onSelectLandmarkFiles)
-    
+
     # File viewer box area
     fileViewerCollapsibleButton = ctk.ctkCollapsibleButton()
     fileViewerLayout = qt.QFormLayout(fileViewerCollapsibleButton)
     fileViewerCollapsibleButton.text = "View selected landmark files"
     fileViewerCollapsibleButton.collapsed = True
     inputLayout.addWidget(fileViewerCollapsibleButton,2,1,1,3)
-    
+
     # File viewer box
     self.inputFileTable = qt.QTextEdit()
     fileViewerLayout.addRow(self.inputFileTable)
-    
+
     # Clear Button
     #
     self.clearButton = qt.QPushButton("Clear landmark file selections")
@@ -387,7 +439,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.clearButton.enabled = False
     fileViewerLayout.addRow(self.clearButton)
     self.clearButton.connect('clicked(bool)', self.onClearButton)
-    
+
     # Select output directory
     self.outText, outLabel, self.outbutton=self.textIn('Select output directory: ','', '')
     inputLayout.addWidget(self.outText,3,2)
@@ -407,7 +459,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.skipScalingCheckBox.checked = 0
     self.skipScalingCheckBox.setToolTip("If checked, GPA will skip scaling.")
     inputLayout.addWidget(self.skipScalingCheckBox, 5,2)
-    
+
     #Load Button
     self.loadButton = qt.QPushButton("Execute GPA + PCA")
     self.loadButton.checkable = True
@@ -415,7 +467,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.loadButton.toolTip = "Push to start the program. Make sure you have filled in all the data."
     self.loadButton.enabled = False
     self.loadButton.connect('clicked(bool)', self.onLoad)
-    
+
     #Open Results
     self.openResultsButton = qt.QPushButton("View output files")
     self.openResultsButton.checkable = True
@@ -423,21 +475,21 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.openResultsButton.toolTip = "Push to open the folder where the GPA + PCA results are stored"
     self.openResultsButton.enabled = False
     self.openResultsButton.connect('clicked(bool)', self.onOpenResults)
-    
+
     #Load from file option
     loadFromFileCollapsibleButton = ctk.ctkCollapsibleButton()
     loadFromFileLayout = qt.QGridLayout(loadFromFileCollapsibleButton)
     loadFromFileCollapsibleButton.text = "Load previous analysis"
     loadFromFileCollapsibleButton.collapsed = True
     setupTabLayout.addRow(loadFromFileCollapsibleButton)
-    
+
     #Select results folder
     self.resultsText, resultsLabel, self.resultsButton=self.textIn('Results Directory','', '')
     loadFromFileLayout.addWidget(self.resultsText,2,2)
     loadFromFileLayout.addWidget(resultsLabel,2,1)
     loadFromFileLayout.addWidget(self.resultsButton,2,3)
     self.resultsButton.connect('clicked(bool)', self.onSelectResultsDirectory)
-    
+
     #Load Results Button
     self.loadResultsButton = qt.QPushButton("Load GPA + PCA Analysis from File")
     self.loadResultsButton.checkable = True
@@ -445,7 +497,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.loadResultsButton.toolTip = "Select previous analysis from file and restore."
     self.loadResultsButton.enabled = False
     self.loadResultsButton.connect('clicked(bool)', self.onLoadFromFile)
-    
+
     ################################### Explore Tab ###################################
     #Mean Shape display section
     meanShapeFrame = ctk.ctkCollapsibleButton()
@@ -465,7 +517,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     meanButtonLable=qt.QLabel("Mean point label visibility: ")
     meanShapeLayout.addWidget(meanButtonLable,2,1)
-    
+
     self.showMeanLabelsButton = qt.QPushButton("Toggle label visibility")
     self.showMeanLabelsButton.checkable = True
     self.showMeanLabelsButton.toolTip = "Toggle visibility of mean point labels"
@@ -618,7 +670,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     selectTemplatesButton.text="Setup Interactive Visualization"
     selectTemplatesLayout= qt.QGridLayout(selectTemplatesButton)
     visualizeTabLayout.addRow(selectTemplatesButton)
-    
+
     self.landmarkVisualizationType=qt.QRadioButton()
     landmarkVisualizationTypeLabel=qt.QLabel("Mean shape visualization")
     self.landmarkVisualizationType.setChecked(True)
@@ -667,13 +719,13 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     vis.text='PCA Visualization Parameters'
     visLayout= qt.QGridLayout(vis)
     visualizeTabLayout.addRow(vis)
-    
+
     self.applyEnabled=False
 
     def warpOnChangePC1(value):
       if self.applyEnabled and self.slider1.boxValue() != 'None':
         self.onApply()
-   
+
     def warpOnChangePC2(value):
       if self.applyEnabled and self.slider2.boxValue() != 'None':
         self.onApply()
@@ -692,7 +744,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     animate.text='Create animation of PC Warping'
     animateLayout= qt.QGridLayout(animate)
     visualizeTabLayout.addRow(animate)
-    
+
     self.startRecordButton = qt.QPushButton("Start Recording")
     self.startRecordButton.toolTip = "Start recording PCA warping applied manually using the slider bars."
     self.startRecordButton.enabled = False
@@ -712,15 +764,15 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     resetButton.connect('clicked(bool)', self.reset)
 
     self.layout.addStretch(1)
-    
+
     # Add menu buttons
     self.addLayoutButton(500, 'GPA Module View', 'Custom layout for GPA module', 'LayoutSlicerMorphView.png', slicer.customLayoutSM)
     self.addLayoutButton(501, 'Table Only View', 'Custom layout for GPA module', 'LayoutTableOnlyView.png', slicer.customLayoutTableOnly)
     self.addLayoutButton(502, 'Plot Only View', 'Custom layout for GPA module', 'LayoutPlotOnlyView.png', slicer.customLayoutPlotOnly)
-  
+
   # module update helper functions
   def assignLayoutDescription(self):
-   
+
     customLayoutId1=500
     layoutManager = slicer.app.layoutManager()
     layoutManager.setLayout(customLayoutId1)
@@ -732,23 +784,23 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     viewNode2.SetAxisLabelsVisible(False)
     viewNode1.SetLinkedControl(True)
     viewNode2.SetLinkedControl(True)
-    
+
     # Assign nodes to appropriate views
     redNode = layoutManager.sliceWidget('Red').sliceView().mrmlSliceNode()
     self.meanLandmarkNode.GetDisplayNode().SetViewNodeIDs([viewNode1.GetID(),redNode.GetID()])
     if hasattr(self, 'cloneLandmarkDisplayNode'):
       self.cloneLandmarkDisplayNode.SetViewNodeIDs([viewNode2.GetID()])
-    
+
     # check for loaded reference model
     if hasattr(self, 'modelDisplayNode'):
       self.modelDisplayNode.SetViewNodeIDs([viewNode1.GetID()])
     if hasattr(self, 'cloneModelDisplayNode'):
       self.cloneModelDisplayNode.SetViewNodeIDs([viewNode2.GetID()])
-    
+
     # fit the red slice node to show the plot projections
     rasBounds = [0,]*6
     self.meanLandmarkNode.GetRASBounds(rasBounds)
-      
+
     redNode.GetSliceToRAS().SetElement(0, 3, (rasBounds[1]+rasBounds[0]) / 2.)
     redNode.GetSliceToRAS().SetElement(1, 3, (rasBounds[3]+rasBounds[2]) / 2.)
     redNode.GetSliceToRAS().SetElement(2, 3, (rasBounds[5]+rasBounds[4]) / 2.)
@@ -761,7 +813,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     else:
       redNode.SetFieldOfView(aSize*aspectRatio, aSize, 1.)
     redNode.UpdateMatrices()
-    
+
     # reset 3D cameras
     threeDWidget = layoutManager.threeDWidget(0)
     if bool(threeDWidget.name == 'ThreeDWidget1'):
@@ -818,7 +870,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.vectorOne.addItem(string)
       self.vectorTwo.addItem(string)
       self.vectorThree.addItem(string)
-  
+
   def factorStringChanged(self):
     if self.factorName.text != "":
       self.inputFactorButton.enabled = True
@@ -877,7 +929,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     if hasattr(self, 'factorTableNode'):
       GPANodeCollection.RemoveItem(self.factorTableNode)
       slicer.mrmlScene.RemoveNode(self.factorTableNode)
-      
+
     self.factorTableNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTableNode', 'Factor Table')
     GPANodeCollection.AddItem(self.factorTableNode)
     col1=self.factorTableNode.AddColumn()
@@ -907,12 +959,12 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.outText.setText(" ")
     self.LM_dir_name=None
     self.openResultsButton.enabled = False
-    
+
     self.grayscaleSelector.setCurrentPath("")
     self.FudSelect.setCurrentPath("")
     self.grayscaleSelector.enabled = False
     self.FudSelect.enabled = False
-    
+
     self.slider1.clear()
     self.slider2.clear()
 
@@ -927,7 +979,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     self.scaleMeanShapeSlider.value=3
     self.meanShapeColor.color=qt.QColor(250,128,114)
-    
+
     self.scaleSlider.enabled = False
 
     # Disable buttons for workflow
@@ -957,26 +1009,26 @@ class GPAWidget(ScriptedLoadableModuleWidget):
   def addLayoutButton(self, layoutID, buttonAction, toolTip, imageFileName, layoutDiscription):
     layoutManager = slicer.app.layoutManager()
     layoutManager.layoutLogic().GetLayoutNode().AddLayoutDescription(layoutID, layoutDiscription)
-    
+
     viewToolBar = slicer.util.mainWindow().findChild('QToolBar', 'ViewToolBar')
     layoutMenu = viewToolBar.widgetForAction(viewToolBar.actions()[0]).menu()
     layoutSwitchActionParent = layoutMenu
     # use `layoutMenu` to add inside layout list, use `viewToolBar` to add next the standard layout list
     layoutSwitchAction = layoutSwitchActionParent.addAction(buttonAction) # add inside layout list
-    
+
     moduleDir = os.path.dirname(slicer.util.modulePath(self.__module__))
     iconPath = os.path.join(moduleDir, 'Resources/Icons', imageFileName)
     layoutSwitchAction.setIcon(qt.QIcon(iconPath))
     layoutSwitchAction.setToolTip(toolTip)
     layoutSwitchAction.connect('triggered()', lambda layoutId = layoutID: slicer.app.layoutManager().setLayout(layoutId))
     layoutSwitchAction.setData(layoutID)
-  
+
   # Setup Analysis callbacks and helpers
   def onClearButton(self):
     self.inputFileTable.clear()
     self.inputFilePaths = []
     self.clearButton.enabled = False
-    
+
   def onSelectLandmarkFiles(self):
     self.inputFileTable.clear()
     self.inputFilePaths = []
@@ -985,7 +1037,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.inputFileTable.plainText = '\n'.join(self.inputFilePaths)
     self.clearButton.enabled = True
     #enable load button if required fields are complete
-    filePathsExist = bool(self.inputFilePaths is not [] ) 
+    filePathsExist = bool(self.inputFilePaths is not [] )
     self.loadButton.enabled = bool (filePathsExist and hasattr(self, 'outputDirectory'))
     if filePathsExist:
       self.LM_dir_name = os.path.dirname(self.inputFilePaths[0])
@@ -1002,11 +1054,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.outputDirectory=qt.QFileDialog().getExistingDirectory()
     self.outText.setText(self.outputDirectory)
     try:
-      filePathsExist = self.inputFilePaths is not []  
+      filePathsExist = self.inputFilePaths is not []
       self.loadButton.enabled = bool (filePathsExist and self.outputDirectory)
     except AttributeError:
       self.loadButton.enabled = False
-      
+
   def onSelectResultsDirectory(self):
     self.resultsDirectory=qt.QFileDialog().getExistingDirectory()
     self.resultsText.setText(self.resultsDirectory)
@@ -1018,12 +1070,12 @@ class GPAWidget(ScriptedLoadableModuleWidget):
   def onOpenResults(self):
     qpath = qt.QUrl.fromLocalFile(os.path.dirname(self.outputFolder+os.path.sep))
     qt.QDesktopServices().openUrl(qpath)
-    
+
   def onLoadFromFile(self):
     self.initializeOnLoad() #clean up module from previous runs
     logic = GPALogic()
     import pandas
-    
+
     # Load data
     outputDataPath = os.path.join(self.resultsDirectory, 'OutputData.csv')
     meanShapePath = os.path.join(self.resultsDirectory, 'MeanShape.csv')
@@ -1038,10 +1090,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     except:
       logging.debug('Result import failed: Missing file')
       return
-    
+
     # Try to load skip scaling and skip LM options from log file, if present
     self.skipScalingOption = False
-    self.LMExclusionList=[] 
+    self.LMExclusionList=[]
     logFilePath = os.path.join(self.resultsDirectory, 'analysis.log')
     try:
       with open(logFilePath) as f:
@@ -1052,27 +1104,27 @@ class GPAWidget(ScriptedLoadableModuleWidget):
             line = search.rstrip()
             header, skippedText = line.split('=')
             if skippedText != '':
-              self.LMExclusionList = [int(i) for i in skippedText.split(',')]        
+              self.LMExclusionList = [int(i) for i in skippedText.split(',')]
     except:
       logging.debug('Log import failed: Cannot read scaling option from log file')
       logging.debug('Log import failed: Cannot read skipped landmarks from log file')
     print("Skip Scale option: ", self.skipScalingOption)
     print("Skipped Landmarks: ", self.LMExclusionList)
-    
+
     # Initialize variables
-    self.LM=LMData() 
+    self.LM=LMData()
     success = self.LM.initializeFromDataFrame(outputData, meanShape, eigenVector, eigenValues)
     if not success:
       return
-      
+
     self.files = outputData.Sample_name.tolist()
     shape = self.LM.lmOrig.shape
     print('Loaded ' + str(shape[2]) + ' subjects with ' + str(shape[0]) + ' landmark points.')
-    
+
     # GPA parameters
     self.pcNumber=10
     self.updateList()
-    
+
     # get mean landmarks as a fiducial node
     self.meanLandmarkNode=slicer.mrmlScene.GetFirstNodeByName('Mean Landmark Node')
     if self.meanLandmarkNode is None:
@@ -1084,13 +1136,13 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       GPANodeCollection.AddItem(modelDisplayNode)
     self.meanLandmarkNode.GetDisplayNode().SetSliceProjection(True)
     self.meanLandmarkNode.GetDisplayNode().SetSliceProjectionOpacity(1)
-    
+
     #set scaling factor using mean of landmarks
     self.rawMeanLandmarks = self.LM.lmOrig.mean(2)
     logic = GPALogic()
     self.sampleSizeScaleFactor = logic.dist2(self.rawMeanLandmarks).max()
     print("Scale Factor: " + str(self.sampleSizeScaleFactor))
-    
+
     # get mean landmarks as a fiducial node
     self.meanLandmarkNode=slicer.mrmlScene.GetFirstNodeByName('Mean Landmark Node')
     if self.meanLandmarkNode is None:
@@ -1100,15 +1152,15 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       GPANodeCollection.AddItem(self.meanLandmarkNode)
       modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
       GPANodeCollection.AddItem(modelDisplayNode)
-      
+
     for landmarkNumber in range (shape[0]):
       name = str(landmarkNumber+1) #start numbering at 1
       self.meanLandmarkNode.AddFiducialFromArray(self.rawMeanLandmarks[landmarkNumber,:], name)
-    self.meanLandmarkNode.SetDisplayVisibility(1) 
+    self.meanLandmarkNode.SetDisplayVisibility(1)
     self.meanLandmarkNode.LockedOn() #lock position so when displayed they cannot be moved
     #initialize mean LM display
     self.scaleMeanGlyph()
-    self.toggleMeanColor()  
+    self.toggleMeanColor()
     # Set up cloned mean landmark node for pc warping
     shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
     itemIDToClone = shNode.GetItemByDataNode(self.meanLandmarkNode)
@@ -1117,15 +1169,15 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     GPANodeCollection.AddItem(self.copyLandmarkNode)
     self.copyLandmarkNode.SetName('PC Warped Landmarks')
     self.copyLandmarkNode.SetDisplayVisibility(0)
-    
+
     #set up procrustes distance plot
     filename=self.LM.closestSample(self.files)
     self.populateDistanceTable(self.files)
     print("Closest sample to mean:" + filename)
-    
-    #Setup for scatter plots 
+
+    #Setup for scatter plots
     shape = self.LM.lm.shape
-    self.scatterDataAll= np.zeros(shape=(shape[2],self.pcNumber))    
+    self.scatterDataAll= np.zeros(shape=(shape[2],self.pcNumber))
     for i in range(self.pcNumber):
       data=gpa_lib.plotTanProj(self.LM.lm,self.LM.sortedEig,i,1)
       self.scatterDataAll[:,i] = data[:,0]
@@ -1138,7 +1190,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.widgetZoomFactor = 2000*self.sampleSizeScaleFactor
       for camera in cameras:
         camera.GetCamera().Zoom(self.widgetZoomFactor)
-    
+
     #initialize mean LM display
     self.scaleMeanGlyph()
     self.toggleMeanColor()
@@ -1152,13 +1204,13 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.selectorButton.enabled = True
     self.landmarkVisualizationType.enabled = True
     self.modelVisualizationType.enabled = True
-         
+
   def onLoad(self):
     self.initializeOnLoad() #clean up module from previous runs
     logic = GPALogic()
 
     # get landmarks
-    self.LM=LMData()    
+    self.LM=LMData()
     lmToExclude=self.excludeLMText.text
     if len(lmToExclude) != 0:
       self.LMExclusionList=lmToExclude.split(",")
@@ -1168,20 +1220,20 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     else:
       self.LMExclusionList=[]
     try:
-      self.LM.lmOrig, self.landmarkTypeArray = logic.loadLandmarks(self.inputFilePaths, self.LMExclusionList, self.extension)    
-    except: 
+      self.LM.lmOrig, self.landmarkTypeArray = logic.loadLandmarks(self.inputFilePaths, self.LMExclusionList, self.extension)
+    except:
       logging.debug('Load landmark data failed: Could not create an array from landmark files')
       return
     shape = self.LM.lmOrig.shape
     print('Loaded ' + str(shape[2]) + ' subjects with ' + str(shape[0]) + ' landmark points.')
-    
+
     # Do GPA
     self.skipScalingOption=self.skipScalingCheckBox.checked
     self.LM.doGpa(self.skipScalingOption)
     self.LM.calcEigen()
     self.pcNumber=10
     self.updateList()
-    
+
     #set scaling factor using mean of landmarks
     self.rawMeanLandmarks = self.LM.lmOrig.mean(2)
     logic = GPALogic()
@@ -1217,7 +1269,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     GPANodeCollection.AddItem(self.copyLandmarkNode)
     self.copyLandmarkNode.SetName('PC Warped Landmarks')
     self.copyLandmarkNode.SetDisplayVisibility(0)
-    
+
     # Set up output
     dateTimeStamp = datetime.now().strftime('%Y-%m-%d_%H_%M_%S')
     self.outputFolder = os.path.join(self.outputDirectory, dateTimeStamp)
@@ -1229,15 +1281,15 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     except:
       logging.debug('Result directory failed: Could not access output folder')
       print("Error creating result directory")
-        
+
     # Get closest sample to mean
     filename=self.LM.closestSample(self.files)
     self.populateDistanceTable(self.files)
     print("Closest sample to mean:" + filename)
-    
-    #Setup for scatter plots 
+
+    #Setup for scatter plots
     shape = self.LM.lm.shape
-    self.scatterDataAll= np.zeros(shape=(shape[2],self.pcNumber))    
+    self.scatterDataAll= np.zeros(shape=(shape[2],self.pcNumber))
     for i in range(self.pcNumber):
       data=gpa_lib.plotTanProj(self.LM.lm,self.LM.sortedEig,i,1)
       self.scatterDataAll[:,i] = data[:,0]
@@ -1250,7 +1302,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.widgetZoomFactor = 2000*self.sampleSizeScaleFactor
       for camera in cameras:
         camera.GetCamera().Zoom(self.widgetZoomFactor)
-    
+
     #initialize mean LM display
     self.scaleMeanGlyph()
     self.toggleMeanColor()
@@ -1264,14 +1316,14 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.selectorButton.enabled = True
     self.landmarkVisualizationType.enabled = True
     self.modelVisualizationType.enabled = True
-    
-  
+
+
   def initializeOnLoad(self):
     # clear rest of module when starting GPA analysis
 
     self.grayscaleSelector.setCurrentPath("")
     self.FudSelect.setCurrentPath("")
-    
+
     self.landmarkVisualizationType.setChecked(True)
 
     self.slider1.clear()
@@ -1288,22 +1340,22 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.meanShapeColor.color=qt.QColor(250,128,114)
 
     self.nodeCleanUp()
-    
+
     # Reset zoom
-    if self.widgetZoomFactor > 0: 
+    if self.widgetZoomFactor > 0:
       cameras=slicer.mrmlScene.GetNodesByClass('vtkMRMLCameraNode')
       for camera in cameras:
         camera.GetCamera().Zoom(1/self.widgetZoomFactor)
       self.widgetZoomFactor = 0
-      
-  def writeAnalysisLogFile(self, inputPath, outputPath, files):  
+
+  def writeAnalysisLogFile(self, inputPath, outputPath, files):
     # generate log file
-    logFile = open(outputPath+os.sep+"analysis.log","w") 
+    logFile = open(outputPath+os.sep+"analysis.log","w")
     logFile.write("Date=" + datetime.now().strftime('%Y-%m-%d') + "\n")
     logFile.write("Time=" + datetime.now().strftime('%H:%M:%S') + "\n")
     logFile.write("InputPath=" + inputPath + "\n")
     logFile.write("OutputPath=" + outputPath.replace("\\","/") + "\n")
-    logFile.write("Files=") 
+    logFile.write("Files=")
     for i in range(len(files)-1):
       logFile.write(files[i] + self.extension + ",")
     logFile.write(files[len(files)-1] + self.extension + "\n")
@@ -1312,7 +1364,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     totalLandmarks = pointNumber + len(self.LMExclusionList)
     logFile.write("NumberLM=" + str(totalLandmarks) + "\n")
     logFile.write("ExcludedLM=")
-    exclusions = ",".join(map(str, self.LMExclusionList)) 
+    exclusions = ",".join(map(str, self.LMExclusionList))
     logFile.write(exclusions + "\n")
     logFile.write("Scale=" + str(not self.skipScalingOption) + "\n")
     logFile.write("MeanShape=MeanShape.csv"+ "\n")
@@ -1323,8 +1375,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     landmarkType_list = ",".join(self.landmarkTypeArray)
     logFile.write("SemiLandmarks= " + landmarkType_list)
     logFile.close()
-    
-    
+
+
   # Explore Data callbacks and helpers
   def plot(self):
     logic = GPALogic()
@@ -1334,7 +1386,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     shape = self.LM.lm.shape
 
     factorIndex = self.selectFactor.currentIndex
-    if (factorIndex > 0) and hasattr(self, 'factorTableNode'): 
+    if (factorIndex > 0) and hasattr(self, 'factorTableNode'):
       factorCol = self.factorTableNode.GetTable().GetColumn(1)
       factorArray=[]
       for i in range(factorCol.GetNumberOfTuples()):
@@ -1356,7 +1408,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     pcList=[pb1,pb2,pb3]
     logic = GPALogic()
-      
+
     meanLandmarkNode=slicer.mrmlScene.GetFirstNodeByName('Mean Landmark Node')
     meanLandmarkNode.SetDisplayVisibility(1)
     componentNumber = 1
@@ -1381,7 +1433,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         self.cloneLandmarkNode.SetDisplayVisibility(True)
         self.cloneLandmarkDisplayNode.SetGlyphScale(self.scaleMeanShapeSlider.value)
         self.cloneLandmarkDisplayNode.SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
-  
+
   def toggleMeanLabels(self):
     visibility = self.meanLandmarkNode.GetDisplayNode().GetPointLabelsVisibility()
     if visibility:
@@ -1394,22 +1446,22 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       if hasattr(self, 'cloneLandmarkNode'):
         self.cloneLandmarkDisplayNode.SetPointLabelsVisibility(1)
         self.cloneLandmarkDisplayNode.SetTextScale(3)
-    
+
   def toggleMeanColor(self):
     color = self.meanShapeColor.color
     self.meanLandmarkNode.GetDisplayNode().SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
     if hasattr(self, 'cloneLandmarkNode'):
       self.cloneLandmarkDisplayNode.SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
-    
+
   def scaleMeanGlyph(self):
     scaleFactor = self.sampleSizeScaleFactor/10
     self.meanLandmarkNode.GetDisplayNode().SetGlyphScale(self.scaleMeanShapeSlider.value)
     if hasattr(self, 'cloneLandmarkNode'):
       self.cloneLandmarkDisplayNode.SetGlyphScale(self.scaleMeanShapeSlider.value)
-    
+
   def onModelSelected(self):
-    self.selectorButton.enabled = bool( self.grayscaleSelector.currentPath and self.FudSelect.currentPath)  
-  
+    self.selectorButton.enabled = bool( self.grayscaleSelector.currentPath and self.FudSelect.currentPath)
+
   def onToggleVisualization(self):
     if self.landmarkVisualizationType.isChecked():
       self.selectorButton.enabled = True
@@ -1418,10 +1470,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.FudSelect.enabled = True
       print(self.grayscaleSelector.currentPath)
       print(self.FudSelect.currentPath )
-      self.selectorButton.enabled = bool( self.grayscaleSelector.currentPath != "") and bool(self.FudSelect.currentPath != "") 
-      
-      
-  
+      self.selectorButton.enabled = bool( self.grayscaleSelector.currentPath != "") and bool(self.FudSelect.currentPath != "")
+
+
+
   def onPlotDistribution(self):
     self.scaleSlider.enabled = True
     if self.NoneType.isChecked():
@@ -1573,7 +1625,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     modelDisplayNode.SetScalarVisibility(True)
     modelDisplayNode.SetActiveScalarName('Index') #color by landmark number
     modelDisplayNode.SetAndObserveColorNodeID('vtkMRMLColorTableNodeLabels.txt')
-    
+
   # Interactive Visualization callbacks and helpers
 
   def onSelect(self):
@@ -1603,7 +1655,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       VTKTPSMean.SetSourceLandmarks( sourceLMVTK )
       VTKTPSMean.SetTargetLandmarks( targetLMVTK )
       VTKTPSMean.SetBasisToR()  # for 3D transform
-    
+
       # transform from selected to mean
       self.transformMeanNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', 'Mean TPS Transform')
       GPANodeCollection.AddItem(self.transformMeanNode)
@@ -1627,27 +1679,27 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       GPANodeCollection.AddItem(self.cloneModelNode)
       visibility = self.meanLandmarkNode.GetDisplayVisibility()
       self.cloneLandmarkNode.SetDisplayVisibility(visibility)
-      
+
       #Clean up
       GPANodeCollection.RemoveItem(self.sourceLMNode)
       slicer.mrmlScene.RemoveNode(self.sourceLMNode)
-    
+
     else:
       self.cloneLandmarkNode.SetDisplayVisibility(1)
       self.meanLandmarkNode.SetDisplayVisibility(1)
-    
+
     #set mean landmark color and scale from GUI
     self.scaleMeanGlyph()
     self.toggleMeanColor()
     visibility = self.meanLandmarkNode.GetDisplayNode().GetPointLabelsVisibility()
     self.cloneLandmarkDisplayNode.SetPointLabelsVisibility(visibility)
     self.cloneLandmarkDisplayNode.SetTextScale(3)
-        
-    if self.scaleMeanShapeSlider.value == 0:  # If the scale is set to 0, reset to default scale 
+
+    if self.scaleMeanShapeSlider.value == 0:  # If the scale is set to 0, reset to default scale
       self.scaleMeanShapeSlider.value = 3
-     
+
     self.cloneLandmarkDisplayNode.SetGlyphScale(self.scaleMeanShapeSlider.value)
-      
+
     #apply custom layout
     self.assignLayoutDescription()
 
@@ -1660,12 +1712,12 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.slider2.populateComboBox(self.PCList)
     self.applyEnabled = True
     self.startRecordButton.enabled = True
-    
+
   def onApply(self):
     pc1=self.slider1.boxValue()
     pc2=self.slider2.boxValue()
     pcSelected=[pc1,pc2]
-    
+
     # get scale values for each pc.
     sf1=self.slider1.sliderValue()
     sf2=self.slider2.sliderValue()
@@ -1683,11 +1735,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     #get target landmarks
     self.LM.ExpandAlongPCs(pcSelected,scaleFactors, self.sampleSizeScaleFactor)
     target=self.rawMeanLandmarks+self.LM.shift
-    
+
     if hasattr(self, 'cloneModelNode'):
       targetLMVTK=logic.convertNumpyToVTK(target)
       sourceLMVTK=logic.convertNumpyToVTK(self.rawMeanLandmarks)
-      
+
       #Set up TPS
       VTKTPS = vtk.vtkThinPlateSplineTransform()
       VTKTPS.SetSourceLandmarks( sourceLMVTK )
@@ -1697,15 +1749,15 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       #Connect transform to model
       self.transformNode.SetAndObserveTransformToParent( VTKTPS )
       self.cloneLandmarkNode.SetAndObserveTransformNodeID(self.transformNode.GetID())
-      self.cloneModelNode.SetAndObserveTransformNodeID(self.transformNode.GetID()) 
-    
+      self.cloneModelNode.SetAndObserveTransformNodeID(self.transformNode.GetID())
+
     else:
-      index = 0    
+      index = 0
       for targetLandmark in target:
-        self.cloneLandmarkNode.SetNthControlPointPositionFromArray(index,targetLandmark)  
+        self.cloneLandmarkNode.SetNthControlPointPositionFromArray(index,targetLandmark)
         index+=1
-        
-            
+
+
   def onStartRecording(self):
     #set up sequences for template model and PC TPS transform
     self.modelSequence=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSequenceNode","GPAModelSequence")
@@ -1744,19 +1796,19 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     slicer.util.selectModule(slicer.modules.sequences)
     self.stopRecordButton.enabled = False
     self.startRecordButton.enabled = True
-    
+
   def initializeOnSelect(self):
     #remove nodes from previous runs
     temporaryNode=slicer.mrmlScene.GetFirstNodeByName('Mean TPS Transform')
     if(temporaryNode):
       GPANodeCollection.RemoveItem(temporaryNode)
       slicer.mrmlScene.RemoveNode(temporaryNode)
-    
+
     temporaryNode=slicer.mrmlScene.GetFirstNodeByName('GPA Warped Volume')
     if(temporaryNode):
       GPANodeCollection.RemoveItem(temporaryNode)
       slicer.mrmlScene.RemoveNode(temporaryNode)
-    
+
     temporaryNode=slicer.mrmlScene.GetFirstNodeByName('PC TPS Transform')
     if(temporaryNode):
       GPANodeCollection.RemoveItem(temporaryNode)
@@ -1774,33 +1826,6 @@ class GPALogic(ScriptedLoadableModuleLogic):
   Uses ScriptedLoadableModuleLogic base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
-
-  def hasImageData(self,volumeNode):
-    """This is an example logic method that
-    returns true if the passed in volume
-    node has valid image data
-    """
-    if not volumeNode:
-      logging.debug('hasImageData failed: no volume node')
-      return False
-    if volumeNode.GetImageData() is None:
-      logging.debug('hasImageData failed: no image data in volume node')
-      return False
-    return True
-
-  def isValidInputOutputData(self, inputVolumeNode, outputVolumeNode):
-    """Validates if the output is not the same as input
-    """
-    if not inputVolumeNode:
-      logging.debug('isValidInputOutputData failed: no input volume node defined')
-      return False
-    if not outputVolumeNode:
-      logging.debug('isValidInputOutputData failed: no output volume node defined')
-      return False
-    if inputVolumeNode.GetID()==outputVolumeNode.GetID():
-      logging.debug('isValidInputOutputData failed: input and output volume is the same. Create a new volume for output to avoid this error.')
-      return False
-    return True
 
   def takeScreenshot(self,name,description,type=-1):
     # show the message even if not taking a screen shot
@@ -1837,7 +1862,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
 
     annotationLogic = slicer.modules.annotations.logic()
     annotationLogic.CreateSnapShot(name, description, type, 1, imageData)
-    
+
   def loadLandmarks(self, filePathList, lmToRemove, extension):
     # initial data array
     if 'json' in extension:
@@ -1873,7 +1898,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
         else:
           warning = f"Error: Load file {filePathList[i]} failed. There are {len(tmp1)} landmarks instead of the expected {landmarkNumber}."
           slicer.util.messageBox(warning)
-          return      
+          return
     if len(lmToRemove)>0:
       indexToRemove=[]
       for i in range(len(lmToRemove)):
@@ -1920,7 +1945,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
         tmp=(row.strip().split(','))
         if tmp[12] == 'Semi':
           landmarkType.append(str(rowNumber))
-    i = rowNumber  
+    i = rowNumber
     landmarks=np.zeros(shape=(rowNumber,dim,subjectNumber))
     return landmarks, landmarkType
 
@@ -2016,7 +2041,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
       else:
         randomColorTable = slicer.util.getFirstNodeByName('Random')
         randomColorTable.GetColor(factorIndex-7,seriesColor)
-        
+
       plotSeriesNode.SetColor(seriesColor[0:3])
       # Add data series to chart
       plotChartNode.AddAndObservePlotSeriesNodeID(plotSeriesNode.GetID())
@@ -2049,7 +2074,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
         colName="PC" + str(i+1)
         pc.SetName(colName)
         tableNode.SetColumnType(colName, vtk.VTK_FLOAT)
-      
+
       table = tableNode.GetTable()
       table.SetNumberOfRows(numPoints)
       for i in range(numPoints):
@@ -2163,7 +2188,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
         modelDisplayNode.SetViewNodeIDs([viewNode1.GetID(),redNode.GetID()])
       else:
         viewNode1 = slicer.mrmlScene.GetFirstNodeByName("View1")
-        modelDisplayNode.SetViewNodeIDs([viewNode1.GetID()])  
+        modelDisplayNode.SetViewNodeIDs([viewNode1.GetID()])
     else:
       modelNode=slicer.mrmlScene.GetFirstNodeByName(modelNodeName)
       if modelNode is not None:
@@ -2225,6 +2250,38 @@ class GPALogic(ScriptedLoadableModuleLogic):
         a[i,j]=A.GetElement(i,j)
     return a
 
+  def process(self, inputVolume, outputVolume, imageThreshold, invert=False, showResult=True):
+    """
+    Run the processing algorithm.
+    Can be used without GUI widget.
+    :param inputVolume: volume to be thresholded
+    :param outputVolume: thresholding result
+    :param imageThreshold: values above/below this threshold will be set to 0
+    :param invert: if True then values above the threshold will be set to 0, otherwise values below are set to 0
+    :param showResult: show output volume in slice viewers
+    """
+
+    if not inputVolume or not outputVolume:
+      raise ValueError("Input or output volume is invalid")
+
+    import time
+    startTime = time.time()
+    logging.info('Processing started')
+
+    # Compute the thresholded output volume using the "Threshold Scalar Volume" CLI module
+    cliParams = {
+      'InputVolume': inputVolume.GetID(),
+      'OutputVolume': outputVolume.GetID(),
+      'ThresholdValue' : imageThreshold,
+      'ThresholdType' : 'Above' if invert else 'Below'
+      }
+    cliNode = slicer.cli.run(slicer.modules.thresholdscalarvolume, None, cliParams, wait_for_completion=True, update_display=showResult)
+    # We don't need the CLI module node anymore, remove it to not clutter the scene with it
+    slicer.mrmlScene.RemoveNode(cliNode)
+
+    stopTime = time.time()
+    logging.info(f'Processing completed in {stopTime-startTime:.2f} seconds')
+
 
 class GPATest(ScriptedLoadableModuleTest):
   """
@@ -2255,19 +2312,37 @@ class GPATest(ScriptedLoadableModuleTest):
     module.  For example, if a developer removes a feature that you depend on,
     your test should break so they know that the feature is needed.
     """
-    self.delayDisplay("Starting the test")
-    #
-    # first, get some data
-    #
-    import SampleData
-    SampleData.downloadFromURL(
-      nodeNames='FA',
-      fileNames='FA.nrrd',
-      uris='http://slicer.kitware.com/midas3/download?items=5767',
-      checksums='SHA256:12d17fba4f2e1f1a843f0757366f28c3f3e1a8bb38836f0de2a32bb1cd476560')
-    self.delayDisplay('Finished with download and loading')
 
-    volumeNode = slicer.util.getNode(pattern="FA")
+    self.delayDisplay("Starting the test")
+
+    # Get/create input data
+
+    import SampleData
+    registerSampleData()
+    inputVolume = SampleData.downloadSample('TemplateKey1')
+    self.delayDisplay('Loaded test data set')
+
+    inputScalarRange = inputVolume.GetImageData().GetScalarRange()
+    self.assertEqual(inputScalarRange[0], 0)
+    self.assertEqual(inputScalarRange[1], 695)
+
+    outputVolume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode")
+    threshold = 100
+
+    # Test the module logic
+
     logic = GPALogic()
-    self.assertIsNotNone( logic.hasImageData(volumeNode) )
-    self.delayDisplay('Test passed!')
+
+    # Test algorithm with non-inverted threshold
+    logic.process(inputVolume, outputVolume, threshold, True)
+    outputScalarRange = outputVolume.GetImageData().GetScalarRange()
+    self.assertEqual(outputScalarRange[0], inputScalarRange[0])
+    self.assertEqual(outputScalarRange[1], threshold)
+
+    # Test algorithm with inverted threshold
+    logic.process(inputVolume, outputVolume, threshold, False)
+    outputScalarRange = outputVolume.GetImageData().GetScalarRange()
+    self.assertEqual(outputScalarRange[0], inputScalarRange[0])
+    self.assertEqual(outputScalarRange[1], inputScalarRange[1])
+
+    self.delayDisplay('Test passed')
