@@ -126,24 +126,30 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       slicer.app.processEvents()
       import SampleData
       sampleDataLogic = SampleData.SampleDataLogic()
-      try:
-        if slicer.app.os == 'win':
-          url = "https://app.box.com/shared/static/friq8fhfi8n4syklt1v47rmuf58zro75.whl"
-          wheelName = "open3d-0.14.1+816263b-cp39-cp39-win_amd64.whl"
-          wheelPath = sampleDataLogic.downloadFile(url, slicer.app.cachePath, wheelName)
-        elif slicer.app.os == 'macosx':
-          url = "https://app.box.com/shared/static/ixhac95jrx7xdxtlagwgns7vt9b3mbqu.whl"
-          wheelName = "open3d-0.14.1+816263b-cp39-cp39-macosx_10_15_x86_64.whl"
-          wheelPath = sampleDataLogic.downloadFile(url, slicer.app.cachePath, wheelName)
-        elif slicer.app.os == 'linux':
-          url = "https://app.box.com/shared/static/wyzk0f9jhefrbm4uukzym0sow5bf26yi.whl"
-          wheelName = "open3d-0.14.1+816263b-cp39-cp39-manylinux_2_27_x86_64.whl"
-          wheelPath = sampleDataLogic.downloadFile(url, slicer.app.cachePath, wheelName)
-      except:
-          slicer.util.infoDisplay('Error: please check the url of the open3d wheel in the script')
-          progressDialog.close()
-      slicer.util.pip_install(f'cpdalp')
-      slicer.util.pip_install(wheelPath)
+      if slicer.app.majorVersion*100+slicer.app.minorVersion > 412:
+        try:
+          if slicer.app.os == 'win':
+            url = "https://app.box.com/shared/static/friq8fhfi8n4syklt1v47rmuf58zro75.whl"
+            wheelName = "open3d-0.14.1+816263b-cp39-cp39-win_amd64.whl"
+            wheelPath = sampleDataLogic.downloadFile(url, slicer.app.cachePath, wheelName)
+          elif slicer.app.os == 'macosx':
+            url = "https://app.box.com/shared/static/ixhac95jrx7xdxtlagwgns7vt9b3mbqu.whl"
+            wheelName = "open3d-0.14.1+816263b-cp39-cp39-macosx_10_15_x86_64.whl"
+            wheelPath = sampleDataLogic.downloadFile(url, slicer.app.cachePath, wheelName)
+          elif slicer.app.os == 'linux':
+            url = "https://app.box.com/shared/static/wyzk0f9jhefrbm4uukzym0sow5bf26yi.whl"
+            wheelName = "open3d-0.14.1+816263b-cp39-cp39-manylinux_2_27_x86_64.whl"
+            wheelPath = sampleDataLogic.downloadFile(url, slicer.app.cachePath, wheelName)
+        except:
+            slicer.util.infoDisplay('Error: please check the url of the open3d wheel in the script')
+            progressDialog.close()
+        slicer.util.pip_install(f'cpdalp')
+        slicer.util.pip_install(wheelPath)
+      else:
+        slicer.util.pip_install('pywinpty==1.1.6')
+        slicer.util.pip_install('notebook==6.0.3')
+        slicer.util.pip_install(f'open3d=={Open3dVersion}')
+        slicer.util.pip_install(f'cpdalp')
       import open3d as o3d
       import cpdalp
       progressDialog.close()
