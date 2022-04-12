@@ -1139,7 +1139,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     maxAttempts = 30
     while fitness < 0.99 and count < maxAttempts:
       result = registration.registration_ransac_based_on_feature_matching(
-          source_down, target_down, source_fpfh, target_fpfh, True, distance_threshold,
+          source_down, target_down, source_fpfh, target_fpfh, distance_threshold,
           registration.TransformationEstimationPointToPoint(skipScaling == 0), 3, [
               registration.CorrespondenceCheckerBasedOnEdgeLength(0.9),
               registration.CorrespondenceCheckerBasedOnDistance(
