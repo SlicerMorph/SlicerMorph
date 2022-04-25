@@ -611,7 +611,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     
   def onApplyLandmarkMulti(self):
     logic = ALPACALogic()
-    if self.skipProjectionCheckBoxMulti.checked != 0:
+    if self.ui.skipProjectionCheckBoxMulti.checked != 0:
       projectionFactor = 0
     else:  
       projectionFactor = self.ui.projectionFactorSlider.value/100
