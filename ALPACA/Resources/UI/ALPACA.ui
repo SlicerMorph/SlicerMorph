@@ -467,6 +467,9 @@
             <property name="toolTip">
              <string>Select the output directory where the landmarks will be saved</string>
             </property>
+            <property name="filters">
+             <set>ctkPathLineEdit::Dirs|ctkPathLineEdit::Drives</set>
+            </property>
            </widget>
           </item>
           <item row="5" column="0">
