@@ -178,6 +178,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.ui.accelerationCheckBox.connect('toggled(bool)', self.onChangeAdvanced)
     self.ui.BCPDFolder.connect('validInputChanged(bool)', self.onChangeAdvanced)
     self.ui.BCPDFolder.connect('validInputChanged(bool)', self.onChangeCPD)
+    self.ui.BCPDFolder.currentPath = ALPACALogic().getBCPDPath()
 
     # Batch Processing connections
     self.ui.methodBatchWidget.connect('currentIndexChanged(int)', self.onChangeMultiTemplate)
@@ -205,8 +206,6 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.addLayoutButton(504, 'Table Only View', 'Custom layout for GPA module', 'LayoutTableOnlyView.png', slicer.customLayoutTableOnly)
     self.addLayoutButton(505, 'Plot Only View', 'Custom layout for GPA module', 'LayoutPlotOnlyView.png', slicer.customLayoutPlotOnly)
 
-    
-    
     # initialize the parameter dictionary from single run parameters
     self.parameterDictionary = {
       "projectionFactor": self.ui.projectionFactorSlider.value,
@@ -523,16 +522,15 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     slicer.app.layoutManager().setLayout(35)
     slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveTableID(self.rmseTableNode.GetID())
     slicer.app.applicationLogic().PropagateTableSelection()
-    self.rmseTableNode.GetTable().Modified()      
-      
-    
+    self.rmseTableNode.GetTable().Modified()
+
   #Count the times run ALPAACA function is executed
   def runALPACACounter(self, run_counter = [0]):
     run_counter[0] += 1
     return str(run_counter[0])
 
   def onSwitchSettingsButton(self):
-    self.tabsWidget.setCurrentWidget(self.advancedSettingsTab)
+    self.ui.tabsWidget.setCurrentWidget(self.ui.advancedSettingsTab)
     self.ui.runALPACAButton.enabled = True
     
     
