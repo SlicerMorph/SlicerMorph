@@ -51,7 +51,7 @@
              </stringlist>
             </property>
             <property name="noneEnabled">
-             <bool>false</bool>
+             <bool>true</bool>
             </property>
             <property name="addEnabled">
              <bool>false</bool>
@@ -82,7 +82,7 @@
              </stringlist>
             </property>
             <property name="noneEnabled">
-             <bool>false</bool>
+             <bool>true</bool>
             </property>
             <property name="addEnabled">
              <bool>false</bool>
@@ -113,7 +113,7 @@
              </stringlist>
             </property>
             <property name="noneEnabled">
-             <bool>false</bool>
+             <bool>true</bool>
             </property>
             <property name="addEnabled">
              <bool>false</bool>
