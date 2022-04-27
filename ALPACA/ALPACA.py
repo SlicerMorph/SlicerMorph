@@ -10,6 +10,7 @@ from slicer.ScriptedLoadableModule import *
 import glob
 import vtk.util.numpy_support as vtk_np
 import numpy as np
+
 #
 # ALPACA
 #
@@ -139,6 +140,11 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.layout.addWidget(uiWidget)
     self.ui = slicer.util.childWidgetVariables(uiWidget)
 
+    # Setup checkbox stylesheets
+    moduleDir = os.path.dirname(slicer.util.modulePath(self.__module__))
+    self.onIconPath = moduleDir +'/Resources/Icons/switch_on.png'
+    self.offIconPath = moduleDir +'/Resources/Icons/switch_off.png'
+
     # Single Alignment connections
     self.ui.sourceModelSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onSelect)
     self.ui.sourceModelSelector.setMRMLScene( slicer.mrmlScene)
@@ -153,14 +159,22 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.ui.runALPACAButton.connect('clicked(bool)', self.onRunALPACAButton) #Connection for run all ALPACA steps button
     self.ui.switchSettingsButton.connect('clicked(bool)', self.onSwitchSettingsButton)
     self.ui.showTargetPCDCheckBox.connect('toggled(bool)', self.onShowTargetPCDCheckBox)
+    self.setCheckboxStyle(self.ui.showTargetPCDCheckBox)
     self.ui.showSourcePCDCheckBox.connect('toggled(bool)', self.onShowSourcePCDCheckBox)
+    self.setCheckboxStyle(self.ui.showSourcePCDCheckBox)
     self.ui.showTargetMeshCheckBox.connect('toggled(bool)', self.onShowTargetMeshCheckBox)
+    self.setCheckboxStyle(self.ui.showTargetMeshCheckBox)
     self.ui.showSourceMeshCheckBox.connect('toggled(bool)', self.onShowSourceMeshCheckBox)
+    self.setCheckboxStyle(self.ui.showSourceMeshCheckBox)
     self.ui.showUnprojectLMCheckBox.connect('toggled(bool)', self.onShowUnprojectLMCheckBox)
+    self.setCheckboxStyle(self.ui.showUnprojectLMCheckBox)
     self.ui.showTPSMeshCheckBox.connect('toggled(bool)', self.onShowTPSMeshCheckBox)
+    self.setCheckboxStyle(self.ui.showTPSMeshCheckBox)
     self.ui.showFinalLMCheckbox.connect('toggled(bool)', self.onShowFinalLMCheckbox)
+    self.setCheckboxStyle(self.ui.showFinalLMCheckbox)
     self.ui.showManualLMCheckBox.connect('toggled(bool)', self.onShowManualLMCheckBox)
-    
+    self.setCheckboxStyle(self.ui.showManualLMCheckBox)
+
     # Advanced Settings connections
     self.ui.projectionFactorSlider.connect('valueChanged(double)', self.onChangeAdvanced)
     self.ui.pointDensityAdvancedSlider.connect('valueChanged(double)', self.onChangeAdvanced)
@@ -178,6 +192,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.ui.accelerationCheckBox.connect('toggled(bool)', self.onChangeAdvanced)
     self.ui.BCPDFolder.connect('validInputChanged(bool)', self.onChangeAdvanced)
     self.ui.BCPDFolder.connect('validInputChanged(bool)', self.onChangeCPD)
+    self.ui.BCPDFolder.currentPath = ALPACALogic().getBCPDPath()
 
     # Batch Processing connections
     self.ui.methodBatchWidget.connect('currentIndexChanged(int)', self.onChangeMultiTemplate)
@@ -185,7 +200,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.ui.sourceFiducialMultiSelector.connect('validInputChanged(bool)', self.onSelectMultiProcess)
     self.ui.targetModelMultiSelector.connect('validInputChanged(bool)', self.onSelectMultiProcess)
     self.ui.landmarkOutputSelector.connect('validInputChanged(bool)', self.onSelectMultiProcess)
-    self.ui.skipScalingMultiCheckBox.connect('validInputChanged(bool)', self.onSelectMultiProcess)
+    self.ui.skipScalingMultiCheckBox.connect('toggled(bool)', self.onSelectMultiProcess)
     self.ui.applyLandmarkMultiButton.connect('clicked(bool)', self.onApplyLandmarkMulti)
     
     # Template Selection connections
@@ -205,8 +220,6 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.addLayoutButton(504, 'Table Only View', 'Custom layout for GPA module', 'LayoutTableOnlyView.png', slicer.customLayoutTableOnly)
     self.addLayoutButton(505, 'Plot Only View', 'Custom layout for GPA module', 'LayoutPlotOnlyView.png', slicer.customLayoutPlotOnly)
 
-    
-    
     # initialize the parameter dictionary from single run parameters
     self.parameterDictionary = {
       "projectionFactor": self.ui.projectionFactorSlider.value,
@@ -225,10 +238,16 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       "BCPDFolder" : self.ui.BCPDFolder.currentPath
       }
 
-  
   def cleanup(self):
     pass
   
+  def setCheckboxStyle(self, checkbox):
+    checkbox.setStyleSheet("QCheckBox::indicator:unchecked{image: url(" + self.offIconPath + "); } \n"
+      + "QCheckBox::indicator:checked{image: url(" + self.onIconPath + "); } \n"
+      + "QCheckBox::indicator{width: 50px;height: 25px;}\n")
+    print("QCheckBox::indicator:unchecked{image: url(" + self.offIconPath + "); } \n")
+
+
   def addLayoutButton(self, layoutID, buttonAction, toolTip, imageFileName, layoutDiscription):
     layoutManager = slicer.app.layoutManager()
     layoutManager.layoutLogic().GetLayoutNode().AddLayoutDescription(layoutID, layoutDiscription)
@@ -245,8 +264,8 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     layoutSwitchAction.setToolTip(toolTip)
     layoutSwitchAction.connect('triggered()', lambda layoutId = layoutID: slicer.app.layoutManager().setLayout(layoutId))
     layoutSwitchAction.setData(layoutID)
-  
-  
+
+
   def onSelect(self):
     #Enable run ALPACA button
     self.ui.skipScalingMultiCheckBox.checked = self.ui.skipScalingCheckBox.checked
@@ -254,7 +273,6 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.ui.subsampleButton.enabled = bool ( self.ui.sourceModelSelector.currentNode() and self.ui.targetModelSelector.currentNode() and self.ui.sourceLandmarkSetSelector.currentNode())
     self.ui.runALPACAButton.enabled = bool ( self.ui.sourceModelSelector.currentNode() and self.ui.targetModelSelector.currentNode() and self.ui.sourceLandmarkSetSelector.currentNode())
     self.ui.switchSettingsButton.enabled = bool ( self.ui.sourceModelSelector.currentNode() and self.ui.targetModelSelector.currentNode() and self.ui.sourceLandmarkSetSelector.currentNode())
-    
 
   def onSelectMultiProcess(self):
     self.ui.applyLandmarkMultiButton.enabled = bool ( self.ui.sourceModelMultiSelector.currentPath and self.ui.sourceFiducialMultiSelector.currentPath 
@@ -289,7 +307,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.ui.sourceLandmarkSetSelector.currentNode().GetDisplayNode().SetVisibility(False)
 
     self.sourcePoints, self.targetPoints, self.sourceFeatures, \
-      self.targetFeatures, self.voxelSize, self.scaling = logic.runSubsample(self.sourceModelNode_clone, self.targetModelNode, self.skipScalingCheckBox.checked, self.parameterDictionary)
+      self.targetFeatures, self.voxelSize, self.scaling = logic.runSubsample(self.sourceModelNode_clone, self.targetModelNode, self.ui.skipScalingCheckBox.checked, self.parameterDictionary)
     # Convert to VTK points for visualization
     self.targetVTK = logic.convertPointsToVTK(self.targetPoints.points)
     
@@ -352,7 +370,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.ui.sourceLandmarkSetSelector.currentNode().GetDisplayNode().SetVisibility(False)
     #
     self.sourcePoints, self.targetPoints, self.sourceFeatures, \
-      self.targetFeatures, self.voxelSize, self.scaling = logic.runSubsample(self.sourceModelNode, self.targetModelNode, self.skipScalingCheckBox.checked, self.parameterDictionary)
+      self.targetFeatures, self.voxelSize, self.scaling = logic.runSubsample(self.sourceModelNode, self.targetModelNode, self.ui.skipScalingCheckBox.checked, self.parameterDictionary)
     # Convert to VTK points for visualization
     self.targetVTK = logic.convertPointsToVTK(self.targetPoints.points)
 
@@ -365,7 +383,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.ui.subsampleInfo.insertPlainText(f':: Your subsampled target pointcloud has a total of {len(self.targetPoints.points)} points. ')
     #
     #RANSAC & ICP transformation of source pointcloud
-    self.transformMatrix = logic.estimateTransform(self.sourcePoints, self.targetPoints, self.sourceFeatures, self.targetFeatures, self.voxelSize, self.skipScalingCheckBox.checked, self.parameterDictionary)
+    self.transformMatrix = logic.estimateTransform(self.sourcePoints, self.targetPoints, self.sourceFeatures, self.targetFeatures, self.voxelSize, self.ui.skipScalingCheckBox.checked, self.parameterDictionary)
     self.ICPTransformNode = logic.convertMatrixToTransformNode(self.transformMatrix, 'Rigid Transformation Matrix_'+run_counter)
     self.sourcePoints.transform(self.transformMatrix)
     #Setup source pointcloud VTK object
@@ -406,7 +424,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.outputPoints.GetDisplayNode().SetPointLabelsVisibility(False)
     slicer.mrmlScene.RemoveNode(self.inputPoints)
     #
-    if self.skipProjectionCheckBox.checked: 
+    if self.ui.skipProjectionCheckBox.checked: 
       logic.propagateLandmarkTypes(self.sourceLMNode, self.outputPoints)
     else:
       print(":: Projecting landmarks to external surface")
@@ -478,14 +496,14 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       self.manualLMNode = self.ui.targetLandmarkSetSelector.currentNode()
       self.ui.showManualLMCheckBox.enabled = True
       self.ui.showManualLMCheckBox.checked = 0
-      manualLMs = np.zeros(shape=(self.manualLMNode.GetNumberOfFiducials(),3))
-      for i in range(self.manualLMNode.GetNumberOfFiducials()):
+      manualLMs = np.zeros(shape=(self.manualLMNode.GetNumberOfControlPoints(),3))
+      for i in range(self.manualLMNode.GetNumberOfControlPoints()):
         self.manualLMNode.GetMarkupPoint(0,i,point)
         manualLMs[i,:] = point
       #Source LM numpy array
       point2 = [0,0,0]
-      finalLMs = np.zeros(shape=(self.projectedLandmarks.GetNumberOfFiducials(),3))
-      for i in range(self.projectedLandmarks.GetNumberOfFiducials()):
+      finalLMs = np.zeros(shape=(self.projectedLandmarks.GetNumberOfControlPoints(),3))
+      for i in range(self.projectedLandmarks.GetNumberOfControlPoints()):
         self.projectedLandmarks.GetMarkupPoint(0,i,point2)
         finalLMs[i,:] = point2
       #
@@ -524,16 +542,15 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     slicer.app.layoutManager().setLayout(35)
     slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveTableID(self.rmseTableNode.GetID())
     slicer.app.applicationLogic().PropagateTableSelection()
-    self.rmseTableNode.GetTable().Modified()      
-      
-    
+    self.rmseTableNode.GetTable().Modified()
+
   #Count the times run ALPAACA function is executed
   def runALPACACounter(self, run_counter = [0]):
     run_counter[0] += 1
     return str(run_counter[0])
 
   def onSwitchSettingsButton(self):
-    self.tabsWidget.setCurrentWidget(self.advancedSettingsTab)
+    self.ui.tabsWidget.setCurrentWidget(self.ui.advancedSettingsTab)
     self.ui.runALPACAButton.enabled = True
     
     
@@ -612,7 +629,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     
   def onApplyLandmarkMulti(self):
     logic = ALPACALogic()
-    if self.skipProjectionCheckBoxMulti.checked != 0:
+    if self.ui.skipProjectionCheckBoxMulti.checked != 0:
       projectionFactor = 0
     else:  
       projectionFactor = self.ui.projectionFactorSlider.value/100
@@ -876,7 +893,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       and self.ui.targetModelMultiSelector.currentPath and self.ui.landmarkOutputSelector.currentPath and self.ui.BCPDFolder.currentPath)
     else:
       self.ui.BCPDFolder.enabled = False
-      self.ui.subsampleButton.enabled = bool ( self.ui.sourceModelSelector.currentPath and self.ui.targetModelSelector.currentPath and self.ui.sourceLandmarkSetSelector.currentPath)
+      self.ui.subsampleButton.enabled = bool ( self.ui.sourceModelSelector.currentNode and self.ui.targetModelSelector.currentNode and self.ui.sourceLandmarkSetSelector.currentNode)
       self.ui.applyLandmarkMultiButton.enabled = bool ( self.ui.sourceModelMultiSelector.currentPath and self.ui.sourceFiducialMultiSelector.currentPath 
       and self.ui.targetModelMultiSelector.currentPath and self.ui.landmarkOutputSelector.currentPath)
     
@@ -992,7 +1009,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         projectedLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"Refined Predicted Landmarks")
         for i in range(projectedPoints.GetNumberOfPoints()):
             point = projectedPoints.GetPoint(i)
-            projectedLMNode.AddFiducialFromArray(point)
+            projectedLMNode.AddControlPoint(point)
         self.propagateLandmarkTypes(sourceLMNode, projectedLMNode) 
         slicer.util.saveNode(projectedLMNode, outputFilePath)
         slicer.mrmlScene.RemoveNode(projectedLMNode)
@@ -1010,10 +1027,10 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
   def exportPointCloud(self, pointCloud, nodeName):
     fiducialNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',nodeName)
     for point in pointCloud:
-      fiducialNode.AddFiducialFromArray(point) 
+      fiducialNode.AddControlPoint(point) 
     return fiducialNode
 
-    #node.AddFiducialFromArray(point)
+    #node.AddControlPoint(point)
   def applyTPSTransform(self, sourcePoints, targetPoints, modelNode, nodeName):
     transform=vtk.vtkThinPlateSplineTransform()  
     transform.SetSourceLandmarks( sourcePoints)
@@ -1198,8 +1215,8 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
       clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(shNode, itemIDToClone)
       sourceLandmarkNode = shNode.GetItemDataNode(clonedItemID)
     point = [0,0,0]
-    sourceLandmarks = np.zeros(shape=(sourceLandmarkNode.GetNumberOfFiducials(),3))
-    for i in range(sourceLandmarkNode.GetNumberOfFiducials()):
+    sourceLandmarks = np.zeros(shape=(sourceLandmarkNode.GetNumberOfControlPoints(),3))
+    for i in range(sourceLandmarkNode.GetNumberOfControlPoints()):
       sourceLandmarkNode.GetMarkupPoint(0,i,point)
       sourceLandmarks[i,:] = point
     cloud = geometry.PointCloud()
@@ -1213,8 +1230,8 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
      for i in range(sourceNode.GetNumberOfControlPoints()):
        pointDescription = sourceNode.GetNthControlPointDescription(i)
        targetNode.SetNthControlPointDescription(i,pointDescription)
-       pointLabel = sourceNode.GetNthFiducialLabel(i)
-       targetNode.SetNthFiducialLabel(i, pointLabel)
+       pointLabel = sourceNode.GetNthControlPointLabel(i)
+       targetNode.SetNthControlPointLabel(i, pointLabel)
                
   def distanceMatrix(self, a):
     """
@@ -1290,9 +1307,8 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     
   def getFiducialPoints(self,fiducialNode):
     points = vtk.vtkPoints()
-    point=[0,0,0]
-    for i in range(fiducialNode.GetNumberOfFiducials()):
-      fiducialNode.GetNthFiducialPosition(i,point)
+    for i in range(fiducialNode.GetNumberOfControlPoints()):
+      point = fiducialNode.GetNthControlPointPosition(i)
       points.InsertNextPoint(point)
     
     return points
@@ -1307,7 +1323,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     projectedLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"Refined Predicted Landmarks")
     for i in range(projectedPoints.GetNumberOfPoints()):
       point = projectedPoints.GetPoint(i)
-      projectedLMNode.AddFiducialFromArray(point)
+      projectedLMNode.AddControlPoint(point)
     return projectedLMNode
   
   def projectPointsPolydata(self, sourcePolydata, targetPolydata, originalPoints, rayLength):

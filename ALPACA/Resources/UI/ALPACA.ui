@@ -6,13 +6,19 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>727</width>
-    <height>886</height>
+    <width>730</width>
+    <height>973</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
     <widget class="QTabWidget" name="tabsWidget">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
+     </property>
      <property name="currentIndex">
       <number>0</number>
      </property>
@@ -51,7 +57,7 @@
              </stringlist>
             </property>
             <property name="noneEnabled">
-             <bool>false</bool>
+             <bool>true</bool>
             </property>
             <property name="addEnabled">
              <bool>false</bool>
@@ -82,7 +88,7 @@
              </stringlist>
             </property>
             <property name="noneEnabled">
-             <bool>false</bool>
+             <bool>true</bool>
             </property>
             <property name="addEnabled">
              <bool>false</bool>
@@ -113,7 +119,7 @@
              </stringlist>
             </property>
             <property name="noneEnabled">
-             <bool>false</bool>
+             <bool>true</bool>
             </property>
             <property name="addEnabled">
              <bool>false</bool>
@@ -144,7 +150,7 @@
              </stringlist>
             </property>
             <property name="noneEnabled">
-             <bool>false</bool>
+             <bool>true</bool>
             </property>
             <property name="addEnabled">
              <bool>false</bool>
@@ -292,13 +298,25 @@
          <layout class="QFormLayout" name="displayStepsWidgetLayout">
           <item row="0" column="0">
            <widget class="QCheckBox" name="showTargetPCDCheckBox">
+            <property name="enabled">
+             <bool>false</bool>
+            </property>
+            <property name="styleSheet">
+             <string notr="true"/>
+            </property>
             <property name="text">
              <string>Display target pointcloud</string>
+            </property>
+            <property name="checked">
+             <bool>false</bool>
             </property>
            </widget>
           </item>
           <item row="1" column="0">
            <widget class="QCheckBox" name="showSourcePCDCheckBox">
+            <property name="enabled">
+             <bool>false</bool>
+            </property>
             <property name="text">
              <string>Display source pointcloud</string>
             </property>
@@ -306,6 +324,9 @@
           </item>
           <item row="2" column="0">
            <widget class="QCheckBox" name="showTargetMeshCheckBox">
+            <property name="enabled">
+             <bool>false</bool>
+            </property>
             <property name="text">
              <string>Display target model</string>
             </property>
@@ -313,6 +334,9 @@
           </item>
           <item row="3" column="0">
            <widget class="QCheckBox" name="showSourceMeshCheckBox">
+            <property name="enabled">
+             <bool>false</bool>
+            </property>
             <property name="text">
              <string>Display source model (rigidly registered)</string>
             </property>
@@ -320,6 +344,9 @@
           </item>
           <item row="4" column="0">
            <widget class="QCheckBox" name="showUnprojectLMCheckBox">
+            <property name="enabled">
+             <bool>false</bool>
+            </property>
             <property name="text">
              <string>Display initial ALPACA landmark estimate (no projection)</string>
             </property>
@@ -327,6 +354,9 @@
           </item>
           <item row="5" column="0">
            <widget class="QCheckBox" name="showTPSMeshCheckBox">
+            <property name="enabled">
+             <bool>false</bool>
+            </property>
             <property name="text">
              <string>Display TPS warped source model</string>
             </property>
@@ -334,6 +364,12 @@
           </item>
           <item row="6" column="0">
            <widget class="QCheckBox" name="showFinalLMCheckbox">
+            <property name="enabled">
+             <bool>false</bool>
+            </property>
+            <property name="styleSheet">
+             <string notr="true"/>
+            </property>
             <property name="text">
              <string>Display final ALPACA landmark estimate (projected to surface)</string>
             </property>
@@ -341,6 +377,9 @@
           </item>
           <item row="7" column="0">
            <widget class="QCheckBox" name="showManualLMCheckBox">
+            <property name="enabled">
+             <bool>false</bool>
+            </property>
             <property name="text">
              <string>Display optional target landmark reference</string>
             </property>
@@ -467,6 +506,9 @@
             <property name="toolTip">
              <string>Select the output directory where the landmarks will be saved</string>
             </property>
+            <property name="filters">
+             <set>ctkPathLineEdit::Dirs|ctkPathLineEdit::Drives</set>
+            </property>
            </widget>
           </item>
           <item row="5" column="0">
@@ -491,7 +533,7 @@
            </widget>
           </item>
           <item row="6" column="1">
-           <widget class="QCheckBox" name="skipProjectionCheckBoxMultiLabel">
+           <widget class="QCheckBox" name="skipProjectionCheckBoxMulti">
             <property name="toolTip">
              <string>If checked, ALPACA will skip final refinement step placing landmarks on the target suface.</string>
             </property>
@@ -522,6 +564,12 @@
       <layout class="QVBoxLayout" name="advancedSettingsLayout">
        <item>
         <widget class="ctkCollapsibleButton" name="pointDensityWidget">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
          <property name="text">
           <string>Point density and max projection</string>
          </property>
@@ -580,6 +628,12 @@
        </item>
        <item>
         <widget class="ctkCollapsibleButton" name="rigidRegistrationWidget">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
          <property name="text">
           <string>Rigid registration</string>
          </property>
@@ -627,6 +681,29 @@
             </property>
             <property name="value">
              <double>5.000000000000000</double>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="0">
+           <widget class="QLabel" name="maximumCPDThresholdLabel">
+            <property name="text">
+             <string>Maximum corresponding point distance:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="1">
+           <widget class="ctkSliderWidget" name="maximumCPDThreshold">
+            <property name="singleStep">
+             <double>0.250000000000000</double>
+            </property>
+            <property name="minimum">
+             <double>0.500000000000000</double>
+            </property>
+            <property name="maximum">
+             <double>4.000000000000000</double>
+            </property>
+            <property name="value">
+             <double>3.000000000000000</double>
             </property>
            </widget>
           </item>
@@ -708,34 +785,17 @@
             </property>
            </widget>
           </item>
-          <item row="2" column="0">
-           <widget class="QLabel" name="maximumCPDThresholdLabel">
-            <property name="text">
-             <string>Maximum corresponding point distance:</string>
-            </property>
-           </widget>
-          </item>
-          <item row="2" column="1">
-           <widget class="ctkSliderWidget" name="maximumCPDThreshold">
-            <property name="singleStep">
-             <double>0.250000000000000</double>
-            </property>
-            <property name="minimum">
-             <double>0.500000000000000</double>
-            </property>
-            <property name="maximum">
-             <double>4.000000000000000</double>
-            </property>
-            <property name="value">
-             <double>3.000000000000000</double>
-            </property>
-           </widget>
-          </item>
          </layout>
         </widget>
        </item>
        <item>
         <widget class="ctkCollapsibleButton" name="deformableRegistrationWidget">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Minimum" vsizetype="MinimumExpanding">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
          <property name="text">
           <string>Deformable registration</string>
          </property>
@@ -1262,6 +1322,8 @@
    <container>1</container>
   </customwidget>
  </customwidgets>
- <resources/>
+ <resources>
+  <include location="../ALPACA.qrc"/>
+ </resources>
  <connections/>
 </ui>
