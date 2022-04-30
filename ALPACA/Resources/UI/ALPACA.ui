@@ -323,7 +323,7 @@
            </widget>
           </item>
           <item row="2" column="0">
-           <widget class="QCheckBox" name="showTargetMeshCheckBox">
+           <widget class="QCheckBox" name="showTargetModelCheckBox">
             <property name="enabled">
              <bool>false</bool>
             </property>
@@ -333,7 +333,7 @@
            </widget>
           </item>
           <item row="3" column="0">
-           <widget class="QCheckBox" name="showSourceMeshCheckBox">
+           <widget class="QCheckBox" name="showSourceModelCheckBox">
             <property name="enabled">
              <bool>false</bool>
             </property>
@@ -353,7 +353,7 @@
            </widget>
           </item>
           <item row="5" column="0">
-           <widget class="QCheckBox" name="showTPSMeshCheckBox">
+           <widget class="QCheckBox" name="showTPSModelCheckBox">
             <property name="enabled">
              <bool>false</bool>
             </property>
@@ -401,7 +401,7 @@
           <string/>
          </property>
          <property name="text">
-          <string>Transfer landmark points from one or multiple source meshes to a directory of target meshes</string>
+          <string>Transfer landmark points from one or multiple source models to a directory of target models</string>
          </property>
          <layout class="QFormLayout" name="FormLayout_2">
           <item row="0" column="0">
@@ -431,24 +431,21 @@
           <item row="1" column="0">
            <widget class="QLabel" name="sourceModelMultiSelectorLabel">
             <property name="text">
-             <string>Source mesh(es):</string>
+             <string>Source model(s):</string>
             </property>
            </widget>
           </item>
           <item row="1" column="1">
            <widget class="ctkPathLineEdit" name="sourceModelMultiSelector">
             <property name="toolTip">
-             <string>Select the source mesh</string>
+             <string>Select the source model</string>
             </property>
             <property name="filters">
-             <set>ctkPathLineEdit::Files|ctkPathLineEdit::NoDot|ctkPathLineEdit::NoDotDot|ctkPathLineEdit::Readable</set>
+             <set>ctkPathLineEdit::Files</set>
             </property>
             <property name="nameFilters">
              <stringlist>
               <string>*.ply</string>
-              <string>*.obj</string>
-              <string>*.vtk</string>
-              <string>*.stl</string>
              </stringlist>
             </property>
            </widget>
@@ -480,17 +477,17 @@
           <item row="3" column="0">
            <widget class="QLabel" name="targetModelMultiSelectorLabel">
             <property name="text">
-             <string>Target mesh directory:</string>
+             <string>Target model directory:</string>
             </property>
            </widget>
           </item>
           <item row="3" column="1">
            <widget class="ctkPathLineEdit" name="targetModelMultiSelector">
             <property name="toolTip">
-             <string>Select the directory of meshes to be landmarked</string>
+             <string>Select the directory of models to be landmarked</string>
             </property>
             <property name="filters">
-             <set>ctkPathLineEdit::Dirs|ctkPathLineEdit::Drives|ctkPathLineEdit::NoDotDot|ctkPathLineEdit::Readable</set>
+             <set>ctkPathLineEdit::Dirs|ctkPathLineEdit::Drives</set>
             </property>
            </widget>
           </item>
@@ -545,7 +542,7 @@
              <bool>false</bool>
             </property>
             <property name="toolTip">
-             <string>Align the taget meshes with the source mesh and transfer landmarks.&quot;</string>
+             <string>Align the target models with the source model and transfer landmarks.&quot;</string>
             </property>
             <property name="text">
              <string>Run auto-landmarking</string>
@@ -613,7 +610,7 @@
           <item row="1" column="1">
            <widget class="ctkSliderWidget" name="projectionFactorSlider">
             <property name="toolTip">
-             <string>Set maximum point projection as a percentage of the image diagonal. Point projection is used to make sure predicted landmarks are placed on the target mesh.</string>
+             <string>Set maximum point projection as a percentage of the image diagonal. Point projection is used to make sure predicted landmarks are placed on the target model.</string>
             </property>
             <property name="maximum">
              <double>10.000000000000000</double>
@@ -973,7 +970,7 @@
           <item row="0" column="1">
            <widget class="ctkPathLineEdit" name="modelsMultiSelector">
             <property name="toolTip">
-             <string>Select models for template selection</string>
+             <string>Select directory containing models for template selection</string>
             </property>
             <property name="filters">
              <set>ctkPathLineEdit::Dirs</set>
@@ -1322,8 +1319,6 @@
    <container>1</container>
   </customwidget>
  </customwidgets>
- <resources>
-  <include location="../ALPACA.qrc"/>
- </resources>
+ <resources/>
  <connections/>
 </ui>

@@ -162,14 +162,14 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.setCheckboxStyle(self.ui.showTargetPCDCheckBox)
     self.ui.showSourcePCDCheckBox.connect('toggled(bool)', self.onShowSourcePCDCheckBox)
     self.setCheckboxStyle(self.ui.showSourcePCDCheckBox)
-    self.ui.showTargetMeshCheckBox.connect('toggled(bool)', self.onShowTargetMeshCheckBox)
-    self.setCheckboxStyle(self.ui.showTargetMeshCheckBox)
-    self.ui.showSourceMeshCheckBox.connect('toggled(bool)', self.onShowSourceMeshCheckBox)
-    self.setCheckboxStyle(self.ui.showSourceMeshCheckBox)
+    self.ui.showTargetModelCheckBox.connect('toggled(bool)', self.onshowTargetModelCheckBox)
+    self.setCheckboxStyle(self.ui.showTargetModelCheckBox)
+    self.ui.showSourceModelCheckBox.connect('toggled(bool)', self.onshowSourceModelCheckBox)
+    self.setCheckboxStyle(self.ui.showSourceModelCheckBox)
     self.ui.showUnprojectLMCheckBox.connect('toggled(bool)', self.onShowUnprojectLMCheckBox)
     self.setCheckboxStyle(self.ui.showUnprojectLMCheckBox)
-    self.ui.showTPSMeshCheckBox.connect('toggled(bool)', self.onShowTPSMeshCheckBox)
-    self.setCheckboxStyle(self.ui.showTPSMeshCheckBox)
+    self.ui.showTPSModelCheckBox.connect('toggled(bool)', self.onshowTPSModelCheckBox)
+    self.setCheckboxStyle(self.ui.showTPSModelCheckBox)
     self.ui.showFinalLMCheckbox.connect('toggled(bool)', self.onShowFinalLMCheckbox)
     self.setCheckboxStyle(self.ui.showFinalLMCheckbox)
     self.ui.showManualLMCheckBox.connect('toggled(bool)', self.onShowManualLMCheckBox)
@@ -245,8 +245,6 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     checkbox.setStyleSheet("QCheckBox::indicator:unchecked{image: url(" + self.offIconPath + "); } \n"
       + "QCheckBox::indicator:checked{image: url(" + self.onIconPath + "); } \n"
       + "QCheckBox::indicator{width: 50px;height: 25px;}\n")
-    print("QCheckBox::indicator:unchecked{image: url(" + self.offIconPath + "); } \n")
-
 
   def addLayoutButton(self, layoutID, buttonAction, toolTip, imageFileName, layoutDiscription):
     layoutManager = slicer.app.layoutManager()
@@ -329,10 +327,10 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       self.ui.targetLandmarkSetSelector.currentNode().GetDisplayNode().SetVisibility(False)
     self.ui.showTargetPCDCheckBox.checked = 0
     self.ui.showSourcePCDCheckBox.checked = 0
-    self.ui.showTargetMeshCheckBox.checked = 0
-    self.ui.showSourceMeshCheckBox.checked = 0
+    self.ui.showTargetModelCheckBox.checked = 0
+    self.ui.showSourceModelCheckBox.checked = 0
     self.ui.showUnprojectLMCheckBox.checked = 0
-    self.ui.showTPSMeshCheckBox.checked = 0
+    self.ui.showTPSModelCheckBox.checked = 0
     self.ui.showFinalLMCheckbox.checked = 0
     self.ui.showManualLMCheckBox.checked = 0   
     
@@ -346,10 +344,10 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       # slicer.mrmlScene.RemoveNode(self.sourceModelNode)
       self.ui.showTargetPCDCheckBox.checked = 0
       self.ui.showSourcePCDCheckBox.checked = 0
-      self.ui.showTargetMeshCheckBox.checked = 0
-      self.ui.showSourceMeshCheckBox.checked = 0
+      self.ui.showTargetModelCheckBox.checked = 0
+      self.ui.showSourceModelCheckBox.checked = 0
       self.ui.showUnprojectLMCheckBox.checked = 0
-      self.ui.showTPSMeshCheckBox.checked = 0
+      self.ui.showTPSModelCheckBox.checked = 0
       self.ui.showFinalLMCheckbox.checked = 0
     except:
       pass
@@ -474,17 +472,17 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.ui.showSourcePCDCheckBox.enabled = True
     self.ui.showSourcePCDCheckBox.checked = 0
     #
-    self.ui.showTargetMeshCheckBox.enabled = True
-    self.ui.showTargetMeshCheckBox.checked = 1
+    self.ui.showTargetModelCheckBox.enabled = True
+    self.ui.showTargetModelCheckBox.checked = 1
     #
-    self.ui.showSourceMeshCheckBox.enabled = True
-    self.ui.showSourceMeshCheckBox.checked = 0
+    self.ui.showSourceModelCheckBox.enabled = True
+    self.ui.showSourceModelCheckBox.checked = 0
     #
     self.ui.showUnprojectLMCheckBox.enabled = True
     self.ui.showUnprojectLMCheckBox.checked = 0
     #
-    self.ui.showTPSMeshCheckBox.enabled = True
-    self.ui.showTPSMeshCheckBox.checked = 0
+    self.ui.showTPSModelCheckBox.enabled = True
+    self.ui.showTPSModelCheckBox.checked = 0
     #
     self.ui.showFinalLMCheckbox.enabled = True
     self.ui.showFinalLMCheckbox.checked = 1
@@ -572,23 +570,23 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     except:
       self.ui.showSourcePCDCheckBox.enabled = False
 
-  def onShowTargetMeshCheckBox(self):
+  def onshowTargetModelCheckBox(self):
     try:
-      if self.ui.showTargetMeshCheckBox.isChecked():
+      if self.ui.showTargetModelCheckBox.isChecked():
         self.targetModelNode.GetDisplayNode().SetVisibility(True)
       else:
         self.targetModelNode.GetDisplayNode().SetVisibility(False)
     except:
-      self.ui.showTargetMeshCheckBox.enabled = False
+      self.ui.showTargetModelCheckBox.enabled = False
   
-  def onShowSourceMeshCheckBox(self):
+  def onshowSourceModelCheckBox(self):
     try:
-      if self.ui.showSourceMeshCheckBox.isChecked():
+      if self.ui.showSourceModelCheckBox.isChecked():
         self.sourceModelNode.GetDisplayNode().SetVisibility(True)
       else:
         self.sourceModelNode.GetDisplayNode().SetVisibility(False)
     except:
-      self.ui.showSourceMeshCheckBox.enabled = False
+      self.ui.showSourceModelCheckBox.enabled = False
 
   def onShowUnprojectLMCheckBox(self):
     try:
@@ -599,14 +597,14 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     except:
       self.ui.showUnprojectLMCheckBox.enabled = False
 
-  def onShowTPSMeshCheckBox(self):
+  def onshowTPSModelCheckBox(self):
     try:
-      if self.ui.showTPSMeshCheckBox.isChecked():
+      if self.ui.showTPSModelCheckBox.isChecked():
         self.warpedSourceNode.GetDisplayNode().SetVisibility(True)
       else:
         self.warpedSourceNode.GetDisplayNode().SetVisibility(False)
     except:
-      self.ui.showTPSMeshCheckBox.enabled = False
+      self.ui.showTPSModelCheckBox.enabled = False
       
   def onShowFinalLMCheckbox(self):
     try:
@@ -744,6 +742,9 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     start = time.time()
     logic = ALPACALogic()
     PCDFiles = os.listdir(self.ui.pcdOutputSelector.currentPath)
+    if len(PCDFiles)<1:
+      logging.error(f'No point cloud files read from {self.ui.pcdOutputSelector.currentPath}\n')
+      return
     pcdFilePaths = [os.path.join(self.ui.pcdOutputSelector.currentPath, file) for file in PCDFiles]
     #GPA for all specimens
     self.scores, self.LM = logic.pcdGPA(pcdFilePaths)
@@ -1457,8 +1458,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
       ID_list.append(ID)
       subjectFiducial = slicer.vtkMRMLMarkupsFiducialNode()
       for i in range(correspondingSubjectPoints.GetNumberOfPoints()):
-        subjectFiducial.AddFiducial(correspondingSubjectPoints.GetPoint(i)[0],
-          correspondingSubjectPoints.GetPoint(i)[1], correspondingSubjectPoints.GetPoint(i)[2]) 
+        subjectFiducial.AddControlPoint(correspondingSubjectPoints.GetPoint(i)) 
       slicer.mrmlScene.AddNode(subjectFiducial)
       slicer.util.saveNode(subjectFiducial, os.path.join(pcdOutputDir, f"{rootName}.fcsv"))
       slicer.mrmlScene.RemoveNode(sourceModelNode)
