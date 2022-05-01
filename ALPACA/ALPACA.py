@@ -410,8 +410,6 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.outputPoints = logic.exportPointCloud(self.registeredSourceArray, "Initial ALPACA landmark estimate(unprojected)_"+run_counter) #outputPoints = ininital predicted LMs, non projected
     self.inputPoints = logic.exportPointCloud(self.sourceLandmarks.points, "Original Landmarks") #input points = source landmarks   
     #set up output initial predicted landmarkslandmark as vtk class
-    green=[0,1,0]
-    self.outputPoints.GetDisplayNode().SetColor(green)
     #
     outputPoints_vtk = logic.getFiducialPoints(self.outputPoints)
     inputPoints_vtk = logic.getFiducialPoints(self.inputPoints)    
@@ -419,6 +417,8 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     # Get warped source model and final predicted landmarks
     self.warpedSourceNode = logic.applyTPSTransform(inputPoints_vtk, outputPoints_vtk, self.sourceModelNode, 'TPS Warped source model_'+run_counter)
     self.warpedSourceNode.GetDisplayNode().SetVisibility(False)
+    green=[0,1,0]
+    self.warpedSourceNode.GetDisplayNode().SetColor(green)
     self.outputPoints.GetDisplayNode().SetPointLabelsVisibility(False)
     slicer.mrmlScene.RemoveNode(self.inputPoints)
     #
@@ -436,7 +436,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       self.outputPoints.GetDisplayNode().SetVisibility(False)
     # Other visualization
     self.sourceLMNode.GetDisplayNode().SetVisibility(False)
-    self.sourceModelNode.GetDisplayNode().SetVisibility(False)
+    self.sourceModelNode.GetDisplayNode().SetVisibility(False)    
     #Enable reset
     #self.resetSceneButton.enabled = True
     
@@ -492,6 +492,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     if bool(self.ui.targetLandmarkSetSelector.currentNode()) == True:
       point = [0,0,0]
       self.manualLMNode = self.ui.targetLandmarkSetSelector.currentNode()
+      self.manualLMNode.GetDisplayNode().SetSelectedColor(green)
       self.ui.showManualLMCheckBox.enabled = True
       self.ui.showManualLMCheckBox.checked = 0
       manualLMs = np.zeros(shape=(self.manualLMNode.GetNumberOfControlPoints(),3))
