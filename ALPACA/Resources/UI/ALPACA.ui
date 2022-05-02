@@ -20,7 +20,7 @@
       </sizepolicy>
      </property>
      <property name="currentIndex">
-      <number>0</number>
+      <number>3</number>
      </property>
      <widget class="QWidget" name="alignSingleTab">
       <attribute name="title">
@@ -1017,33 +1017,16 @@
            </widget>
           </item>
           <item row="3" column="0">
-           <widget class="QLabel" name="pcdOutputSelectorLabel">
+           <widget class="QLabel" name="kmeansOutputSelectorLabel">
             <property name="text">
-             <string>Point cloud output directory:</string>
+             <string>Select output directory:</string>
             </property>
            </widget>
           </item>
           <item row="3" column="1">
-           <widget class="ctkPathLineEdit" name="pcdOutputSelector">
+           <widget class="ctkPathLineEdit" name="kmeansOutputSelector">
             <property name="toolTip">
-             <string>Specify the output directory for the aligned and downsampled point clouds</string>
-            </property>
-            <property name="filters">
-             <set>ctkPathLineEdit::Dirs</set>
-            </property>
-           </widget>
-          </item>
-          <item row="4" column="0">
-           <widget class="QLabel" name="templatesOutputSelectorLabel">
-            <property name="text">
-             <string>Templates output directory:</string>
-            </property>
-           </widget>
-          </item>
-          <item row="4" column="1">
-           <widget class="ctkPathLineEdit" name="templatesOutputSelector">
-            <property name="toolTip">
-             <string>Specify the output directory for the selected templates</string>
+             <string>Specify the output directory for the kmeans multi-template selection output</string>
             </property>
             <property name="filters">
              <set>ctkPathLineEdit::Dirs</set>
