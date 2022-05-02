@@ -10,6 +10,8 @@ from slicer.ScriptedLoadableModule import *
 import glob
 import vtk.util.numpy_support as vtk_np
 import numpy as np
+from datetime import datetime
+import time
 
 #
 # ALPACA
@@ -205,8 +207,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     
     # Template Selection connections
     self.ui.modelsMultiSelector.connect('validInputChanged(bool)', self.onSelectKmeans)
-    self.ui.pcdOutputSelector.connect('validInputChanged(bool)', self.onSelectKmeans)
-    self.ui.templatesOutputSelector.connect('validInputChanged(bool)', self.onSelectKmeans)
+    self.ui.kmeansOutputSelector.connect('validInputChanged(bool)', self.onSelectKmeans)
     self.ui.selectRefCheckBox.connect('toggled(bool)', self.onSelectKmeans)
     self.ui.downReferenceButton.connect('clicked(bool)', self.onDownReferenceButton)
     self.ui.matchingPointsButton.connect('clicked(bool)', self.onMatchingPointsButton)
@@ -277,12 +278,6 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       and self.ui.targetModelMultiSelector.currentPath and self.ui.landmarkOutputSelector.currentPath )
 
   
-  #Enable buttons in Kmeans multi-templates selection
-  def onSelectKmeans(self):
-    self.ui.matchingPointsButton.enabled = bool(self.ui.modelsMultiSelector.currentPath and self.ui.referenceSelector.currentPath and self.ui.pcdOutputSelector.currentPath and self.ui.templatesOutputSelector.currentPath)
-    self.ui.kmeansTemplatesButton.enabled = bool(self.ui.modelsMultiSelector.currentPath and self.ui.referenceSelector.currentPath and self.ui.pcdOutputSelector.currentPath and self.ui.templatesOutputSelector.currentPath)
-
-    
   def onSubsampleButton(self):
     try:
       slicer.mrmlScene.RemoveNode(self.targetCloudNodeTest)
@@ -639,10 +634,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
 
 ###Connecting function for kmeans templates selection
   def onSelectKmeans(self):
-    self.ui.downReferenceButton.enabled = bool(self.ui.modelsMultiSelector.currentPath and self.ui.pcdOutputSelector.currentPath and self.ui.templatesOutputSelector.currentPath)
-    self.ui.kmeansTemplatesButton.enabled = bool(self.ui.modelsMultiSelector.currentPath and self.ui.pcdOutputSelector.currentPath and self.ui.templatesOutputSelector.currentPath)
-    self.ui.noGroupInput.enabled = bool(self.ui.modelsMultiSelector.currentPath and self.ui.pcdOutputSelector.currentPath and self.ui.templatesOutputSelector.currentPath)
-    self.ui.multiGroupInput.enabled = bool(self.ui.modelsMultiSelector.currentPath and self.ui.pcdOutputSelector.currentPath and self.ui.templatesOutputSelector.currentPath)
+    self.ui.downReferenceButton.enabled = bool(self.ui.modelsMultiSelector.currentPath and self.ui.kmeansOutputSelector.currentPath)
     self.ui.referenceSelector.enabled = self.ui.selectRefCheckBox.isChecked()
 
   def onDownReferenceButton(self):
@@ -662,8 +654,19 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.ui.matchingPointsButton.enabled = True
   
   def onMatchingPointsButton(self):
+    #Set up folders for matching point cloud output and kmeans selected templates under self.ui.kmeansOutputSelector.currentPath
+    dateTimeStamp = datetime.now().strftime('%Y-%m-%d_%H_%M_%S')
+    self.kmeansOutputFolder = os.path.join(self.ui.kmeansOutputSelector.currentPath, dateTimeStamp)
+    self.pcdOutputFolder = os.path.join(self.kmeansOutputFolder, "matching_point_clouds")
+    try:
+      os.makedirs(self.kmeansOutputFolder)
+      os.makedirs(self.pcdOutputFolder)
+    except:
+      logging.debug('Result directory failed: Could not access output folder')
+      print("Error creating result directory")
+    #Execute functions for generating point clouds matched to the reference
     logic = ALPACALogic()
-    template_density, matchedPoints, indices, files = logic.matchingPCD(self.ui.modelsMultiSelector.currentPath, self.sparseTemplate, self.referenceNode, self.ui.pcdOutputSelector.currentPath, self.ui.spacingFactorSlider.value, self.parameterDictionary)
+    template_density, matchedPoints, indices, files = logic.matchingPCD(self.ui.modelsMultiSelector.currentPath, self.sparseTemplate, self.referenceNode, self.pcdOutputFolder, self.ui.spacingFactorSlider.value, self.parameterDictionary)
     # Print results
     correspondent_threshold = 0.01
     self.ui.subsampleInfo2.clear()
@@ -684,6 +687,12 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
         self.ui.subsampleInfo2.insertPlainText("All error rates smaller than the threshold \n")
     else:
       self.ui.subsampleInfo2.insertPlainText("{} unique points are sampled from each model to match the template pointcloud \n")
+    #Enable buttons for kmeans 
+    self.ui.noGroupInput.enabled = True
+    self.ui.multiGroupInput.enabled = True
+    self.ui.kmeansTemplatesButton.enabled = True
+    self.ui.matchingPointsButton.enabled = False
+
 
   #If select multiple group input radiobutton, execute enterFactors function
   def onToggleGroupInput(self):
@@ -700,7 +709,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
   def enterFactors(self):
     #If has table node, remove table node and build a new one
     if hasattr(self, 'factorTableNode') == False:
-      files = [os.path.splitext(file)[0] for file in os.listdir(self.ui.pcdOutputSelector.currentPath)]
+      files = [os.path.splitext(file)[0] for file in os.listdir(self.pcdOutputFolder)]
       sortedArray = np.zeros(len(files), dtype={'names':('filename', 'procdist'),'formats':('U50','f8')})
       sortedArray['filename']=files
       self.factorTableNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTableNode', 'Groups Table')
@@ -720,7 +729,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
   def resetFactors(self):
     if hasattr(self, 'factorTableNode'):
       slicer.mrmlScene.RemoveNode(self.factorTableNode) 
-    files = [os.path.splitext(file)[0] for file in os.listdir(self.ui.pcdOutputSelector.currentPath)]
+    files = [os.path.splitext(file)[0] for file in os.listdir(self.pcdOutputFolder)]
     sortedArray = np.zeros(len(files), dtype={'names':('filename', 'procdist'),'formats':('U50','f8')})
     sortedArray['filename']=files
     self.factorTableNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTableNode', 'Groups Table')
@@ -738,15 +747,14 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
 
 
   #Generate templates based on kmeans and catalog
-  def onkmeansTemplatesButton(self):
-    import time
+  def onkmeansTemplatesButton(self):     
     start = time.time()
     logic = ALPACALogic()
-    PCDFiles = os.listdir(self.ui.pcdOutputSelector.currentPath)
+    PCDFiles = os.listdir(self.pcdOutputFolder)
     if len(PCDFiles)<1:
-      logging.error(f'No point cloud files read from {self.ui.pcdOutputSelector.currentPath}\n')
+      logging.error(f'No point cloud files read from {self.pcdOutputFolder}\n')
       return
-    pcdFilePaths = [os.path.join(self.ui.pcdOutputSelector.currentPath, file) for file in PCDFiles]
+    pcdFilePaths = [os.path.join(self.pcdOutputFolder, file) for file in PCDFiles]
     #GPA for all specimens
     self.scores, self.LM = logic.pcdGPA(pcdFilePaths)
     files = [os.path.splitext(file)[0] for file in PCDFiles]
@@ -754,7 +762,18 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     if self.ui.setSeedCheckBox.isChecked():
       np.random.seed(1000)
     if self.ui.noGroupInput.isChecked():
-      templates, clusterID, templatesIndices = logic.templatesSelection(self.ui.modelsMultiSelector.currentPath, self.scores, pcdFilePaths, self.ui.templatesOutputSelector.currentPath, self.ui.templatesNumber.value, self.ui.kmeansIterations.value)
+      #Generate folder for storing selected templates within the self.ui.kmeansOutputSelector.currentPath
+      self.templatesOutputFolder = os.path.join(self.kmeansOutputFolder, "kmeans_selected_templates")
+      if os.path.isdir(self.templatesOutputFolder):
+        pass
+      else:
+        try:
+          os.makedirs(self.templatesOutputFolder)
+        except:
+          logging.debug('Result directory failed: Could not access templates output folder')
+          print("Error creating result directory")
+      #
+      templates, clusterID, templatesIndices = logic.templatesSelection(self.ui.modelsMultiSelector.currentPath, self.scores, pcdFilePaths, self.templatesOutputFolder, self.ui.templatesNumber.value, self.ui.kmeansIterations.value)
       clusterID = [str(x) for x in clusterID]
       print(f"kmeans cluster ID is: {clusterID}")
       print(f"templates indices are: {templatesIndices}")
@@ -787,6 +806,16 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
           self.ui.templatesInfo.insertPlainText(f"The sample is divided into {groupNumber} groups. The templates for each group are: \n")
           groupClusterIDs = [None]*len(files)
           templatesIndices = []
+          #Generate folder for storing selected templates within the self.ui.kmeansOutputSelector.currentPath
+          self.templatesOutputFolder_multi = os.path.join(self.kmeansOutputFolder, "kmeans_selected_templates_multiGroups")
+          if os.path.isdir(self.templatesOutputFolder_multi):
+            pass
+          else:
+            try:
+              os.makedirs(self.templatesOutputFolder_multi)
+            except:
+              logging.debug('Result directory failed: Could not access templates output folder')
+              print("Error creating result directory")
           for i in range(groupNumber):
             factorName = uniqueFactors[i]
             #Get indices for the ith cluster
@@ -800,7 +829,8 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
               paths.append(path)
             #PC scores of specimens belong to a specific group
             tempScores = self.scores[indices, :]
-            templates, clusterID, tempIndices = logic.templatesSelection(self.ui.modelsMultiSelector.currentPath, tempScores, paths, self.ui.templatesOutputSelector.currentPath, self.ui.templatesNumber.value, self.ui.kmeansIterations.value)
+            #    
+            templates, clusterID, tempIndices = logic.templatesSelection(self.ui.modelsMultiSelector.currentPath, tempScores, paths, self.templatesOutputFolder_multi, self.ui.templatesNumber.value, self.ui.kmeansIterations.value)
             print("Kmeans-cluster IDs for " + factorName + " are:")
             print(clusterID)
             templatesIndices = templatesIndices + [indices[i] for i in tempIndices]
