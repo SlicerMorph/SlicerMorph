@@ -52,7 +52,6 @@ class ALPACA(ScriptedLoadableModule):
            <property name=\"viewlabel\" action=\"default\">T</property>"
           </view>"
          </item>"
-        </layout>
        </item>
       </layout>
   """
