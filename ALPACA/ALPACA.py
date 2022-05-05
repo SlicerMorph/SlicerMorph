@@ -1512,7 +1512,10 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     LM.lmOrig, landmarkTypeArray = GPAlogic.loadLandmarks(inputFilePaths, LMExclusionList, extension)
     shape = LM.lmOrig.shape
     skipScalingOption = 0
-    LM.doGpa(skipScalingOption)
+    try:
+      LM.doGpa(skipScalingOption)
+    except ValueError:
+      print("Error loading point clouds. Point clouds may not be generated properly. Re-run it may solve this issue.")
     LM.calcEigen()
     import Support.gpa_lib as gpa_lib
     twoDcoors=gpa_lib.makeTwoDim(LM.lmOrig)
