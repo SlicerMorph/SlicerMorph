@@ -1039,7 +1039,7 @@
        <item>
         <widget class="ctkCollapsibleButton" name="downMatchingPCDWidget">
          <property name="text">
-          <string>Generate downsampled point clouds with matching points</string>
+          <string>Point Cloud Generation</string>
          </property>
          <property name="collapsed">
           <bool>false</bool>
@@ -1080,7 +1080,7 @@
              <string>Generate downsampled reference point clouds for downsampling all point clouds with matching points</string>
             </property>
             <property name="text">
-             <string>Generate downsampled reference pointcloud</string>
+             <string>Step 1: Generate Reference Point Cloud</string>
             </property>
            </widget>
           </item>
@@ -1093,7 +1093,7 @@
              <string>Generating point clouds from all models based on matching points to the reference point cloud</string>
             </property>
             <property name="text">
-             <string>Generate matching point clouds</string>
+             <string>Step 2: Generate Point Clouds matched to Reference</string>
             </property>
            </widget>
           </item>
@@ -1233,7 +1233,7 @@
              <string>Execute GPA, then using PC scores for kmeans in order to get templates</string>
             </property>
             <property name="text">
-             <string>Kmeans-based template selection</string>
+             <string>Select Templates from Point Clouds (Kmeans)</string>
             </property>
            </widget>
           </item>
