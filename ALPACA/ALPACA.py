@@ -1515,7 +1515,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     try:
       LM.doGpa(skipScalingOption)
     except ValueError:
-      print("Error loading point clouds. Point clouds may not be generated properly. Re-run it may solve this issue.")
+      print("Error loading point clouds. Please check point cloud directory and re-run.")
     LM.calcEigen()
     import Support.gpa_lib as gpa_lib
     twoDcoors=gpa_lib.makeTwoDim(LM.lmOrig)
