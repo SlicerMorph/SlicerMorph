@@ -1515,7 +1515,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     try:
       LM.doGpa(skipScalingOption)
     except ValueError:
-      print("Point clouds may not have been generated correctly. Please re-run the point cloud generation step."")
+      print("Point clouds may not have been generated correctly. Please re-run the point cloud generation step.")
     LM.calcEigen()
     import Support.gpa_lib as gpa_lib
     twoDcoors=gpa_lib.makeTwoDim(LM.lmOrig)
