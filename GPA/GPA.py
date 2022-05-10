@@ -34,7 +34,7 @@ class GPA(ScriptedLoadableModule):
     self.parent.dependencies = []
     self.parent.contributors = [" Sara Rolfe (UW), Murat Maga (UW)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """
-This module preforms standard Generalized Procrustes Analysis (GPA) based on Dryden and Mardia, 2016
+This module performs standard Generalized Procrustes Analysis (GPA) based on Dryden and Mardia, 2016
 <p>For more information see the <a href="https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/GPA">online documentation.</a>.</p>
 """
     #self.parent.helpText += self.getDefaultModuleDocumentationLink()
@@ -451,7 +451,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     inputLayout.addWidget(self.excludeLMLabel,4,1)
 
     self.excludeLMText=qt.QLineEdit()
-    self.excludeLMText.setToolTip("No spaces. Seperate numbers by commas.  Example:  51,52")
+    self.excludeLMText.setToolTip("No spaces. Separate numbers by commas.  Example:  51,52")
     inputLayout.addWidget(self.excludeLMText,4,2,1,2)
 
     self.skipScalingCheckBox = qt.QCheckBox()
@@ -1381,7 +1381,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
   # Explore Data callbacks and helpers
   def plot(self):
     logic = GPALogic()
-    # get values from boxs
+    # get values from box
     xValue=self.XcomboBox.currentIndex
     yValue=self.YcomboBox.currentIndex
     shape = self.LM.lm.shape

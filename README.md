@@ -36,7 +36,7 @@ Modules in SlicerMorph are organized in three broad categories:
 
 ### Input/Output Related Modules
   - [**ImageStacks:**](https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/ImageStacks) A general purpose tool to import non-DICOM image sequences (png/jpg/bmp/tiff) into Slicer. Provides options to specify voxel size, select image quality (preview, half, full), define an ROI for import, load every Nth slice (skip slice), or reverse stack order (to deal with mirroring of the specimen). Resultant volume is always a scalar volume (single channel image) that can be immediately processed in Slicer. If new Volume is not created, default file prefix in the image stack is used.
-  - [**SkyscanReconImport:** ](https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/SkyscanReconImport) Imports an image stack from Bruker/Skyscan reconstruction software (Nrecon) with correct voxel spacing and orientation as a 3D volume. Use just needs to point out to the *_Rec.log* file that is outputed by the Nrecon software.
+  - [**SkyscanReconImport:** ](https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/SkyscanReconImport) Imports an image stack from Bruker/Skyscan reconstruction software (Nrecon) with correct voxel spacing and orientation as a 3D volume. Use just needs to point out to the *_Rec.log* file that is outputted by the Nrecon software.
   - [**MorphoSourceImport:**](https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/MorphoSourceImport) A utility to query and download open-access 3D models (ply/stl/object) from MorphoSource. The complete list of 3D models released under free access model can be found at [here](https://docs.google.com/spreadsheets/d/1fhdVv2JwvUJAC4dvSgKZi2pwSl7dPGaB-ksYsB64k4U/edit#gid=0).
 
 ### Geometric Morphometrics Related Modules
@@ -68,7 +68,7 @@ SlicerMorph automatically installs these additional extensions as dependencies. 
 - [**Sandbox:** Provides utilities like Cross-sectional Area from segments, Lights module for more in-depth lighting control and CurvePlanarReformat module for straightening of curved structures (e.g., coiled snake scans.](https://github.com/PerkLab/SlicerSandbox/)
 - [**DCM2NIIX:** Provides a user-interface for the DICOM to NIFTI converter DCM2NIIX. Ideal for stripping metadata from DICOM datasets.](https://github.com/rordenlab/dcm2niix)
 - [**SurfaceWrapSolidy:** A segment editor effect useful to extract endocasts of cranial and other spaces.](https://github.com/sebastianandress/Slicer-SurfaceWrapSolidify)
-- [**RawImageGuess:** A module that enables the user to import proprietory imaging formats by specifying data type, image dimensions and endiness.](https://github.com/acetylsalicyl/SlicerRawImageGuess)
+- [**RawImageGuess:** A module that enables the user to import proprietary imaging formats by specifying data type, image dimensions and endiness.](https://github.com/acetylsalicyl/SlicerRawImageGuess)
 
 ## SlicerMorph Tutorials
 [We have step-by-step module specific tutorials that is useful for people starting with Slicer and SlicerMorph.](https://github.com/SlicerMorph/Tutorials)

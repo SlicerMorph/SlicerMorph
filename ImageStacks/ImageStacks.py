@@ -451,7 +451,7 @@ class ImageStacksFileDialog:
             filesToAdd.append(localPath)
 
     # Filter out files that are known to cause complications
-    # Currently, there is only one rule, but it is expected that more filtering rules wil be added in the future.
+    # Currently, there is only one rule, but it is expected that more filtering rules will be added in the future.
     filteredFilesToAdd = []
     for filePath in filesToAdd:
       fileName = qt.QFileInfo(filePath).fileName()

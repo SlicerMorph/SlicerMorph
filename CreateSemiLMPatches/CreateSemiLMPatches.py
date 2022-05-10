@@ -575,7 +575,7 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
         pointList.append(p2)
         pointList.append(p3)
 
-    # Add semilandmark points on curves betweeen landmark points
+    # Add semilandmark points on curves between landmark points
     seenVertices=set()
     lineSegmentList_edit=[]
     # Remove duplicate line segments

@@ -24,7 +24,7 @@ __Summary__: This module provides fast landmark transfer from a 3D model and its
 
   * __Maximum projection factor__: As a final and optional post-processing step of the ALPACA pipeline, the predicted landmarks are projected to the target surface mesh. This setting allows users to regulate the amount of maximum displacement that would be allowed in this final step. The default parameter is to limit point displacement to a maximum of 1% of the mesh size. Increasing this value allows larger displacements to occur.
 
-  * __Normal seach radius__: Defines the neighborhood of points used when calculating the surface normals in each point cloud. This parameter is defined relative to the voxel size.
+  * __Normal search radius__: Defines the neighborhood of points used when calculating the surface normals in each point cloud. This parameter is defined relative to the voxel size.
 
   * __FPFH search radius__: Defines the neighborhood of points used when computing the FPFH features.This parameter is defined relative to the voxel size.
 
