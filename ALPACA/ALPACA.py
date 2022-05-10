@@ -21,22 +21,22 @@ class ALPACA(ScriptedLoadableModule):
   """Uses ScriptedLoadableModule base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
-  
+
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
-    self.parent.title = "ALPACA" 
+    self.parent.title = "ALPACA"
     self.parent.categories = ["SlicerMorph.Geometric Morphometrics"]
     self.parent.dependencies = []
-    self.parent.contributors = ["Arthur Porto (LSU), Sara Rolfe (UW), Murat Maga (UW)"] 
+    self.parent.contributors = ["Arthur Porto (LSU), Sara Rolfe (UW), Murat Maga (UW)"]
     self.parent.helpText = """
-      This module automatically transfers landmarks on a reference 3D model (mesh) to a target 3D model using dense correspondence and deformable registration. First optimize the parameters in single alignment analysis, then use them in batch mode to apply to all 3D models. 
-      <p>For more information see the <a href="https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/ALPACA">online documentation.</a>.</p> 
+      This module automatically transfers landmarks on a reference 3D model (mesh) to a target 3D model using dense correspondence and deformable registration. First optimize the parameters in single alignment analysis, then use them in batch mode to apply to all 3D models.
+      <p>For more information see the <a href="https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/ALPACA">online documentation.</a>.</p>
       """
     self.parent.acknowledgementText = """
-      This module was developed by Arthur Porto, Sara Rolfe, and Murat Maga for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections" 
-      awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839). 
-      https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false 
-      """      
+      This module was developed by Arthur Porto, Sara Rolfe, and Murat Maga for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections"
+      awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839).
+      https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
+      """
 
     #Define custom layouts for multi-templates selection tab in slicer global namespace
     slicer.customLayoutSM = """
@@ -87,7 +87,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
 
   def __init__(self, parent=None):
     ScriptedLoadableModuleWidget.__init__(self, parent)
-    
+
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
     # Ensure that correct version of open3d Python package is installed
@@ -129,7 +129,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
           slicer.util.infoDisplay('Error: please check the url of the open3d wheel in the script')
           progressDialog.close()
       slicer.util.pip_install(f'cpdalp')
-      slicer.util.pip_install(wheelPath)      
+      slicer.util.pip_install(wheelPath)
       import open3d as o3d
       import cpdalp
       progressDialog.close()
@@ -203,7 +203,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.ui.landmarkOutputSelector.connect('validInputChanged(bool)', self.onSelectMultiProcess)
     self.ui.skipScalingMultiCheckBox.connect('toggled(bool)', self.onSelectMultiProcess)
     self.ui.applyLandmarkMultiButton.connect('clicked(bool)', self.onApplyLandmarkMulti)
-    
+
     # Template Selection connections
     self.ui.modelsMultiSelector.connect('validInputChanged(bool)', self.onSelectKmeans)
     self.ui.kmeansOutputSelector.connect('validInputChanged(bool)', self.onSelectKmeans)
@@ -214,7 +214,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.ui.resetTableButton.connect('clicked(bool)', self.onRestTableButton)
     self.ui.kmeansTemplatesButton.connect('clicked(bool)', self.onkmeansTemplatesButton)
 
-    
+
     #Add menu buttons
     self.addLayoutButton(503, 'MALPACA multi-templates View', 'Custom layout for MALPACA multi-templates tab', 'LayoutSlicerMorphView.png', slicer.customLayoutSM)
     self.addLayoutButton(504, 'Table Only View', 'Custom layout for GPA module', 'LayoutTableOnlyView.png', slicer.customLayoutTableOnly)
@@ -240,7 +240,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
 
   def cleanup(self):
     pass
-  
+
   def setCheckboxStyle(self, checkbox):
     checkbox.setStyleSheet("QCheckBox::indicator:unchecked{image: url(" + self.offIconPath + "); } \n"
       + "QCheckBox::indicator:checked{image: url(" + self.onIconPath + "); } \n"
@@ -273,10 +273,10 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.ui.switchSettingsButton.enabled = bool ( self.ui.sourceModelSelector.currentNode() and self.ui.targetModelSelector.currentNode() and self.ui.sourceLandmarkSetSelector.currentNode())
 
   def onSelectMultiProcess(self):
-    self.ui.applyLandmarkMultiButton.enabled = bool ( self.ui.sourceModelMultiSelector.currentPath and self.ui.sourceFiducialMultiSelector.currentPath 
+    self.ui.applyLandmarkMultiButton.enabled = bool ( self.ui.sourceModelMultiSelector.currentPath and self.ui.sourceFiducialMultiSelector.currentPath
       and self.ui.targetModelMultiSelector.currentPath and self.ui.landmarkOutputSelector.currentPath )
 
-  
+
   def onSubsampleButton(self):
     try:
       slicer.mrmlScene.RemoveNode(self.targetCloudNodeTest)
@@ -302,7 +302,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       self.targetFeatures, self.voxelSize, self.scaling = logic.runSubsample(self.sourceModelNode_clone, self.targetModelNode, self.ui.skipScalingCheckBox.checked, self.parameterDictionary)
     # Convert to VTK points for visualization
     self.targetVTK = logic.convertPointsToVTK(self.targetPoints.points)
-    
+
     slicer.mrmlScene.RemoveNode(self.sourceModelNode_clone)
 
     # Display target points
@@ -326,8 +326,8 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.ui.showUnprojectLMCheckBox.checked = 0
     self.ui.showTPSModelCheckBox.checked = 0
     self.ui.showFinalLMCheckbox.checked = 0
-    self.ui.showManualLMCheckBox.checked = 0   
-    
+    self.ui.showManualLMCheckBox.checked = 0
+
 
   #Run all button for Single Alignment ALPACA
   def onRunALPACAButton(self):
@@ -383,7 +383,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     #
     red=[1,0,0]
     self.sourceCloudNode = logic.displayPointCloud(self.sourceVTK, self.voxelSize / 10, ('Source Pointcloud (rigidly registered)_'+run_counter), red)
-    self.sourceCloudNode.GetDisplayNode().SetVisibility(False)    
+    self.sourceCloudNode.GetDisplayNode().SetVisibility(False)
     #
     #Transform the source model
     self.sourceModelNode.SetAndObserveTransformNodeID(self.ICPTransformNode.GetID())
@@ -402,11 +402,11 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     #Registration
     self.registeredSourceArray = logic.runCPDRegistration(self.sourceLandmarks.points, self.sourcePoints.points, self.targetPoints.points, self.parameterDictionary)
     self.outputPoints = logic.exportPointCloud(self.registeredSourceArray, "Initial ALPACA landmark estimate(unprojected)_"+run_counter) #outputPoints = ininital predicted LMs, non projected
-    self.inputPoints = logic.exportPointCloud(self.sourceLandmarks.points, "Original Landmarks") #input points = source landmarks   
+    self.inputPoints = logic.exportPointCloud(self.sourceLandmarks.points, "Original Landmarks") #input points = source landmarks
     #set up output initial predicted landmarkslandmark as vtk class
     #
     outputPoints_vtk = logic.getFiducialPoints(self.outputPoints)
-    inputPoints_vtk = logic.getFiducialPoints(self.inputPoints)    
+    inputPoints_vtk = logic.getFiducialPoints(self.inputPoints)
     #
     # Get warped source model and final predicted landmarks
     self.warpedSourceNode = logic.applyTPSTransform(inputPoints_vtk, outputPoints_vtk, self.sourceModelNode, 'TPS Warped source model_'+run_counter)
@@ -416,7 +416,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.outputPoints.GetDisplayNode().SetPointLabelsVisibility(False)
     slicer.mrmlScene.RemoveNode(self.inputPoints)
     #
-    if self.ui.skipProjectionCheckBox.checked: 
+    if self.ui.skipProjectionCheckBox.checked:
       logic.propagateLandmarkTypes(self.sourceLMNode, self.outputPoints)
     else:
       print(":: Projecting landmarks to external surface")
@@ -430,10 +430,10 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       self.outputPoints.GetDisplayNode().SetVisibility(False)
     # Other visualization
     self.sourceLMNode.GetDisplayNode().SetVisibility(False)
-    self.sourceModelNode.GetDisplayNode().SetVisibility(False)    
+    self.sourceModelNode.GetDisplayNode().SetVisibility(False)
     #Enable reset
     #self.resetSceneButton.enabled = True
-    
+
     #Create a folder and add all objects into the folder
     folderNode = slicer.mrmlScene.GetSubjectHierarchyNode()
     sceneItemID = folderNode.GetSceneItemID()
@@ -503,7 +503,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       rmse = logic.rmse(manualLMs, finalLMs)
       print(rmse)
       self.singleRMSETable(rmse, run_counter)
-      
+
   def singleRMSETable(self, rmse, counter_str):
     listTableNodes = slicer.mrmlScene.GetNodesByName("Single Alignment RMSE table")
     if listTableNodes.GetNumberOfItems() == 0:
@@ -545,8 +545,8 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
   def onSwitchSettingsButton(self):
     self.ui.tabsWidget.setCurrentWidget(self.ui.advancedSettingsTab)
     self.ui.runALPACAButton.enabled = True
-    
-    
+
+
   def onShowTargetPCDCheckBox(self):
     try:
       if self.ui.showTargetPCDCheckBox.isChecked():
@@ -555,7 +555,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
         self.targetCloudNode_2.GetDisplayNode().SetVisibility(False)
     except:
       self.ui.showTargetPCDCheckBox.enabled = False
-    
+
   def onShowSourcePCDCheckBox(self):
     try:
       if self.ui.showSourcePCDCheckBox.isChecked():
@@ -573,7 +573,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
         self.targetModelNode.GetDisplayNode().SetVisibility(False)
     except:
       self.ui.showTargetModelCheckBox.enabled = False
-  
+
   def onshowSourceModelCheckBox(self):
     try:
       if self.ui.showSourceModelCheckBox.isChecked():
@@ -600,7 +600,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
         self.warpedSourceNode.GetDisplayNode().SetVisibility(False)
     except:
       self.ui.showTPSModelCheckBox.enabled = False
-      
+
   def onShowFinalLMCheckbox(self):
     try:
       if self.ui.showFinalLMCheckbox.isChecked():
@@ -609,7 +609,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
         self.projectedLandmarks.GetDisplayNode().SetVisibility(False)
     except:
       self.ui.showFinalLMCheckbox.enabled = False
-  
+
   def onShowManualLMCheckBox(self):
     try:
       if self.ui.showManualLMCheckBox.isChecked():
@@ -618,16 +618,16 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
         self.manualLMNode.GetDisplayNode().SetVisibility(False)
     except:
       self.ui.showManualLMCheckBox.enabled = False
-    
-    
+
+
   def onApplyLandmarkMulti(self):
     logic = ALPACALogic()
     if self.ui.skipProjectionCheckBoxMulti.checked != 0:
       projectionFactor = 0
-    else:  
+    else:
       projectionFactor = self.ui.projectionFactorSlider.value/100
-      
-    logic.runLandmarkMultiprocess(self.ui.sourceModelMultiSelector.currentPath,self.ui.sourceFiducialMultiSelector.currentPath, 
+
+    logic.runLandmarkMultiprocess(self.ui.sourceModelMultiSelector.currentPath,self.ui.sourceFiducialMultiSelector.currentPath,
     self.ui.targetModelMultiSelector.currentPath, self.ui.landmarkOutputSelector.currentPath, self.ui.skipScalingMultiCheckBox.checked, projectionFactor, self.parameterDictionary)
 
 
@@ -651,7 +651,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.ui.subsampleInfo2.insertPlainText(f"The reference is {self.refName} \n")
     self.ui.subsampleInfo2.insertPlainText(f"The number of points in the downsampled reference pointcloud is {template_density}")
     self.ui.matchingPointsButton.enabled = True
-  
+
   def onMatchingPointsButton(self):
     #Set up folders for matching point cloud output and kmeans selected templates under self.ui.kmeansOutputSelector.currentPath
     dateTimeStamp = datetime.now().strftime('%Y-%m-%d_%H_%M_%S')
@@ -670,7 +670,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     correspondent_threshold = 0.01
     self.ui.subsampleInfo2.clear()
     self.ui.subsampleInfo2.insertPlainText(f"The reference is {self.refName} \n")
-    self.ui.subsampleInfo2.insertPlainText("The number of points in the downsampled reference pointcloud is {}. The error threshold for finding correspondent points is {}% \n".format(template_density, 
+    self.ui.subsampleInfo2.insertPlainText("The number of points in the downsampled reference pointcloud is {}. The error threshold for finding correspondent points is {}% \n".format(template_density,
       correspondent_threshold*100))
     if len(indices) >0:
       self.ui.subsampleInfo2.insertPlainText(f"There are {len(indices)} files have points repeatedly matched with the same point(s) template, these are: \n")
@@ -686,7 +686,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
         self.ui.subsampleInfo2.insertPlainText("All error rates smaller than the threshold \n")
     else:
       self.ui.subsampleInfo2.insertPlainText("{} unique points are sampled from each model to match the template pointcloud \n")
-    #Enable buttons for kmeans 
+    #Enable buttons for kmeans
     self.ui.noGroupInput.enabled = True
     self.ui.multiGroupInput.enabled = True
     self.ui.kmeansTemplatesButton.enabled = True
@@ -698,7 +698,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     if self.ui.multiGroupInput.isChecked():
       self.enterFactors()
       self.ui.resetTableButton.enabled = True
-  
+
   #Reset input button
   def onRestTableButton(self):
     self.resetFactors()
@@ -727,7 +727,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
 
   def resetFactors(self):
     if hasattr(self, 'factorTableNode'):
-      slicer.mrmlScene.RemoveNode(self.factorTableNode) 
+      slicer.mrmlScene.RemoveNode(self.factorTableNode)
     files = [os.path.splitext(file)[0] for file in os.listdir(self.pcdOutputFolder)]
     sortedArray = np.zeros(len(files), dtype={'names':('filename', 'procdist'),'formats':('U50','f8')})
     sortedArray['filename']=files
@@ -746,7 +746,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
 
 
   #Generate templates based on kmeans and catalog
-  def onkmeansTemplatesButton(self):     
+  def onkmeansTemplatesButton(self):
     start = time.time()
     logic = ALPACALogic()
     PCDFiles = os.listdir(self.pcdOutputFolder)
@@ -757,7 +757,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     #GPA for all specimens
     self.scores, self.LM = logic.pcdGPA(pcdFilePaths)
     files = [os.path.splitext(file)[0] for file in PCDFiles]
-    #Set up a seed for numpy for random results 
+    #Set up a seed for numpy for random results
     if self.ui.setSeedCheckBox.isChecked():
       np.random.seed(1000)
     if self.ui.noGroupInput.isChecked():
@@ -828,7 +828,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
               paths.append(path)
             #PC scores of specimens belong to a specific group
             tempScores = self.scores[indices, :]
-            #    
+            #
             templates, clusterID, tempIndices = logic.templatesSelection(self.ui.modelsMultiSelector.currentPath, tempScores, paths, self.templatesOutputFolder_multi, self.ui.templatesNumber.value, self.ui.kmeansIterations.value)
             print("Kmeans-cluster IDs for " + factorName + " are:")
             print(clusterID)
@@ -851,53 +851,53 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
           print(f'Time: {time.time() - start}')
         else:   #if the user input a factor requiring more than 3 groups, do not use factor
           qt.QMessageBox.critical(slicer.util.mainWindow(),
-          'Error', 'Please enter group information for every specimen')          
+          'Error', 'Please enter group information for every specimen')
       else:
         qt.QMessageBox.critical(slicer.util.mainWindow(),
           'Error', 'Please select Multiple groups within the sample option and enter group information for each specimen')
-      
+
   def plotClustersWithFactors(self, files, groupFactors, templatesIndices):
     logic = ALPACALogic()
     import Support.gpa_lib as gpa_lib
     #Set up scatter plot
     pcNumber = 2
     shape = self.LM.lm.shape
-    scatterDataAll= np.zeros(shape=(shape[2], pcNumber))    
+    scatterDataAll= np.zeros(shape=(shape[2], pcNumber))
     for i in range(pcNumber):
       data=gpa_lib.plotTanProj(self.LM.lm, self.LM.sortedEig,i,1)
-      scatterDataAll[:,i] = data[:,0]    
+      scatterDataAll[:,i] = data[:,0]
     factorNP = np.array(groupFactors)
     #import GPA
     logic.makeScatterPlotWithFactors(scatterDataAll, files, factorNP,
       'PCA Scatter Plots',"PC1","PC2", pcNumber, templatesIndices)
-  
+
   def plotClusters(self, files, templatesIndices):
     logic = ALPACALogic()
     import Support.gpa_lib as gpa_lib
     #Set up scatter plot
     pcNumber = 2
     shape = self.LM.lm.shape
-    scatterDataAll= np.zeros(shape=(shape[2], pcNumber))    
+    scatterDataAll= np.zeros(shape=(shape[2], pcNumber))
     for i in range(pcNumber):
       data=gpa_lib.plotTanProj(self.LM.lm, self.LM.sortedEig,i,1)
-      scatterDataAll[:,i] = data[:,0]    
+      scatterDataAll[:,i] = data[:,0]
     logic.makeScatterPlot(scatterDataAll, files,
-      'PCA Scatter Plots',"PC1","PC2", pcNumber, templatesIndices)    
-      
+      'PCA Scatter Plots',"PC1","PC2", pcNumber, templatesIndices)
+
   def updateLayout(self):
     layoutManager = slicer.app.layoutManager()
     layoutManager.setLayout(9)  #set layout to 3D only
     layoutManager.threeDWidget(0).threeDView().resetFocalPoint()
     layoutManager.threeDWidget(0).threeDView().resetCamera()
-    
+
   def onChangeAdvanced(self):
     self.ui.pointDensitySlider.value = self.ui.pointDensityAdvancedSlider.value
     self.updateParameterDictionary()
-    
+
   def onChangeDensitySingle(self):
     self.ui.pointDensityAdvancedSlider.value = self.ui.pointDensitySlider.value
     self.updateParameterDictionary()
-  
+
   def onChangeMultiTemplate(self):
     if self.ui.methodBatchWidget.currentText == 'Multi-Template(MALPACA)':
       self.ui.sourceModelMultiSelector.currentPath = ''
@@ -913,22 +913,22 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       self.ui.sourceFiducialMultiSelector.filters  = ctk.ctkPathLineEdit().Files
       self.ui.sourceFiducialMultiSelector.nameFilters  = ["*.fcsv"]
       self.ui.sourceFiducialMultiSelector.toolTip = "Select the source landmarks"
-  
+
 
   def onChangeCPD(self):
     ALPACALogic().saveBCPDPath(self.ui.BCPDFolder.currentPath)
     if self.ui.accelerationCheckBox.checked != 0:
       self.ui.BCPDFolder.enabled = True
       self.ui.subsampleButton.enabled = bool ( self.ui.sourceModelSelector.currentNode() and self.ui.targetModelSelector.currentNode() and self.ui.sourceLandmarkSetSelector.currentNode() and self.ui.BCPDFolder.currentPath)
-      self.ui.applyLandmarkMultiButton.enabled = bool ( self.ui.sourceModelMultiSelector.currentPath and self.ui.sourceFiducialMultiSelector.currentPath 
+      self.ui.applyLandmarkMultiButton.enabled = bool ( self.ui.sourceModelMultiSelector.currentPath and self.ui.sourceFiducialMultiSelector.currentPath
       and self.ui.targetModelMultiSelector.currentPath and self.ui.landmarkOutputSelector.currentPath and self.ui.BCPDFolder.currentPath)
     else:
       self.ui.BCPDFolder.enabled = False
       self.ui.subsampleButton.enabled = bool ( self.ui.sourceModelSelector.currentNode and self.ui.targetModelSelector.currentNode and self.ui.sourceLandmarkSetSelector.currentNode)
-      self.ui.applyLandmarkMultiButton.enabled = bool ( self.ui.sourceModelMultiSelector.currentPath and self.ui.sourceFiducialMultiSelector.currentPath 
+      self.ui.applyLandmarkMultiButton.enabled = bool ( self.ui.sourceModelMultiSelector.currentPath and self.ui.sourceFiducialMultiSelector.currentPath
       and self.ui.targetModelMultiSelector.currentPath and self.ui.landmarkOutputSelector.currentPath)
-    
-  def updateParameterDictionary(self):    
+
+  def updateParameterDictionary(self):
     # update the parameter dictionary from single run parameters
     if hasattr(self, 'parameterDictionary'):
       self.parameterDictionary["projectionFactor"] = self.ui.projectionFactorSlider.value
@@ -945,7 +945,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       self.parameterDictionary["CPDTolerance"] = self.ui.CPDToleranceSlider.value
       self.parameterDictionary["Acceleration"] = self.ui.accelerationCheckBox.checked
       self.parameterDictionary["BCPDFolder"] = self.ui.BCPDFolder.currentPath
-      
+
 
 
 #
@@ -961,7 +961,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     Uses ScriptedLoadableModuleLogic base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
- 
+
   def runLandmarkMultiprocess(self, sourceModelPath, sourceLandmarkPath, targetModelDirectory, outputDirectory, skipScaling, projectionFactor, parameters):
     extras = {"Source" : sourceModelPath, "SourceLandmarks" : sourceLandmarkPath, "Target" : targetModelDirectory, "Output" : outputDirectory, 'Skip scaling ?' : bool(skipScaling)}
     extras.update(parameters)
@@ -977,7 +977,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     for targetFileName in os.listdir(targetModelDirectory):
       if targetFileName.endswith(extensionModel):
         targetFilePath = os.path.join(targetModelDirectory, targetFileName)
-        rootName = os.path.splitext(targetFileName)[0]  
+        rootName = os.path.splitext(targetFileName)[0]
         landmarkList = []
         if os.path.isdir(sourceModelPath):
           outputMedianPath = os.path.join(medianOutput, f'{rootName}_median.fcsv')
@@ -991,7 +991,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
                 array = self.pairwiseAlignment(sourceFilePath, sourceLandmarkFile, targetFilePath, outputFilePath, skipScaling, projectionFactor, parameters)
                 landmarkList.append(array)
             medianLandmark = np.median(landmarkList, axis=0)
-            outputMedianNode = self.exportPointCloud(medianLandmark, "Median Predicted Landmarks")     
+            outputMedianNode = self.exportPointCloud(medianLandmark, "Median Predicted Landmarks")
             slicer.util.saveNode(outputMedianNode, outputMedianPath)
             slicer.mrmlScene.RemoveNode(outputMedianNode)
         elif os.path.isfile(sourceModelPath):
@@ -1007,7 +1007,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     targetModelNode.GetDisplayNode().SetVisibility(False)
     sourceModelNode = slicer.util.loadModel(sourceFilePath)
     sourceModelNode.GetDisplayNode().SetVisibility(False)
-    sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, scaling = self.runSubsample(sourceModelNode, 
+    sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, scaling = self.runSubsample(sourceModelNode,
         targetModelNode, skipScaling, parameters)
     ICPTransform = self.estimateTransform(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, skipScaling, parameters)
     #Rigid
@@ -1025,7 +1025,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         slicer.mrmlScene.RemoveNode(targetModelNode)
         slicer.mrmlScene.RemoveNode(sourceLMNode)
         return registeredSourceLM
-    else: 
+    else:
         inputPoints = self.exportPointCloud(sourceLandmarks.points, "Original Landmarks")
         inputPoints_vtk = self.getFiducialPoints(inputPoints)
         outputPoints_vtk = self.getFiducialPoints(outputPoints)
@@ -1041,7 +1041,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         for i in range(projectedPoints.GetNumberOfPoints()):
             point = projectedPoints.GetPoint(i)
             projectedLMNode.AddControlPoint(point)
-        self.propagateLandmarkTypes(sourceLMNode, projectedLMNode) 
+        self.propagateLandmarkTypes(sourceLMNode, projectedLMNode)
         slicer.util.saveNode(projectedLMNode, outputFilePath)
         slicer.mrmlScene.RemoveNode(projectedLMNode)
         slicer.mrmlScene.RemoveNode(outputPoints)
@@ -1053,33 +1053,33 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         slicer.mrmlScene.RemoveNode(inputPoints)
         np_array = vtk_np.vtk_to_numpy(projectedPoints.GetPoints().GetData())
         return np_array
-          
+
 
   def exportPointCloud(self, pointCloud, nodeName):
     fiducialNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',nodeName)
     for point in pointCloud:
-      fiducialNode.AddControlPoint(point) 
+      fiducialNode.AddControlPoint(point)
     return fiducialNode
 
     #node.AddControlPoint(point)
   def applyTPSTransform(self, sourcePoints, targetPoints, modelNode, nodeName):
-    transform=vtk.vtkThinPlateSplineTransform()  
+    transform=vtk.vtkThinPlateSplineTransform()
     transform.SetSourceLandmarks( sourcePoints)
     transform.SetTargetLandmarks( targetPoints )
     transform.SetBasisToR() # for 3D transform
-    
+
     transformFilter = vtk.vtkTransformPolyDataFilter()
     transformFilter.SetInputData(modelNode.GetPolyData())
     transformFilter.SetTransform(transform)
     transformFilter.Update()
-    
+
     warpedPolyData = transformFilter.GetOutput()
     warpedModelNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode', nodeName)
     warpedModelNode.CreateDefaultDisplayNodes()
     warpedModelNode.SetAndObservePolyData(warpedPolyData)
     #self.RAS2LPSTransform(warpedModelNode)
     return warpedModelNode
-      
+
   def runCPDRegistration(self, sourceLM, sourceSLM, targetSLM, parameters):
     from open3d import geometry
     from open3d import utility
@@ -1104,7 +1104,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
       sourcePath = os.path.join(slicer.app.cachePath,'source.txt')
       np.savetxt (targetPath, targetArray, delimiter=',')
       np.savetxt (sourcePath, sourceArrayCombined, delimiter=',')
-      path = os.path.join(parameters["BCPDFolder"], 'bcpd') 
+      path = os.path.join(parameters["BCPDFolder"], 'bcpd')
       cmd = f'"{path}" -x "{targetPath}" -y "{sourcePath}" -l{parameters["alpha"]} -b{parameters["beta"]} -g0.1 -K140 -J500 -c1e-6 -p -d7 -e0.3 -f0.3 -ux -N1'
       cp = subprocess.run(cmd, shell = True, check = True,text=True, capture_output=True)
       deformed_array = np.loadtxt('output_y.txt')
@@ -1118,7 +1118,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     fiducialCloud.points = utility.Vector3dVector(fiducial_prediction)
     fiducialCloud.scale(cloudSize/25, center = (0,0,0))
     return np.asarray(fiducialCloud.points)
-    
+
   def RAS2LPSTransform(self, modelNode):
     matrix=vtk.vtkMatrix4x4()
     matrix.Identity()
@@ -1131,14 +1131,14 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     modelNode.SetAndObserveTransformNodeID(transformNode.GetID())
     slicer.vtkSlicerTransformLogic().hardenTransform(modelNode)
     slicer.mrmlScene.RemoveNode(transformNode)
-       
+
   def convertMatrixToVTK(self, matrix):
     matrix_vtk = vtk.vtkMatrix4x4()
     for i in range(4):
       for j in range(4):
         matrix_vtk.SetElement(i,j,matrix[i][j])
     return matrix_vtk
-         
+
   def convertMatrixToTransformNode(self, matrix, transformName):
     matrix_vtk = vtk.vtkMatrix4x4()
     for i in range(4):
@@ -1149,19 +1149,19 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     transform.SetMatrix(matrix_vtk)
     transformNode =  slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', transformName)
     transformNode.SetAndObserveTransformToParent( transform )
-    
+
     return transformNode
-    
+
   def applyTransform(self, matrix, polydata):
     transform = vtk.vtkTransform()
     transform.SetMatrix(matrix)
-    
+
     transformFilter = vtk.vtkTransformPolyDataFilter()
     transformFilter.SetTransform(transform)
     transformFilter.SetInputData(polydata)
     transformFilter.Update()
     return transformFilter.GetOutput()
-  
+
   def convertPointsToVTK(self, points):
     array_vtk = vtk_np.numpy_to_vtk(points, deep=True, array_type=vtk.VTK_FLOAT)
     points_vtk = vtk.vtkPoints()
@@ -1169,8 +1169,8 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     polydata_vtk = vtk.vtkPolyData()
     polydata_vtk.SetPoints(points_vtk)
     return polydata_vtk
-      
-    
+
+
   def displayPointCloud(self, polydata, pointRadius, nodeName, nodeColor):
     #set up glyph for visualizing point cloud
     sphereSource = vtk.vtkSphereSource()
@@ -1179,16 +1179,16 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     glyph.SetSourceConnection(sphereSource.GetOutputPort())
     glyph.SetInputData(polydata)
     glyph.ScalingOff()
-    glyph.Update() 
-    
+    glyph.Update()
+
     #display
     # modelNode=slicer.mrmlScene.GetFirstNodeByName(nodeName)
     #if modelNode is None:  # if there is no node with this name, create with display node
     modelNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode', nodeName)
     modelNode.CreateDefaultDisplayNodes()
-    
+
     modelNode.SetAndObservePolyData(glyph.GetOutput())
-    modelNode.GetDisplayNode().SetColor(nodeColor) 
+    modelNode.GetDisplayNode().SetColor(nodeColor)
     return modelNode
 
 
@@ -1197,19 +1197,19 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     if modelNode is None:  # if there is no node with this name, create with display node
       modelNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode', nodeName)
       modelNode.CreateDefaultDisplayNodes()
-    
+
     modelNode.SetAndObservePolyData(polydata)
-    modelNode.GetDisplayNode().SetColor(nodeColor) 
+    modelNode.GetDisplayNode().SetColor(nodeColor)
     return modelNode
-    
+
   def estimateTransform(self, sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, skipScaling, parameters):
-    ransac = self.execute_global_registration(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, 
+    ransac = self.execute_global_registration(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize,
       parameters["distanceThreshold"], parameters["maxRANSAC"], parameters["RANSACConfidence"], skipScaling)
     # Refine the initial registration using an Iterative Closest Point (ICP) registration
     #import time
-    icp = self.refine_registration(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, ransac, parameters["ICPDistanceThreshold"]) 
-    return icp.transformation                                    
-  
+    icp = self.refine_registration(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, ransac, parameters["ICPDistanceThreshold"])
+    return icp.transformation
+
   def runSubsample(self, sourceModel, targetModel, skipScaling, parameters):
     from open3d import io
     from open3d import geometry
@@ -1221,21 +1221,21 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     targetPoints = slicer.util.arrayFromModelPoints(targetModel)
     target = geometry.PointCloud()
     target.points = utility.Vector3dVector(targetPoints)
-    sourceSize = np.linalg.norm(np.asarray(source.get_max_bound()) - np.asarray(source.get_min_bound())) 
+    sourceSize = np.linalg.norm(np.asarray(source.get_max_bound()) - np.asarray(source.get_min_bound()))
     targetSize = np.linalg.norm(np.asarray(target.get_max_bound()) - np.asarray(target.get_min_bound()))
     voxel_size = targetSize/(55*parameters["pointDensity"])
     scaling = (targetSize)/sourceSize
     if skipScaling != 0:
         scaling = 1
-    source.scale(scaling, center = (0,0,0)) 
+    source.scale(scaling, center = (0,0,0))
     points = slicer.util.arrayFromModelPoints(sourceModel)
     points[:] = np.asarray(source.points)
     sourceModel.GetPolyData().GetPoints().GetData().Modified()
     source_down, source_fpfh = self.preprocess_point_cloud(source, voxel_size, parameters["normalSearchRadius"], parameters["FPFHSearchRadius"])
     target_down, target_fpfh = self.preprocess_point_cloud(target, voxel_size, parameters["normalSearchRadius"], parameters["FPFHSearchRadius"])
     return source_down, target_down, source_fpfh, target_fpfh, voxel_size, scaling
-  
-  def loadAndScaleFiducials (self, fiducial, scaling, scene = False): 
+
+  def loadAndScaleFiducials (self, fiducial, scaling, scene = False):
     from open3d import geometry
     from open3d import utility
     if not scene:
@@ -1256,14 +1256,14 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     slicer.util.updateMarkupsControlPointsFromArray(sourceLandmarkNode,np.asarray(cloud.points))
     sourceLandmarkNode.GetDisplayNode().SetVisibility(False)
     return cloud, sourceLandmarkNode
-  
+
   def propagateLandmarkTypes(self,sourceNode, targetNode):
      for i in range(sourceNode.GetNumberOfControlPoints()):
        pointDescription = sourceNode.GetNthControlPointDescription(i)
        targetNode.SetNthControlPointDescription(i,pointDescription)
        pointLabel = sourceNode.GetNthControlPointLabel(i)
        targetNode.SetNthControlPointLabel(i, pointLabel)
-               
+
   def distanceMatrix(self, a):
     """
     Computes the euclidean distance matrix for n points in a 3D space
@@ -1275,7 +1275,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     dy=fnx(a[:,1])
     dz=fnx(a[:,2])
     return (dx**2.0+dy**2.0+dz**2.0)**0.5
-    
+
   def preprocess_point_cloud(self, pcd, voxel_size, radius_normal_factor, radius_feature_factor):
     from open3d import geometry
     from open3d import pipelines
@@ -1315,7 +1315,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
                   distance_threshold)
           ], registration.RANSACConvergenceCriteria(maxIter, confidence))
       fitness = result.fitness
-      count += 1 
+      count += 1
     return result
 
 
@@ -1330,25 +1330,25 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         source, target, distance_threshold, result_ransac.transformation,
         registration.TransformationEstimationPointToPlane())
     return result
-    
+
   def cpd_registration(self, targetArray, sourceArray, CPDIterations, CPDTolerance, alpha_parameter, beta_parameter):
     from cpdalp import DeformableRegistration
     output = DeformableRegistration(**{'X': targetArray, 'Y': sourceArray,'max_iterations': CPDIterations, 'tolerance': CPDTolerance, 'low_rank':True}, alpha = alpha_parameter, beta  = beta_parameter)
     return output
-    
+
   def getFiducialPoints(self,fiducialNode):
     points = vtk.vtkPoints()
     for i in range(fiducialNode.GetNumberOfControlPoints()):
       point = fiducialNode.GetNthControlPointPosition(i)
       points.InsertNextPoint(point)
-    
+
     return points
-    
+
   def runPointProjection(self, template, model, templateLandmarks, maxProjectionFactor):
     maxProjection = (model.GetPolyData().GetLength()) * maxProjectionFactor
     print("Max projection: ", maxProjection)
     templatePoints = self.getFiducialPoints(templateLandmarks)
-      
+
     # project landmarks from template to model
     projectedPoints = self.projectPointsPolydata(template.GetPolyData(), model.GetPolyData(), templatePoints, maxProjection)
     projectedLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"Refined Predicted Landmarks")
@@ -1356,28 +1356,28 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
       point = projectedPoints.GetPoint(i)
       projectedLMNode.AddControlPoint(point)
     return projectedLMNode
-  
+
   def projectPointsPolydata(self, sourcePolydata, targetPolydata, originalPoints, rayLength):
     print("original points: ", originalPoints.GetNumberOfPoints())
     #set up polydata for projected points to return
     projectedPointData = vtk.vtkPolyData()
     projectedPoints = vtk.vtkPoints()
     projectedPointData.SetPoints(projectedPoints)
-    
+
     #set up locater for intersection with normal vector rays
     obbTree = vtk.vtkOBBTree()
     obbTree.SetDataSet(targetPolydata)
     obbTree.BuildLocator()
-    
+
     #set up point locator for finding surface normals and closest point
     pointLocator = vtk.vtkPointLocator()
     pointLocator.SetDataSet(sourcePolydata)
     pointLocator.BuildLocator()
-    
+
     targetPointLocator = vtk.vtkPointLocator()
     targetPointLocator.SetDataSet(targetPolydata)
     targetPointLocator.BuildLocator()
-    
+
     #get surface normal from each landmark point
     rayDirection=[0,0,0]
     normalArray = sourcePolydata.GetPointData().GetArray("Normals")
@@ -1407,7 +1407,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         exteriorPoint = intersectionPoints.GetPoint(intersectionPoints.GetNumberOfPoints()-1)
         projectedPoints.InsertNextPoint(exteriorPoint)
       #if there are no intersections, reverse the normal vector
-      else: 
+      else:
         for dim in range(len(rayEndPoint)):
           rayEndPoint[dim] = originalPoint[dim] + rayDirection[dim]* -rayLength
         obbTree.IntersectWithLine(originalPoint,rayEndPoint,intersectionPoints,intersectionIds)
@@ -1420,11 +1420,11 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
           rayOrigin = targetPolydata.GetPoint(closestPointId)
           projectedPoints.InsertNextPoint(rayOrigin)
     return projectedPointData
-    
+
   def takeScreenshot(self,name,description,type=-1):
     # show the message even if not taking a screen shot
     slicer.util.delayDisplay('Take screenshot: '+description+'.\nResult is available in the Annotations module.', 3000)
-    
+
     lm = slicer.app.layoutManager()
     # switch on the type to get the requested window
     widget = 0
@@ -1448,12 +1448,12 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
       widget = slicer.util.mainWindow()
       # reset the type so that the node is set correctly
       type = slicer.qMRMLScreenShotDialog.FullLayout
-    
+
     # grab and convert to vtk image data
     qimage = ctk.ctkWidgetsUtils.grabWidget(widget)
     imageData = vtk.vtkImageData()
     slicer.qMRMLUtils().qImageToVtkImageData(qimage,imageData)
-    
+
     annotationLogic = slicer.modules.annotations.logic()
     annotationLogic.CreateSnapShot(name, description, type, 1, imageData)
 
@@ -1477,7 +1477,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
       sourceModelNode.GetDisplayNode().SetVisibility(False)
       rootName = os.path.splitext(file)[0]
       skipScalingOption = False
-      sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, scaling = self.runSubsample(sourceModelNode, targetModelNode, 
+      sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, scaling = self.runSubsample(sourceModelNode, targetModelNode,
         skipScalingOption, parameterDictionary)
       ICPTransform = self.estimateTransform(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, skipScalingOption, parameterDictionary)
       ICPTransformNode = self.convertMatrixToTransformNode(ICPTransform, 'Rigid Transformation Matrix')
@@ -1488,14 +1488,14 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
       ID_list.append(ID)
       subjectFiducial = slicer.vtkMRMLMarkupsFiducialNode()
       for i in range(correspondingSubjectPoints.GetNumberOfPoints()):
-        subjectFiducial.AddControlPoint(correspondingSubjectPoints.GetPoint(i)) 
+        subjectFiducial.AddControlPoint(correspondingSubjectPoints.GetPoint(i))
       slicer.mrmlScene.AddNode(subjectFiducial)
       slicer.util.saveNode(subjectFiducial, os.path.join(pcdOutputDir, f"{rootName}.fcsv"))
       slicer.mrmlScene.RemoveNode(sourceModelNode)
       slicer.mrmlScene.RemoveNode(ICPTransformNode)
       slicer.mrmlScene.RemoveNode(subjectFiducial)
-    #Remove template node  
-    slicer.mrmlScene.RemoveNode(targetModelNode)  
+    #Remove template node
+    slicer.mrmlScene.RemoveNode(targetModelNode)
     #Printing results of points matching
     matchedPoints = [len(set(x)) for x in ID_list]
     indices = [i for i, x in enumerate(matchedPoints) if x < template_density]
@@ -1524,7 +1524,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     size = scores.shape[0]-1
     scores = scores[:, 0:size]
     return scores, LM
-  
+
   def templatesSelection(self, modelsDir, scores, inputFilePaths, templatesOutputDir, templatesNumber, iterations):
     templatesNumber = int(templatesNumber)
     iterations = int(iterations)
@@ -1535,7 +1535,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     #np.random.seed(1000) #Set numpy random seed to ensure consistent Kmeans result
     centers, distortion = kmeans(scores, templatesNumber, thresh = 0, iter = iterations)
     #clusterID returns the cluster allocation of each specimen
-    clusterID, min_dists = vq(scores, centers)  
+    clusterID, min_dists = vq(scores, centers)
     #distances between specimens to centers
     templatesIndices = []
     from scipy.spatial import distance_matrix
@@ -1551,7 +1551,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
       modelFile = file + ".ply"
       temp_model = slicer.util.loadModel(os.path.join(modelsDir, modelFile))
       slicer.util.saveNode(temp_model, os.path.join(templatesOutputDir, modelFile))
-      slicer.mrmlScene.RemoveNode(temp_model) 
+      slicer.mrmlScene.RemoveNode(temp_model)
     return templates, clusterID, templatesIndices
 
   def DownsampleTemplate(self, templatePolyData, spacingPercentage):
@@ -1568,7 +1568,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     templatePoints = templatePolyData.GetPoints()
     correspondingPoints = vtk.vtkPoints()
     correspondingPoint = [0, 0, 0]
-    subjectPointLocator = vtk.vtkPointLocator() 
+    subjectPointLocator = vtk.vtkPointLocator()
     subjectPointLocator.SetDataSet(subjectPolydata)
     subjectPointLocator.BuildLocator()
     ID = list()
@@ -1583,7 +1583,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     return ID, correspondingPoints
 
 
-    
+
 
   def makeScatterPlotWithFactors(self, data, files, factors, title, xAxis, yAxis, pcNumber, templatesIndices):
     #create two tables for the first two factors and then check for a third
@@ -1682,13 +1682,13 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     plotSeriesNode.SetMarkerStyle(slicer.vtkMRMLPlotSeriesNode.MarkerStyleDiamond)
     plotSeriesNode.SetUniqueColor()
     # Add data series to chart
-    plotChartNode.AddAndObservePlotSeriesNodeID(plotSeriesNode.GetID())     
-  
+    plotChartNode.AddAndObservePlotSeriesNodeID(plotSeriesNode.GetID())
+
     # Set up view options for chart
     plotChartNode.SetTitle('PCA Scatter Plot with kmeans clusters')
     plotChartNode.SetXAxisTitle(xAxis)
     plotChartNode.SetYAxisTitle(yAxis)
-    
+
     #Switch to a Slicer layout that contains a plot view for plotwidget
     layoutManager = slicer.app.layoutManager()
     layoutManager.setLayout(503)
@@ -1707,13 +1707,13 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
       plotChartNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotChartNode", "Chart_PCA_cov" + xAxis + "v" +yAxis)
     else:
       plotChartNode.RemoveAllPlotSeriesNodeIDs()
-    
+
     tableNode=slicer.mrmlScene.GetFirstNodeByName('PCA Scatter Plot Table without group input')
     if tableNode is None:
       tableNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", 'PCA Scatter Plot Table without group input')
     else:
       tableNode.RemoveAllColumns()    #clear previous data from columns
-    
+
     labels=tableNode.AddColumn()
     labels.SetName('Subject ID')
     tableNode.SetColumnType('Subject ID',vtk.VTK_STRING)
@@ -1722,14 +1722,14 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
       pc=tableNode.AddColumn()
       colName="PC" + str(i+1)
       pc.SetName(colName)
-      tableNode.SetColumnType(colName, vtk.VTK_FLOAT)    
-    
+      tableNode.SetColumnType(colName, vtk.VTK_FLOAT)
+
     table = tableNode.GetTable()
     table.SetNumberOfRows(numPoints)
     for i in range(len(files)):
       table.SetValue(i, 0, files[i])
       for j in range(pcNumber):
-        table.SetValue(i, j+1, data[i, j])    
+        table.SetValue(i, j+1, data[i, j])
 
     plotSeriesNode1=slicer.mrmlScene.GetFirstNodeByName("Specimens_no_group_input")
     if plotSeriesNode1 is None:
@@ -1745,7 +1745,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     plotSeriesNode1.SetUniqueColor()
     plotChartNode.AddAndObservePlotSeriesNodeID(plotSeriesNode1.GetID())
 
-    
+
     #Set up plotSeriesNode for templates
     tableNode=slicer.mrmlScene.GetFirstNodeByName('PCA_Scatter_Plot_Table_Templates_no_group')
     if tableNode is None:
@@ -1783,13 +1783,13 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     plotSeriesNode1.SetMarkerStyle(slicer.vtkMRMLPlotSeriesNode.MarkerStyleDiamond)
     plotSeriesNode1.SetUniqueColor()
     # Add data series to chart
-    plotChartNode.AddAndObservePlotSeriesNodeID(plotSeriesNode1.GetID())     
+    plotChartNode.AddAndObservePlotSeriesNodeID(plotSeriesNode1.GetID())
 
-    
+
     plotChartNode.SetTitle('PCA Scatter Plot with templates')
     plotChartNode.SetXAxisTitle(xAxis)
     plotChartNode.SetYAxisTitle(yAxis)
-    
+
     #Switch to a Slicer layout that contains a plot view for plotwidget
     layoutManager = slicer.app.layoutManager()
     layoutManager.setLayout(503)
@@ -1807,9 +1807,9 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
       if BCPDPathSaved == BCPDPath:
         return
     if not self.isValidBCPDPath(BCPDPath):
-      return    
+      return
     settings.setValue('Developer/BCPDPath',BCPDPath)
-      
+
   def getBCPDPath(self):
     # If path is defined in settings then use that
     settings = qt.QSettings()
@@ -1819,7 +1819,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         return BCPDPath
     else:
         return ""
-        
+
   def isValidBCPDPath(self, BCPDPath):
     if not os.path.isdir(BCPDPath):
       logging.info("BCPD path invalid: Not a directory")
@@ -1849,18 +1849,18 @@ class ALPACATest(ScriptedLoadableModuleTest):
     Uses ScriptedLoadableModuleTest base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
-  
+
   def setUp(self):
     """ Do whatever is needed to reset the state - typically a scene clear will be enough.
       """
     slicer.mrmlScene.Clear(0)
-  
+
   def runTest(self):
     """Run as few or as many tests as needed here.
       """
     self.setUp()
     self.test_ALPACA1()
-  
+
   def test_ALPACA1(self):
     """ Ideally you should have several levels of tests.  At the lowest level
       tests should exercise the functionality of the logic with different inputs
@@ -1872,7 +1872,7 @@ class ALPACATest(ScriptedLoadableModuleTest):
       module.  For example, if a developer removes a feature that you depend on,
       your test should break so they know that the feature is needed.
       """
-    
+
     self.delayDisplay("Starting the test")
     #
     # first, get some data
@@ -1890,7 +1890,7 @@ class ALPACATest(ScriptedLoadableModuleTest):
         logging.info(f'Loading {name}...')
         loader(filePath)
     self.delayDisplay('Finished with download and loading')
-    
+
     volumeNode = slicer.util.getNode(pattern="FA")
     logic = ALPACALogic()
     self.assertIsNotNone( logic.hasImageData(volumeNode) )
