@@ -18,7 +18,7 @@ These parameters are required to be set to use the module.
 #### CreateSemiLMPatches ADVANCED PARAMETERS
 The advanced parameters are settings that can be adjusted to improve the performance of the module. Most users will not need to change the default settings.
 
-* __Set maximum projection distance:__ The maximum projection distance specifies the maximum search distance used to project a point to the surface, as a percentage of the image length. This value may need to be decreased in cases where there are multiple structures in an image and the points from one stucture are being projected to a more external surface.
+* __Set maximum projection distance:__ The maximum projection distance specifies the maximum search distance used to project a point to the surface, as a percentage of the image length. This value may need to be decreased in cases where there are multiple structures in an image and the points from one structure are being projected to a more external surface.
 
 * __Set smoothing of projection vectors:__ The projection vectors are estimated from the vertices of a triangular patch. Increasing the smoothing parameter of the projection vectors will larger area around the vertices. This will help improve the performance when the mesh surface may contain noise or holes.
 

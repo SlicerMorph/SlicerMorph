@@ -1,6 +1,8 @@
 # Ignore all dotfiles...
 .*
 !.gitattributes
+!.github
+!.pre-commit-config.yaml
 
 # Ignore all back-up files...
 *~

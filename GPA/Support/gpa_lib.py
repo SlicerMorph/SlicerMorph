@@ -94,7 +94,7 @@ def scaleShape(shape):
     shape=shape/np.linalg.norm(shape)
     return shape
 
-#align one shape to a reference shape, soley by rotation
+#align one shape to a reference shape, solely by rotation
 def alignShape(refShape,shape):
     """
     Align the shape to the mean.

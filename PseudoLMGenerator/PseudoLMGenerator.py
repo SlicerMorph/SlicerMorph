@@ -833,7 +833,7 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
         totalLMNode.AddFiducialFromArray(mergedPoint, 'm_'+str(i))
         midlineLMNode.AddFiducialFromArray(mergedPoint, 'm_'+str(i))
 
-    # set psuedo landmarks created to type II
+    # set pseudo landmarks created to type II
     landmarkTypeSemi=True
     self.setAllLandmarksType(totalLMNode, landmarkTypeSemi)
     self.setAllLandmarksType(midlineLMNode, landmarkTypeSemi)
