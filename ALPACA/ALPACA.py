@@ -183,7 +183,9 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
           slicer.util.infoDisplay('Error: please check the url of the open3d wheel in the script')
           progressDialog.close()
       slicer.util.pip_install(f'cpdalp')
-      slicer.util.pip_install(wheelPath)
+      # wheelPath may contain spaces, therefore pass it as a list (that avoids splitting
+      # the argument into multiple command-line arguments when there are spaces in the path)
+      slicer.util.pip_install([wheelPath])
       import open3d as o3d
       import cpdalp
       progressDialog.close()
