@@ -44,7 +44,22 @@ class SegmentEndocraniumWidget(ScriptedLoadableModuleWidget, VTKObservationMixin
     VTKObservationMixin.__init__(self)  # needed for parameter node observation
     self.logic = None
     self._parameterNode = None
-
+    # Create segment editor to get access to effects
+    segmentEditorWidget = slicer.qMRMLSegmentEditorWidget()
+    # To show segment editor widget (useful for debugging): segmentEditorWidget.show()
+    segmentEditorWidget.setMRMLScene(slicer.mrmlScene)
+    if not segmentEditorWidget.effectByName("Wrap Solidify"):
+      if slicer.util.confirmOkCancelDisplay("SegmentEndocranium requires installation of the SurfaceWrapSolidify extension.\nClick OK to install and restart the application."):
+        extensionName = 'SurfaceWrapSolidify'
+        em = slicer.app.extensionsManagerModel()
+        if not em.isExtensionInstalled(extensionName):
+          extensionMetaData = em.retrieveExtensionMetadataByName(extensionName)
+          url = f"{em.serverUrl().toString()}/api/v1/item/{extensionMetaData['_id']}/download"
+          extensionPackageFilename = slicer.app.temporaryPath+'/'+extensionMetaData['_id']
+          slicer.util.downloadFile(url, extensionPackageFilename)
+          em.interactive = False  # Disable popups (automatically install dependencies)
+          em.installExtension(extensionPackageFilename)
+          slicer.util.restart()
   def setup(self):
     """
     Called when the user opens the module the first time and the widget is initialized.
