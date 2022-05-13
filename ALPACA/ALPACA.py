@@ -481,7 +481,6 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       self.projectedLandmarks = logic.runPointProjection(self.warpedSourceNode, self.targetModelNode, self.outputPoints, projectionFactor)
       logic.propagateLandmarkTypes(self.sourceLMNode, self.projectedLandmarks)
       self.projectedLandmarks.SetName('Final ALPACA landmark estimate_'+run_counter)
-      # self.projectedLandmarks.GetDisplayNode().SetPointLabelsVisibility(True)
       self.projectedLandmarks.GetDisplayNode().SetVisibility(False)
       self.outputPoints.GetDisplayNode().SetVisibility(False)
     # Other visualization
@@ -501,7 +500,6 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     sourceLMItem = folderNode.GetItemByDataNode(self.sourceLMNode)
     nonProjectLMItem = folderNode.GetItemByDataNode(self.warpedSourceNode)
     warpedSourceItem = folderNode.GetItemByDataNode(self.outputPoints)
-    finalLMItem = folderNode.GetItemByDataNode(self.projectedLandmarks)
     #
     folderNode.SetItemParent(sourceModelItem, newFolder)
     folderNode.SetItemParent(sourceCloudItem, newFolder)
@@ -510,7 +508,10 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     folderNode.SetItemParent(sourceLMItem, newFolder)
     folderNode.SetItemParent(nonProjectLMItem, newFolder)
     folderNode.SetItemParent(warpedSourceItem, newFolder)
-    folderNode.SetItemParent(finalLMItem, newFolder)
+    # Add projected points if they have been created
+    if not self.ui.skipProjectionCheckBox.isChecked():
+      finalLMItem = folderNode.GetItemByDataNode(self.projectedLandmarks)
+      folderNode.SetItemParent(finalLMItem, newFolder)
     #
     # self.ui.subsampleButton.enabled = False
     self.ui.runALPACAButton.enabled = False
@@ -551,10 +552,16 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
         manualLMs[i,:] = point
       #Source LM numpy array
       point2 = [0,0,0]
-      finalLMs = np.zeros(shape=(self.projectedLandmarks.GetNumberOfControlPoints(),3))
-      for i in range(self.projectedLandmarks.GetNumberOfControlPoints()):
-        self.projectedLandmarks.GetMarkupPoint(0,i,point2)
-        finalLMs[i,:] = point2
+      if not self.ui.skipProjectionCheckBox.isChecked():
+        finalLMs = np.zeros(shape=(self.projectedLandmarks.GetNumberOfControlPoints(),3))
+        for i in range(self.projectedLandmarks.GetNumberOfControlPoints()):
+          self.projectedLandmarks.GetMarkupPoint(0,i,point2)
+          finalLMs[i,:] = point2
+      else:
+        finalLMs = np.zeros(shape=(self.outputPoints.GetNumberOfControlPoints(),3))
+        for i in range(self.outputPoints.GetNumberOfControlPoints()):
+          self.outputPoints.GetMarkupPoint(0,i,point2)
+          finalLMs[i,:] = point2
       #
       rmse = logic.rmse(manualLMs, finalLMs)
       print(rmse)
