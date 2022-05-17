@@ -61,13 +61,19 @@ Modules in SlicerMorph are organized in three broad categories:
   - [**SlicerMorph Preferences:**](https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/MorphPreferences/) Users can choose to enable specific customizations that include keyboard shortcuts, and optimized settings for working with large 3D datasets using the Application Settings menu of 3D Slicer. See the documentation link for list of SlicerMorph specific keyboard shortcuts and modified settings.
 
 ## Dependencies
-SlicerMorph automatically installs these additional extensions as dependencies. It should be noted that none of the SlicerMorph specific functionality directly relies on these modules. Functionality in these extensions complements modules in SlicerMorph. Click on the links to get more information about these extensions.
-
+## Automatically installed recommended extensions
+The following extension is installed automatically with SlicerMorph. Although it is not directly relied on by the modules, it is necessary for many workflows supoorted by SlicerMorph:
 - [**SegmentEditorExtraEffects:** Provides additional segmentation effects and utilities, such as our SplitSegment function that allows saving the 3D volume  into multiple smaller, individual volumes using the provided segmentation.](https://github.com/lassoan/SlicerSegmentEditorExtraEffects)
+
+## Manually installed dependencies
+The following extension is required for using the SegmentEndocranium. Installation is prompted on opening this module.
+- [**SurfaceWrapSolidy:** A segment editor effect useful to extract endocasts of cranial and other spaces.](https://github.com/sebastianandress/Slicer-SurfaceWrapSolidify)
+
+## Manually installed recommended extensions
+We  recommend that the user manually install the following extensions that provide useful convenience functions:
 - [**SlicerIGT:** Provides landmark driven registration (affine and deformable) of volumes and models.](https://github.com/SlicerIGT/SlicerIGT)
 - [**Sandbox:** Provides utilities like Cross-sectional Area from segments, Lights module for more in-depth lighting control and CurvePlanarReformat module for straightening of curved structures (e.g., coiled snake scans.](https://github.com/PerkLab/SlicerSandbox/)
 - [**DCM2NIIX:** Provides a user-interface for the DICOM to NIFTI converter DCM2NIIX. Ideal for stripping metadata from DICOM datasets.](https://github.com/rordenlab/dcm2niix)
-- [**SurfaceWrapSolidy:** A segment editor effect useful to extract endocasts of cranial and other spaces.](https://github.com/sebastianandress/Slicer-SurfaceWrapSolidify)
 - [**RawImageGuess:** A module that enables the user to import proprietary imaging formats by specifying data type, image dimensions and endiness.](https://github.com/acetylsalicyl/SlicerRawImageGuess)
 
 ## SlicerMorph Tutorials
@@ -76,7 +82,6 @@ SlicerMorph automatically installs these additional extensions as dependencies. 
 ## 3D Morphometrics and Image Analysis Short Course materials
 
 We actively use SlicerMorph to teach a week-long intense [short course on 3D Morphometrics and Image analysis](http://workshop.SlicerMorph.org). The feedback of the attendees help us prioritize feature development and refinement. We are grateful for the feedback of over 100 participants. [Click for contents from the latest workshop, Spring 2022](https://github.com/SlicerMorph/Spr_2022)
-
 
 ## Important Websites
 *	SlicerMorph project website: https://slicermorph.github.io (website list upcoming events, including monthly user group meeting. It also has pointers to some of the online specimen repositories).
