@@ -375,6 +375,11 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.ui.runALPACAButton.enabled = True
     if bool(self.ui.targetLandmarkSetSelector.currentNode()) == True:
       self.ui.targetLandmarkSetSelector.currentNode().GetDisplayNode().SetVisibility(False)
+    try:
+      self.manualLMNode.GetDisplayNode().SetVisibility(False)
+    except:
+      pass
+    
     self.ui.showTargetPCDCheckBox.checked = 0
     self.ui.showSourcePCDCheckBox.checked = 0
     self.ui.showTargetModelCheckBox.checked = 0
@@ -384,11 +389,16 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.ui.showFinalLMCheckbox.checked = 0
     self.ui.showManualLMCheckBox.checked = 0
 
-
+    
   #Run all button for Single Alignment ALPACA
   def onRunALPACAButton(self):
     run_counter = self.runALPACACounter() #the counter for executing this function in str format
     logic = ALPACALogic()
+    try:
+      self.manualLMNode.GetDisplayNode().SetVisibility(False)
+    except:
+      pass
+    
     try:
       slicer.mrmlScene.RemoveNode(self.targetCloudNodeTest) #Remove targe cloud node created in the subsampling to avoid confusion
       # slicer.mrmlScene.RemoveNode(self.sourceModelNode)
@@ -399,6 +409,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       self.ui.showUnprojectLMCheckBox.checked = 0
       self.ui.showTPSModelCheckBox.checked = 0
       self.ui.showFinalLMCheckbox.checked = 0
+      self.ui.showManualLMCheckBox.checked = 0
     except:
       pass
     #
@@ -546,6 +557,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       self.manualLMNode.GetDisplayNode().SetSelectedColor(green)
       self.ui.showManualLMCheckBox.enabled = True
       self.ui.showManualLMCheckBox.checked = 0
+      self.manualLMNode.GetDisplayNode().SetVisibility(False)
       manualLMs = np.zeros(shape=(self.manualLMNode.GetNumberOfControlPoints(),3))
       for i in range(self.manualLMNode.GetNumberOfControlPoints()):
         self.manualLMNode.GetMarkupPoint(0,i,point)
@@ -566,6 +578,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       rmse = logic.rmse(manualLMs, finalLMs)
       print(rmse)
       self.singleRMSETable(rmse, run_counter)
+
 
   def singleRMSETable(self, rmse, counter_str):
     listTableNodes = slicer.mrmlScene.GetNodesByName("Single Alignment RMSE table")
