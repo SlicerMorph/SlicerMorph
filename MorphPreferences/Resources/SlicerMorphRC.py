@@ -60,12 +60,12 @@ slicer.mrmlScene.AddObserver(slicer.mrmlScene.NodeAddedEvent, NoInterpolate)
 #
 #hide SLicer logo in module tab
 #
-slicer.util.findChild(slicer.util.mainWindow(), 'LogoLabel').visible = False
+# slicer.util.findChild(slicer.util.mainWindow(), 'LogoLabel').visible = False
 
 #
 #collapse Data Probe tab by default to save space modules tab
 #
-slicer.util.findChild(slicer.util.mainWindow(), name='DataProbeCollapsibleWidget').collapsed = True
+# slicer.util.findChild(slicer.util.mainWindow(), name='DataProbeCollapsibleWidget').collapsed = True
 
 #
 #set the default module from Welcome to Data
@@ -77,7 +77,7 @@ qt.QSettings().setValue("Modules/HomeModule", "Data")
 # set volume rendering modes
 #
 settings = slicer.app.settings()
-settings.setValue("VolumeRendering/RenderingMethod", "vtkMRMLGPURayCastVolumeRenderingDisplayNode")
+settings.setValue("VolumeRendering/RenderingMethod", "vtkMRMLCPURayCastVolumeRenderingDisplayNode")
 settings.setValue("VolumeRendering/DefaultQuality", "Normal")
 
 #
@@ -180,10 +180,6 @@ def toggleMarkupLocks():
 shortcuts = [
     ('`', cycleEffectForward),
     ('~', cycleEffectBackward),
-    ('z', setLayoutOneUpRedSliceView),
-    ('x', setLayoutOneUpYellowSliceView),
-    ('c', setLayoutOneUpGreenSliceView),
-    ('y', setLayoutFourUpView),
     ('p', placeFiducial),
     ('t', togglePlaceModePersistence),
     ('l', toggleMarkupLocks),
