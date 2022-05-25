@@ -606,7 +606,8 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
       landmarkNode.GetMarkupPoint(0,int(landmarkIndex-1),controlPoint)
       tempCurve.AddControlPoint(controlPoint)
       sampleDist = tempCurve.GetCurveLengthWorld() / (rowColNumber - 1);
-      tempCurve.ResampleCurveSurface(sampleDist, modelNode, .99)
+      tempCurve.SetAndObserveSurfaceConstraintNode(modelNode)
+      tempCurve.ResampleCurveWorld(sampleDist)
       tempCurve.GetControlPointPositionsWorld(edgePoints)
       for i in range(1,edgePoints.GetNumberOfPoints()-1):
         mergedNode.AddFiducialFromArray(edgePoints.GetPoint(i))
