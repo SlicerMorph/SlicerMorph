@@ -681,23 +681,24 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
         outputNode = slicer.vtkMRMLScalarVolumeNode()
       else:
         outputNode = slicer.vtkMRMLVectorVolumeNode()
-        if volumeArray.shape[3] == 3:
-          outputNode.SetVoxelVectorType(outputNode.VoxelVectorTypeColorRGB)
-        elif volumeArray.shape[3] == 4:
-          outputNode.SetVoxelVectorType(outputNode.VoxelVectorTypeColorRGBA)
       slicer.mrmlScene.AddNode(outputNode)
       path = paths[0]
       fileName = os.path.basename(path)
       name = os.path.splitext(fileName)[0]
       outputNode.SetName(name)
+
+    # Check if output volume is the correct type
+    if len(volumeArray.shape) == 4:
+      if not outputNode.IsA("vtkMRMLVectorVolumeNode"):
+        raise ValueError("Select a vector volume as output volume or force grayscale output.")
+      # Set voxel vector type to RGB/RGBA
+      if volumeArray.shape[3] == 3:
+        outputNode.SetVoxelVectorType(outputNode.VoxelVectorTypeColorRGB)
+      elif volumeArray.shape[3] == 4:
+        outputNode.SetVoxelVectorType(outputNode.VoxelVectorTypeColorRGBA)
     else:
-      # Output volume already exists, check if it is the correct type
-      if len(volumeArray.shape) == 4:
-        if outputNode.IsA("vtkMRMLScalarVolumeNode"):
-          raise ValueError("Select a vector volume as output volume or force grayscale output.")
-      else:
-        if outputNode.IsA("vtkMRMLVectorVolumeNode"):
-          raise ValueError("Select a scalar volume as output volume.")
+      if outputNode.IsA("vtkMRMLVectorVolumeNode"):
+        raise ValueError("Select a scalar volume as output volume.")
 
     ijkToRAS = slicer.util.vtkMatrixFromArray(ijkToRAS)
     outputNode.SetIJKToRASMatrix(ijkToRAS)
