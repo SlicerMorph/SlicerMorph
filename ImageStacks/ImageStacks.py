@@ -665,8 +665,8 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
       if (sliceIndex > 0) and (volumeArray[sliceIndex].shape != sliceArray.shape):
         logging.debug("After downsampling, {} size is {} x {}\n\n{} size is {} x {} ({} scalar components)".format(
           paths[0], volumeArray[0].shape[0], volumeArray[0].shape[1],
-          path, sliceArray.shape[0], sliceArray.shape[1]),
-          sliceArray.shape[2] if len(sliceArray.shape)==3 else 1)
+          path, sliceArray.shape[0], sliceArray.shape[1],
+          sliceArray.shape[2] if len(sliceArray.shape)==3 else 1))
         message = "There are multiple datasets in the folder. Please select a single file as a sample or specify a pattern.\nDetails:\n{0} size is {1} x {2} ({6} scalar components)\n\n{3} size is {4} x {5} ({7} scalar components)".format(
           paths[0], firstArrayFullShape[0], firstArrayFullShape[1],
           path, currentArrayFullShape[0], currentArrayFullShape[1],
