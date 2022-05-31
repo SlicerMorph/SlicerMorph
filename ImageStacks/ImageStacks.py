@@ -646,7 +646,6 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
       currentArrayFullShape = sliceArray.shape
       if firstArrayFullShape is None:
         firstArrayFullShape = currentArrayFullShape
-
       if volumeArray is None:
         shape = [extent[5]-extent[4]+1, extent[3]-extent[2]+1, extent[1]-extent[0]+1]
         if len(sliceArray.shape) == 3:
@@ -670,8 +669,8 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
         message = "There are multiple datasets in the folder. Please select a single file as a sample or specify a pattern.\nDetails:\n{0} size is {1} x {2} ({6} scalar components)\n\n{3} size is {4} x {5} ({7} scalar components)".format(
           paths[0], firstArrayFullShape[0], firstArrayFullShape[1],
           path, currentArrayFullShape[0], currentArrayFullShape[1],
-          firstArrayFullShape.shape[2] if len(firstArrayFullShape.shape)==3 else 1,
-          currentArrayFullShape.shape[2] if len(currentArrayFullShape.shape)==3 else 1)
+          firstArrayFullShape[2] if firstArrayFullShape[2]==3 else 1,
+          currentArrayFullShape[2] if currentArrayFullShape[2]==3 else 1)
         raise ValueError(message)
       volumeArray[sliceIndex] = sliceArray
       sliceIndex += 1
