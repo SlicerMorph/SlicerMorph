@@ -1,6 +1,6 @@
 <img src="https://raw.githubusercontent.com/SlicerMorph/SlicerMorph/master/GPA/Resources/Icons/GPA.png" alt="SlicerMorph logo" width="256" height="256">
 
-This is the official repository for [SlicerMorph project](http://SlicerMorph.org).
+This is the official repository for [SlicerMorph project](https://slicermorph.github.io/).
 
 SlicerMorph enable biologists to retrieve, visualize, measure and annotate high-resolution 3D specimen data both from volumetric scans (CTs and MRs) as well as from  surface scanners more effectively within 3D Slicer. It has a number of modules that facilitate Geometric Morphometrics analysis on these 3D specimens.
 
