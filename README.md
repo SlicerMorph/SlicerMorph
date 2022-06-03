@@ -81,7 +81,7 @@ We  recommend that the user manually install the following extensions that provi
 
 ## 3D Morphometrics and Image Analysis Short Course materials
 
-We actively use SlicerMorph to teach a week-long intense [short course on 3D Morphometrics and Image analysis](http://workshop.SlicerMorph.org). The feedback of the attendees help us prioritize feature development and refinement. We are grateful for the feedback of over 100 participants. [Click for contents from the latest workshop, Spring 2022](https://github.com/SlicerMorph/Spr_2022)
+We actively use SlicerMorph to teach a week-long intense [short course on 3D Morphometrics and Image analysis](http://workshop.SlicerMorph.org). The feedback of the attendees help us prioritize feature development and refinement. We are grateful for the feedback of over 200 participants. [Click for contents from the latest workshop, Spring 2022](https://github.com/SlicerMorph/Spr_2022)
 
 ## Important Websites
 *	SlicerMorph project website: https://slicermorph.github.io (website list upcoming events, including monthly user group meeting. It also has pointers to some of the online specimen repositories).
