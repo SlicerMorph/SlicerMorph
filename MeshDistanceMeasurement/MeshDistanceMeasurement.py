@@ -282,13 +282,13 @@ class MeshDistanceMeasurementLogic(ScriptedLoadableModuleLogic):
       templatePoints.InsertNextPoint(p)
 
     # write selected triangles to table
-    tableNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTableNode', 'Mean Mesh Distances')
+    tableNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTableNode', 'Mesh RMSE')
     col1=tableNode.AddColumn()
     col1.SetName('Subject ID')
     col2=tableNode.AddColumn()
     col2.SetName('Mesh RMSE')
     tableNode.SetColumnType('Subject ID',vtk.VTK_STRING)
-    tableNode.SetColumnType('Mean Mesh Distance',vtk.VTK_STRING)
+    tableNode.SetColumnType('Mesh RMSE',vtk.VTK_STRING)
 
     subjectCount = 0
     for meshFileName in os.listdir(meshDirectory):
@@ -340,7 +340,6 @@ class MeshDistanceMeasurementLogic(ScriptedLoadableModuleLogic):
 
         distanceMap = distanceFilter.GetOutput()
         distanceArray = distanceMap.GetPointData().GetArray('Distance')
-        #meanDistance = np.average(distanceArray)
         meanDistance = self.rmse(distanceArray)
 
         #save output distance map
