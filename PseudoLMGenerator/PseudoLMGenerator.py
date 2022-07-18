@@ -117,7 +117,7 @@ class PseudoLMGeneratorWidget(ScriptedLoadableModuleWidget):
     parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
 
     #
-    # Select base mesh
+    # Select base model
     #
     self.modelSelector = slicer.qMRMLNodeComboBox()
     self.modelSelector.nodeTypes = ( ("vtkMRMLModelNode"), "" )
@@ -127,7 +127,7 @@ class PseudoLMGeneratorWidget(ScriptedLoadableModuleWidget):
     self.modelSelector.noneEnabled = True
     self.modelSelector.showHidden = False
     self.modelSelector.setMRMLScene( slicer.mrmlScene )
-    parametersFormLayout.addRow("Base mesh: ", self.modelSelector)
+    parametersFormLayout.addRow("Base model: ", self.modelSelector)
 
     #
     # Set spacing tolerance
@@ -543,7 +543,7 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
         if intersectionPoints.GetNumberOfPoints()>0:
           exteriorPoint = intersectionPoints.GetPoint(0)
           projectedPoints.InsertNextPoint(exteriorPoint)
-        #if none in reverse direction, use closest mesh point
+        #if none in reverse direction, use closest model point
         else:
           closestPointId = targetPointLocator.FindClosestPoint(originalPoint)
           rayOrigin = targetPolydata.GetPoint(closestPointId)
@@ -761,12 +761,12 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
 
     return reverseNormalFilter.GetOutput()
 
-  def symmetrizeLandmarks(self, meshNode, landmarkNode, plane, samplingPercentage):
-    # clip and mirror mesh and points
+  def symmetrizeLandmarks(self, modelNode, landmarkNode, plane, samplingPercentage):
+    # clip and mirror model and points
     pointsVTK = vtk.vtkPoints()
     pointPolyData = vtk.vtkPolyData()
     pointPolyData.SetPoints(pointsVTK)
-    mesh = meshNode.GetPolyData()
+    model = modelNode.GetPolyData()
     for i in range(landmarkNode.GetNumberOfFiducials()):
       pointsVTK.InsertNextPoint(landmarkNode.GetNthControlPointPositionVector(i))
     geometryFilter = vtk.vtkVertexGlyphFilter()
@@ -774,14 +774,14 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
     geometryFilter.Update()
     vertPolyData = geometryFilter.GetOutput()
     mirrorPoints = self.clipAndMirrorWithPlane(vertPolyData, plane)
-    mirrorMesh = self.clipAndMirrorWithPlane(mesh, plane)
+    mirrorMesh = self.clipAndMirrorWithPlane(model, plane)
     # get clipped point set
     clippedPoints = self.cropWithPlane(vertPolyData, plane)
     insideOutOption = True
-    clippedMesh = self.cropWithPlane(mesh, plane, insideOutOption)
+    clippedMesh = self.cropWithPlane(model, plane, insideOutOption)
 
-    # project mirrored points onto mesh
-    maxProjection = mesh.GetLength()*.3
+    # project mirrored points onto model
+    maxProjection = model.GetLength()*.3
     projectedPoints = self.projectPointsPolydata(mirrorMesh, clippedMesh, mirrorPoints, maxProjection)
 
     # convert symmetric points to landmark node
@@ -814,7 +814,7 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
     totalLMNode.GetDisplayNode().SetSelectedColor(green)
     totalLMNode.GetDisplayNode().SetColor(purple)
 
-    samplingDistance = mesh.GetLength()*samplingPercentage
+    samplingDistance = model.GetLength()*samplingPercentage
     spatialConstraint = samplingDistance*samplingDistance
     mergedPoint = [0,0,0]
     for i in range(projectedPoints.GetNumberOfPoints()):
