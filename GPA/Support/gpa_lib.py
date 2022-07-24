@@ -130,7 +130,6 @@ def runGPA(allLandmarkSets):
   while diff>0.0001 and tries<5:
     allLandmarkSets = procrustesAlign(initialMeanShape,allLandmarkSets)
     currentMeanShape=meanShape(allLandmarkSets)
-    currentMeanShape= scaleShape(currentMeanShape)
     diff=np.linalg.norm(initialMeanShape-currentMeanShape)
     initialMeanShape=currentMeanShape
     tries=tries+1
