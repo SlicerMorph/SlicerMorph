@@ -344,7 +344,7 @@ class LMData:
     files = files.reshape(i[0], 1)
     k, j, i = self.lmOrig.shape
 
-    coords = gpa_lib.makeTwoDim(self.lm)
+    coords = self.flattenArray(self.lm)
     self.procdist = self.procdist.reshape(i, 1)
     self.centriodSize = self.centriodSize.reshape(i, 1)
     tmp = np.column_stack((files, self.procdist, self.centriodSize, np.transpose(coords)))
@@ -366,13 +366,21 @@ class LMData:
     np.savetxt(outputFolder + os.sep + "OutputData.csv", tmp1, fmt="%s", delimiter=",")
 
     # calc PC scores
-    twoDcoors = gpa_lib.makeTwoDim(self.lm)
+    twoDcoors = self.flattenArray(self.lm)
     scores = np.dot(np.transpose(twoDcoors), self.vec)
     scores = np.real(scores)
     headerPC.insert(0, "Sample_name")
     temp = np.column_stack((files.reshape(i, 1), scores))
     temp = np.vstack((headerPC, temp))
     np.savetxt(outputFolder + os.sep + "pcScores.csv", temp, fmt="%s", delimiter=",")
+    
+  def flattenArray(self, dataArray):
+    i,j,k=dataArray.shape
+    tmp=np.zeros((i*j,k))
+    for x in range(k):
+        vec=np.reshape(dataArray[:,:,x],(i*j),order='A')
+        tmp[:,x]=vec
+    return tmp
 
   def closestSample(self,files):
     import operator
