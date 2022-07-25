@@ -366,7 +366,7 @@ class LMData:
     np.savetxt(outputFolder + os.sep + "OutputData.csv", tmp1, fmt="%s", delimiter=",")
 
     # calc PC scores
-    twoDcoors = self.flattenArray(self.lm)
+    twoDcoors = gpa_lib.makeTwoDim(self.lm)
     scores = np.dot(np.transpose(twoDcoors), self.vec)
     scores = np.real(scores)
     headerPC.insert(0, "Sample_name")
