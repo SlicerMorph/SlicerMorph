@@ -666,11 +666,9 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
           paths[0], volumeArray[0].shape[0], volumeArray[0].shape[1],
           path, sliceArray.shape[0], sliceArray.shape[1],
           sliceArray.shape[2] if len(sliceArray.shape)==3 else 1))
-        message = "There are multiple datasets in the folder. Please select a single file as a sample or specify a pattern.\nDetails:\n{0} size is {1} x {2} ({6} scalar components)\n\n{3} size is {4} x {5} ({7} scalar components)".format(
-          paths[0], firstArrayFullShape[0], firstArrayFullShape[1],
-          path, currentArrayFullShape[0], currentArrayFullShape[1],
-          firstArrayFullShape[2] if firstArrayFullShape[2]==3 else 1,
-          currentArrayFullShape[2] if currentArrayFullShape[2]==3 else 1)
+        message = "There are multiple datasets in the folder. Please select a single file as a sample or specify a pattern.\nDetails:\n"
+        message += f"{paths[0]} size is {firstArrayFullShape[0]} x {firstArrayFullShape[1]} ({firstArrayFullShape[2] if len(firstArrayFullShape)==3 else 1} scalar components)\n\n"
+        message += f"{path} size is {currentArrayFullShape[0]} x {currentArrayFullShape[1]} ({currentArrayFullShape[2] if len(currentArrayFullShape)==3 else 1} scalar components)"
         raise ValueError(message)
       volumeArray[sliceIndex] = sliceArray
       sliceIndex += 1
