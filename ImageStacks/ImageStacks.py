@@ -65,6 +65,8 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     self.logic = ImageStacksLogic()
     self.outputROINode = None  # observed ROI node
+    self.loadingIsInProgress = False
+    self.cancelRequested = False
 
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
@@ -218,6 +220,11 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.loadButton.enabled = False
     outputFormLayout.addRow(self.loadButton)
 
+    self.progressBar = qt.QProgressBar()
+    self.progressBar.hide()
+    self.progressBar.maximum = 100
+    outputFormLayout.addRow(self.progressBar)
+
     # connections
     self.reverseCheckBox.connect('toggled(bool)', self.updateLogicFromWidget)
     self.sliceSkipSpinBox.connect("valueChanged(int)", self.updateLogicFromWidget)
@@ -317,7 +324,9 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.onClear()
     filePath = self.archetypeText.text
     if filePath.find('%') == -1:
-      index = len(filePath) -1
+      # start searching for the first number before the file extension (the file extension itself
+      # can contain numbers that should be ignored, such as .jp2)
+      index = filePath.rfind(".") - 1
       while index > 0 and (filePath[index] < '0' or filePath[index] > '9'):
         index -= 1
       numberEndIndex = index
@@ -390,9 +399,20 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.updateWidgetFromLogic()
 
   def onLoadButton(self):
+
+    if self.loadingIsInProgress:
+      self.cancelRequested = True
+      return
+
+    self.loadingIsInProgress = True
+    self.progressBar.value = 0
+    self.progressBar.show()
+    self.loadButton.text = "Cancel loading"
+
     qt.QApplication.setOverrideCursor(qt.Qt.WaitCursor)
     try:
-      outputNode = self.logic.loadVolume(self.currentNode())
+      slicer.app.pauseRender()
+      outputNode = self.logic.loadVolume(self.currentNode(), progressCallback=self.onProgress)
       self.setCurrentNode(outputNode)
       qt.QApplication.restoreOverrideCursor()
     except Exception as e:
@@ -401,6 +421,18 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       slicer.util.errorDisplay("Loading failed: " + message, detailedText=details)
       import traceback
       traceback.print_exc()
+
+    slicer.app.resumeRender()
+    self.cancelRequested = False
+    self.loadingIsInProgress = False
+    self.progressBar.hide()
+    self.loadButton.text = "Load files"
+
+  def onProgress(self, percentComplete):
+    self.progressBar.value = int(self.progressBar.maximum * percentComplete)
+    slicer.app.processEvents()
+    return not self.cancelRequested
+
 
 #
 # File dialog to allow drag-and-drop of folders and files
@@ -432,7 +464,7 @@ class ImageStacksFileDialog:
   @staticmethod
   def pathsFromMimeData(mimeData):
     filesToAdd = []
-    acceptedFileExtensions = ['jpg', 'jpeg', 'tif', 'tiff', 'png', 'bmp']
+    acceptedFileExtensions = ['jpg', 'jpeg', 'tif', 'tiff', 'png', 'bmp', 'jp2']
     if mimeData.hasFormat('text/uri-list'):
       urls = mimeData.urls()
       for url in urls:
@@ -605,7 +637,7 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
 
     return ijkToRAS, extent, numberOfScalarComponents
 
-  def loadVolume(self, outputNode=None):
+  def loadVolume(self, outputNode=None, progressCallback=None):
     """
     Load the files in paths to outputNode.
     TODO: currently downsample is done with nearest neighbor filtering
@@ -632,6 +664,12 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
     sliceIndex = 0
     firstArrayFullShape = None
     for inputSliceIndex, path in enumerate(paths):
+
+      if progressCallback:
+        toContinue = progressCallback(inputSliceIndex/len(paths))
+        if not toContinue:
+          raise ValueError("User requested cancel")
+
       if inputSliceIndex < extent[4] or inputSliceIndex > extent[5]:
         # out of selected bounds
         continue
