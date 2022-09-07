@@ -74,7 +74,7 @@ We  recommend that the user manually install the following extensions that provi
 - [**SlicerIGT:** Provides landmark driven registration (affine and deformable) of volumes and models.](https://github.com/SlicerIGT/SlicerIGT)
 - [**Sandbox:** Provides utilities like Cross-sectional Area from segments, Lights module for more in-depth lighting control and CurvePlanarReformat module for straightening of curved structures (e.g., coiled snake scans.](https://github.com/PerkLab/SlicerSandbox/)
 - [**DCM2NIIX:** Provides a user-interface for the DICOM to NIFTI converter DCM2NIIX. Ideal for stripping metadata from DICOM datasets.](https://github.com/rordenlab/dcm2niix)
-- [**RawImageGuess:** A module that enables the user to import proprietary imaging formats by specifying data type, image dimensions and endiness.](https://github.com/acetylsalicyl/SlicerRawImageGuess)
+- [**RawImageGuess:** A module that enables the user to import proprietary imaging formats by specifying data type, image dimensions and endianness.](https://github.com/acetylsalicyl/SlicerRawImageGuess)
 
 ## SlicerMorph Tutorials
 [We have step-by-step module specific tutorials that is useful for people starting with Slicer and SlicerMorph.](https://github.com/SlicerMorph/Tutorials)

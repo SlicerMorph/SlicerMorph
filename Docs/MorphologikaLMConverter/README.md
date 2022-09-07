@@ -1,5 +1,5 @@
 ## MorphologikaLMConverter
-**SUMMARY:** This module convertes [Morphologika 2.5](https://sites.google.com/site/hymsfme/downloadmorphologica) formatted data files into series of fcsv files that can be  loaded into Slicer or directly input into the SlicerMorph's GPA module.
+**SUMMARY:** This module converts [Morphologika 2.5](https://sites.google.com/site/hymsfme/downloadmorphologica) formatted data files into series of fcsv files that can be  loaded into Slicer or directly input into the SlicerMorph's GPA module.
 
 ### USAGE
 
