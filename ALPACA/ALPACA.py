@@ -777,7 +777,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.resetFactors()
 
 
-  #Add table for entering user-defined catalogs/groups for each speciimen
+  #Add table for entering user-defined catalogs/groups for each specimen
   def enterFactors(self):
     #If has table node, remove table node and build a new one
     if hasattr(self, 'factorTableNode') == False:
