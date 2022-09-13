@@ -373,7 +373,7 @@ class LMData:
     temp = np.column_stack((files.reshape(i, 1), scores))
     temp = np.vstack((headerPC, temp))
     np.savetxt(outputFolder + os.sep + "pcScores.csv", temp, fmt="%s", delimiter=",")
-    
+
   def flattenArray(self, dataArray):
     i,j,k=dataArray.shape
     tmp=np.zeros((i*j,k))
