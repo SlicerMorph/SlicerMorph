@@ -156,9 +156,9 @@ class ROIAction(AnimatorAction):
     if False:
       # don't create start-and-end ROIs, but instead rely on
       # user to create them so they can have more than
-      startROI = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLAnnotationROINode')
+      startROI = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsROINode')
       startROI.SetName('Start ROI')
-      endROI = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLAnnotationROINode')
+      endROI = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsROINode')
       endROI.SetName('End ROI')
       for roi in [startROI, endROI]:
         for index in range(roi.GetNumberOfDisplayNodes()):
@@ -228,7 +228,7 @@ class ROIAction(AnimatorAction):
     super().gui(action, layout)
 
     self.startSelector = slicer.qMRMLNodeComboBox()
-    self.startSelector.nodeTypes = ["vtkMRMLAnnotationROINode", "vtkMRMLMarkupsROINode"]
+    self.startSelector.nodeTypes = ["vtkMRMLMarkupsROINode", "vtkMRMLAnnotationROINode"]
     self.startSelector.addEnabled = True
     self.startSelector.renameEnabled = True
     self.startSelector.removeEnabled = True
@@ -242,7 +242,7 @@ class ROIAction(AnimatorAction):
     layout.addRow("Start ROI", self.startSelector)
 
     self.endSelector = slicer.qMRMLNodeComboBox()
-    self.endSelector.nodeTypes = ["vtkMRMLAnnotationROINode", "vtkMRMLMarkupsROINode"]
+    self.endSelector.nodeTypes = ["vtkMRMLMarkupsROINode", "vtkMRMLAnnotationROINode"]
     self.endSelector.addEnabled = True
     self.endSelector.renameEnabled = True
     self.endSelector.removeEnabled = True
@@ -256,7 +256,7 @@ class ROIAction(AnimatorAction):
     layout.addRow("End ROI", self.endSelector)
 
     self.animatedSelector = slicer.qMRMLNodeComboBox()
-    self.animatedSelector.nodeTypes = ["vtkMRMLAnnotationROINode", "vtkMRMLMarkupsROINode"]
+    self.animatedSelector.nodeTypes = ["vtkMRMLMarkupsROINode", "vtkMRMLAnnotationROINode"]
     self.animatedSelector.addEnabled = True
     self.animatedSelector.renameEnabled = True
     self.animatedSelector.removeEnabled = True
