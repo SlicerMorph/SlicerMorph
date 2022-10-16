@@ -358,6 +358,9 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.targetModelNode.GetDisplayNode().SetVisibility(False)
     self.ui.sourceLandmarkSetSelector.currentNode().GetDisplayNode().SetVisibility(False)
 
+    #print('Pranjal testing 1 ', self.sourceModelNode_clone)
+    #print('Pranjal testing 2 ', self.targetModelNode)
+
     self.sourcePoints, self.targetPoints, self.sourceFeatures, \
       self.targetFeatures, self.voxelSize, self.scaling = logic.runSubsample(self.sourceModelNode_clone, self.targetModelNode, self.ui.skipScalingCheckBox.checked, self.parameterDictionary)
     # Convert to VTK points for visualization
@@ -1329,29 +1332,247 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     icp = self.refine_registration(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, ransac, parameters["ICPDistanceThreshold"])
     return icp.transformation
 
+  # def getVolume(pmax, pmin):
+  #   volume = (pmax[0] - pmin[0]) * (pmax[1] - pmin[1]) * (pmax[2] - pmin[2])
+  #   return volume
+  
+  def cleanMesh(self, vtk_mesh):
+    # Get largest connected component and clean the mesh to remove un-used points
+    connectivityFilter = vtk.vtkPolyDataConnectivityFilter()
+    connectivityFilter.SetInputData(vtk_mesh)
+    connectivityFilter.SetExtractionModeToLargestRegion()
+    connectivityFilter.Update()
+    vtk_mesh_out = connectivityFilter.GetOutput()
+
+    filter1 = vtk.vtkCleanPolyData()
+    filter1.SetInputData(vtk_mesh_out)
+    filter1.Update()
+    vtk_mesh_out_clean = filter1.GetOutput()
+
+    triangle_filter = vtk.vtkTriangleFilter()
+    triangle_filter.SetInputData(vtk_mesh_out_clean)
+    triangle_filter.SetPassLines(False)
+    triangle_filter.SetPassVerts(False)
+    triangle_filter.Update()
+    vtk_mesh_out_clean = triangle_filter.GetOutput()
+    return vtk_mesh_out_clean
+
+  def set_numpy_points_in_vtk(self, vtk_polydata, points_as_numpy):
+    """
+    Sets the numpy points to a vtk_polydata
+    """
+    import vtk
+    from vtk.util import numpy_support
+    vtk_data_array = numpy_support.numpy_to_vtk(
+        num_array=points_as_numpy, deep=True, array_type=vtk.VTK_FLOAT
+    )
+    points2 = vtk.vtkPoints()
+    points2.SetData(vtk_data_array)
+    vtk_polydata.SetPoints(points2)
+    return
+  
+  def get_numpy_points_from_vtk(self, vtk_polydata):
+    import vtk
+    from vtk.util import numpy_support
+    """
+    Returns the points as numpy from a vtk_polydata
+    """
+    points = vtk_polydata.GetPoints()
+    pointdata = points.GetData()
+    points_as_numpy = numpy_support.vtk_to_numpy(pointdata)
+    return points_as_numpy
+  
+  def getnormals(self, inputmesh):
+    """
+    To obtain the normal for each point from the triangle mesh.
+    """
+    normals = vtk.vtkTriangleMeshPointNormals()
+    normals.SetInputData(inputmesh)
+    normals.Update()
+    return normals.GetOutput()
+
+  def subsample_points_poisson_polydata(self, inputMesh, radius):
+    '''
+        Subsamples the points and returns vtk points so 
+        that it has normal data also in it.
+    '''
+    import vtk
+    from vtk.util import numpy_support
+
+    f = vtk.vtkPoissonDiskSampler()
+    f.SetInputData(inputMesh)
+    f.SetRadius(radius)
+    f.Update()
+    sampled_points = f.GetOutput()
+    return sampled_points
+  
+  def extract_normal_from_tuple(self, input_mesh):
+    """
+    Extracts the normal data from the sampled points.
+    Returns points and normals for the points.
+    """
+    import vtk
+    from vtk.util import numpy_support
+    t1 = input_mesh.GetPointData().GetArray("Normals")
+    n1_array = []
+    for i in range(t1.GetNumberOfTuples()):
+        n1_array.append(t1.GetTuple(i))
+    n1_array = np.array(n1_array)
+
+    points = input_mesh.GetPoints()
+    pointdata = points.GetData()
+    as_numpy = numpy_support.vtk_to_numpy(pointdata)
+
+    return as_numpy, n1_array
+  
+  def get_fpfh_feature(self, points_np, normals_np, radius, neighbors):
+    import itk
+    pointset = itk.PointSet[itk.F, 3].New()
+    pointset.SetPoints(
+        itk.vector_container_from_array(points_np.flatten().astype("float32"))
+    )
+
+    normalset = itk.PointSet[itk.F, 3].New()
+    normalset.SetPoints(
+        itk.vector_container_from_array(normals_np.flatten().astype("float32"))
+    )
+
+    fpfh = itk.Fpfh.PointFeature.MF3MF3.New()
+    fpfh.ComputeFPFHFeature(pointset, normalset, int(radius), int(neighbors))
+    result = fpfh.GetFpfhFeature()
+
+    fpfh_feats = itk.array_from_vector_container(result)
+    fpfh_feats = np.reshape(fpfh_feats, [33, pointset.GetNumberOfPoints()]).T
+    return fpfh_feats
+
   def runSubsample(self, sourceModel, targetModel, skipScaling, parameters):
-    from open3d import io
-    from open3d import geometry
-    from open3d import utility
+    import copy
+    import vtk
+    from vtk.util import numpy_support
+    print("parameters are ", parameters)
     print(":: Loading point clouds and downsampling")
-    sourcePoints = slicer.util.arrayFromModelPoints(sourceModel)
-    source = geometry.PointCloud()
-    source.points = utility.Vector3dVector(sourcePoints)
-    targetPoints = slicer.util.arrayFromModelPoints(targetModel)
-    target = geometry.PointCloud()
-    target.points = utility.Vector3dVector(targetPoints)
-    sourceSize = np.linalg.norm(np.asarray(source.get_max_bound()) - np.asarray(source.get_min_bound()))
-    targetSize = np.linalg.norm(np.asarray(target.get_max_bound()) - np.asarray(target.get_min_bound()))
-    voxel_size = targetSize/(55*parameters["pointDensity"])
-    scaling = (targetSize)/sourceSize
+    
+    sourceModelMesh = sourceModel.GetMesh()
+    targetModelMesh = targetModel.GetMesh()
+
+    sourceModelMesh = self.cleanMesh(sourceModelMesh)
+    targetModelMesh = self.cleanMesh(targetModelMesh)
+
+    vtk_meshes = []
+    vtk_meshes.append(targetModelMesh)
+    vtk_meshes.append(sourceModelMesh)
+
+    # Scale the mesh and the landmark points
+    box_filter = vtk.vtkBoundingBox()
+    box_filter.SetBounds(vtk_meshes[0].GetBounds())
+    fixedlength = box_filter.GetDiagonalLength()
+    fixedLengths = [0.0, 0.0, 0.0]
+    box_filter.GetLengths(fixedLengths)
+    fixedVolume = np.prod(fixedLengths)
+
+    box_filter = vtk.vtkBoundingBox()
+    box_filter.SetBounds(vtk_meshes[1].GetBounds())
+    movinglength = box_filter.GetDiagonalLength()
+    movingLengths = [0.0, 0.0, 0.0]
+    box_filter.GetLengths(movingLengths)
+    movingVolume = np.prod(movingLengths)
+
+    print("Scale length are  ", fixedlength, movinglength)
+    scaling = fixedlength / movinglength
+
+    points = vtk_meshes[1].GetPoints()
+    pointdata = points.GetData()
+    points_as_numpy = numpy_support.vtk_to_numpy(pointdata)
+
     if skipScaling != 0:
         scaling = 1
-    source.scale(scaling, center = (0,0,0))
-    points = slicer.util.arrayFromModelPoints(sourceModel)
-    points[:] = np.asarray(source.points)
-    sourceModel.GetPolyData().GetPoints().GetData().Modified()
-    source_down, source_fpfh = self.preprocess_point_cloud(source, voxel_size, parameters["normalSearchRadius"], parameters["FPFHSearchRadius"])
-    target_down, target_fpfh = self.preprocess_point_cloud(target, voxel_size, parameters["normalSearchRadius"], parameters["FPFHSearchRadius"])
+    points_as_numpy = points_as_numpy * scaling
+    self.set_numpy_points_in_vtk(vtk_meshes[1], points_as_numpy)
+
+    # Get the offsets to align the minimum of moving and fixed mesh
+    vtk_mesh_offsets = []
+    for i, mesh in enumerate(vtk_meshes):
+        mesh_points = self.get_numpy_points_from_vtk(mesh)
+        vtk_mesh_offset = np.min(mesh_points, axis=0)
+        vtk_mesh_offsets.append(vtk_mesh_offset)
+    
+    # Only move the moving mesh
+    mesh_points = self.get_numpy_points_from_vtk(vtk_meshes[1])
+    offset_amount = (vtk_mesh_offsets[1] - vtk_mesh_offsets[0])
+    mesh_points = mesh_points - offset_amount
+    self.set_numpy_points_in_vtk(vtk_meshes[1], mesh_points)
+
+    sourceModel.SetAndObserveMesh(vtk_meshes[1])
+
+    sourceFullMesh_vtk = self.getnormals(vtk_meshes[1])
+    targetFullMesh_vtk = self.getnormals(vtk_meshes[0])
+
+    print('movingMesh_vtk.GetNumberOfPoints() ', sourceFullMesh_vtk.GetNumberOfPoints())
+    print('fixedMesh_vtk.GetNumberOfPoints() ', targetFullMesh_vtk.GetNumberOfPoints())
+    
+    # Sub-Sample the points for rigid refinement and deformable registration
+    subsample_radius_moving = 0.25*((movingVolume/(4.19*5000)) ** (1./3.))
+
+    print('Initial estimate of subsample_radius_moving is ', subsample_radius_moving)
+
+    point_density = parameters['pointDensity']
+    increment_radius = 0.25*subsample_radius_moving
+    while (True):
+      sourceMesh_vtk = self.subsample_points_poisson_polydata(
+          sourceFullMesh_vtk, radius=subsample_radius_moving
+      )
+      print('Resampling moving with radius = ', subsample_radius_moving, sourceMesh_vtk.GetNumberOfPoints())
+      if sourceMesh_vtk.GetNumberOfPoints() < 5500:
+          break
+      else:
+          subsample_radius_moving = subsample_radius_moving + increment_radius
+    if point_density != 1:
+        print('point density is not 1 ', point_density)
+        subsample_radius_moving = subsample_radius_moving - (point_density-1)*increment_radius
+        sourceMesh_vtk = self.subsample_points_poisson_polydata(sourceFullMesh_vtk, radius=subsample_radius_moving)
+
+
+    subsample_radius_fixed = 0.25*((fixedVolume/(4.19*5000)) ** (1./3.))
+    print('Initial estimate of subsample_radius_fixed is ', subsample_radius_fixed)
+    increment_radius = 0.25*subsample_radius_fixed
+    while (True):
+        targetMesh_vtk = self.subsample_points_poisson_polydata(
+            targetFullMesh_vtk, radius=subsample_radius_fixed
+        )
+        print('Resampling fixed with radius = ', subsample_radius_fixed, targetMesh_vtk.GetNumberOfPoints())
+        if targetMesh_vtk.GetNumberOfPoints() < 5500:
+            break
+        else:
+            subsample_radius_fixed = subsample_radius_fixed + increment_radius
+    if point_density != 1:
+        print('point density is not 1 ', point_density)
+        subsample_radius_fixed = subsample_radius_fixed - (point_density-1)*increment_radius
+        targetMesh_vtk = self.subsample_points_poisson_polydata(targetFullMesh_vtk, radius=subsample_radius_fixed)
+    
+    movingMeshPoints, movingMeshPointNormals = self.extract_normal_from_tuple(sourceMesh_vtk)
+    fixedMeshPoints, fixedMeshPointNormals = self.extract_normal_from_tuple(targetMesh_vtk)
+
+    print('------------------------------------------------------------')
+    print("movingMeshPoints.shape ", movingMeshPoints.shape)
+    print("movingMeshPointNormals.shape ", movingMeshPointNormals.shape)
+    print("fixedMeshPoints.shape ", fixedMeshPoints.shape)
+    print("fixedMeshPointNormals.shape ", fixedMeshPointNormals.shape)
+    print('------------------------------------------------------------')
+
+    fpfh_radius = parameters['FPFHSearchRadius']
+    fpfh_neighbors = 100
+    # New FPFH Code
+    pcS = np.expand_dims(fixedMeshPoints, -1)
+    normal_np_pcl = fixedMeshPointNormals
+    target_fpfh = self.get_fpfh_feature(pcS, normal_np_pcl, fpfh_radius, fpfh_neighbors)
+
+    pcS = np.expand_dims(movingMeshPoints, -1)
+    normal_np_pcl = movingMeshPointNormals
+    source_fpfh = self.get_fpfh_feature(pcS, normal_np_pcl, fpfh_radius, fpfh_neighbors)
+
+    voxel_size = subsample_radius_moving
+    target_down = fixedMeshPoints
+    source_down = movingMeshPoints
     return source_down, target_down, source_fpfh, target_fpfh, voxel_size, scaling
 
   def loadAndScaleFiducials (self, fiducial, scaling, scene = False):
@@ -1395,11 +1616,11 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     return (dx**2.0+dy**2.0+dz**2.0)**0.5
 
   def preprocess_point_cloud(self, pcd, voxel_size, radius_normal_factor, radius_feature_factor):
-    from open3d import geometry
-    from open3d import pipelines
+    #from open3d import geometry
+    #from open3d import pipelines
     registration = pipelines.registration
-    print(":: Downsample with a voxel size %.3f." % voxel_size)
-    pcd_down = pcd.voxel_down_sample(voxel_size)
+    #print(":: Downsample with a voxel size %.3f." % voxel_size)
+    #pcd_down = pcd.voxel_down_sample(voxel_size)
     radius_normal = voxel_size * radius_normal_factor
     print(":: Estimate normal with search radius %.3f." % radius_normal)
     pcd_down.estimate_normals(
