@@ -358,13 +358,10 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.targetModelNode.GetDisplayNode().SetVisibility(False)
     self.ui.sourceLandmarkSetSelector.currentNode().GetDisplayNode().SetVisibility(False)
 
-    #print('Pranjal testing 1 ', self.sourceModelNode_clone)
-    #print('Pranjal testing 2 ', self.targetModelNode)
-
     self.sourcePoints, self.targetPoints, self.sourceFeatures, \
       self.targetFeatures, self.voxelSize, self.scaling = logic.runSubsample(self.sourceModelNode_clone, self.targetModelNode, self.ui.skipScalingCheckBox.checked, self.parameterDictionary)
     # Convert to VTK points for visualization
-    self.targetVTK = logic.convertPointsToVTK(self.targetPoints.points)
+    self.targetVTK = logic.convertPointsToVTK(self.targetPoints)
 
     slicer.mrmlScene.RemoveNode(self.sourceModelNode_clone)
 
@@ -374,10 +371,12 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.targetCloudNodeTest.GetDisplayNode().SetVisibility(True)
     self.updateLayout()
 
+    print('Pranjal layout updated')
+
     # Output information on subsampling
     self.ui.subsampleInfo.clear()
-    self.ui.subsampleInfo.insertPlainText(f':: Your subsampled source pointcloud has a total of {len(self.sourcePoints.points)} points. \n')
-    self.ui.subsampleInfo.insertPlainText(f':: Your subsampled target pointcloud has a total of {len(self.targetPoints.points)} points. ')
+    self.ui.subsampleInfo.insertPlainText(f':: Your subsampled source pointcloud has a total of {len(self.sourcePoints)} points. \n')
+    self.ui.subsampleInfo.insertPlainText(f':: Your subsampled target pointcloud has a total of {len(self.targetPoints)} points. ')
 
     self.ui.runALPACAButton.enabled = True
     if bool(self.ui.targetLandmarkSetSelector.currentNode()) == True:
@@ -437,7 +436,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.sourcePoints, self.targetPoints, self.sourceFeatures, \
       self.targetFeatures, self.voxelSize, self.scaling = logic.runSubsample(self.sourceModelNode, self.targetModelNode, self.ui.skipScalingCheckBox.checked, self.parameterDictionary)
     # Convert to VTK points for visualization
-    self.targetVTK = logic.convertPointsToVTK(self.targetPoints.points)
+    self.targetVTK = logic.convertPointsToVTK(self.targetPoints)
 
     blue=[0,0,1]
     self.targetCloudNode_2 = logic.displayPointCloud(self.targetVTK, self.voxelSize / 10, 'Target Pointcloud_'+run_counter, blue)
