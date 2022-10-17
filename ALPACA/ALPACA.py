@@ -1,5 +1,6 @@
 ##BASE PYTHON
 import os
+from re import S
 import unittest
 import logging
 import copy
@@ -333,9 +334,20 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.ui.applyLandmarkMultiButton.enabled = bool ( self.ui.sourceModelMultiSelector.currentPath and self.ui.sourceFiducialMultiSelector.currentPath
       and self.ui.targetModelMultiSelector.currentPath and self.ui.landmarkOutputSelector.currentPath )
 
+
   def onSelectReplicateAnalysis(self):
     self.ui.replicationNumberLabel.enabled = bool( self.ui.replicateAnalysisCheckBox.isChecked())
     self.ui.replicationNumberSpinBox.enabled = bool ( self.ui.replicateAnalysisCheckBox.isChecked())
+
+
+  def transform_numpy_points(self, points_np, transform):
+    import itk
+    mesh = itk.Mesh[itk.F, 3].New()
+    mesh.SetPoints(itk.vector_container_from_array(points_np.flatten().astype('float32')))
+    transformed_mesh = itk.transform_mesh_filter(mesh, transform=transform)
+    points_tranformed = itk.array_from_vector_container(transformed_mesh.GetPoints())
+    points_tranformed = np.reshape(points_tranformed, [-1, 3])
+    return points_tranformed
 
   def onSubsampleButton(self):
     try:
@@ -367,7 +379,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
 
     # Display target points
     blue=[0,0,1]
-    self.targetCloudNodeTest = logic.displayPointCloud(self.targetVTK, self.voxelSize / 10, 'Target Pointcloud_test', blue)
+    self.targetCloudNodeTest = logic.displayPointCloud(self.targetVTK, self.voxelSize / 7, 'Target Pointcloud_test', blue)
     self.targetCloudNodeTest.GetDisplayNode().SetVisibility(True)
     self.updateLayout()
 
@@ -443,15 +455,16 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.targetCloudNode_2.GetDisplayNode().SetVisibility(False)
     # Output information on subsampling
     self.ui.subsampleInfo.clear()
-    self.ui.subsampleInfo.insertPlainText(f':: Your subsampled source pointcloud has a total of {len(self.sourcePoints.points)} points. \n')
-    self.ui.subsampleInfo.insertPlainText(f':: Your subsampled target pointcloud has a total of {len(self.targetPoints.points)} points. ')
+    self.ui.subsampleInfo.insertPlainText(f':: Your subsampled source pointcloud has a total of {len(self.sourcePoints)} points. \n')
+    self.ui.subsampleInfo.insertPlainText(f':: Your subsampled target pointcloud has a total of {len(self.targetPoints)} points. ')
     #
     #RANSAC & ICP transformation of source pointcloud
-    self.transformMatrix = logic.estimateTransform(self.sourcePoints, self.targetPoints, self.sourceFeatures, self.targetFeatures, self.voxelSize, self.ui.skipScalingCheckBox.checked, self.parameterDictionary)
+    [self.transformMatrix, self.transformMatrix_rigid] = logic.estimateTransform(self.sourcePoints, self.targetPoints, self.sourceFeatures, self.targetFeatures, self.voxelSize, self.ui.skipScalingCheckBox.checked, self.parameterDictionary)
     self.ICPTransformNode = logic.convertMatrixToTransformNode(self.transformMatrix, 'Rigid Transformation Matrix_'+run_counter)
-    self.sourcePoints.transform(self.transformMatrix)
+    self.sourcePoints = self.transform_numpy_points(self.sourcePoints, self.transformMatrix)
+    self.sourcePoints = self.transform_numpy_points(self.sourcePoints, self.transformMatrix_rigid)
     #Setup source pointcloud VTK object
-    self.sourceVTK = logic.convertPointsToVTK(self.sourcePoints.points)
+    self.sourceVTK = logic.convertPointsToVTK(self.sourcePoints)
     #
     red=[1,0,0]
     self.sourceCloudNode = logic.displayPointCloud(self.sourceVTK, self.voxelSize / 10, ('Source Pointcloud (rigidly registered)_'+run_counter), red)
@@ -1260,17 +1273,24 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         matrix_vtk.SetElement(i,j,matrix[i][j])
     return matrix_vtk
 
-  def convertMatrixToTransformNode(self, matrix, transformName):
+  def itkToVTKTransform(self, itkTransform):
+    translation = itkTransform.GetTranslation()
+    matrix = itkTransform.GetMatrix()
     matrix_vtk = vtk.vtkMatrix4x4()
-    for i in range(4):
-      for j in range(4):
-        matrix_vtk.SetElement(i,j,matrix[i][j])
+    for i in range(3):
+      for j in range(3):
+        matrix_vtk.SetElement(i, j, matrix(i, j))
+    for i in range(3):
+      matrix_vtk.SetElement(i, 3, translation[i])
 
     transform = vtk.vtkTransform()
     transform.SetMatrix(matrix_vtk)
+    return transform
+  
+  def convertMatrixToTransformNode(self, itkTransform, transformName):
+    transform = self.itkToVTKTransform(itkTransform)
     transformNode =  slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', transformName)
     transformNode.SetAndObserveTransformToParent( transform )
-
     return transformNode
 
   def applyTransform(self, matrix, polydata):
@@ -1323,13 +1343,261 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     modelNode.GetDisplayNode().SetColor(nodeColor)
     return modelNode
 
-  def estimateTransform(self, sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, skipScaling, parameters):
-    ransac = self.execute_global_registration(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize,
-      parameters["distanceThreshold"], parameters["maxRANSAC"], parameters["RANSACConfidence"], skipScaling)
+  def find_knn_cpu(self, feat0, feat1, knn=1, return_distance=False):
+    from scipy.spatial import cKDTree
+    feat1tree = cKDTree(feat1)
+    dists, nn_inds = feat1tree.query(feat0, k=knn)
+    if return_distance:
+        return nn_inds, dists
+    else:
+        return nn_inds
+
+  def find_correspondences(self, feats0, feats1, mutual_filter=True):
+    '''
+        Using the FPFH features find noisy corresspondes.
+        These corresspondes will be used inside the RANSAC.
+    '''
+    nns01, dists1 = self.find_knn_cpu(feats0, feats1, knn=1, return_distance=True)
+    corres01_idx0 = np.arange(len(nns01))
+    corres01_idx1 = nns01
+
+    if not mutual_filter:
+        return corres01_idx0, corres01_idx1
+
+    nns10, dists2 = self.find_knn_cpu(feats1, feats0, knn=1, return_distance=True)
+    corres10_idx1 = np.arange(len(nns10))
+    corres10_idx0 = nns10
+
+    mutual_filter = corres10_idx0[corres01_idx1] == corres01_idx0
+    corres_idx0 = corres01_idx0[mutual_filter]
+    corres_idx1 = corres01_idx1[mutual_filter]
+
+    return corres_idx0, corres_idx1
+  
+  # RANSAC using package
+  def ransac_using_package(self, 
+    movingMeshPoints,
+    fixedMeshPoints,
+    movingMeshFeaturePoints,
+    fixedMeshFeaturePoints,
+    number_of_iterations,
+    number_of_ransac_points,
+    inlier_value):
+    import itk
+    def GenerateData(data, agreeData):
+        """
+            In current implmentation the agreedata contains two corressponding 
+            points from moving and fixed mesh. However, after the subsampling step the 
+            number of points need not be equal in those meshes. So we randomly sample 
+            the points from larger mesh.
+        """
+        data.reserve(movingMeshFeaturePoints.shape[0])
+        for i in range(movingMeshFeaturePoints.shape[0]):
+            point1 = movingMeshFeaturePoints[i]
+            point2 = fixedMeshFeaturePoints[i]
+            input_data = [point1[0], point1[1], point1[2], point2[0], point2[1], point2[2]]
+            input_data = [float(x) for x in input_data]
+            data.push_back(input_data)
+    
+        count_min = int(np.min([movingMeshPoints.shape[0], fixedMeshPoints.shape[0]]))
+
+        mesh1_points  = copy.deepcopy(movingMeshPoints)
+        mesh2_points  = copy.deepcopy(fixedMeshPoints)
+
+        agreeData.reserve(count_min)
+        for i in range(count_min):
+            point1 = mesh1_points[i]
+            point2 = mesh2_points[i]
+            input_data = [point1[0], point1[1], point1[2], point2[0], point2[1], point2[2]]
+            input_data = [float(x) for x in input_data]
+            agreeData.push_back(input_data)
+        return
+
+    data = itk.vector[itk.Point[itk.D, 6]]()
+    agreeData = itk.vector[itk.Point[itk.D, 6]]()
+    GenerateData(data, agreeData)
+
+    transformParameters = itk.vector.D()
+    bestTransformParameters = itk.vector.D()
+
+    maximumDistance = inlier_value
+    RegistrationEstimatorType = itk.Ransac.LandmarkRegistrationEstimator[6]
+    registrationEstimator = RegistrationEstimatorType.New()
+    registrationEstimator.SetMinimalForEstimate(number_of_ransac_points)
+    registrationEstimator.SetAgreeData(agreeData)
+    registrationEstimator.SetDelta(maximumDistance)
+    registrationEstimator.LeastSquaresEstimate(data, transformParameters)
+
+    bestPercentage = 0
+    bestParameters = None
+
+    desiredProbabilityForNoOutliers = 0.99
+    RANSACType = itk.RANSAC[itk.Point[itk.D, 6], itk.D]
+    ransacEstimator = RANSACType.New()
+    ransacEstimator.SetData(data)
+    ransacEstimator.SetAgreeData(agreeData)
+    ransacEstimator.SetMaxIteration(number_of_iterations)
+    ransacEstimator.SetNumberOfThreads(16)
+    ransacEstimator.SetParametersEstimator(registrationEstimator)
+    
+    for i in range(1):    
+        percentageOfDataUsed = ransacEstimator.Compute( transformParameters, desiredProbabilityForNoOutliers )
+        print(i, ' Percentage of data used is ', percentageOfDataUsed)
+        if percentageOfDataUsed > bestPercentage:
+            bestPercentage = percentageOfDataUsed
+            bestParameters = transformParameters
+
+    print("Percentage of points used ", bestPercentage)
+    transformParameters = bestParameters
+    transform = itk.Similarity3DTransform.D.New()
+    p = transform.GetParameters()
+    f = transform.GetFixedParameters()
+    for i in range(7):
+        p.SetElement(i, transformParameters[i])
+    counter = 0
+    for i in range(7, 10):
+        f.SetElement(counter, transformParameters[i])
+        counter = counter + 1
+    transform.SetParameters(p)
+    transform.SetFixedParameters(f)
+    return itk.dict_from_transform(transform), bestPercentage, bestPercentage
+  
+  def get_euclidean_distance(self, input_fixedPoints, input_movingPoints):
+    import itk
+    mesh_fixed = itk.Mesh[itk.D, 3].New()
+    mesh_moving = itk.Mesh[itk.D, 3].New()
+
+    mesh_fixed.SetPoints(itk.vector_container_from_array(input_fixedPoints.flatten()))
+    mesh_moving.SetPoints(itk.vector_container_from_array(input_movingPoints.flatten()))
+
+    MetricType = itk.EuclideanDistancePointSetToPointSetMetricv4.PSD3
+    metric = MetricType.New()
+    metric.SetMovingPointSet(mesh_moving)
+    metric.SetFixedPointSet(mesh_fixed)
+    metric.Initialize()
+
+    return metric.GetValue()
+
+  def final_iteration(self, fixedPoints, movingPoints, transform_type):
+    import itk
+    """
+    Perform the final iteration of alignment.
+    Args:
+        fixedPoints, movingPoints, transform_type: 0 or 1 or 2
+    Returns:
+        (tranformed movingPoints, tranform)
+    """
+    mesh_fixed = itk.Mesh[itk.D, 3].New()
+    mesh_moving = itk.Mesh[itk.D, 3].New()
+    mesh_fixed.SetPoints(itk.vector_container_from_array(fixedPoints.flatten()))
+    mesh_moving.SetPoints(itk.vector_container_from_array(movingPoints.flatten()))
+
+    if transform_type == 0:
+        TransformType = itk.Euler3DTransform[itk.D]
+    elif transform_type == 1:
+        TransformType = itk.ScaleVersor3DTransform[itk.D]
+    elif transform_type == 2:
+        TransformType = itk.Rigid3DTransform[itk.D]
+
+    transform = TransformType.New()
+    transform.SetIdentity()
+
+    MetricType = itk.EuclideanDistancePointSetToPointSetMetricv4.PSD3
+    metric = MetricType.New()
+    metric.SetMovingPointSet(mesh_moving)
+    metric.SetFixedPointSet(mesh_fixed)
+    metric.SetMovingTransform(transform)
+    metric.Initialize()
+
+    number_of_epochs = 1000
+    optimizer = itk.GradientDescentOptimizerv4Template[itk.D].New()
+    optimizer.SetNumberOfIterations(number_of_epochs)
+    optimizer.SetLearningRate(0.00001)
+    optimizer.SetMinimumConvergenceValue(0.0)
+    optimizer.SetConvergenceWindowSize(number_of_epochs)
+    optimizer.SetMetric(metric)
+
+    def print_iteration():
+        if optimizer.GetCurrentIteration()%100 == 0:
+            print(
+                f"It: {optimizer.GetCurrentIteration()}"
+                f" metric value: {optimizer.GetCurrentMetricValue():.6f} "
+            )
+    optimizer.AddObserver(itk.IterationEvent(), print_iteration)
+    optimizer.StartOptimization()
+
+    # Get the correct transform and perform the final alignment
+    current_transform = metric.GetMovingTransform().GetInverseTransform()
+    itk_transformed_mesh = itk.transform_mesh_filter(
+        mesh_moving, transform=current_transform
+    )
+
+    return (
+        itk.array_from_vector_container(itk_transformed_mesh.GetPoints()),
+        current_transform,
+    )
+  
+  def estimateTransform(self, sourcePoints, targetPoints, sourceFeatures, targetFeatures, 
+  voxelSize, skipScaling, parameters):
+    print('Inside estimateTransform')
+    import itk
+    # Establish correspondences by nearest neighbour search in feature space
+    corrs_A, corrs_B = self.find_correspondences(
+        targetFeatures, sourceFeatures, mutual_filter=True
+    )
+
+    targetPoints = targetPoints.T
+    sourcePoints = sourcePoints.T
+
+    fixed_corr = targetPoints[:, corrs_A]    # np array of size 3 by num_corrs
+    moving_corr = sourcePoints[:, corrs_B]  # np array of size 3 by num_corrs
+
+    num_corrs = fixed_corr.shape[1]
+    print(f"FPFH generates {num_corrs} putative correspondences.")
+
+    print(fixed_corr.shape, moving_corr.shape)
+    import time
+    bransac = time.time()
+    print('Before RANSAC ', bransac)
+    # Perform Initial alignment using Ransac parallel iterations
+    transform_matrix, _, value = self.ransac_using_package(
+        movingMeshPoints=sourcePoints.T,
+        fixedMeshPoints=targetPoints.T,
+        movingMeshFeaturePoints=moving_corr.T,
+        fixedMeshFeaturePoints=fixed_corr.T,
+        number_of_iterations=parameters["maxRANSAC"],
+        number_of_ransac_points=100,
+        inlier_value=parameters["distanceThreshold"],
+    )
+    aransac = time.time()
+    print('After RANSAC ', aransac)
+    print('Total Duraction ', aransac - bransac)
+
+    first_transform = itk.transform_from_dict(transform_matrix)
+
+    sourcePoints = sourcePoints.T
+    targetPoints = targetPoints.T
+
+    print("movingMeshPoints.shape ", sourcePoints.shape)
+    print("fixedMeshPoints.shape ", targetPoints.shape)
+
+    print('-----------------------------------------------------------')
+    print("Starting Rigid Refinement")
+    print("Before Distance ", self.get_euclidean_distance(targetPoints, sourcePoints))
+    transform_type = 0
+    final_mesh_points, second_transform = self.final_iteration(
+        targetPoints, sourcePoints, transform_type
+    )
+    print("After Distance ", self.get_euclidean_distance(targetPoints, final_mesh_points))
+    print(first_transform)
+    print(second_transform)
+    return [first_transform, second_transform]
+    #ransac = self.execute_global_registration(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize,
+    #  parameters["distanceThreshold"], parameters["maxRANSAC"], parameters["RANSACConfidence"], skipScaling)
     # Refine the initial registration using an Iterative Closest Point (ICP) registration
     #import time
-    icp = self.refine_registration(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, ransac, parameters["ICPDistanceThreshold"])
-    return icp.transformation
+    #icp = self.refine_registration(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, ransac, parameters["ICPDistanceThreshold"])
+    #return icp.transformation
 
   # def getVolume(pmax, pmin):
   #   volume = (pmax[0] - pmin[0]) * (pmax[1] - pmin[1]) * (pmax[2] - pmin[2])
@@ -1511,7 +1779,6 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     
     # Sub-Sample the points for rigid refinement and deformable registration
     subsample_radius_moving = 0.25*((movingVolume/(4.19*5000)) ** (1./3.))
-
     print('Initial estimate of subsample_radius_moving is ', subsample_radius_moving)
 
     point_density = parameters['pointDensity']
@@ -1529,11 +1796,10 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         print('point density is not 1 ', point_density)
         subsample_radius_moving = subsample_radius_moving - (point_density-1)*increment_radius
         sourceMesh_vtk = self.subsample_points_poisson_polydata(sourceFullMesh_vtk, radius=subsample_radius_moving)
-
-
+    
     subsample_radius_fixed = 0.25*((fixedVolume/(4.19*5000)) ** (1./3.))
     print('Initial estimate of subsample_radius_fixed is ', subsample_radius_fixed)
-    increment_radius = 0.25*subsample_radius_fixed
+    increment_radius = 0.3*subsample_radius_fixed
     while (True):
         targetMesh_vtk = self.subsample_points_poisson_polydata(
             targetFullMesh_vtk, radius=subsample_radius_fixed
@@ -1869,8 +2135,8 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
       skipScalingOption = False
       sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, scaling = self.runSubsample(sourceModelNode, targetModelNode,
         skipScalingOption, parameterDictionary)
-      ICPTransform = self.estimateTransform(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, skipScalingOption, parameterDictionary)
-      ICPTransformNode = self.convertMatrixToTransformNode(ICPTransform, 'Rigid Transformation Matrix')
+      [ICPTransform_similarity, ICPTransform_rigid] = self.estimateTransform(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, skipScalingOption, parameterDictionary)
+      ICPTransformNode = self.convertMatrixToTransformNode(ICPTransform_rigid, 'Rigid Transformation Matrix')
       sourceModelNode.SetAndObserveTransformNodeID(ICPTransformNode.GetID())
       slicer.vtkSlicerTransformLogic().hardenTransform(sourceModelNode)
       alignedSubjectPolydata = sourceModelNode.GetPolyData()
