@@ -371,7 +371,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.ui.sourceLandmarkSetSelector.currentNode().GetDisplayNode().SetVisibility(False)
 
     self.sourcePoints, self.targetPoints, self.sourceFeatures, \
-      self.targetFeatures, self.voxelSize, self.scaling = logic.runSubsample(self.sourceModelNode_clone, self.targetModelNode, self.ui.skipScalingCheckBox.checked, self.parameterDictionary)
+      self.targetFeatures, self.voxelSize, self.scaling, self.offset_amount = logic.runSubsample(self.sourceModelNode_clone, self.targetModelNode, self.ui.skipScalingCheckBox.checked, self.parameterDictionary)
     # Convert to VTK points for visualization
     self.targetVTK = logic.convertPointsToVTK(self.targetPoints)
 
@@ -446,7 +446,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.ui.sourceLandmarkSetSelector.currentNode().GetDisplayNode().SetVisibility(False)
     #
     self.sourcePoints, self.targetPoints, self.sourceFeatures, \
-      self.targetFeatures, self.voxelSize, self.scaling = logic.runSubsample(self.sourceModelNode, self.targetModelNode, self.ui.skipScalingCheckBox.checked, self.parameterDictionary)
+      self.targetFeatures, self.voxelSize, self.scaling, self.offset_amount = logic.runSubsample(self.sourceModelNode, self.targetModelNode, self.ui.skipScalingCheckBox.checked, self.parameterDictionary)
     # Convert to VTK points for visualization
     self.targetVTK = logic.convertPointsToVTK(self.targetPoints)
 
@@ -478,7 +478,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.sourceModelNode.GetDisplayNode().SetVisibility(False)
     #
     #CPD registration
-    self.sourceLandmarks, self.sourceLMNode =  logic.loadAndScaleFiducials(self.ui.sourceLandmarkSetSelector.currentNode(), self.scaling, scene = True)
+    self.sourceLandmarks, self.sourceLMNode =  logic.loadAndScaleFiducials(self.ui.sourceLandmarkSetSelector.currentNode(), self.scaling, self.offset_amount, scene = True)
     self.sourceLandmarks = self.transform_numpy_points(self.sourceLandmarks, self.transformMatrix)
     self.sourceLandmarks = self.transform_numpy_points(self.sourceLandmarks, self.transformMatrix_rigid)
     self.sourceLMNode.SetName("Source_Landmarks_clone_"+run_counter)
@@ -1800,7 +1800,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     
     subsample_radius_fixed = 0.25*((fixedVolume/(4.19*5000)) ** (1./3.))
     print('Initial estimate of subsample_radius_fixed is ', subsample_radius_fixed)
-    increment_radius = 0.3*subsample_radius_fixed
+    increment_radius = 0.25*subsample_radius_fixed
     while (True):
         targetMesh_vtk = self.subsample_points_poisson_polydata(
             targetFullMesh_vtk, radius=subsample_radius_fixed
@@ -1839,9 +1839,9 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     voxel_size = subsample_radius_moving
     target_down = fixedMeshPoints
     source_down = movingMeshPoints
-    return source_down, target_down, source_fpfh, target_fpfh, voxel_size, scaling
+    return source_down, target_down, source_fpfh, target_fpfh, voxel_size, scaling, offset_amount
 
-  def loadAndScaleFiducials (self, fiducial, scaling, scene = False):
+  def loadAndScaleFiducials (self, fiducial, scaling, offset_amount, scene = False):
     if not scene:
       sourceLandmarkNode =  slicer.util.loadMarkups(fiducial)
     else:
@@ -1854,6 +1854,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
       point = sourceLandmarkNode.GetNthControlPointPosition(i)
       sourceLandmarks[i,:] = point
     sourceLandmarks = sourceLandmarks * scaling
+    sourceLandmarks = sourceLandmarks - offset_amount
     slicer.util.updateMarkupsControlPointsFromArray(sourceLandmarkNode, sourceLandmarks)
     sourceLandmarkNode.GetDisplayNode().SetVisibility(False)
     return sourceLandmarks, sourceLandmarkNode
