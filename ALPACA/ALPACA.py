@@ -467,7 +467,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.sourceVTK = logic.convertPointsToVTK(self.sourcePoints)
     #
     red=[1,0,0]
-    self.sourceCloudNode = logic.displayPointCloud(self.sourceVTK, self.voxelSize / 10, ('Source Pointcloud (rigidly registered)_'+run_counter), red)
+    self.sourceCloudNode = logic.displayPointCloud(self.sourceVTK, self.voxelSize / 7, ('Source Pointcloud (rigidly registered)_'+run_counter), red)
     self.sourceCloudNode.GetDisplayNode().SetVisibility(False)
     #
     #Transform the source model
@@ -479,15 +479,16 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     #
     #CPD registration
     self.sourceLandmarks, self.sourceLMNode =  logic.loadAndScaleFiducials(self.ui.sourceLandmarkSetSelector.currentNode(), self.scaling, scene = True)
-    self.sourceLandmarks.transform(self.transformMatrix)
+    self.sourceLandmarks = self.transform_numpy_points(self.sourceLandmarks, self.transformMatrix)
+    self.sourceLandmarks = self.transform_numpy_points(self.sourceLandmarks, self.transformMatrix_rigid)
     self.sourceLMNode.SetName("Source_Landmarks_clone_"+run_counter)
     self.sourceLMNode.SetAndObserveTransformNodeID(self.ICPTransformNode.GetID())
     slicer.vtkSlicerTransformLogic().hardenTransform(self.sourceLMNode)
     #
     #Registration
-    self.registeredSourceArray = logic.runCPDRegistration(self.sourceLandmarks.points, self.sourcePoints.points, self.targetPoints.points, self.parameterDictionary)
+    self.registeredSourceArray = logic.runCPDRegistration(self.sourceLandmarks, self.sourcePoints, self.targetPoints, self.parameterDictionary)
     self.outputPoints = logic.exportPointCloud(self.registeredSourceArray, "Initial ALPACA landmark estimate(unprojected)_"+run_counter) #outputPoints = ininital predicted LMs, non projected
-    self.inputPoints = logic.exportPointCloud(self.sourceLandmarks.points, "Original Landmarks") #input points = source landmarks
+    self.inputPoints = logic.exportPointCloud(self.sourceLandmarks, "Original Landmarks") #input points = source landmarks
     #set up output initial predicted landmarkslandmark as vtk class
     #
     outputPoints_vtk = logic.getFiducialPoints(self.outputPoints)
@@ -1841,8 +1842,6 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     return source_down, target_down, source_fpfh, target_fpfh, voxel_size, scaling
 
   def loadAndScaleFiducials (self, fiducial, scaling, scene = False):
-    from open3d import geometry
-    from open3d import utility
     if not scene:
       sourceLandmarkNode =  slicer.util.loadMarkups(fiducial)
     else:
@@ -1854,12 +1853,10 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     for i in range(sourceLandmarkNode.GetNumberOfControlPoints()):
       point = sourceLandmarkNode.GetNthControlPointPosition(i)
       sourceLandmarks[i,:] = point
-    cloud = geometry.PointCloud()
-    cloud.points = utility.Vector3dVector(sourceLandmarks)
-    cloud.scale(scaling, center = (0,0,0))
-    slicer.util.updateMarkupsControlPointsFromArray(sourceLandmarkNode,np.asarray(cloud.points))
+    sourceLandmarks = sourceLandmarks * scaling
+    slicer.util.updateMarkupsControlPointsFromArray(sourceLandmarkNode, sourceLandmarks)
     sourceLandmarkNode.GetDisplayNode().SetVisibility(False)
-    return cloud, sourceLandmarkNode
+    return sourceLandmarks, sourceLandmarkNode
 
   def propagateLandmarkTypes(self,sourceNode, targetNode):
      for i in range(sourceNode.GetNumberOfControlPoints()):
