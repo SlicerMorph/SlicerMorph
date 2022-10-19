@@ -187,7 +187,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       # wheelPath may contain spaces, therefore pass it as a list (that avoids splitting
       # the argument into multiple command-line arguments when there are spaces in the path)
       slicer.util.pip_install([wheelPath])
-      import open3d as o3d
+      #import open3d as o3d
       import cpdalp
       progressDialog.close()
     if needRestart:
@@ -333,15 +333,6 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.ui.applyLandmarkMultiButton.enabled = bool ( self.ui.sourceModelMultiSelector.currentPath and self.ui.sourceFiducialMultiSelector.currentPath
       and self.ui.targetModelMultiSelector.currentPath and self.ui.landmarkOutputSelector.currentPath )
 
-  def transform_numpy_points(self, points_np, transform):
-    import itk
-    mesh = itk.Mesh[itk.F, 3].New()
-    mesh.SetPoints(itk.vector_container_from_array(points_np.flatten().astype('float32')))
-    transformed_mesh = itk.transform_mesh_filter(mesh, transform=transform)
-    points_tranformed = itk.array_from_vector_container(transformed_mesh.GetPoints())
-    points_tranformed = np.reshape(points_tranformed, [-1, 3])
-    return points_tranformed
-  
   def onSubsampleButton(self):
     try:
       slicer.mrmlScene.RemoveNode(self.targetCloudNodeTest)
@@ -454,26 +445,30 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     #RANSAC & ICP transformation of source pointcloud
     [self.transformMatrix, self.transformMatrix_rigid] = logic.estimateTransform(self.sourcePoints, self.targetPoints, self.sourceFeatures, self.targetFeatures, self.voxelSize, self.ui.skipScalingCheckBox.checked, self.parameterDictionary)
     self.ICPTransformNode = logic.convertMatrixToTransformNode(self.transformMatrix, 'Rigid Transformation Matrix_'+run_counter)
-    self.sourcePoints = self.transform_numpy_points(self.sourcePoints, self.transformMatrix)
-    self.sourcePoints = self.transform_numpy_points(self.sourcePoints, self.transformMatrix_rigid)
+    self.sourcePoints = logic.transform_numpy_points(self.sourcePoints, self.transformMatrix)
+    self.sourcePoints = logic.transform_numpy_points(self.sourcePoints, self.transformMatrix_rigid)
+    
+    self.sourceModelNode.SetAndObserveMesh(logic.transform_points_in_vtk(self.sourceModelNode.GetPolyData(), self.transformMatrix))
+    self.sourceModelNode.SetAndObserveMesh(logic.transform_points_in_vtk(self.sourceModelNode.GetPolyData(), self.transformMatrix_rigid))
+
     #Setup source pointcloud VTK object
     self.sourceVTK = logic.convertPointsToVTK(self.sourcePoints)
     #
     red=[1,0,0]
-    self.sourceCloudNode = logic.displayPointCloud(self.sourceVTK, self.voxelSize / 7, ('Source Pointcloud (rigidly registered)_'+run_counter), red)
+    self.sourceCloudNode = logic.displayPointCloud(self.sourceVTK, self.voxelSize / 10, ('Source Pointcloud (rigidly registered)_'+run_counter), red)
     self.sourceCloudNode.GetDisplayNode().SetVisibility(False)
     #
     #Transform the source model
-    self.sourceModelNode.SetAndObserveTransformNodeID(self.ICPTransformNode.GetID())
-    slicer.vtkSlicerTransformLogic().hardenTransform(self.sourceModelNode)
+    #self.sourceModelNode.SetAndObserveTransformNodeID(self.ICPTransformNode.GetID())
+    #slicer.vtkSlicerTransformLogic().hardenTransform(self.sourceModelNode)
     #
     self.sourceModelNode.GetDisplayNode().SetColor(red)
     self.sourceModelNode.GetDisplayNode().SetVisibility(False)
     #
     #CPD registration
     self.sourceLandmarks, self.sourceLMNode =  logic.loadAndScaleFiducials(self.ui.sourceLandmarkSetSelector.currentNode(), self.scaling, self.offset_amount, scene = True)
-    self.sourceLandmarks = self.transform_numpy_points(self.sourceLandmarks, self.transformMatrix)
-    self.sourceLandmarks = self.transform_numpy_points(self.sourceLandmarks, self.transformMatrix_rigid)
+    self.sourceLandmarks = logic.transform_numpy_points(self.sourceLandmarks, self.transformMatrix)
+    self.sourceLandmarks = logic.transform_numpy_points(self.sourceLandmarks, self.transformMatrix_rigid)
     self.sourceLMNode.SetName("Source_Landmarks_clone_"+run_counter)
     self.sourceLMNode.SetAndObserveTransformNodeID(self.ICPTransformNode.GetID())
     slicer.vtkSlicerTransformLogic().hardenTransform(self.sourceLMNode)
@@ -631,7 +626,6 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
   def onSwitchSettingsButton(self):
     self.ui.tabsWidget.setCurrentWidget(self.ui.advancedSettingsTab)
     self.ui.runALPACAButton.enabled = True
-
 
   def onShowTargetPCDCheckBox(self):
     try:
@@ -1087,7 +1081,6 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         else:
             print('::::Could not find the file or directory in question')
 
-
   def pairwiseAlignment (self, sourceFilePath, sourceLandmarkFile, targetFilePath, outputFilePath, skipScaling, projectionFactor, parameters):
     targetModelNode = slicer.util.loadModel(targetFilePath)
     targetModelNode.GetDisplayNode().SetVisibility(False)
@@ -1139,7 +1132,6 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         slicer.mrmlScene.RemoveNode(inputPoints)
         np_array = vtk_np.vtk_to_numpy(projectedPoints.GetPoints().GetData())
         return np_array
-
 
   def exportPointCloud(self, pointCloud, nodeName):
     fiducialNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',nodeName)
@@ -1263,7 +1255,6 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     polydata_vtk.SetPoints(points_vtk)
     return polydata_vtk
 
-
   def displayPointCloud(self, polydata, pointRadius, nodeName, nodeColor):
     #set up glyph for visualizing point cloud
     sphereSource = vtk.vtkSphereSource()
@@ -1283,7 +1274,6 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     modelNode.SetAndObservePolyData(glyph.GetOutput())
     modelNode.GetDisplayNode().SetColor(nodeColor)
     return modelNode
-
 
   def displayMesh(self, polydata, nodeName, nodeColor):
     modelNode=slicer.mrmlScene.GetFirstNodeByName(nodeName)
@@ -1372,6 +1362,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     transformParameters = itk.vector.D()
     bestTransformParameters = itk.vector.D()
 
+    itk.MultiThreaderBase.SetGlobalDefaultThreader(itk.MultiThreaderBase.ThreaderTypeFromString("POOL"))
     maximumDistance = inlier_value
     RegistrationEstimatorType = itk.Ransac.LandmarkRegistrationEstimator[6]
     registrationEstimator = RegistrationEstimatorType.New()
@@ -1489,6 +1480,32 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         current_transform,
     )
   
+  def get_numpy_points_from_vtk(self, vtk_polydata):
+    """
+    Returns the points as numpy from a vtk_polydata
+    """
+    import vtk
+    from vtk.util import numpy_support
+    points = vtk_polydata.GetPoints()
+    pointdata = points.GetData()
+    points_as_numpy = numpy_support.vtk_to_numpy(pointdata)
+    return points_as_numpy
+  
+  def transform_points_in_vtk(self, vtk_polydata, itk_transform):
+    points_as_numpy = self.get_numpy_points_from_vtk(vtk_polydata)
+    transformed_points = self.transform_numpy_points(points_as_numpy, itk_transform)
+    self.set_numpy_points_in_vtk(vtk_polydata, transformed_points)
+    return vtk_polydata
+
+  def transform_numpy_points(self, points_np, transform):
+    import itk
+    mesh = itk.Mesh[itk.F, 3].New()
+    mesh.SetPoints(itk.vector_container_from_array(points_np.flatten().astype('float32')))
+    transformed_mesh = itk.transform_mesh_filter(mesh, transform=transform)
+    points_tranformed = itk.array_from_vector_container(transformed_mesh.GetPoints())
+    points_tranformed = np.reshape(points_tranformed, [-1, 3])
+    return points_tranformed
+
   def estimateTransform(self, sourcePoints, targetPoints, sourceFeatures, targetFeatures, 
   voxelSize, skipScaling, parameters):
     print('Inside estimateTransform')
@@ -1507,14 +1524,17 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     num_corrs = fixed_corr.shape[1]
     print(f"FPFH generates {num_corrs} putative correspondences.")
 
+    targetPoints = targetPoints.T
+    sourcePoints = sourcePoints.T
+
     print(fixed_corr.shape, moving_corr.shape)
     import time
     bransac = time.time()
     print('Before RANSAC ', bransac)
     # Perform Initial alignment using Ransac parallel iterations
     transform_matrix, _, value = self.ransac_using_package(
-        movingMeshPoints=sourcePoints.T,
-        fixedMeshPoints=targetPoints.T,
+        movingMeshPoints=sourcePoints,
+        fixedMeshPoints=targetPoints,
         movingMeshFeaturePoints=moving_corr.T,
         fixedMeshFeaturePoints=fixed_corr.T,
         number_of_iterations=parameters["maxRANSAC"],
@@ -1526,9 +1546,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     print('Total Duraction ', aransac - bransac)
 
     first_transform = itk.transform_from_dict(transform_matrix)
-
-    sourcePoints = sourcePoints.T
-    targetPoints = targetPoints.T
+    sourcePoints = self.transform_numpy_points(sourcePoints, first_transform)
 
     print("movingMeshPoints.shape ", sourcePoints.shape)
     print("fixedMeshPoints.shape ", targetPoints.shape)
@@ -1721,6 +1739,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     mesh_points = mesh_points - offset_amount
     self.set_numpy_points_in_vtk(vtk_meshes[1], mesh_points)
 
+    # Update the sourceModel with the cleaned mesh
     sourceModel.SetAndObserveMesh(vtk_meshes[1])
 
     sourceFullMesh_vtk = self.getnormals(vtk_meshes[1])
@@ -1847,8 +1866,6 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         geometry.KDTreeSearchParamHybrid(radius=radius_feature, max_nn=100))
     return pcd_down, pcd_fpfh
 
-
-
   def execute_global_registration(self, source_down, target_down, source_fpfh,
                                 target_fpfh, voxel_size, distance_threshold_factor, maxIter, confidence, skipScaling):
     from open3d import pipelines
@@ -1871,7 +1888,6 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
       fitness = result.fitness
       count += 1
     return result
-
 
   def refine_registration(self, source, target, source_fpfh, target_fpfh, voxel_size, result_ransac, ICPThreshold_factor):
     from open3d import pipelines
@@ -2167,8 +2183,6 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
       ID.append(closestPointId)
       #Index.append(index)
     return ID, correspondingPoints
-
-
 
 
   def makeScatterPlotWithFactors(self, data, files, factors, title, xAxis, yAxis, pcNumber, templatesIndices):
