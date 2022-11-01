@@ -381,8 +381,6 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.targetCloudNodeTest.GetDisplayNode().SetVisibility(True)
     self.updateLayout()
 
-    print('Pranjal layout updated')
-
     # Output information on subsampling
     self.ui.subsampleInfo.clear()
     self.ui.subsampleInfo.insertPlainText(f':: Your subsampled source pointcloud has a total of {len(self.sourcePoints)} points. \n')
@@ -579,18 +577,18 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       self.manualLMNode.GetDisplayNode().SetVisibility(False)
       manualLMs = np.zeros(shape=(self.manualLMNode.GetNumberOfControlPoints(),3))
       for i in range(self.manualLMNode.GetNumberOfControlPoints()):
-        point = self.manualLMNode.GetNthControlPointPosition(i)
+        self.manualLMNode.GetNthControlPointPosition(i,point)
         manualLMs[i,:] = point
       #Source LM numpy array
       if not self.ui.skipProjectionCheckBox.isChecked():
         finalLMs = np.zeros(shape=(self.projectedLandmarks.GetNumberOfControlPoints(),3))
         for i in range(self.projectedLandmarks.GetNumberOfControlPoints()):
-          point2 = self.projectedLandmarks.GetNthControlPointPosition(i)
+          self.projectedLandmarks.GetNthControlPointPosition(i,point2)
           finalLMs[i,:] = point2
       else:
         finalLMs = np.zeros(shape=(self.outputPoints.GetNumberOfControlPoints(),3))
         for i in range(self.outputPoints.GetNumberOfControlPoints()):
-          point2 = self.outputPoints.GetNthControlPointPosition(i)
+          self.outputPoints.GetNthControlPointPosition(i,point2)
           finalLMs[i,:] = point2
       #
       rmse = logic.rmse(manualLMs, finalLMs)
@@ -1587,6 +1585,8 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     import time
     bransac = time.time()
     print('Before RANSAC ', bransac)
+    print('Parameters are ')
+    print(parameters)
     # Perform Initial alignment using Ransac parallel iterations
     transform_matrix, _, value = self.ransac_using_package(
         movingMeshPoints=sourcePoints,
@@ -1594,7 +1594,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         movingMeshFeaturePoints=moving_corr.T,
         fixedMeshFeaturePoints=fixed_corr.T,
         number_of_iterations=parameters["maxRANSAC"],
-        number_of_ransac_points=100,
+        number_of_ransac_points=int(num_corrs/10),
         inlier_value=parameters["distanceThreshold"],
     )
     aransac = time.time()
@@ -1604,9 +1604,6 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     first_transform = itk.transform_from_dict(transform_matrix)
     sourcePoints = self.transform_numpy_points(sourcePoints, first_transform)
 
-    print("movingMeshPoints.shape ", sourcePoints.shape)
-    print("fixedMeshPoints.shape ", targetPoints.shape)
-
     print('-----------------------------------------------------------')
     print("Starting Rigid Refinement")
     print("Before Distance ", self.get_euclidean_distance(targetPoints, sourcePoints))
@@ -1615,20 +1612,8 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         targetPoints, sourcePoints, transform_type
     )
     print("After Distance ", self.get_euclidean_distance(targetPoints, final_mesh_points))
-    print(first_transform)
-    print(second_transform)
     return [first_transform, second_transform]
-    #ransac = self.execute_global_registration(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize,
-    #  parameters["distanceThreshold"], parameters["maxRANSAC"], parameters["RANSACConfidence"], skipScaling)
-    # Refine the initial registration using an Iterative Closest Point (ICP) registration
-    #import time
-    #icp = self.refine_registration(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, ransac, parameters["ICPDistanceThreshold"])
-    #return icp.transformation
 
-  # def getVolume(pmax, pmin):
-  #   volume = (pmax[0] - pmin[0]) * (pmax[1] - pmin[1]) * (pmax[2] - pmin[2])
-  #   return volume
-  
   def cleanMesh(self, vtk_mesh):
     # Get largest connected component and clean the mesh to remove un-used points
     connectivityFilter = vtk.vtkPolyDataConnectivityFilter()
@@ -1877,7 +1862,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
       sourceLandmarkNode = shNode.GetItemDataNode(clonedItemID)
     sourceLandmarks = np.zeros(shape=(sourceLandmarkNode.GetNumberOfControlPoints(),3))
     for i in range(sourceLandmarkNode.GetNumberOfControlPoints()):
-      point = sourceLandmarkNode.GetNthControlPointPosition(i)
+      sourceLandmarkNode.GetNthControlPointPosition(i,point)
       sourceLandmarks[i,:] = point
     sourceLandmarks = sourceLandmarks * scaling
     sourceLandmarks = sourceLandmarks - offset_amount
