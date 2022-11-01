@@ -1723,6 +1723,17 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     fpfh_feats = np.reshape(fpfh_feats, [33, pointset.GetNumberOfPoints()]).T
     return fpfh_feats
 
+  def getRadius(self, initial_radius_estimate, inputMesh):
+    # Estimating the factor for number of points on a surface disk
+    mesh_vtk = self.subsample_points_poisson_polydata(
+      inputMesh, radius=initial_radius_estimate
+    )
+    initial_points = inputMesh.GetNumberOfPoints()
+    sub_sampled_points = mesh_vtk.GetNumberOfPoints()
+    factor =  (initial_points/sub_sampled_points)/(initial_radius_estimate * initial_radius_estimate)
+    final_estimate = np.sqrt((initial_points/5000.0)/factor)*0.9
+    return final_estimate
+  
   def runSubsample(self, sourceModel, targetModel, skipScaling, parameters):
     import copy
     import vtk
@@ -1786,8 +1797,10 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     sourceFullMesh_vtk = self.getnormals(vtk_meshes[1])
     targetFullMesh_vtk = self.getnormals(vtk_meshes[0])
 
-    print('movingMesh_vtk.GetNumberOfPoints() ', sourceFullMesh_vtk.GetNumberOfPoints())
-    print('fixedMesh_vtk.GetNumberOfPoints() ', targetFullMesh_vtk.GetNumberOfPoints())
+    sourceFullMeshPointsCount = sourceFullMesh_vtk.GetNumberOfPoints()
+    targetFullMeshPointsCount = targetFullMesh_vtk.GetNumberOfPoints()
+    print('movingMesh_vtk.GetNumberOfPoints() ', sourceFullMeshPointsCount)
+    print('fixedMesh_vtk.GetNumberOfPoints() ', targetFullMeshPointsCount)
     
     # Sub-Sample the points for rigid refinement and deformable registration
     subsample_radius_moving = 0.25*((movingVolume/(4.19*5000)) ** (1./3.))
@@ -1795,36 +1808,22 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
 
     point_density = parameters['pointDensity']
     increment_radius = 0.25*subsample_radius_moving
-    while (True):
-      sourceMesh_vtk = self.subsample_points_poisson_polydata(
-          sourceFullMesh_vtk, radius=subsample_radius_moving
-      )
-      print('Resampling moving with radius = ', subsample_radius_moving, sourceMesh_vtk.GetNumberOfPoints())
-      if sourceMesh_vtk.GetNumberOfPoints() < 5500:
-          break
-      else:
-          subsample_radius_moving = subsample_radius_moving + increment_radius
+    subsample_radius_moving = self.getRadius(subsample_radius_moving, sourceFullMesh_vtk)
+
     if point_density != 1:
-        print('point density is not 1 ', point_density)
+        print('point density is not 1 ', np.round(point_density, 2))
         subsample_radius_moving = subsample_radius_moving - (point_density-1)*increment_radius
-        sourceMesh_vtk = self.subsample_points_poisson_polydata(sourceFullMesh_vtk, radius=subsample_radius_moving)
+    sourceMesh_vtk = self.subsample_points_poisson_polydata(sourceFullMesh_vtk, radius=subsample_radius_moving)
     
     subsample_radius_fixed = 0.25*((fixedVolume/(4.19*5000)) ** (1./3.))
     print('Initial estimate of subsample_radius_fixed is ', subsample_radius_fixed)
     increment_radius = 0.25*subsample_radius_fixed
-    while (True):
-        targetMesh_vtk = self.subsample_points_poisson_polydata(
-            targetFullMesh_vtk, radius=subsample_radius_fixed
-        )
-        print('Resampling fixed with radius = ', subsample_radius_fixed, targetMesh_vtk.GetNumberOfPoints())
-        if targetMesh_vtk.GetNumberOfPoints() < 5500:
-            break
-        else:
-            subsample_radius_fixed = subsample_radius_fixed + increment_radius
+    subsample_radius_fixed = self.getRadius(subsample_radius_fixed, targetFullMesh_vtk)
+
     if point_density != 1:
-        print('point density is not 1 ', point_density)
+        print('point density is not 1 ', np.round(point_density, 2))
         subsample_radius_fixed = subsample_radius_fixed - (point_density-1)*increment_radius
-        targetMesh_vtk = self.subsample_points_poisson_polydata(targetFullMesh_vtk, radius=subsample_radius_fixed)
+    targetMesh_vtk = self.subsample_points_poisson_polydata(targetFullMesh_vtk, radius=subsample_radius_fixed)
     
     movingMeshPoints, movingMeshPointNormals = self.extract_normal_from_tuple(sourceMesh_vtk)
     fixedMeshPoints, fixedMeshPointNormals = self.extract_normal_from_tuple(targetMesh_vtk)
