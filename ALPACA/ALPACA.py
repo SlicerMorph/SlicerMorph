@@ -1084,15 +1084,18 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     targetModelNode.GetDisplayNode().SetVisibility(False)
     sourceModelNode = slicer.util.loadModel(sourceFilePath)
     sourceModelNode.GetDisplayNode().SetVisibility(False)
-    sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, scaling = self.runSubsample(sourceModelNode,
+    sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, scaling, offset_amount = self.runSubsample(sourceModelNode,
         targetModelNode, skipScaling, parameters)
-    ICPTransform = self.estimateTransform(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, skipScaling, parameters)
+    SimilarityTransform, ICPTransform = self.estimateTransform(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, skipScaling, parameters)
     #Rigid
-    sourceLandmarks, sourceLMNode = self.loadAndScaleFiducials(sourceLandmarkFile, scaling)
-    sourceLandmarks.transform(ICPTransform)
-    sourcePoints.transform(ICPTransform)
+    sourceLandmarks, sourceLMNode = self.loadAndScaleFiducials(sourceLandmarkFile, scaling, offset_amount)
+    sourceLandmarks = self.transform_numpy_points(sourceLandmarks, SimilarityTransform)
+    sourceLandmarks = self.transform_numpy_points(sourceLandmarks, ICPTransform)
+    sourcePoints = self.transform_numpy_points(sourcePoints, SimilarityTransform)
+    sourcePoints = self.transform_numpy_points(sourcePoints, ICPTransform)
+
     #Deformable
-    registeredSourceLM = self.runCPDRegistration(sourceLandmarks.points, sourcePoints.points, targetPoints.points, parameters)
+    registeredSourceLM = self.runCPDRegistration(sourceLandmarks, sourcePoints, targetPoints, parameters)
     outputPoints = self.exportPointCloud(registeredSourceLM, "Initial Predicted Landmarks")
     if projectionFactor == 0:
         self.propagateLandmarkTypes(sourceLMNode, outputPoints)
@@ -1103,12 +1106,12 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         slicer.mrmlScene.RemoveNode(sourceLMNode)
         return registeredSourceLM
     else:
-        inputPoints = self.exportPointCloud(sourceLandmarks.points, "Original Landmarks")
+        inputPoints = self.exportPointCloud(sourceLandmarks, "Original Landmarks")
         inputPoints_vtk = self.getFiducialPoints(inputPoints)
         outputPoints_vtk = self.getFiducialPoints(outputPoints)
 
-        ICPTransformNode = self.convertMatrixToTransformNode(ICPTransform, 'Rigid Transformation Matrix')
-        sourceModelNode.SetAndObserveTransformNodeID(ICPTransformNode.GetID())
+        #ICPTransformNode = self.convertMatrixToTransformNode(ICPTransform, 'Rigid Transformation Matrix')
+        #sourceModelNode.SetAndObserveTransformNodeID(ICPTransformNode.GetID())
         deformedModelNode = self.applyTPSTransform(inputPoints_vtk, outputPoints_vtk, sourceModelNode, 'Warped Source Mesh')
         deformedModelNode.GetDisplayNode().SetVisibility(False)
 
@@ -1126,7 +1129,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         slicer.mrmlScene.RemoveNode(targetModelNode)
         slicer.mrmlScene.RemoveNode(deformedModelNode)
         slicer.mrmlScene.RemoveNode(sourceLMNode)
-        slicer.mrmlScene.RemoveNode(ICPTransformNode)
+        #slicer.mrmlScene.RemoveNode(ICPTransformNode)
         slicer.mrmlScene.RemoveNode(inputPoints)
         np_array = vtk_np.vtk_to_numpy(projectedPoints.GetPoints().GetData())
         return np_array
@@ -1157,21 +1160,13 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     return warpedModelNode
 
   def runCPDRegistration(self, sourceLM, sourceSLM, targetSLM, parameters):
-    from open3d import geometry
-    from open3d import utility
     sourceArrayCombined = np.append(sourceSLM, sourceLM, axis=0)
     targetArray = np.asarray(targetSLM)
-    #Convert to pointcloud for scaling
-    sourceCloud = geometry.PointCloud()
-    sourceCloud.points = utility.Vector3dVector(sourceArrayCombined)
-    targetCloud = geometry.PointCloud()
-    targetCloud.points = utility.Vector3dVector(targetArray)
-    cloudSize = np.max(targetCloud.get_max_bound() - targetCloud.get_min_bound())
-    targetCloud.scale(25 / cloudSize, center = (0,0,0))
-    sourceCloud.scale   (25 / cloudSize, center = (0,0,0))
-    #Convert back to numpy for cpd
-    sourceArrayCombined = np.asarray(sourceCloud.points,dtype=np.float32)
-    targetArray = np.asarray(targetCloud.points,dtype=np.float32)
+    
+    cloudSize = np.max(targetArray, 0) - np.min(targetArray)
+    targetArray = targetArray*25/cloudSize
+    sourceArrayCombined = sourceArrayCombined*25/cloudSize
+
     if parameters['Acceleration'] == 0:
       registrationOutput = self.cpd_registration(targetArray, sourceArrayCombined, parameters["CPDIterations"], parameters["CPDTolerance"], parameters["alpha"], parameters["beta"])
       deformed_array, _ = registrationOutput.register()
@@ -1190,10 +1185,10 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
       os.remove(sourcePath)
     #Capture output landmarks from source pointcloud
     fiducial_prediction = deformed_array[-len(sourceLM):]
-    fiducialCloud = geometry.PointCloud()
-    fiducialCloud.points = utility.Vector3dVector(fiducial_prediction)
-    fiducialCloud.scale(cloudSize/25, center = (0,0,0))
-    return np.asarray(fiducialCloud.points)
+    
+    fiducialCloud = fiducial_prediction
+    fiducialCloud = fiducialCloud * cloudSize/25
+    return fiducialCloud
 
   def RAS2LPSTransform(self, modelNode):
     matrix=vtk.vtkMatrix4x4()
@@ -1832,58 +1827,6 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     dy=fnx(a[:,1])
     dz=fnx(a[:,2])
     return (dx**2.0+dy**2.0+dz**2.0)**0.5
-
-  def preprocess_point_cloud(self, pcd, voxel_size, radius_normal_factor, radius_feature_factor):
-    #from open3d import geometry
-    #from open3d import pipelines
-    registration = pipelines.registration
-    #print(":: Downsample with a voxel size %.3f." % voxel_size)
-    #pcd_down = pcd.voxel_down_sample(voxel_size)
-    radius_normal = voxel_size * radius_normal_factor
-    print(":: Estimate normal with search radius %.3f." % radius_normal)
-    pcd_down.estimate_normals(
-        geometry.KDTreeSearchParamHybrid(radius=radius_normal, max_nn=30))
-    radius_feature = voxel_size * radius_feature_factor
-    print(":: Compute FPFH feature with search radius %.3f." % radius_feature)
-    pcd_fpfh = registration.compute_fpfh_feature(
-        pcd_down,
-        geometry.KDTreeSearchParamHybrid(radius=radius_feature, max_nn=100))
-    return pcd_down, pcd_fpfh
-
-  def execute_global_registration(self, source_down, target_down, source_fpfh,
-                                target_fpfh, voxel_size, distance_threshold_factor, maxIter, confidence, skipScaling):
-    from open3d import pipelines
-    registration = pipelines.registration
-    distance_threshold = voxel_size * distance_threshold_factor
-    print(":: RANSAC registration on downsampled point clouds.")
-    print("   Since the downsampling voxel size is %.3f," % voxel_size)
-    print("   we use a liberal distance threshold %.3f." % distance_threshold)
-    fitness = 0
-    count = 0
-    maxAttempts = 30
-    while fitness < 0.99 and count < maxAttempts:
-      result = registration.registration_ransac_based_on_feature_matching(
-          source_down, target_down, source_fpfh, target_fpfh, True, distance_threshold,
-          registration.TransformationEstimationPointToPoint(skipScaling == 0), 3, [
-              registration.CorrespondenceCheckerBasedOnEdgeLength(0.9),
-              registration.CorrespondenceCheckerBasedOnDistance(
-                  distance_threshold)
-          ], registration.RANSACConvergenceCriteria(maxIter, confidence))
-      fitness = result.fitness
-      count += 1
-    return result
-
-  def refine_registration(self, source, target, source_fpfh, target_fpfh, voxel_size, result_ransac, ICPThreshold_factor):
-    from open3d import pipelines
-    registration = pipelines.registration
-    distance_threshold = voxel_size * ICPThreshold_factor
-    print(":: Point-to-plane ICP registration is applied on original point")
-    print("   clouds to refine the alignment. This time we use a strict")
-    print("   distance threshold %.3f." % distance_threshold)
-    result = registration.registration_icp(
-        source, target, distance_threshold, result_ransac.transformation,
-        registration.TransformationEstimationPointToPlane())
-    return result
 
   def cpd_registration(self, targetArray, sourceArray, CPDIterations, CPDTolerance, alpha_parameter, beta_parameter):
     from cpdalp import DeformableRegistration
