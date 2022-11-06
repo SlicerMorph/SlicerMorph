@@ -363,7 +363,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
 
     # Display target points
     blue=[0,0,1]
-    self.targetCloudNodeTest = logic.displayPointCloud(self.targetVTK, self.voxelSize / 7, 'Target Pointcloud_test', blue)
+    self.targetCloudNodeTest = logic.displayPointCloud(self.targetVTK, self.voxelSize / 5, 'Target Pointcloud_test', blue)
     self.targetCloudNodeTest.GetDisplayNode().SetVisibility(True)
     self.updateLayout()
 
@@ -433,7 +433,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.targetVTK = logic.convertPointsToVTK(self.targetPoints)
 
     blue=[0,0,1]
-    self.targetCloudNode_2 = logic.displayPointCloud(self.targetVTK, self.voxelSize / 10, 'Target Pointcloud_'+run_counter, blue)
+    self.targetCloudNode_2 = logic.displayPointCloud(self.targetVTK, self.voxelSize / 5, 'Target Pointcloud_'+run_counter, blue)
     self.targetCloudNode_2.GetDisplayNode().SetVisibility(False)
     # Output information on subsampling
     self.ui.subsampleInfo.clear()
@@ -453,7 +453,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.sourceVTK = logic.convertPointsToVTK(self.sourcePoints)
     #
     red=[1,0,0]
-    self.sourceCloudNode = logic.displayPointCloud(self.sourceVTK, self.voxelSize / 10, ('Source Pointcloud (rigidly registered)_'+run_counter), red)
+    self.sourceCloudNode = logic.displayPointCloud(self.sourceVTK, self.voxelSize / 5, ('Source Pointcloud (rigidly registered)_'+run_counter), red)
     self.sourceCloudNode.GetDisplayNode().SetVisibility(False)
     #
     #Transform the source model
@@ -1140,7 +1140,6 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
       fiducialNode.AddControlPoint(point)
     return fiducialNode
 
-    #node.AddControlPoint(point)
   def applyTPSTransform(self, sourcePoints, targetPoints, modelNode, nodeName):
     transform=vtk.vtkThinPlateSplineTransform()
     transform.SetSourceLandmarks( sourcePoints)
@@ -1163,7 +1162,8 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     sourceArrayCombined = np.append(sourceSLM, sourceLM, axis=0)
     targetArray = np.asarray(targetSLM)
     
-    cloudSize = np.max(targetArray, 0) - np.min(targetArray)
+    cloudSize = np.max(targetArray, 0) - np.min(targetArray, 0)
+    
     targetArray = targetArray*25/cloudSize
     sourceArrayCombined = sourceArrayCombined*25/cloudSize
 
@@ -1598,30 +1598,19 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     pointdata = points.GetData()
     points_as_numpy = numpy_support.vtk_to_numpy(pointdata)
     return points_as_numpy
-  
+
   def getnormals(self, inputmesh):
-    """
-    To obtain the normal for each point from the triangle mesh.
-    """
-    normals = vtk.vtkTriangleMeshPointNormals()
-    normals.SetInputData(inputmesh)
-    normals.Update()
-    return normals.GetOutput()
+    _, normal = self.extract_pca_normal(inputmesh)
+    return normal
 
   def subsample_points_poisson_polydata(self, inputMesh, radius):
-    '''
-        Subsamples the points and returns vtk points so 
-        that it has normal data also in it.
-    '''
-    import vtk
-    from vtk.util import numpy_support
-
-    f = vtk.vtkPoissonDiskSampler()
-    f.SetInputData(inputMesh)
-    f.SetRadius(radius)
-    f.Update()
-    sampled_points = f.GetOutput()
-    return sampled_points
+    subsample = vtk.vtkVoxelGrid()
+    subsample.SetInputData(inputMesh)
+    subsample.SetConfigurationStyleToManual()
+    subsample.SetDivisions(27, 27, 27)
+    subsample.Update()
+    points = subsample.GetOutput()
+    return points
   
   def extract_normal_from_tuple(self, input_mesh):
     """
@@ -1641,6 +1630,21 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     as_numpy = numpy_support.vtk_to_numpy(pointdata)
 
     return as_numpy, n1_array
+  
+  def extract_pca_normal(self, mesh):
+    import vtk
+    from vtk.util import numpy_support
+    normals = vtk.vtkPCANormalEstimation()
+    normals.SetSampleSize(30)
+    normals.SetFlipNormals(True)
+    #normals.SetNormalOrientationToPoint()
+    normals.SetNormalOrientationToGraphTraversal()
+    normals.SetInputData(mesh)
+    normals.Update()
+    out1 = normals.GetOutput()
+    normal_array = numpy_support.vtk_to_numpy(out1.GetPoints().GetData())
+    point_array = numpy_support.vtk_to_numpy(mesh.GetPoints().GetData())
+    return point_array, normal_array
   
   def get_fpfh_feature(self, points_np, normals_np, radius, neighbors):
     import itk
@@ -1683,8 +1687,8 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     sourceModelMesh = sourceModel.GetMesh()
     targetModelMesh = targetModel.GetMesh()
 
-    sourceModelMesh = self.cleanMesh(sourceModelMesh)
-    targetModelMesh = self.cleanMesh(targetModelMesh)
+    #sourceModelMesh = self.cleanMesh(sourceModelMesh)
+    #targetModelMesh = self.cleanMesh(targetModelMesh)
 
     vtk_meshes = []
     vtk_meshes.append(targetModelMesh)
@@ -1733,39 +1737,36 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     # Update the sourceModel with the cleaned mesh
     sourceModel.SetAndObserveMesh(vtk_meshes[1])
 
-    sourceFullMesh_vtk = self.getnormals(vtk_meshes[1])
-    targetFullMesh_vtk = self.getnormals(vtk_meshes[0])
+    #print('Computing normals ')
+    sourceFullMesh_vtk = vtk_meshes[1]
+    targetFullMesh_vtk = vtk_meshes[0]
+    #sourceFullMesh_vtk = self.getnormals(vtk_meshes[1])
+    #targetFullMesh_vtk = self.getnormals(vtk_meshes[0])
 
-    sourceFullMeshPointsCount = sourceFullMesh_vtk.GetNumberOfPoints()
-    targetFullMeshPointsCount = targetFullMesh_vtk.GetNumberOfPoints()
-    print('movingMesh_vtk.GetNumberOfPoints() ', sourceFullMeshPointsCount)
-    print('fixedMesh_vtk.GetNumberOfPoints() ', targetFullMeshPointsCount)
+    #sourceFullMeshPointsCount = sourceFullMesh_vtk.GetNumberOfPoints()
+    #targetFullMeshPointsCount = targetFullMesh_vtk.GetNumberOfPoints()
+    #print('movingMesh_vtk.GetNumberOfPoints() ', sourceFullMeshPointsCount)
+    #print('fixedMesh_vtk.GetNumberOfPoints() ', targetFullMeshPointsCount)
     
     # Sub-Sample the points for rigid refinement and deformable registration
     subsample_radius_moving = 0.25*((movingVolume/(4.19*5000)) ** (1./3.))
     print('Initial estimate of subsample_radius_moving is ', subsample_radius_moving)
 
     point_density = parameters['pointDensity']
-    increment_radius = 0.25*subsample_radius_moving
-    subsample_radius_moving = self.getRadius(subsample_radius_moving, sourceFullMesh_vtk)
+    
+    #subsample_radius_moving = self.getRadius(subsample_radius_moving, sourceFullMesh_vtk)
 
-    if point_density != 1:
-        print('point density is not 1 ', np.round(point_density, 2))
-        subsample_radius_moving = subsample_radius_moving - (point_density-1)*increment_radius
-    sourceMesh_vtk = self.subsample_points_poisson_polydata(sourceFullMesh_vtk, radius=subsample_radius_moving)
+    #sourceMesh_vtk = self.subsample_points_poisson_polydata(sourceFullMesh_vtk, radius=subsample_radius_moving)
+    sourceMesh_vtk = self.subsample_points_poisson_polydata(sourceFullMesh_vtk, radius=5)
     
     subsample_radius_fixed = 0.25*((fixedVolume/(4.19*5000)) ** (1./3.))
     print('Initial estimate of subsample_radius_fixed is ', subsample_radius_fixed)
-    increment_radius = 0.25*subsample_radius_fixed
-    subsample_radius_fixed = self.getRadius(subsample_radius_fixed, targetFullMesh_vtk)
-
-    if point_density != 1:
-        print('point density is not 1 ', np.round(point_density, 2))
-        subsample_radius_fixed = subsample_radius_fixed - (point_density-1)*increment_radius
-    targetMesh_vtk = self.subsample_points_poisson_polydata(targetFullMesh_vtk, radius=subsample_radius_fixed)
     
-    movingMeshPoints, movingMeshPointNormals = self.extract_normal_from_tuple(sourceMesh_vtk)
-    fixedMeshPoints, fixedMeshPointNormals = self.extract_normal_from_tuple(targetMesh_vtk)
+    #subsample_radius_fixed = self.getRadius(subsample_radius_fixed, targetFullMesh_vtk)
+    targetMesh_vtk = self.subsample_points_poisson_polydata(targetFullMesh_vtk, radius=5)
+    
+    movingMeshPoints, movingMeshPointNormals = self.extract_pca_normal(sourceMesh_vtk)
+    fixedMeshPoints, fixedMeshPointNormals = self.extract_pca_normal(targetMesh_vtk)
 
     print('------------------------------------------------------------')
     print("movingMeshPoints.shape ", movingMeshPoints.shape)
