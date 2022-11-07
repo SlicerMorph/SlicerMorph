@@ -720,13 +720,13 @@
              <number>0</number>
             </property>
             <property name="maximum">
-             <double>500000000.000000000000000</double>
+             <double>50000.000000000000000</double>
             </property>
             <property name="singleStep">
              <double>1.000000000000000</double>
             </property>
             <property name="value">
-             <double>1000000.000000000000000</double>
+             <double>2000.000000000000000</double>
             </property>
            </widget>
           </item>
