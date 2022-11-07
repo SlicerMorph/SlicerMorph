@@ -751,14 +751,14 @@
             <property name="decimals" stdset="0">
              <number>0</number>
             </property>
-            <property name="maximum" stdset="0">
-             <double>500000000.000000000000000</double>
+            <property name="maximum">
+             <double>50000.000000000000000</double>
             </property>
             <property name="singleStep" stdset="0">
              <double>1.000000000000000</double>
             </property>
-            <property name="value" stdset="0">
-             <double>1000000.000000000000000</double>
+            <property name="value">
+             <double>2000.000000000000000</double>
             </property>
            </widget>
           </item>
