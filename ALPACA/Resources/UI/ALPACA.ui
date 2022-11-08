@@ -651,10 +651,13 @@
              <string>Set size of the neighborhood used when computing normals</string>
             </property>
             <property name="minimum">
-             <double>2.000000000000000</double>
+             <double>10.000000000000000</double>
             </property>
             <property name="maximum">
-             <double>12.000000000000000</double>
+		    <double>100.000000000000000</double>
+            </property>
+            <property name="value">
+             <double>30.000000000000000</double>
             </property>
            </widget>
           </item>
@@ -816,10 +819,10 @@
              <number>1</number>
             </property>
             <property name="minimum">
-             <double>0.100000000000000</double>
+             <double>0.010000000000000</double>
             </property>
             <property name="maximum">
-             <double>10.000000000000000</double>
+             <double>20.000000000000000</double>
             </property>
             <property name="singleStep">
              <double>0.100000000000000</double>
@@ -845,10 +848,10 @@
              <number>1</number>
             </property>
             <property name="minimum">
-             <double>0.100000000000000</double>
+             <double>0.010000000000000</double>
             </property>
             <property name="maximum">
-             <double>10.000000000000000</double>
+             <double>20.000000000000000</double>
             </property>
             <property name="singleStep">
              <double>0.100000000000000</double>
