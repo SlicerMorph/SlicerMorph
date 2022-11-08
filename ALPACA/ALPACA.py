@@ -13,6 +13,8 @@ import vtk.util.numpy_support as vtk_np
 import numpy as np
 from datetime import datetime
 import time
+import sys
+
 
 #
 # ALPACA
@@ -148,47 +150,30 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     # Ensure that correct version of open3d Python package is installed
     needRestart = False
     needInstall = False
-    Open3dVersion = "0.14.1+816263b"
+    
     try:
-      import open3d as o3d
+      import itk
+      from itk import RANSAC
+      from itk import FPFH
       import cpdalp
-      from packaging import version
-      if version.parse(o3d.__version__) != version.parse(Open3dVersion):
-        if not slicer.util.confirmOkCancelDisplay(f"ALPACA requires installation of open3d (version {Open3dVersion}).\nClick OK to upgrade open3d and restart the application."):
-          self.ui.showBrowserOnEnter = False
-          return
-        needRestart = True
-        needInstall = True
     except ModuleNotFoundError:
       needInstall = True
-
+      needRestart = True
+    
     if needInstall:
-      progressDialog = slicer.util.createProgressDialog(labelText='Upgrading open3d. This may take a minute...', maximum=0)
+      progressDialog = slicer.util.createProgressDialog(labelText='Installing ITK RANSAC, ITK FPFH. This may take a minute...', maximum=0)
       slicer.app.processEvents()
-      import SampleData
-      sampleDataLogic = SampleData.SampleDataLogic()
       try:
-        if slicer.app.os == 'win':
-          url = "https://app.box.com/shared/static/friq8fhfi8n4syklt1v47rmuf58zro75.whl"
-          wheelName = "open3d-0.14.1+816263b-cp39-cp39-win_amd64.whl"
-          wheelPath = sampleDataLogic.downloadFile(url, slicer.app.cachePath, wheelName)
-        elif slicer.app.os == 'macosx':
-          url = "https://app.box.com/shared/static/ixhac95jrx7xdxtlagwgns7vt9b3mbqu.whl"
-          wheelName = "open3d-0.14.1+816263b-cp39-cp39-macosx_10_15_x86_64.whl"
-          wheelPath = sampleDataLogic.downloadFile(url, slicer.app.cachePath, wheelName)
-        elif slicer.app.os == 'linux':
-          url = "https://app.box.com/shared/static/wyzk0f9jhefrbm4uukzym0sow5bf26yi.whl"
-          wheelName = "open3d-0.14.1+816263b-cp39-cp39-manylinux_2_27_x86_64.whl"
-          wheelPath = sampleDataLogic.downloadFile(url, slicer.app.cachePath, wheelName)
+        slicer.util.pip_install(f'itk-fpfh')
+        slicer.util.pip_install(f'itk-ransac')
+        slicer.util.pip_install(f'cpdalp')
       except:
-          slicer.util.infoDisplay('Error: please check the url of the open3d wheel in the script')
-          progressDialog.close()
-      slicer.util.pip_install(f'cpdalp')
+        progressDialog = slicer.util.createProgressDialog(labelText='Issue while installing the ITK pip packages', maximum=0)
+        slicer.app.processEvents()
       # wheelPath may contain spaces, therefore pass it as a list (that avoids splitting
       # the argument into multiple command-line arguments when there are spaces in the path)
-      slicer.util.pip_install([wheelPath])
-      #import open3d as o3d
       import cpdalp
+      import itk
       progressDialog.close()
     if needRestart:
       slicer.util.restart()
@@ -1686,6 +1671,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     return fixedLengths, diagonalLength
   
   def runSubsample(self, sourceModel, targetModel, skipScaling, parameters):
+    import itk
     import copy
     import vtk
     from vtk.util import numpy_support
