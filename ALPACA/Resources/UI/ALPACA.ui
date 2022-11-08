@@ -682,11 +682,14 @@
             <property name="toolTip">
              <string>Set size of the neighborhood used when computing normals</string>
             </property>
-            <property name="minimum" stdset="0">
-             <double>2.000000000000000</double>
+            <property name="minimum">
+             <double>10.000000000000000</double>
             </property>
-            <property name="maximum" stdset="0">
-             <double>12.000000000000000</double>
+            <property name="maximum">
+		    <double>100.000000000000000</double>
+            </property>
+            <property name="value">
+             <double>30.000000000000000</double>
             </property>
            </widget>
           </item>
@@ -847,11 +850,11 @@
             <property name="decimals" stdset="0">
              <number>1</number>
             </property>
-            <property name="minimum" stdset="0">
-             <double>0.100000000000000</double>
+            <property name="minimum">
+             <double>0.010000000000000</double>
             </property>
-            <property name="maximum" stdset="0">
-             <double>10.000000000000000</double>
+            <property name="maximum">
+             <double>20.000000000000000</double>
             </property>
             <property name="singleStep" stdset="0">
              <double>0.100000000000000</double>
@@ -876,11 +879,11 @@
             <property name="decimals" stdset="0">
              <number>1</number>
             </property>
-            <property name="minimum" stdset="0">
-             <double>0.100000000000000</double>
+            <property name="minimum">
+             <double>0.010000000000000</double>
             </property>
-            <property name="maximum" stdset="0">
-             <double>10.000000000000000</double>
+            <property name="maximum">
+             <double>20.000000000000000</double>
             </property>
             <property name="singleStep" stdset="0">
              <double>0.100000000000000</double>
