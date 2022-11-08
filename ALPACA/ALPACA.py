@@ -1747,8 +1747,8 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     sourceMesh_vtk = self.subsample_points_voxelgrid_polydata(sourceFullMesh_vtk, radius=5)
     targetMesh_vtk = self.subsample_points_voxelgrid_polydata(targetFullMesh_vtk, radius=5)
     
-    movingMeshPoints, movingMeshPointNormals = self.extract_pca_normal(sourceMesh_vtk, parameters["normalSearchRadius"])
-    fixedMeshPoints, fixedMeshPointNormals = self.extract_pca_normal(targetMesh_vtk, parameters["normalSearchRadius"])
+    movingMeshPoints, movingMeshPointNormals = self.extract_pca_normal(sourceMesh_vtk, int(parameters["normalSearchRadius"]))
+    fixedMeshPoints, fixedMeshPointNormals = self.extract_pca_normal(targetMesh_vtk, int(parameters["normalSearchRadius"]))
 
     print('------------------------------------------------------------')
     print("movingMeshPoints.shape ", movingMeshPoints.shape)
