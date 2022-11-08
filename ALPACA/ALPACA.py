@@ -1590,7 +1590,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         fixedMeshFeaturePoints=fixed_corr.T,
         number_of_iterations=parameters["maxRANSAC"],
         number_of_ransac_points=int(num_corrs/10),
-        inlier_value=parameters["distanceThreshold"],
+        inlier_value=float(parameters["distanceThreshold"])*voxelSize,
     )
     aransac = time.time()
     print('After RANSAC ', aransac)
@@ -1659,7 +1659,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     _, normal = self.extract_pca_normal(inputmesh)
     return normal
 
-  def subsample_points_poisson_polydata(self, inputMesh, radius):
+  def subsample_points_voxelgrid_polydata(self, inputMesh, radius):
     subsample = vtk.vtkVoxelGrid()
     subsample.SetInputData(inputMesh)
     subsample.SetConfigurationStyleToManual()
@@ -1687,11 +1687,11 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
 
     return as_numpy, n1_array
   
-  def extract_pca_normal(self, mesh):
+  def extract_pca_normal(self, mesh, normalNeighbourCount):
     import vtk
     from vtk.util import numpy_support
     normals = vtk.vtkPCANormalEstimation()
-    normals.SetSampleSize(30)
+    normals.SetSampleSize(normalNeighbourCount)
     normals.SetFlipNormals(True)
     #normals.SetNormalOrientationToPoint()
     normals.SetNormalOrientationToGraphTraversal()
@@ -1724,7 +1724,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
 
   def getRadius(self, initial_radius_estimate, inputMesh):
     # Estimating the factor for number of points on a surface disk
-    mesh_vtk = self.subsample_points_poisson_polydata(
+    mesh_vtk = self.subsample_points_voxelgrid_polydata(
       inputMesh, radius=initial_radius_estimate
     )
     initial_points = inputMesh.GetNumberOfPoints()
@@ -1732,6 +1732,14 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     factor =  (initial_points/sub_sampled_points)/(initial_radius_estimate * initial_radius_estimate)
     final_estimate = np.sqrt((initial_points/5000.0)/factor)*0.9
     return final_estimate
+  
+  def getBoxLengths(self, inputMesh):
+    box_filter = vtk.vtkBoundingBox()
+    box_filter.SetBounds(inputMesh.GetBounds())
+    diagonalLength = box_filter.GetDiagonalLength()
+    fixedLengths = [0.0, 0.0, 0.0]
+    box_filter.GetLengths(fixedLengths)
+    return fixedLengths, diagonalLength
   
   def runSubsample(self, sourceModel, targetModel, skipScaling, parameters):
     import copy
@@ -1743,6 +1751,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     sourceModelMesh = sourceModel.GetMesh()
     targetModelMesh = targetModel.GetMesh()
 
+    # To enable cleaning un-comment these two lines
     #sourceModelMesh = self.cleanMesh(sourceModelMesh)
     #targetModelMesh = self.cleanMesh(targetModelMesh)
 
@@ -1751,19 +1760,11 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     vtk_meshes.append(sourceModelMesh)
 
     # Scale the mesh and the landmark points
-    box_filter = vtk.vtkBoundingBox()
-    box_filter.SetBounds(vtk_meshes[0].GetBounds())
-    fixedlength = box_filter.GetDiagonalLength()
-    fixedLengths = [0.0, 0.0, 0.0]
-    box_filter.GetLengths(fixedLengths)
-    fixedVolume = np.prod(fixedLengths)
+    fixedBoxLengths, fixedlength = self.getBoxLengths(vtk_meshes[0])
+    movingBoxLengths, movinglength = self.getBoxLengths(vtk_meshes[1])
 
-    box_filter = vtk.vtkBoundingBox()
-    box_filter.SetBounds(vtk_meshes[1].GetBounds())
-    movinglength = box_filter.GetDiagonalLength()
-    movingLengths = [0.0, 0.0, 0.0]
-    box_filter.GetLengths(movingLengths)
-    movingVolume = np.prod(movingLengths)
+    # Voxel size is the diagonal length of cuboid in the voxelGrid
+    voxel_size = np.sqrt(np.sum(np.square(np.array(movingBoxLengths)/27)))/2.0
 
     print("Scale length are  ", fixedlength, movinglength)
     scaling = fixedlength / movinglength
@@ -1793,36 +1794,17 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     # Update the sourceModel with the cleaned mesh
     sourceModel.SetAndObserveMesh(vtk_meshes[1])
 
-    #print('Computing normals ')
     sourceFullMesh_vtk = vtk_meshes[1]
     targetFullMesh_vtk = vtk_meshes[0]
-    #sourceFullMesh_vtk = self.getnormals(vtk_meshes[1])
-    #targetFullMesh_vtk = self.getnormals(vtk_meshes[0])
-
-    #sourceFullMeshPointsCount = sourceFullMesh_vtk.GetNumberOfPoints()
-    #targetFullMeshPointsCount = targetFullMesh_vtk.GetNumberOfPoints()
-    #print('movingMesh_vtk.GetNumberOfPoints() ', sourceFullMeshPointsCount)
-    #print('fixedMesh_vtk.GetNumberOfPoints() ', targetFullMeshPointsCount)
     
     # Sub-Sample the points for rigid refinement and deformable registration
-    subsample_radius_moving = 0.25*((movingVolume/(4.19*5000)) ** (1./3.))
-    print('Initial estimate of subsample_radius_moving is ', subsample_radius_moving)
-
     point_density = parameters['pointDensity']
     
-    #subsample_radius_moving = self.getRadius(subsample_radius_moving, sourceFullMesh_vtk)
-
-    #sourceMesh_vtk = self.subsample_points_poisson_polydata(sourceFullMesh_vtk, radius=subsample_radius_moving)
-    sourceMesh_vtk = self.subsample_points_poisson_polydata(sourceFullMesh_vtk, radius=5)
+    sourceMesh_vtk = self.subsample_points_voxelgrid_polydata(sourceFullMesh_vtk, radius=5)
+    targetMesh_vtk = self.subsample_points_voxelgrid_polydata(targetFullMesh_vtk, radius=5)
     
-    subsample_radius_fixed = 0.25*((fixedVolume/(4.19*5000)) ** (1./3.))
-    print('Initial estimate of subsample_radius_fixed is ', subsample_radius_fixed)
-    
-    #subsample_radius_fixed = self.getRadius(subsample_radius_fixed, targetFullMesh_vtk)
-    targetMesh_vtk = self.subsample_points_poisson_polydata(targetFullMesh_vtk, radius=5)
-    
-    movingMeshPoints, movingMeshPointNormals = self.extract_pca_normal(sourceMesh_vtk)
-    fixedMeshPoints, fixedMeshPointNormals = self.extract_pca_normal(targetMesh_vtk)
+    movingMeshPoints, movingMeshPointNormals = self.extract_pca_normal(sourceMesh_vtk, parameters["normalSearchRadius"])
+    fixedMeshPoints, fixedMeshPointNormals = self.extract_pca_normal(targetMesh_vtk, parameters["normalSearchRadius"])
 
     print('------------------------------------------------------------')
     print("movingMeshPoints.shape ", movingMeshPoints.shape)
@@ -1831,7 +1813,8 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     print("fixedMeshPointNormals.shape ", fixedMeshPointNormals.shape)
     print('------------------------------------------------------------')
 
-    fpfh_radius = parameters['FPFHSearchRadius']
+    fpfh_radius = parameters['FPFHSearchRadius']*voxel_size
+    print('fpfh_radius is ', fpfh_radius, ' voxel size is ', voxel_size)
     fpfh_neighbors = 100
     # New FPFH Code
     pcS = np.expand_dims(fixedMeshPoints, -1)
@@ -1842,7 +1825,6 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     normal_np_pcl = movingMeshPointNormals
     source_fpfh = self.get_fpfh_feature(pcS, normal_np_pcl, fpfh_radius, fpfh_neighbors)
 
-    voxel_size = subsample_radius_moving
     target_down = fixedMeshPoints
     source_down = movingMeshPoints
     return source_down, target_down, source_fpfh, target_fpfh, voxel_size, scaling, offset_amount
