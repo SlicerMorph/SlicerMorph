@@ -152,9 +152,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     needInstall = False
     
     try:
-      import itk
-      from itk import RANSAC
-      from itk import FPFH
+      from itk import Fpfh
       import cpdalp
     except ModuleNotFoundError:
       needInstall = True
@@ -173,7 +171,6 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       # wheelPath may contain spaces, therefore pass it as a list (that avoids splitting
       # the argument into multiple command-line arguments when there are spaces in the path)
       import cpdalp
-      import itk
       progressDialog.close()
     if needRestart:
       slicer.util.restart()
