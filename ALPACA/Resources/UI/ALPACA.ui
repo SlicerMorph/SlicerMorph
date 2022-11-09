@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>730</width>
-    <height>973</height>
+    <height>743</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
@@ -28,11 +28,11 @@
       </attribute>
       <layout class="QVBoxLayout" name="alignSingleLayout">
        <item>
-        <widget class="ctkCollapsibleButton" name="alignSingleWidget">
-         <property name="text">
+        <widget class="ctkCollapsibleButton" name="alignSingleWidget" native="true">
+         <property name="text" stdset="0">
           <string>Set up source and target meshes and landmark sets</string>
          </property>
-         <property name="collapsed">
+         <property name="collapsed" stdset="0">
           <bool>false</bool>
          </property>
          <layout class="QFormLayout" name="FormLayout_1">
@@ -44,25 +44,25 @@
            </widget>
           </item>
           <item row="0" column="1">
-           <widget class="qMRMLNodeComboBox" name="sourceModelSelector">
+           <widget class="qMRMLNodeComboBox" name="sourceModelSelector" native="true">
             <property name="enabled">
              <bool>true</bool>
             </property>
             <property name="toolTip">
              <string>Select source model</string>
             </property>
-            <property name="nodeTypes">
+            <property name="nodeTypes" stdset="0">
              <stringlist>
               <string>vtkMRMLModelNode</string>
              </stringlist>
             </property>
-            <property name="noneEnabled">
+            <property name="noneEnabled" stdset="0">
              <bool>true</bool>
             </property>
-            <property name="addEnabled">
+            <property name="addEnabled" stdset="0">
              <bool>false</bool>
             </property>
-            <property name="removeEnabled">
+            <property name="removeEnabled" stdset="0">
              <bool>false</bool>
             </property>
            </widget>
@@ -75,25 +75,25 @@
            </widget>
           </item>
           <item row="1" column="1">
-           <widget class="qMRMLNodeComboBox" name="sourceLandmarkSetSelector">
+           <widget class="qMRMLNodeComboBox" name="sourceLandmarkSetSelector" native="true">
             <property name="enabled">
              <bool>true</bool>
             </property>
             <property name="toolTip">
              <string>Select source landmark set</string>
             </property>
-            <property name="nodeTypes">
+            <property name="nodeTypes" stdset="0">
              <stringlist>
               <string>vtkMRMLMarkupsFiducialNode</string>
              </stringlist>
             </property>
-            <property name="noneEnabled">
+            <property name="noneEnabled" stdset="0">
              <bool>true</bool>
             </property>
-            <property name="addEnabled">
+            <property name="addEnabled" stdset="0">
              <bool>false</bool>
             </property>
-            <property name="removeEnabled">
+            <property name="removeEnabled" stdset="0">
              <bool>false</bool>
             </property>
            </widget>
@@ -106,25 +106,25 @@
            </widget>
           </item>
           <item row="2" column="1">
-           <widget class="qMRMLNodeComboBox" name="targetModelSelector">
+           <widget class="qMRMLNodeComboBox" name="targetModelSelector" native="true">
             <property name="enabled">
              <bool>true</bool>
             </property>
             <property name="toolTip">
              <string>Select target model</string>
             </property>
-            <property name="nodeTypes">
+            <property name="nodeTypes" stdset="0">
              <stringlist>
               <string>vtkMRMLModelNode</string>
              </stringlist>
             </property>
-            <property name="noneEnabled">
+            <property name="noneEnabled" stdset="0">
              <bool>true</bool>
             </property>
-            <property name="addEnabled">
+            <property name="addEnabled" stdset="0">
              <bool>false</bool>
             </property>
-            <property name="removeEnabled">
+            <property name="removeEnabled" stdset="0">
              <bool>false</bool>
             </property>
            </widget>
@@ -137,25 +137,25 @@
            </widget>
           </item>
           <item row="3" column="1">
-           <widget class="qMRMLNodeComboBox" name="targetLandmarkSetSelector">
+           <widget class="qMRMLNodeComboBox" name="targetLandmarkSetSelector" native="true">
             <property name="enabled">
              <bool>true</bool>
             </property>
             <property name="toolTip">
              <string>Select target manual landmark set</string>
             </property>
-            <property name="nodeTypes">
+            <property name="nodeTypes" stdset="0">
              <stringlist>
               <string>vtkMRMLMarkupsFiducialNode</string>
              </stringlist>
             </property>
-            <property name="noneEnabled">
+            <property name="noneEnabled" stdset="0">
              <bool>true</bool>
             </property>
-            <property name="addEnabled">
+            <property name="addEnabled" stdset="0">
              <bool>false</bool>
             </property>
-            <property name="removeEnabled">
+            <property name="removeEnabled" stdset="0">
              <bool>false</bool>
             </property>
            </widget>
@@ -192,11 +192,11 @@
         </widget>
        </item>
        <item>
-        <widget class="ctkCollapsibleButton" name="testPTDensityWidget">
-         <property name="text">
+        <widget class="ctkCollapsibleButton" name="testPTDensityWidget" native="true">
+         <property name="text" stdset="0">
           <string>Test subsampling pointclouds</string>
          </property>
-         <property name="collapsed">
+         <property name="collapsed" stdset="0">
           <bool>false</bool>
          </property>
          <layout class="QGridLayout" name="gridLayout">
@@ -208,17 +208,17 @@
            </widget>
           </item>
           <item row="0" column="1">
-           <widget class="ctkSliderWidget" name="pointDensitySlider">
+           <widget class="ctkSliderWidget" name="pointDensitySlider" native="true">
             <property name="toolTip">
              <string>Adjust the density of the pointclouds. Larger values increase the number of points, and vice versa.</string>
             </property>
-            <property name="singleStep">
+            <property name="singleStep" stdset="0">
              <double>0.100000000000000</double>
             </property>
-            <property name="maximum">
+            <property name="maximum" stdset="0">
              <double>3.000000000000000</double>
             </property>
-            <property name="value">
+            <property name="value" stdset="0">
              <double>1.000000000000000</double>
             </property>
            </widget>
@@ -250,11 +250,11 @@
         </widget>
        </item>
        <item>
-        <widget class="ctkCollapsibleButton" name="runSingleALPACAWidget">
-         <property name="text">
+        <widget class="ctkCollapsibleButton" name="runSingleALPACAWidget" native="true">
+         <property name="text" stdset="0">
           <string>Run ALPACA</string>
          </property>
-         <property name="collapsed">
+         <property name="collapsed" stdset="0">
           <bool>false</bool>
          </property>
          <layout class="QFormLayout" name="runSingleALPACAWidgetLayout">
@@ -288,11 +288,11 @@
         </widget>
        </item>
        <item>
-        <widget class="ctkCollapsibleButton" name="displayStepsWidget">
-         <property name="text">
+        <widget class="ctkCollapsibleButton" name="displayStepsWidget" native="true">
+         <property name="text" stdset="0">
           <string>Display ALPACA steps</string>
          </property>
-         <property name="collapsed">
+         <property name="collapsed" stdset="0">
           <bool>false</bool>
          </property>
          <layout class="QFormLayout" name="displayStepsWidgetLayout">
@@ -394,13 +394,13 @@
       <attribute name="title">
        <string>Batch processing</string>
       </attribute>
-      <layout class="QVBoxLayout" name="verticalLayout_3">
-       <item>
-        <widget class="ctkCollapsibleButton" name="alignMultiWidget">
+      <layout class="QGridLayout" name="gridLayout_2">
+       <item row="2" column="0" alignment="Qt::AlignTop">
+        <widget class="ctkCollapsibleButton" name="alignMultiWidget" native="true">
          <property name="toolTip">
           <string/>
          </property>
-         <property name="text">
+         <property name="text" stdset="0">
           <string>Transfer landmark points from one or multiple source models to a directory of target models</string>
          </property>
          <layout class="QFormLayout" name="FormLayout_2">
@@ -436,7 +436,7 @@
            </widget>
           </item>
           <item row="1" column="1">
-           <widget class="ctkPathLineEdit" name="sourceModelMultiSelector">
+           <widget class="ctkPathLineEdit" name="sourceModelMultiSelector" native="true">
             <property name="toolTip">
              <string>Select the source model</string>
             </property>
@@ -458,7 +458,7 @@
            </widget>
           </item>
           <item row="2" column="1">
-           <widget class="ctkPathLineEdit" name="sourceFiducialMultiSelector">
+           <widget class="ctkPathLineEdit" name="sourceFiducialMultiSelector" native="true">
             <property name="toolTip">
              <string>Select the source landmarks</string>
             </property>
@@ -482,7 +482,7 @@
            </widget>
           </item>
           <item row="3" column="1">
-           <widget class="ctkPathLineEdit" name="targetModelMultiSelector">
+           <widget class="ctkPathLineEdit" name="targetModelMultiSelector" native="true">
             <property name="toolTip">
              <string>Select the directory of models to be landmarked</string>
             </property>
@@ -491,15 +491,15 @@
             </property>
            </widget>
           </item>
-          <item row="4" column="0">
+          <item row="5" column="0">
            <widget class="QLabel" name="landmarkOutputSelectorLabel">
             <property name="text">
              <string>Target output landmark directory:</string>
             </property>
            </widget>
           </item>
-          <item row="4" column="1">
-           <widget class="ctkPathLineEdit" name="landmarkOutputSelector">
+          <item row="5" column="1">
+           <widget class="ctkPathLineEdit" name="landmarkOutputSelector" native="true">
             <property name="toolTip">
              <string>Select the output directory where the landmarks will be saved</string>
             </property>
@@ -508,35 +508,69 @@
             </property>
            </widget>
           </item>
-          <item row="5" column="0">
+          <item row="6" column="0">
            <widget class="QLabel" name="skipScalingMultiCheckBoxLabel">
             <property name="text">
              <string>Skip scaling</string>
             </property>
            </widget>
           </item>
-          <item row="5" column="1">
+          <item row="6" column="1">
            <widget class="QCheckBox" name="skipScalingMultiCheckBox">
             <property name="toolTip">
              <string>If checked, ALPACA will skip scaling during the alignment.</string>
             </property>
            </widget>
           </item>
-          <item row="6" column="0">
+          <item row="7" column="0">
            <widget class="QLabel" name="skipProjectionCheckBoxMultiLabel">
             <property name="text">
              <string>Skip projection</string>
             </property>
            </widget>
           </item>
-          <item row="6" column="1">
+          <item row="7" column="1">
            <widget class="QCheckBox" name="skipProjectionCheckBoxMulti">
             <property name="toolTip">
              <string>If checked, ALPACA will skip final refinement step placing landmarks on the target surface.</string>
             </property>
            </widget>
           </item>
-          <item row="7" column="0" colspan="2">
+          <item row="8" column="1">
+           <widget class="QCheckBox" name="duplicateAnalysisCheckBox">
+            <property name="text">
+             <string/>
+            </property>
+           </widget>
+          </item>
+          <item row="8" column="0">
+           <widget class="QLabel" name="duplicateAnalysisLabel">
+            <property name="text">
+             <string>Duplicate Analysis</string>
+            </property>
+           </widget>
+          </item>
+          <item row="9" column="0">
+           <widget class="QLabel" name="duplicationNumberLabel">
+            <property name="enabled">
+             <bool>false</bool>
+            </property>
+            <property name="text">
+             <string>Number of duplications: </string>
+            </property>
+           </widget>
+          </item>
+          <item row="9" column="1">
+           <widget class="QSpinBox" name="duplicationNumberSpinBox">
+            <property name="enabled">
+             <bool>false</bool>
+            </property>
+            <property name="value">
+             <number>3</number>
+            </property>
+           </widget>
+          </item>
+          <item row="10" column="0" colspan="2">
            <widget class="QPushButton" name="applyLandmarkMultiButton">
             <property name="enabled">
              <bool>false</bool>
@@ -560,17 +594,17 @@
       </attribute>
       <layout class="QVBoxLayout" name="advancedSettingsLayout">
        <item>
-        <widget class="ctkCollapsibleButton" name="pointDensityWidget">
+        <widget class="ctkCollapsibleButton" name="pointDensityWidget" native="true">
          <property name="sizePolicy">
           <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
            <horstretch>0</horstretch>
            <verstretch>0</verstretch>
           </sizepolicy>
          </property>
-         <property name="text">
+         <property name="text" stdset="0">
           <string>Point density and max projection</string>
          </property>
-         <property name="collapsed">
+         <property name="collapsed" stdset="0">
           <bool>false</bool>
          </property>
          <layout class="QFormLayout" name="pointDensityWidgetLayout">
@@ -582,20 +616,20 @@
            </widget>
           </item>
           <item row="0" column="1">
-           <widget class="ctkSliderWidget" name="pointDensityAdvancedSlider">
+           <widget class="ctkSliderWidget" name="pointDensityAdvancedSlider" native="true">
             <property name="toolTip">
              <string>Adjust the density of the pointclouds. Larger values increase the number of points, and vice versa.</string>
             </property>
-            <property name="singleStep">
+            <property name="singleStep" stdset="0">
              <double>0.100000000000000</double>
             </property>
-            <property name="minimum">
+            <property name="minimum" stdset="0">
              <double>0.100000000000000</double>
             </property>
-            <property name="maximum">
+            <property name="maximum" stdset="0">
              <double>3.000000000000000</double>
             </property>
-            <property name="value">
+            <property name="value" stdset="0">
              <double>1.000000000000000</double>
             </property>
            </widget>
@@ -608,14 +642,14 @@
            </widget>
           </item>
           <item row="1" column="1">
-           <widget class="ctkSliderWidget" name="projectionFactorSlider">
+           <widget class="ctkSliderWidget" name="projectionFactorSlider" native="true">
             <property name="toolTip">
              <string>Set maximum point projection as a percentage of the image diagonal. Point projection is used to make sure predicted landmarks are placed on the target model.</string>
             </property>
-            <property name="maximum">
+            <property name="maximum" stdset="0">
              <double>10.000000000000000</double>
             </property>
-            <property name="value">
+            <property name="value" stdset="0">
              <double>1.000000000000000</double>
             </property>
            </widget>
@@ -624,17 +658,17 @@
         </widget>
        </item>
        <item>
-        <widget class="ctkCollapsibleButton" name="rigidRegistrationWidget">
+        <widget class="ctkCollapsibleButton" name="rigidRegistrationWidget" native="true">
          <property name="sizePolicy">
           <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
            <horstretch>0</horstretch>
            <verstretch>0</verstretch>
           </sizepolicy>
          </property>
-         <property name="text">
+         <property name="text" stdset="0">
           <string>Rigid registration</string>
          </property>
-         <property name="collapsed">
+         <property name="collapsed" stdset="0">
           <bool>false</bool>
          </property>
          <layout class="QFormLayout" name="rigidRegistrationWidget">
@@ -646,14 +680,14 @@
            </widget>
           </item>
           <item row="0" column="1">
-           <widget class="ctkSliderWidget" name="normalSearchRadiusSlider">
+           <widget class="ctkSliderWidget" name="normalSearchRadiusSlider" native="true">
             <property name="toolTip">
              <string>Set size of the neighborhood used when computing normals</string>
             </property>
-            <property name="minimum">
+            <property name="minimum" stdset="0">
              <double>2.000000000000000</double>
             </property>
-            <property name="maximum">
+            <property name="maximum" stdset="0">
              <double>12.000000000000000</double>
             </property>
            </widget>
@@ -666,17 +700,17 @@
            </widget>
           </item>
           <item row="1" column="1">
-           <widget class="ctkSliderWidget" name="FPFHSearchRadiusSlider">
+           <widget class="ctkSliderWidget" name="FPFHSearchRadiusSlider" native="true">
             <property name="toolTip">
              <string>Set size of the neighborhood used when computing FPFH features</string>
             </property>
-            <property name="minimum">
+            <property name="minimum" stdset="0">
              <double>3.000000000000000</double>
             </property>
-            <property name="maximum">
+            <property name="maximum" stdset="0">
              <double>20.000000000000000</double>
             </property>
-            <property name="value">
+            <property name="value" stdset="0">
              <double>5.000000000000000</double>
             </property>
            </widget>
@@ -689,17 +723,17 @@
            </widget>
           </item>
           <item row="2" column="1">
-           <widget class="ctkSliderWidget" name="maximumCPDThreshold">
-            <property name="singleStep">
+           <widget class="ctkSliderWidget" name="maximumCPDThreshold" native="true">
+            <property name="singleStep" stdset="0">
              <double>0.250000000000000</double>
             </property>
-            <property name="minimum">
+            <property name="minimum" stdset="0">
              <double>0.500000000000000</double>
             </property>
-            <property name="maximum">
+            <property name="maximum" stdset="0">
              <double>4.000000000000000</double>
             </property>
-            <property name="value">
+            <property name="value" stdset="0">
              <double>3.000000000000000</double>
             </property>
            </widget>
@@ -712,20 +746,20 @@
            </widget>
           </item>
           <item row="3" column="1">
-           <widget class="ctkDoubleSpinBox" name="maxRANSAC">
+           <widget class="ctkDoubleSpinBox" name="maxRANSAC" native="true">
             <property name="toolTip">
              <string>Maximum number of iterations of the RANSAC algorithm</string>
             </property>
-            <property name="decimals">
+            <property name="decimals" stdset="0">
              <number>0</number>
             </property>
-            <property name="maximum">
+            <property name="maximum" stdset="0">
              <double>500000000.000000000000000</double>
             </property>
-            <property name="singleStep">
+            <property name="singleStep" stdset="0">
              <double>1.000000000000000</double>
             </property>
-            <property name="value">
+            <property name="value" stdset="0">
              <double>1000000.000000000000000</double>
             </property>
            </widget>
@@ -738,20 +772,20 @@
            </widget>
           </item>
           <item row="4" column="1">
-           <widget class="ctkDoubleSpinBox" name="RANSACConfidence">
+           <widget class="ctkDoubleSpinBox" name="RANSACConfidence" native="true">
             <property name="toolTip">
              <string>Set up confidence (convergence criteria) for RANSAC global registration</string>
             </property>
-            <property name="decimals">
+            <property name="decimals" stdset="0">
              <number>3</number>
             </property>
-            <property name="maximum">
+            <property name="maximum" stdset="0">
              <double>1.000000000000000</double>
             </property>
-            <property name="singleStep">
+            <property name="singleStep" stdset="0">
              <double>0.001000000000000</double>
             </property>
-            <property name="value">
+            <property name="value" stdset="0">
              <double>0.999000000000000</double>
             </property>
            </widget>
@@ -764,20 +798,20 @@
            </widget>
           </item>
           <item row="5" column="1">
-           <widget class="ctkSliderWidget" name="ICPDistanceThresholdSlider">
+           <widget class="ctkSliderWidget" name="ICPDistanceThresholdSlider" native="true">
             <property name="toolTip">
              <string>Maximum ICP points-pair distance threshold</string>
             </property>
-            <property name="singleStep">
+            <property name="singleStep" stdset="0">
              <double>0.100000000000000</double>
             </property>
-            <property name="minimum">
+            <property name="minimum" stdset="0">
              <double>0.100000000000000</double>
             </property>
-            <property name="maximum">
+            <property name="maximum" stdset="0">
              <double>2.000000000000000</double>
             </property>
-            <property name="value">
+            <property name="value" stdset="0">
              <double>1.500000000000000</double>
             </property>
            </widget>
@@ -786,17 +820,17 @@
         </widget>
        </item>
        <item>
-        <widget class="ctkCollapsibleButton" name="deformableRegistrationWidget">
+        <widget class="ctkCollapsibleButton" name="deformableRegistrationWidget" native="true">
          <property name="sizePolicy">
           <sizepolicy hsizetype="Minimum" vsizetype="MinimumExpanding">
            <horstretch>0</horstretch>
            <verstretch>0</verstretch>
           </sizepolicy>
          </property>
-         <property name="text">
+         <property name="text" stdset="0">
           <string>Deformable registration</string>
          </property>
-         <property name="collapsed">
+         <property name="collapsed" stdset="0">
           <bool>false</bool>
          </property>
          <layout class="QFormLayout" name="deformableRegistrationWidgetLayout">
@@ -808,23 +842,23 @@
            </widget>
           </item>
           <item row="0" column="1">
-           <widget class="ctkDoubleSpinBox" name="alpha">
+           <widget class="ctkDoubleSpinBox" name="alpha" native="true">
             <property name="toolTip">
              <string>Parameter specifying trade-off between fit and smoothness. Low values induce fluidity, while higher values impose rigidity</string>
             </property>
-            <property name="decimals">
+            <property name="decimals" stdset="0">
              <number>1</number>
             </property>
-            <property name="minimum">
+            <property name="minimum" stdset="0">
              <double>0.100000000000000</double>
             </property>
-            <property name="maximum">
+            <property name="maximum" stdset="0">
              <double>10.000000000000000</double>
             </property>
-            <property name="singleStep">
+            <property name="singleStep" stdset="0">
              <double>0.100000000000000</double>
             </property>
-            <property name="value">
+            <property name="value" stdset="0">
              <double>2.000000000000000</double>
             </property>
            </widget>
@@ -837,23 +871,23 @@
            </widget>
           </item>
           <item row="1" column="1">
-           <widget class="ctkDoubleSpinBox" name="beta">
+           <widget class="ctkDoubleSpinBox" name="beta" native="true">
             <property name="toolTip">
              <string>Width of gaussian filter used when applying smoothness constraint</string>
             </property>
-            <property name="decimals">
+            <property name="decimals" stdset="0">
              <number>1</number>
             </property>
-            <property name="minimum">
+            <property name="minimum" stdset="0">
              <double>0.100000000000000</double>
             </property>
-            <property name="maximum">
+            <property name="maximum" stdset="0">
              <double>10.000000000000000</double>
             </property>
-            <property name="singleStep">
+            <property name="singleStep" stdset="0">
              <double>0.100000000000000</double>
             </property>
-            <property name="value">
+            <property name="value" stdset="0">
              <double>2.000000000000000</double>
             </property>
            </widget>
@@ -866,17 +900,17 @@
            </widget>
           </item>
           <item row="2" column="1">
-           <widget class="ctkSliderWidget" name="CPDIterationsSlider">
+           <widget class="ctkSliderWidget" name="CPDIterationsSlider" native="true">
             <property name="toolTip">
              <string>Maximum number of iterations of the CPD procedure</string>
             </property>
-            <property name="decimals">
+            <property name="decimals" stdset="0">
              <number>0</number>
             </property>
-            <property name="maximum">
+            <property name="maximum" stdset="0">
              <double>1000.000000000000000</double>
             </property>
-            <property name="value">
+            <property name="value" stdset="0">
              <double>100.000000000000000</double>
             </property>
            </widget>
@@ -889,23 +923,23 @@
            </widget>
           </item>
           <item row="3" column="1">
-           <widget class="ctkSliderWidget" name="CPDToleranceSlider">
+           <widget class="ctkSliderWidget" name="CPDToleranceSlider" native="true">
             <property name="toolTip">
              <string>Tolerance used to assess CPD convergence</string>
             </property>
-            <property name="decimals">
+            <property name="decimals" stdset="0">
              <number>4</number>
             </property>
-            <property name="singleStep">
+            <property name="singleStep" stdset="0">
              <double>0.000100000000000</double>
             </property>
-            <property name="minimum">
+            <property name="minimum" stdset="0">
              <double>0.000100000000000</double>
             </property>
-            <property name="maximum">
+            <property name="maximum" stdset="0">
              <double>0.010000000000000</double>
             </property>
-            <property name="value">
+            <property name="value" stdset="0">
              <double>0.001000000000000</double>
             </property>
            </widget>
@@ -932,7 +966,7 @@
            </widget>
           </item>
           <item row="5" column="1">
-           <widget class="ctkPathLineEdit" name="BCPDFolder">
+           <widget class="ctkPathLineEdit" name="BCPDFolder" native="true">
             <property name="toolTip">
              <string>Select the directory of containing the compiled BCPD</string>
             </property>
@@ -952,11 +986,11 @@
       </attribute>
       <layout class="QVBoxLayout" name="templateSelectionLayout">
        <item>
-        <widget class="ctkCollapsibleButton" name="templatesSetupWidget">
-         <property name="text">
+        <widget class="ctkCollapsibleButton" name="templatesSetupWidget" native="true">
+         <property name="text" stdset="0">
           <string>Templates selection setup</string>
          </property>
-         <property name="collapsed">
+         <property name="collapsed" stdset="0">
           <bool>false</bool>
          </property>
          <layout class="QFormLayout" name="templatesSetupWidgetLayout">
@@ -968,7 +1002,7 @@
            </widget>
           </item>
           <item row="0" column="1">
-           <widget class="ctkPathLineEdit" name="modelsMultiSelector">
+           <widget class="ctkPathLineEdit" name="modelsMultiSelector" native="true">
             <property name="toolTip">
              <string>Select directory containing models for template selection</string>
             </property>
@@ -999,7 +1033,7 @@
            </widget>
           </item>
           <item row="2" column="1">
-           <widget class="ctkPathLineEdit" name="referenceSelector">
+           <widget class="ctkPathLineEdit" name="referenceSelector" native="true">
             <property name="toolTip">
              <string>The default reference model for downsampling point clouds with matching points will be the first specimen. Users can also manually select a reference model here </string>
             </property>
@@ -1024,7 +1058,7 @@
            </widget>
           </item>
           <item row="3" column="1">
-           <widget class="ctkPathLineEdit" name="kmeansOutputSelector">
+           <widget class="ctkPathLineEdit" name="kmeansOutputSelector" native="true">
             <property name="toolTip">
              <string>Specify the output directory for the kmeans multi-template selection output</string>
             </property>
@@ -1037,11 +1071,11 @@
         </widget>
        </item>
        <item>
-        <widget class="ctkCollapsibleButton" name="downMatchingPCDWidget">
-         <property name="text">
+        <widget class="ctkCollapsibleButton" name="downMatchingPCDWidget" native="true">
+         <property name="text" stdset="0">
           <string>Point Cloud Generation</string>
          </property>
-         <property name="collapsed">
+         <property name="collapsed" stdset="0">
           <bool>false</bool>
          </property>
          <layout class="QFormLayout" name="downMatchingPCDWidgetLayout">
@@ -1053,20 +1087,20 @@
            </widget>
           </item>
           <item row="0" column="1">
-           <widget class="ctkSliderWidget" name="spacingFactorSlider">
+           <widget class="ctkSliderWidget" name="spacingFactorSlider" native="true">
             <property name="toolTip">
              <string>Setting up spacing factor for downsampling the original pointclouds. Moving right (decreasing spacing factor) will result in sparser point clouds. Moving left (increasing spacing factor) will result in denser point clouds.</string>
             </property>
-            <property name="decimals">
+            <property name="decimals" stdset="0">
              <number>3</number>
             </property>
-            <property name="singleStep">
+            <property name="singleStep" stdset="0">
              <double>0.001000000000000</double>
             </property>
-            <property name="maximum">
+            <property name="maximum" stdset="0">
              <double>0.100000000000000</double>
             </property>
-            <property name="value">
+            <property name="value" stdset="0">
              <double>0.040000000000000</double>
             </property>
            </widget>
@@ -1117,11 +1151,11 @@
         </widget>
        </item>
        <item>
-        <widget class="ctkCollapsibleButton" name="templatesSelectionWidget">
-         <property name="text">
+        <widget class="ctkCollapsibleButton" name="templatesSelectionWidget" native="true">
+         <property name="text" stdset="0">
           <string>Multi-templates selection</string>
          </property>
-         <property name="collapsed">
+         <property name="collapsed" stdset="0">
           <bool>false</bool>
          </property>
          <layout class="QFormLayout" name="templatesSelectionWidgetLayout">
@@ -1175,17 +1209,17 @@
            </widget>
           </item>
           <item row="3" column="1">
-           <widget class="ctkDoubleSpinBox" name="templatesNumber">
+           <widget class="ctkDoubleSpinBox" name="templatesNumber" native="true">
             <property name="toolTip">
              <string>Input desired number of templates</string>
             </property>
-            <property name="decimals">
+            <property name="decimals" stdset="0">
              <number>0</number>
             </property>
-            <property name="maximum">
+            <property name="maximum" stdset="0">
              <double>100.000000000000000</double>
             </property>
-            <property name="value">
+            <property name="value" stdset="0">
              <double>3.000000000000000</double>
             </property>
            </widget>
@@ -1198,14 +1232,14 @@
            </widget>
           </item>
           <item row="4" column="1">
-           <widget class="ctkDoubleSpinBox" name="kmeansIterations">
-            <property name="decimals">
+           <widget class="ctkDoubleSpinBox" name="kmeansIterations" native="true">
+            <property name="decimals" stdset="0">
              <number>0</number>
             </property>
-            <property name="maximum">
+            <property name="maximum" stdset="0">
              <double>10000000.000000000000000</double>
             </property>
-            <property name="value">
+            <property name="value" stdset="0">
              <double>10000.000000000000000</double>
             </property>
            </widget>
