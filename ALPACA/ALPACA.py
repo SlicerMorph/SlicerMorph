@@ -258,6 +258,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.ui.targetModelMultiSelector.connect('validInputChanged(bool)', self.onSelectMultiProcess)
     self.ui.landmarkOutputSelector.connect('validInputChanged(bool)', self.onSelectMultiProcess)
     self.ui.skipScalingMultiCheckBox.connect('toggled(bool)', self.onSelectMultiProcess)
+    self.ui.duplicateAnalysisCheckBox.connect('toggled(bool)', self.onSelectDuplicateAnalysis)
     self.ui.applyLandmarkMultiButton.connect('clicked(bool)', self.onApplyLandmarkMulti)
 
     # Template Selection connections
@@ -332,6 +333,9 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.ui.applyLandmarkMultiButton.enabled = bool ( self.ui.sourceModelMultiSelector.currentPath and self.ui.sourceFiducialMultiSelector.currentPath
       and self.ui.targetModelMultiSelector.currentPath and self.ui.landmarkOutputSelector.currentPath )
 
+  def onSelectDuplicateAnalysis(self):
+    self.ui.duplicationNumberLabel.enabled = bool( self.ui.duplicateAnalysisCheckBox.isChecked())
+    self.ui.duplicationNumberSpinBox.enabled = bool ( self.ui.duplicateAnalysisCheckBox.isChecked())
 
   def onSubsampleButton(self):
     try:
@@ -699,10 +703,21 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       projectionFactor = 0
     else:
       projectionFactor = self.ui.projectionFactorSlider.value/100
-
-    logic.runLandmarkMultiprocess(self.ui.sourceModelMultiSelector.currentPath,self.ui.sourceFiducialMultiSelector.currentPath,
-    self.ui.targetModelMultiSelector.currentPath, self.ui.landmarkOutputSelector.currentPath, self.ui.skipScalingMultiCheckBox.checked, projectionFactor, self.parameterDictionary)
-
+    if not self.ui.duplicateAnalysisCheckBox.checked:
+      logic.runLandmarkMultiprocess(self.ui.sourceModelMultiSelector.currentPath,self.ui.sourceFiducialMultiSelector.currentPath,
+      self.ui.targetModelMultiSelector.currentPath, self.ui.landmarkOutputSelector.currentPath, self.ui.skipScalingMultiCheckBox.checked, projectionFactor, self.parameterDictionary)
+    else:
+      for i in range(0, self.ui.duplicationNumberSpinBox.value):
+        print("ALPACA duplication run ", i)
+        dateTimeStamp = datetime.now().strftime('%Y-%m-%d_%H_%M_%S')
+        datedOutputFolder = os.path.join(self.ui.landmarkOutputSelector.currentPath, dateTimeStamp)
+        try:
+          os.makedirs(datedOutputFolder)
+          logic.runLandmarkMultiprocess(self.ui.sourceModelMultiSelector.currentPath,self.ui.sourceFiducialMultiSelector.currentPath,
+            self.ui.targetModelMultiSelector.currentPath, datedOutputFolder, self.ui.skipScalingMultiCheckBox.checked, projectionFactor, self.parameterDictionary)
+        except:
+          logging.debug('Result directory failed: Could not access output folder')
+          print("Error creating result directory")
 
 ###Connecting function for kmeans templates selection
   def onSelectKmeans(self):
