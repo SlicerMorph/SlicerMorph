@@ -1052,6 +1052,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
 
   def runLandmarkMultiprocess(self, sourceModelPath, sourceLandmarkPath, targetModelDirectory, outputDirectory, skipScaling, projectionFactor, parameters):
     extensionModel = ".ply"
+    extensionLM = ".fcsv"
     sourceModelList = []
     sourceLMList = []
     TargetModelList = []
@@ -1061,7 +1062,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         os.makedirs(specimenOutput, exist_ok=True)
         os.makedirs(medianOutput, exist_ok=True)
         for file in os.listdir(sourceModelPath):
-          if file.endswith(extensionModel):
+          if file.endswith(extensionLM):
             sourceFilePath = os.path.join(sourceModelPath,file)
             sourceModelList.append(sourceFilePath)
     else:
