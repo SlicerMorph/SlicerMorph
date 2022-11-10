@@ -1062,14 +1062,14 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         os.makedirs(specimenOutput, exist_ok=True)
         os.makedirs(medianOutput, exist_ok=True)
         for file in os.listdir(sourceModelPath):
-          if file.endswith(extensionLM):
+          if file.endswith(extensionModel):
             sourceFilePath = os.path.join(sourceModelPath,file)
             sourceModelList.append(sourceFilePath)
     else:
       sourceModelList.append(sourceModelPath)
     if os.path.isdir(sourceLandmarkPath):
       for file in os.listdir(sourceLandmarkPath):
-          if file.endswith(extensionModel):
+          if file.endswith(extensionLM):
             sourceFilePath = os.path.join(sourceLandmarkPath,file)
             sourceLMList.append(sourceFilePath)
     else:
