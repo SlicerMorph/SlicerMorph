@@ -671,16 +671,19 @@
          </property>
          <layout class="QFormLayout" name="rigidRegistrationWidget">
           <item row="0" column="0">
-           <widget class="QLabel" name="normalSearchRadiusLabel">
+           <widget class="QLabel" name="normalNeighborsCountLabel">
             <property name="text">
-             <string>Normal search radius:</string>
+             <string>Normal Neighbor Count:</string>
             </property>
            </widget>
           </item>
           <item row="0" column="1">
-           <widget class="ctkSliderWidget" name="normalSearchRadiusSlider" native="true">
+           <widget class="ctkSliderWidget" name="normalNeighborsCountSlider">
             <property name="toolTip">
-             <string>Set size of the neighborhood used when computing normals</string>
+             <string>Set size of the neighborhood points used when computing normals</string>
+            </property>
+            <property name="decimals">
+             <number>0</number>
             </property>
             <property name="minimum">
              <double>10.000000000000000</double>
@@ -689,7 +692,7 @@
 		    <double>100.000000000000000</double>
             </property>
             <property name="value">
-             <double>30.000000000000000</double>
+             <double>40.000000000000000</double>
             </property>
            </widget>
           </item>
