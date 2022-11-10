@@ -537,31 +537,31 @@
            </widget>
           </item>
           <item row="8" column="1">
-           <widget class="QCheckBox" name="duplicateAnalysisCheckBox">
+           <widget class="QCheckBox" name="replicateAnalysisCheckBox">
             <property name="text">
              <string/>
             </property>
            </widget>
           </item>
           <item row="8" column="0">
-           <widget class="QLabel" name="duplicateAnalysisLabel">
+           <widget class="QLabel" name="replicateAnalysisLabel">
             <property name="text">
-             <string>Duplicate Analysis</string>
+             <string>replicate Analysis</string>
             </property>
            </widget>
           </item>
           <item row="9" column="0">
-           <widget class="QLabel" name="duplicationNumberLabel">
+           <widget class="QLabel" name="replicationNumberLabel">
             <property name="enabled">
              <bool>false</bool>
             </property>
             <property name="text">
-             <string>Number of duplications: </string>
+             <string>Number of replications: </string>
             </property>
            </widget>
           </item>
           <item row="9" column="1">
-           <widget class="QSpinBox" name="duplicationNumberSpinBox">
+           <widget class="QSpinBox" name="replicationNumberSpinBox">
             <property name="enabled">
              <bool>false</bool>
             </property>
