@@ -215,8 +215,8 @@
             <property name="singleStep" stdset="0">
              <double>0.100000000000000</double>
             </property>
-            <property name="maximum" stdset="0">
-             <double>3.000000000000000</double>
+            <property name="maximum">
+             <double>2.000000000000000</double>
             </property>
             <property name="value" stdset="0">
              <double>1.000000000000000</double>
