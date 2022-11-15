@@ -14,11 +14,27 @@ import numpy as np
 from datetime import datetime
 import time
 import sys
-import itk
+from concurrent.futures import ThreadPoolExecutor
+import importlib
 
 #
 # ALPACA
 #
+
+modules_to_load = ['itk']
+
+def do_import(module_name):
+    thismodule = sys.modules[__name__]
+    module = importlib.import_module(module_name)
+    setattr(thismodule, module_name, module)
+    fpfh = thismodule.itk.Fpfh.PointFeature.MF3MF3.New()
+    print(module_name, 'imported ')
+
+# For loading itk library in background
+executor = ThreadPoolExecutor()
+for module_name in modules_to_load:
+  print('Starting itk library import in the background')
+  executor.submit(do_import, module_name)
 
 class ALPACA(ScriptedLoadableModule):
   """Uses ScriptedLoadableModule base class, available at:
