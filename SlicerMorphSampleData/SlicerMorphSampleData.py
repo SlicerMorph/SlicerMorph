@@ -36,64 +36,102 @@ This module was developed by Sara Rolfe and Murat Maga for SlicerMorph. SlicerMo
       sampleName='Gorilla Skull Landmarks Only',
       category='SlicerMorph',
       uris='https://github.com/SlicerMorph/SampleData/blob/master/Gorilla_Skull_LMs.zip?raw=true',
-      loadFiles=True,
+      checksums=None,
+      loadFiles=False,
       fileNames='Gorilla_Skull_LMs.zip',
       thumbnailFileName=os.path.join(iconsPath, 'pointcloud.png'),
       loadFileType='ZipFile',
+      customDownloader=self.downloadSampleDataInFolder,
 )
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
       sampleName='Gorilla Skull Reference Model',
       category='SlicerMorph',
       uris=['https://github.com/SlicerMorph/SampleData/blob/master/Gor_template_low_res.ply?raw=true','https://raw.githubusercontent.com/SlicerMorph/SampleData/master/Gorilla_template_LM1.fcsv?raw=true'],
+      checksums=[None, None],
       loadFiles=[False, False],
       fileNames=['Gor_template_low_res.ply', 'Gorilla_template_LM1.fcsv'],
       nodeNames=['Gor_template_low_res', 'Gorilla_template_LM1'],
       thumbnailFileName=os.path.join(iconsPath, 'gorilla3D.png'),
       loadFileType=['ModelFile', 'MarkupsFile'],
+      customDownloader=self.downloadSampleDataInFolder,
 )
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
       sampleName='Mouse Skull Landmarks Only',
       category='SlicerMorph',
       uris='https://github.com/SlicerMorph/SampleData/blob/master/mouse_skull_LMs.zip?raw=true',
-      loadFiles=True,
+      checksums=None,
+      loadFiles=False,
       fileNames='mouse_skull_LMs.zip',
       thumbnailFileName=os.path.join(iconsPath, 'pointcloud.png'),
       loadFileType='ZipFile',
+      customDownloader=self.downloadSampleDataInFolder,
 )
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
       sampleName='Mouse Skull Reference Model',
       category='SlicerMorph',
       uris=['https://github.com/SlicerMorph/SampleData/blob/master/4074_skull.vtk?raw=true', 'https://raw.githubusercontent.com/SlicerMorph/SampleData/master/4074_S_lm1.fcsv?raw=true'],
+      checksums=[None, None],
       loadFiles=[False, False],
       fileNames=['4074_skull.vtk','4074_S_lm1.fcsv'],
       nodeNames=['4074_skull', '4074_S_lm1'],
       thumbnailFileName=os.path.join(iconsPath, 'mouse3D.png'),
       loadFileType=['ModelFile','MarkupsFile'],
+      customDownloader=self.downloadSampleDataInFolder,
 )
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
       sampleName='Bruker/Sykscan mCT Recon sample',
       category='SlicerMorph',
       uris='https://github.com/SlicerMorph/SampleData/blob/master/sample_Skyscan_mCT_reconstruction.zip?raw=true',
-      loadFiles=True,
+      checksums=None,
+      loadFiles=False,
       fileNames='sample_Skyscan_mCT_reconstruction.zip',
       thumbnailFileName=os.path.join(iconsPath, 'microCT_stack_thumbnail.png'),
       loadFileType='ZipFile',
+      customDownloader=self.downloadSampleDataInFolder,
 )
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
       sampleName='Auto3dgm sample',
       category='SlicerMorph',
       uris='https://toothandclaw.github.io/files/samples.zip',
-      loadFiles=True,
+      checksums=None,
+      loadFiles=False,
       fileNames='samples.zip',
       thumbnailFileName=os.path.join(iconsPath, 'auto3dgm_thumbnail.png'),
       loadFileType='ZipFile',
+      customDownloader=self.downloadSampleDataInFolder,
 )
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
       sampleName='Gorilla patch semi-landmarks',
       category='SlicerMorph',
       uris='https://github.com/SlicerMorph/SampleData/blob/0c1e14bee7a4ea85614ba677b45bc693120a5bba/Gorilla%20patch%20semi-landmarks.zip?raw=true',
-      loadFiles=True,
+      checksums=None,
+      loadFiles=False,
       fileNames='Gorilla patch semi-landmarks.zip',
       thumbnailFileName=os.path.join(iconsPath, 'gorillaPatchSML.png'),
       loadFileType='ZipFile',
-)
+      customDownloader=self.downloadSampleDataInFolder,
+    )
+
+  def downloadSampleDataInFolder(self, source):
+    sampleDataLogic = slicer.modules.sampledata.widgetRepresentation().self().logic
+    # Retrieve directory
+    category = "SlicerMorph"
+    savedDirectory = slicer.app.userSettings().value(
+          "SampleData/Last%sDownloadDirectory" % category,
+          qt.QStandardPaths.writableLocation(qt.QStandardPaths.DocumentsLocation))
+
+    destFolderPath = str(qt.QFileDialog.getExistingDirectory(slicer.util.mainWindow(), 'Destination Folder', savedDirectory))
+    if not os.path.isdir(destFolderPath):
+      return
+    print('Selected data folder: %s' % destFolderPath)
+    for uri, fileName, checksum  in zip(source.uris, source.fileNames, source.checksums):
+      sampleDataLogic.downloadFile(uri, destFolderPath, fileName, checksum)
+
+    # Save directory
+    slicer.app.userSettings().setValue("SampleData/Last%sDownloadDirectory" % category, destFolderPath)
+    filepath=destFolderPath+"/setup.py"
+    if (os.path.exists(filepath)):
+      spec = importlib.util.spec_from_file_location("setup",filepath)
+      setup = importlib.util.module_from_spec(spec)
+      spec.loader.exec_module(setup)
+      setup.setup()
