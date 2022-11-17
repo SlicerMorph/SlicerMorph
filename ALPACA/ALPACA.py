@@ -258,6 +258,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.ui.targetModelMultiSelector.connect('validInputChanged(bool)', self.onSelectMultiProcess)
     self.ui.landmarkOutputSelector.connect('validInputChanged(bool)', self.onSelectMultiProcess)
     self.ui.skipScalingMultiCheckBox.connect('toggled(bool)', self.onSelectMultiProcess)
+    self.ui.replicateAnalysisCheckBox.connect('toggled(bool)', self.onSelectReplicateAnalysis)
     self.ui.applyLandmarkMultiButton.connect('clicked(bool)', self.onApplyLandmarkMulti)
 
     # Template Selection connections
@@ -332,6 +333,9 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.ui.applyLandmarkMultiButton.enabled = bool ( self.ui.sourceModelMultiSelector.currentPath and self.ui.sourceFiducialMultiSelector.currentPath
       and self.ui.targetModelMultiSelector.currentPath and self.ui.landmarkOutputSelector.currentPath )
 
+  def onSelectReplicateAnalysis(self):
+    self.ui.replicationNumberLabel.enabled = bool( self.ui.replicateAnalysisCheckBox.isChecked())
+    self.ui.replicationNumberSpinBox.enabled = bool ( self.ui.replicateAnalysisCheckBox.isChecked())
 
   def onSubsampleButton(self):
     try:
@@ -699,10 +703,21 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       projectionFactor = 0
     else:
       projectionFactor = self.ui.projectionFactorSlider.value/100
-
-    logic.runLandmarkMultiprocess(self.ui.sourceModelMultiSelector.currentPath,self.ui.sourceFiducialMultiSelector.currentPath,
-    self.ui.targetModelMultiSelector.currentPath, self.ui.landmarkOutputSelector.currentPath, self.ui.skipScalingMultiCheckBox.checked, projectionFactor, self.parameterDictionary)
-
+    if not self.ui.replicateAnalysisCheckBox.checked:
+      logic.runLandmarkMultiprocess(self.ui.sourceModelMultiSelector.currentPath,self.ui.sourceFiducialMultiSelector.currentPath,
+      self.ui.targetModelMultiSelector.currentPath, self.ui.landmarkOutputSelector.currentPath, self.ui.skipScalingMultiCheckBox.checked, projectionFactor, self.parameterDictionary)
+    else:
+      for i in range(0, self.ui.replicationNumberSpinBox.value):
+        print("ALPACA replication run ", i)
+        dateTimeStamp = datetime.now().strftime('%Y-%m-%d_%H_%M_%S')
+        datedOutputFolder = os.path.join(self.ui.landmarkOutputSelector.currentPath, dateTimeStamp)
+        try:
+          os.makedirs(datedOutputFolder)
+          logic.runLandmarkMultiprocess(self.ui.sourceModelMultiSelector.currentPath,self.ui.sourceFiducialMultiSelector.currentPath,
+            self.ui.targetModelMultiSelector.currentPath, datedOutputFolder, self.ui.skipScalingMultiCheckBox.checked, projectionFactor, self.parameterDictionary)
+        except:
+          logging.debug('Result directory failed: Could not access output folder')
+          print("Error creating result directory")
 
 ###Connecting function for kmeans templates selection
   def onSelectKmeans(self):
@@ -1036,20 +1051,34 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     """
 
   def runLandmarkMultiprocess(self, sourceModelPath, sourceLandmarkPath, targetModelDirectory, outputDirectory, skipScaling, projectionFactor, parameters):
-    extras = {"Source" : sourceModelPath, "SourceLandmarks" : sourceLandmarkPath, "Target" : targetModelDirectory, "Output" : outputDirectory, 'Skip scaling ?' : bool(skipScaling)}
-    extras.update(parameters)
-    parameterFile = os.path.join(outputDirectory, 'advancedParameters.txt')
-    json.dump(extras, open(parameterFile,'w'), indent = 2)
     extensionModel = ".ply"
+    extensionLM = ".fcsv"
+    sourceModelList = []
+    sourceLMList = []
+    TargetModelList = []
     if os.path.isdir(sourceModelPath):
         specimenOutput = os.path.join(outputDirectory,'individualEstimates')
         medianOutput = os.path.join(outputDirectory,'medianEstimates')
         os.makedirs(specimenOutput, exist_ok=True)
         os.makedirs(medianOutput, exist_ok=True)
+        for file in os.listdir(sourceModelPath):
+          if file.endswith(extensionModel):
+            sourceFilePath = os.path.join(sourceModelPath,file)
+            sourceModelList.append(sourceFilePath)
+    else:
+      sourceModelList.append(sourceModelPath)
+    if os.path.isdir(sourceLandmarkPath):
+      for file in os.listdir(sourceLandmarkPath):
+          if file.endswith(extensionLM):
+            sourceFilePath = os.path.join(sourceLandmarkPath,file)
+            sourceLMList.append(sourceFilePath)
+    else:
+      sourceLMList.append(sourceLandmarkPath)
     # Iterate through target models
     for targetFileName in os.listdir(targetModelDirectory):
       if targetFileName.endswith(extensionModel):
         targetFilePath = os.path.join(targetModelDirectory, targetFileName)
+        TargetModelList.append(targetFilePath)
         rootName = os.path.splitext(targetFileName)[0]
         landmarkList = []
         if os.path.isdir(sourceModelPath):
@@ -1073,6 +1102,10 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             array = self.pairwiseAlignment(sourceModelPath, sourceLandmarkPath, targetFilePath, outputFilePath, skipScaling, projectionFactor, parameters)
         else:
             print('::::Could not find the file or directory in question')
+    extras = {"Source" : sourceModelList, "SourceLandmarks" : sourceLMList, "Target" : TargetModelList, "Output" : outputDirectory, 'Skip scaling ?' : bool(skipScaling)}
+    extras.update(parameters)
+    parameterFile = os.path.join(outputDirectory, 'advancedParameters.txt')
+    json.dump(extras, open(parameterFile,'w'), indent = 2)
 
 
   def pairwiseAlignment (self, sourceFilePath, sourceLandmarkFile, targetFilePath, outputFilePath, skipScaling, projectionFactor, parameters):
