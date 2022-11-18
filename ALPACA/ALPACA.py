@@ -14,27 +14,25 @@ import numpy as np
 from datetime import datetime
 import time
 import sys
-from concurrent.futures import ThreadPoolExecutor
-import importlib
 
 #
 # ALPACA
 #
 
-modules_to_load = ['itk']
+itkInstalled = False
+try:
+  import itk
+  itkInstalled = True
+except:
+  itkInstalled = False
+  pass
 
-def do_import(module_name):
-    thismodule = sys.modules[__name__]
-    module = importlib.import_module(module_name)
-    setattr(thismodule, module_name, module)
-    fpfh = thismodule.itk.Fpfh.PointFeature.MF3MF3.New()
-    print(module_name, 'imported ')
+if itkInstalled:
+  # For loading itk library beforehand to avoid delay while usage
+  import time
+  import itk
+  fpfh = itk.Fpfh.PointFeature.MF3MF3.New()
 
-# For loading itk library in background
-executor = ThreadPoolExecutor()
-for module_name in modules_to_load:
-  print('Starting itk library import in the background')
-  executor.submit(do_import, module_name)
 
 class ALPACA(ScriptedLoadableModule):
   """Uses ScriptedLoadableModule base class, available at:
@@ -176,6 +174,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       progressDialog = slicer.util.createProgressDialog(labelText='Installing ITK RANSAC, ITK FPFH. This may take a minute...', maximum=0)
       slicer.app.processEvents()
       try:
+        slicer.util.pip_install(f'itk==5.3rc04.post3')
         slicer.util.pip_install(f'itk-fpfh')
         slicer.util.pip_install(f'itk-ransac')
         slicer.util.pip_install(f'cpdalp')
@@ -186,6 +185,9 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       # the argument into multiple command-line arguments when there are spaces in the path)
       import cpdalp
       progressDialog.close()
+      slicer.util.infoDisplay('Restarting Slicer to load packages.')
+      slicer.util.restart()
+
     
     # Load widget from .ui file (created by Qt Designer).
     uiWidget = slicer.util.loadUI(self.resourcePath('UI/ALPACA.ui'))
@@ -400,6 +402,8 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
 
   #Run all button for Single Alignment ALPACA
   def onRunALPACAButton(self):
+    progressDialog = slicer.util.createProgressDialog(labelText='Registration Started...', maximum=0)
+    slicer.app.processEvents()
     run_counter = self.runALPACACounter() #the counter for executing this function in str format
     logic = ALPACALogic()
     try:
@@ -588,6 +592,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       rmse = logic.rmse(manualLMs, finalLMs)
       print(rmse)
       self.singleRMSETable(rmse, run_counter)
+    progressDialog.close()
 
   def singleRMSETable(self, rmse, counter_str):
     listTableNodes = slicer.mrmlScene.GetNodesByName("Single Alignment RMSE table")
@@ -1694,6 +1699,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     return point_array, normal_array
   
   def get_fpfh_feature(self, points_np, normals_np, radius, neighbors):
+    import itk
     pointset = itk.PointSet[itk.F, 3].New()
     pointset.SetPoints(
         itk.vector_container_from_array(points_np.flatten().astype("float32"))
@@ -1703,7 +1709,6 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     normalset.SetPoints(
         itk.vector_container_from_array(normals_np.flatten().astype("float32"))
     )
-
     fpfh = itk.Fpfh.PointFeature.MF3MF3.New()
     fpfh.ComputeFPFHFeature(pointset, normalset, float(radius), int(neighbors))
     result = fpfh.GetFpfhFeature()
