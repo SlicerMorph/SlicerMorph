@@ -476,6 +476,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.sourceModelNode.GetDisplayNode().SetVisibility(False)
     #
     #CPD registration
+    print('Performing Deformable Registration ')
     self.sourceLandmarks, self.sourceLMNode =  logic.loadAndScaleFiducials(self.ui.sourceLandmarkSetSelector.currentNode(), self.scaling, self.offset_amount, scene = True)
     self.sourceLandmarks = logic.transform_numpy_points(self.sourceLandmarks, self.transformMatrix)
     self.sourceLandmarks = logic.transform_numpy_points(self.sourceLandmarks, self.transformMatrix_rigid)
@@ -1421,13 +1422,16 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     bestPercentage = 0
     bestParameters = None
 
+    maxThreadCount = itk.MultiThreaderBase.New().GetMaximumNumberOfThreads()
+    #print('Number of max iterations ', int(number_of_iterations/maxThreadCount))
+
     desiredProbabilityForNoOutliers = 0.99
     RANSACType = itk.RANSAC[itk.Point[itk.D, 6], itk.D]
     ransacEstimator = RANSACType.New()
     ransacEstimator.SetData(data)
     ransacEstimator.SetAgreeData(agreeData)
-    ransacEstimator.SetMaxIteration(number_of_iterations)
-    ransacEstimator.SetNumberOfThreads(16)
+    ransacEstimator.SetMaxIteration(int(number_of_iterations/maxThreadCount))
+    ransacEstimator.SetNumberOfThreads(maxThreadCount)
     ransacEstimator.SetParametersEstimator(registrationEstimator)
     
     for i in range(1):    
