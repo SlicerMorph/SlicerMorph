@@ -1400,7 +1400,6 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     return pcd_down, pcd_fpfh
 
 
-
   def execute_global_registration(self, source_down, target_down, source_fpfh,
                                 target_fpfh, voxel_size, distance_threshold_factor, maxIter, confidence, skipScaling):
     from open3d import pipelines
@@ -1411,7 +1410,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     print("   we use a liberal distance threshold %.3f." % distance_threshold)
     fitness = 0
     count = 0
-    maxAttempts = 30
+    maxAttempts = 10
     while fitness < 0.99 and count < maxAttempts:
       result = registration.registration_ransac_based_on_feature_matching(
           source_down, target_down, source_fpfh, target_fpfh, True, distance_threshold,
@@ -1420,9 +1419,13 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
               registration.CorrespondenceCheckerBasedOnDistance(
                   distance_threshold)
           ], registration.RANSACConvergenceCriteria(maxIter, confidence))
-      fitness = result.fitness
+      evaluation = registration.evaluate_registration(target_down, source_down, distance_threshold, result.transformation)
+      mean_fitness = (result.fitness + evaluation.fitness)/2
+      if mean_fitness > fitness:
+        fitness = mean_fitness
+        best_result = result
       count += 1
-    return result
+    return best_result
 
 
   def refine_registration(self, source, target, source_fpfh, target_fpfh, voxel_size, result_ransac, ICPThreshold_factor):
