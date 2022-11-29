@@ -1157,6 +1157,8 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             point = projectedPoints.GetPoint(i)
             projectedLMNode.AddControlPoint(point)
         self.propagateLandmarkTypes(sourceLMNode, projectedLMNode)
+        projectedLMNode.SetLocked(True)
+        projectedLMNode.SetFixedNumberOfControlPoints(True)
         slicer.util.saveNode(projectedLMNode, outputFilePath)
         slicer.mrmlScene.RemoveNode(projectedLMNode)
         slicer.mrmlScene.RemoveNode(outputPoints)
@@ -1174,6 +1176,8 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     fiducialNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',nodeName)
     for point in pointCloud:
       fiducialNode.AddControlPoint(point)
+    fiducialNode.SetLocked(True)
+    fiducialNode.SetFixedNumberOfControlPoints(True)
     return fiducialNode
 
     #node.AddControlPoint(point)
@@ -1469,6 +1473,8 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     for i in range(projectedPoints.GetNumberOfPoints()):
       point = projectedPoints.GetPoint(i)
       projectedLMNode.AddControlPoint(point)
+    projectedLMNode.SetLocked(True)
+    projectedLMNode.SetFixedNumberOfControlPoints(True)
     return projectedLMNode
 
   def projectPointsPolydata(self, sourcePolydata, targetPolydata, originalPoints, rayLength):
@@ -1640,6 +1646,8 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
       for i in range(correspondingSubjectPoints.GetNumberOfPoints()):
         subjectFiducial.AddControlPoint(correspondingSubjectPoints.GetPoint(i))
       slicer.mrmlScene.AddNode(subjectFiducial)
+      subjectFiducial.SetLocked(True)
+      subjectFiducial.SetFixedNumberOfControlPoints(True)
       slicer.util.saveNode(subjectFiducial, os.path.join(pcdOutputDir, f"{rootName}" + extensionLM))
       slicer.mrmlScene.RemoveNode(sourceModelNode)
       slicer.mrmlScene.RemoveNode(ICPTransformNode)
