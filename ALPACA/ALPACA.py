@@ -236,7 +236,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.ui.FPFHSearchRadiusSlider.connect('valueChanged(double)', self.onChangeAdvanced)
     self.ui.maximumCPDThreshold.connect('valueChanged(double)', self.onChangeAdvanced)
     self.ui.maxRANSAC.connect('valueChanged(double)', self.onChangeAdvanced)
-    self.ui.RANSACConfidence.connect('valueChanged(double)', self.onChangeAdvanced)
+    self.ui.RANSACPoints.connect('valueChanged(double)', self.onChangeAdvanced)
     self.ui.ICPDistanceThresholdSlider.connect('valueChanged(double)', self.onChangeAdvanced)
     self.ui.alpha.connect('valueChanged(double)', self.onChangeAdvanced)
     self.ui.beta.connect('valueChanged(double)', self.onChangeAdvanced)
@@ -282,7 +282,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       "FPFHSearchRadius" : self.ui.FPFHSearchRadiusSlider.value,
       "distanceThreshold" : self.ui.maximumCPDThreshold.value,
       "maxRANSAC" : int(self.ui.maxRANSAC.value),
-      "RANSACConfidence" : self.ui.RANSACConfidence.value,
+      "RANSACPoints" : self.ui.RANSACPoints.value,
       "ICPDistanceThreshold"  : self.ui.ICPDistanceThresholdSlider.value,
       "alpha" : self.ui.alpha.value,
       "beta" : self.ui.beta.value,
@@ -1041,7 +1041,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       self.parameterDictionary["FPFHSearchRadius"] = int(self.ui.FPFHSearchRadiusSlider.value)
       self.parameterDictionary["distanceThreshold"] = self.ui.maximumCPDThreshold.value
       self.parameterDictionary["maxRANSAC"] = int(self.ui.maxRANSAC.value)
-      self.parameterDictionary["RANSACConfidence"] = self.ui.RANSACConfidence.value
+      self.parameterDictionary["RANSACPoints"] = float(self.ui.RANSACPoints.value)
       self.parameterDictionary["ICPDistanceThreshold"] = self.ui.ICPDistanceThresholdSlider.value
       self.parameterDictionary["alpha"] = self.ui.alpha.value
       self.parameterDictionary["beta"] = self.ui.beta.value
@@ -1587,7 +1587,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         movingMeshFeaturePoints=moving_corr.T,
         fixedMeshFeaturePoints=fixed_corr.T,
         number_of_iterations=parameters["maxRANSAC"],
-        number_of_ransac_points=int(num_corrs/10),
+        number_of_ransac_points=int(num_corrs * parameters["RANSACPoints"]),
         inlier_value=float(parameters["distanceThreshold"])*voxelSize,
     )
     aransac = time.time()

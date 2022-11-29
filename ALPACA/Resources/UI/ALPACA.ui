@@ -769,16 +769,16 @@
            </widget>
           </item>
           <item row="4" column="0">
-           <widget class="QLabel" name="RANSACConfidenceLabel">
+           <widget class="QLabel" name="RANSACPointslabel">
             <property name="text">
-             <string>Set up RANSAC confidence:</string>
+             <string>Fraction of points for RANSAC:</string>
             </property>
            </widget>
           </item>
           <item row="4" column="1">
-           <widget class="ctkDoubleSpinBox" name="RANSACConfidence" native="true">
+           <widget class="ctkDoubleSpinBox" name="RANSACPoints" native="true">
             <property name="toolTip">
-             <string>Set up confidence (convergence criteria) for RANSAC global registration</string>
+             <string>Fraction of points out of corresponding feature points for RANSAC global registration</string>
             </property>
             <property name="decimals" stdset="0">
              <number>3</number>
@@ -787,10 +787,10 @@
              <double>1.000000000000000</double>
             </property>
             <property name="singleStep" stdset="0">
-             <double>0.001000000000000</double>
+             <double>0.0500000000000</double>
             </property>
             <property name="value" stdset="0">
-             <double>0.999000000000000</double>
+             <double>0.100000000000000</double>
             </property>
            </widget>
           </item>
