@@ -554,7 +554,6 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     #Calculate rmse
     #Manual LM numpy array
     if bool(self.ui.targetLandmarkSetSelector.currentNode()) == True:
-      point = [0,0,0]
       self.manualLMNode = self.ui.targetLandmarkSetSelector.currentNode()
       self.manualLMNode.GetDisplayNode().SetSelectedColor(green)
       self.ui.showManualLMCheckBox.enabled = True
@@ -562,19 +561,18 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       self.manualLMNode.GetDisplayNode().SetVisibility(False)
       manualLMs = np.zeros(shape=(self.manualLMNode.GetNumberOfControlPoints(),3))
       for i in range(self.manualLMNode.GetNumberOfControlPoints()):
-        self.manualLMNode.GetMarkupPoint(0,i,point)
+        point = self.manualLMNode.GetNthControlPointPosition(i)
         manualLMs[i,:] = point
       #Source LM numpy array
-      point2 = [0,0,0]
       if not self.ui.skipProjectionCheckBox.isChecked():
         finalLMs = np.zeros(shape=(self.projectedLandmarks.GetNumberOfControlPoints(),3))
         for i in range(self.projectedLandmarks.GetNumberOfControlPoints()):
-          self.projectedLandmarks.GetMarkupPoint(0,i,point2)
+          point2 = self.projectedLandmarks.GetNthControlPointPosition(i)
           finalLMs[i,:] = point2
       else:
         finalLMs = np.zeros(shape=(self.outputPoints.GetNumberOfControlPoints(),3))
         for i in range(self.outputPoints.GetNumberOfControlPoints()):
-          self.outputPoints.GetMarkupPoint(0,i,point2)
+          point2 = self.outputPoints.GetNthControlPointPosition(i)
           finalLMs[i,:] = point2
       #
       rmse = logic.rmse(manualLMs, finalLMs)
@@ -705,7 +703,8 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       projectionFactor = self.ui.projectionFactorSlider.value/100
     if not self.ui.replicateAnalysisCheckBox.checked:
       logic.runLandmarkMultiprocess(self.ui.sourceModelMultiSelector.currentPath,self.ui.sourceFiducialMultiSelector.currentPath,
-      self.ui.targetModelMultiSelector.currentPath, self.ui.landmarkOutputSelector.currentPath, self.ui.skipScalingMultiCheckBox.checked, projectionFactor, self.parameterDictionary)
+      self.ui.targetModelMultiSelector.currentPath, self.ui.landmarkOutputSelector.currentPath, self.ui.skipScalingMultiCheckBox.checked, 
+      projectionFactor, self.ui.JSONFileFormatSelector.checked, self.parameterDictionary)
     else:
       for i in range(0, self.ui.replicationNumberSpinBox.value):
         print("ALPACA replication run ", i)
@@ -714,7 +713,8 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
         try:
           os.makedirs(datedOutputFolder)
           logic.runLandmarkMultiprocess(self.ui.sourceModelMultiSelector.currentPath,self.ui.sourceFiducialMultiSelector.currentPath,
-            self.ui.targetModelMultiSelector.currentPath, datedOutputFolder, self.ui.skipScalingMultiCheckBox.checked, projectionFactor, self.parameterDictionary)
+            self.ui.targetModelMultiSelector.currentPath, datedOutputFolder, self.ui.skipScalingMultiCheckBox.checked, projectionFactor, 
+            self.ui.JSONFileFormatSelector.checked, self.parameterDictionary)
         except:
           logging.debug('Result directory failed: Could not access output folder')
           print("Error creating result directory")
@@ -753,7 +753,8 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       print("Error creating result directory")
     #Execute functions for generating point clouds matched to the reference
     logic = ALPACALogic()
-    template_density, matchedPoints, indices, files = logic.matchingPCD(self.ui.modelsMultiSelector.currentPath, self.sparseTemplate, self.referenceNode, self.pcdOutputFolder, self.ui.spacingFactorSlider.value, self.parameterDictionary)
+    template_density, matchedPoints, indices, files = logic.matchingPCD(self.ui.modelsMultiSelector.currentPath, self.sparseTemplate, self.referenceNode, self.pcdOutputFolder, self.ui.spacingFactorSlider.value, 
+    self.ui.JSONFileFormatSelector.checked, self.parameterDictionary)
     # Print results
     correspondent_threshold = 0.01
     self.ui.subsampleInfo2.clear()
@@ -993,13 +994,13 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       self.ui.sourceModelMultiSelector.toolTip = "Select a directory containing the source meshes (note: filenames must match with landmark filenames)"
       self.ui.sourceFiducialMultiSelector.currentPath = ''
       self.ui.sourceFiducialMultiSelector.filters  = ctk.ctkPathLineEdit.Dirs
-      self.ui.sourceFiducialMultiSelector.toolTip = "Select a directory containing the landmark files (note:filenames must match with source meshes)"
+      self.ui.sourceFiducialMultiSelector.toolTip = "Select a directory containing the landmark files (note: filenames must match with source meshes)"
     else:
       self.ui.sourceModelMultiSelector.filters  = ctk.ctkPathLineEdit().Files
       self.ui.sourceModelMultiSelector.nameFilters  = ["*.ply"]
       self.ui.sourceModelMultiSelector.toolTip = "Select the source mesh"
       self.ui.sourceFiducialMultiSelector.filters  = ctk.ctkPathLineEdit().Files
-      self.ui.sourceFiducialMultiSelector.nameFilters  = ["*.fcsv"]
+      self.ui.sourceFiducialMultiSelector.nameFilters  = ["*.json *.mrk.json *.fcsv"]
       self.ui.sourceFiducialMultiSelector.toolTip = "Select the source landmarks"
 
 
@@ -1050,9 +1051,12 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
 
-  def runLandmarkMultiprocess(self, sourceModelPath, sourceLandmarkPath, targetModelDirectory, outputDirectory, skipScaling, projectionFactor, parameters):
+  def runLandmarkMultiprocess(self, sourceModelPath, sourceLandmarkPath, targetModelDirectory, outputDirectory, skipScaling, projectionFactor, useJSONFormat, parameters):
     extensionModel = ".ply"
-    extensionLM = ".fcsv"
+    if useJSONFormat:
+      extensionLM = ".mrk.json"
+    else:
+      extensionLM = ".fcsv"    
     sourceModelList = []
     sourceLMList = []
     TargetModelList = []
@@ -1069,7 +1073,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
       sourceModelList.append(sourceModelPath)
     if os.path.isdir(sourceLandmarkPath):
       for file in os.listdir(sourceLandmarkPath):
-          if file.endswith(extensionLM):
+          if file.endswith((".json", ".fcsv")):
             sourceFilePath = os.path.join(sourceLandmarkPath,file)
             sourceLMList.append(sourceFilePath)
     else:
@@ -1082,23 +1086,28 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         rootName = os.path.splitext(targetFileName)[0]
         landmarkList = []
         if os.path.isdir(sourceModelPath):
-          outputMedianPath = os.path.join(medianOutput, f'{rootName}_median.fcsv')
+          outputMedianPath = os.path.join(medianOutput, f'{rootName}_median' + extensionLM)
           if not os.path.exists(outputMedianPath):
-            for file in os.listdir(sourceModelPath):
-              if file.endswith(extensionModel):
-                sourceFilePath = os.path.join(sourceModelPath,file)
-                (baseName, ext) = os.path.splitext(file)
-                sourceLandmarkFile = os.path.join(sourceLandmarkPath, f'{baseName}.fcsv')
-                outputFilePath = os.path.join(specimenOutput, f'{rootName}_{baseName}.fcsv')
-                array = self.pairwiseAlignment(sourceFilePath, sourceLandmarkFile, targetFilePath, outputFilePath, skipScaling, projectionFactor, parameters)
-                landmarkList.append(array)
+            for file in sourceModelList:
+              sourceFilePath = os.path.join(sourceModelPath,file)
+              (baseName, ext) = os.path.splitext(os.path.basename(file))
+              sourceLandmarkFile = None
+              for lmFile in sourceLMList:
+                if baseName in lmFile:
+                  sourceLandmarkFile = os.path.join(sourceLandmarkPath, lmFile)
+              if sourceLandmarkFile is None:
+                print('::::Could not find the file corresponding to ', file)
+                next
+              outputFilePath = os.path.join(specimenOutput, f'{rootName}_{baseName}' + extensionLM)
+              array = self.pairwiseAlignment(sourceFilePath, sourceLandmarkFile, targetFilePath, outputFilePath, skipScaling, projectionFactor, parameters)
+              landmarkList.append(array)
             medianLandmark = np.median(landmarkList, axis=0)
             outputMedianNode = self.exportPointCloud(medianLandmark, "Median Predicted Landmarks")
             slicer.util.saveNode(outputMedianNode, outputMedianPath)
             slicer.mrmlScene.RemoveNode(outputMedianNode)
         elif os.path.isfile(sourceModelPath):
             rootName = os.path.splitext(targetFileName)[0]
-            outputFilePath = os.path.join(outputDirectory, rootName + ".fcsv")
+            outputFilePath = os.path.join(outputDirectory, rootName + extensionLM)
             array = self.pairwiseAlignment(sourceModelPath, sourceLandmarkPath, targetFilePath, outputFilePath, skipScaling, projectionFactor, parameters)
         else:
             print('::::Could not find the file or directory in question')
@@ -1351,10 +1360,9 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
       itemIDToClone = shNode.GetItemByDataNode(fiducial)
       clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(shNode, itemIDToClone)
       sourceLandmarkNode = shNode.GetItemDataNode(clonedItemID)
-    point = [0,0,0]
     sourceLandmarks = np.zeros(shape=(sourceLandmarkNode.GetNumberOfControlPoints(),3))
     for i in range(sourceLandmarkNode.GetNumberOfControlPoints()):
-      sourceLandmarkNode.GetMarkupPoint(0,i,point)
+      point = sourceLandmarkNode.GetNthControlPointPosition(i)
       sourceLandmarks[i,:] = point
     cloud = geometry.PointCloud()
     cloud.points = utility.Vector3dVector(sourceLandmarks)
@@ -1604,7 +1612,11 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     template_density = sparseTemplate.GetNumberOfPoints()
     return sparseTemplate, template_density, targetModelNode
 
-  def matchingPCD(self, modelsDir, sparseTemplate, targetModelNode, pcdOutputDir, spacingFactor, parameterDictionary):
+  def matchingPCD(self, modelsDir, sparseTemplate, targetModelNode, pcdOutputDir, spacingFactor, useJSONFormat, parameterDictionary):
+    if useJSONFormat:
+      extensionLM = ".mrk.json"
+    else:
+      extensionLM = ".fcsv"
     template_density = sparseTemplate.GetNumberOfPoints()
     ID_list = list()
     #Alignment and matching points
@@ -1628,7 +1640,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
       for i in range(correspondingSubjectPoints.GetNumberOfPoints()):
         subjectFiducial.AddControlPoint(correspondingSubjectPoints.GetPoint(i))
       slicer.mrmlScene.AddNode(subjectFiducial)
-      slicer.util.saveNode(subjectFiducial, os.path.join(pcdOutputDir, f"{rootName}.fcsv"))
+      slicer.util.saveNode(subjectFiducial, os.path.join(pcdOutputDir, f"{rootName}" + extensionLM))
       slicer.mrmlScene.RemoveNode(sourceModelNode)
       slicer.mrmlScene.RemoveNode(ICPTransformNode)
       slicer.mrmlScene.RemoveNode(subjectFiducial)
