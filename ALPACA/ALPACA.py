@@ -703,7 +703,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       projectionFactor = self.ui.projectionFactorSlider.value/100
     if not self.ui.replicateAnalysisCheckBox.checked:
       logic.runLandmarkMultiprocess(self.ui.sourceModelMultiSelector.currentPath,self.ui.sourceFiducialMultiSelector.currentPath,
-      self.ui.targetModelMultiSelector.currentPath, self.ui.landmarkOutputSelector.currentPath, self.ui.skipScalingMultiCheckBox.checked, 
+      self.ui.targetModelMultiSelector.currentPath, self.ui.landmarkOutputSelector.currentPath, self.ui.skipScalingMultiCheckBox.checked,
       projectionFactor, self.ui.JSONFileFormatSelector.checked, self.parameterDictionary)
     else:
       for i in range(0, self.ui.replicationNumberSpinBox.value):
@@ -713,7 +713,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
         try:
           os.makedirs(datedOutputFolder)
           logic.runLandmarkMultiprocess(self.ui.sourceModelMultiSelector.currentPath,self.ui.sourceFiducialMultiSelector.currentPath,
-            self.ui.targetModelMultiSelector.currentPath, datedOutputFolder, self.ui.skipScalingMultiCheckBox.checked, projectionFactor, 
+            self.ui.targetModelMultiSelector.currentPath, datedOutputFolder, self.ui.skipScalingMultiCheckBox.checked, projectionFactor,
             self.ui.JSONFileFormatSelector.checked, self.parameterDictionary)
         except:
           logging.debug('Result directory failed: Could not access output folder')
@@ -753,7 +753,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       print("Error creating result directory")
     #Execute functions for generating point clouds matched to the reference
     logic = ALPACALogic()
-    template_density, matchedPoints, indices, files = logic.matchingPCD(self.ui.modelsMultiSelector.currentPath, self.sparseTemplate, self.referenceNode, self.pcdOutputFolder, self.ui.spacingFactorSlider.value, 
+    template_density, matchedPoints, indices, files = logic.matchingPCD(self.ui.modelsMultiSelector.currentPath, self.sparseTemplate, self.referenceNode, self.pcdOutputFolder, self.ui.spacingFactorSlider.value,
     self.ui.JSONFileFormatSelector.checked, self.parameterDictionary)
     # Print results
     correspondent_threshold = 0.01
@@ -1056,7 +1056,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     if useJSONFormat:
       extensionLM = ".mrk.json"
     else:
-      extensionLM = ".fcsv"    
+      extensionLM = ".fcsv"
     sourceModelList = []
     sourceLMList = []
     TargetModelList = []
