@@ -976,7 +976,7 @@
          </layout>
         </widget>
 	   </item>
-	   <item> 
+	   <item>
         <widget class="ctkCollapsibleButton" name="outputFormatWidget" native="true">
          <property name="sizePolicy">
           <sizepolicy hsizetype="Minimum" vsizetype="MinimumExpanding">
