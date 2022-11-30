@@ -467,9 +467,7 @@
             </property>
             <property name="nameFilters">
              <stringlist>
-              <string>*.fcsv</string>
-              <string>*.json</string>
-              <string>*.mrk.json</string>
+              <string>*.fcsv *.json *.mrk.json</string>
              </stringlist>
             </property>
            </widget>
@@ -972,6 +970,56 @@
             </property>
             <property name="filters">
              <set>ctkPathLineEdit::Dirs</set>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+	   </item>
+	   <item>
+        <widget class="ctkCollapsibleButton" name="outputFormatWidget" native="true">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Minimum" vsizetype="MinimumExpanding">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="text" stdset="0">
+          <string>Output Landmark File Format</string>
+         </property>
+         <property name="collapsed" stdset="0">
+          <bool>false</bool>
+         </property>
+         <layout class="QFormLayout" name="outputFormatWidgetLayout">
+          <item row="0" column="0">
+           <widget class="QRadioButton" name="JSONFileFormatSelector">
+            <property name="enabled">
+             <bool>true</bool>
+            </property>
+            <property name="toolTip">
+             <string>Select the file format for the output landmarks. </string>
+            </property>
+            <property name="text">
+             <string>JSON format</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="2">
+           <widget class="QRadioButton" name="FCSVFileFormatSelector">
+            <property name="enabled">
+             <bool>true</bool>
+            </property>
+            <property name="toolTip">
+             <string>Select the file format for the output landmarks.</string>
+            </property>
+            <property name="text">
+             <string>FCSV format(legacy)</string>
+            </property>
+            <property name="checked">
+             <bool>false</bool>
             </property>
            </widget>
           </item>
