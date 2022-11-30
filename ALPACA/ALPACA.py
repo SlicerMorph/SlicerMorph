@@ -1412,7 +1412,6 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     return pcd_down, pcd_fpfh
 
 
-
   def execute_global_registration(self, source_down, target_down, source_fpfh,
                                 target_fpfh, voxel_size, distance_threshold_factor, maxIter, confidence, skipScaling):
     from open3d import pipelines
@@ -1421,20 +1420,35 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     print(":: RANSAC registration on downsampled point clouds.")
     print("   Since the downsampling voxel size is %.3f," % voxel_size)
     print("   we use a liberal distance threshold %.3f." % distance_threshold)
-    fitness = 0
-    count = 0
-    maxAttempts = 30
-    while fitness < 0.99 and count < maxAttempts:
-      result = registration.registration_ransac_based_on_feature_matching(
+
+    no_scaling = registration.registration_ransac_based_on_feature_matching(
           source_down, target_down, source_fpfh, target_fpfh, True, distance_threshold,
-          registration.TransformationEstimationPointToPoint(skipScaling == 0), 3, [
+          registration.TransformationEstimationPointToPoint(False), 3, [
               registration.CorrespondenceCheckerBasedOnEdgeLength(0.9),
               registration.CorrespondenceCheckerBasedOnDistance(
                   distance_threshold)
           ], registration.RANSACConvergenceCriteria(maxIter, confidence))
-      fitness = result.fitness
-      count += 1
-    return result
+    no_scaling_eval = registration.evaluate_registration(target_down, source_down, distance_threshold, np.linalg.inv(no_scaling.transformation))
+    best_result = no_scaling
+    fitness = (no_scaling.fitness + no_scaling_eval.fitness)/2
+    if skipScaling == 0:
+      count = 0
+      maxAttempts = 10
+      while fitness < 0.99 and count < maxAttempts:
+        result = registration.registration_ransac_based_on_feature_matching(
+            source_down, target_down, source_fpfh, target_fpfh, True, distance_threshold,
+            registration.TransformationEstimationPointToPoint(skipScaling == 0), 3, [
+                registration.CorrespondenceCheckerBasedOnEdgeLength(0.9),
+                registration.CorrespondenceCheckerBasedOnDistance(
+                    distance_threshold)
+            ], registration.RANSACConvergenceCriteria(maxIter, confidence))
+        evaluation = registration.evaluate_registration(target_down, source_down, distance_threshold, np.linalg.inv(result.transformation))
+        mean_fitness = (result.fitness + evaluation.fitness)/2
+        if mean_fitness > fitness:
+          fitness = mean_fitness
+          best_result = result
+        count += 1
+    return best_result
 
 
   def refine_registration(self, source, target, source_fpfh, target_fpfh, voxel_size, result_ransac, ICPThreshold_factor):
