@@ -27,12 +27,15 @@ except:
   itkInstalled = False
   pass
 
-if itkInstalled:
+def initializeITK():
+  if not itkInstalled:
+    return
+
   # For loading itk library beforehand to avoid delay while usage
-  import time
   import itk
   fpfh = itk.Fpfh.PointFeature.MF3MF3.New()
 
+initializeITK()
 
 class ALPACA(ScriptedLoadableModule):
   """Uses ScriptedLoadableModule base class, available at:
@@ -174,20 +177,26 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       progressDialog = slicer.util.createProgressDialog(labelText='Installing ITK RANSAC, ITK FPFH. This may take a minute...', maximum=0)
       slicer.app.processEvents()
       try:
-        slicer.util.pip_install(f'itk==5.3rc04.post3')
-        slicer.util.pip_install(f'itk-fpfh')
-        slicer.util.pip_install(f'itk-ransac')
+        slicer.util.pip_install(f'itk==5.3.0')
+        slicer.util.pip_install(['itk_fpfh==0.1.1'])
+        slicer.util.pip_install(['itk_ransac==0.1.1'])
         slicer.util.pip_install(f'cpdalp')
       except:
         progressDialog = slicer.util.createProgressDialog(labelText='Issue while installing the ITK pip packages', maximum=0)
         slicer.app.processEvents()
       # wheelPath may contain spaces, therefore pass it as a list (that avoids splitting
       # the argument into multiple command-line arguments when there are spaces in the path)
-      import cpdalp
       progressDialog.close()
-      slicer.util.infoDisplay('Restarting Slicer to load packages.')
-      slicer.util.restart()
+      if slicer.util.confirmOkCancelDisplay("Restart Slicer to load packages ?"):
+        slicer.util.restart()
 
+    try:
+      import cpdalp
+      import itk
+      from itk import Fpfh
+      from itk import Ransac
+    except ModuleNotFoundError as e:
+      print("Module Not found. Please restart Slicer to load packages.")
     
     # Load widget from .ui file (created by Qt Designer).
     uiWidget = slicer.util.loadUI(self.resourcePath('UI/ALPACA.ui'))
@@ -233,6 +242,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.ui.projectionFactorSlider.connect('valueChanged(double)', self.onChangeAdvanced)
     self.ui.pointDensityAdvancedSlider.connect('valueChanged(double)', self.onChangeAdvanced)
     self.ui.normalNeighborsCountSlider.connect('valueChanged(double)', self.onChangeAdvanced)
+    self.ui.FPFHNeighborsSlider.connect('valueChanged(double)', self.onChangeAdvanced)
     self.ui.FPFHSearchRadiusSlider.connect('valueChanged(double)', self.onChangeAdvanced)
     self.ui.maximumCPDThreshold.connect('valueChanged(double)', self.onChangeAdvanced)
     self.ui.maxRANSAC.connect('valueChanged(double)', self.onChangeAdvanced)
@@ -279,11 +289,12 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       "projectionFactor": self.ui.projectionFactorSlider.value,
       "pointDensity": self.ui.pointDensityAdvancedSlider.value,
       "normalNeighborsCount" : self.ui.normalNeighborsCountSlider.value,
+      "FPFHNeighbors" : int(self.ui.FPFHNeighborsSlider.value),
       "FPFHSearchRadius" : self.ui.FPFHSearchRadiusSlider.value,
       "distanceThreshold" : self.ui.maximumCPDThreshold.value,
       "maxRANSAC" : int(self.ui.maxRANSAC.value),
       "RANSACPoints" : self.ui.RANSACPoints.value,
-      "ICPDistanceThreshold"  : self.ui.ICPDistanceThresholdSlider.value,
+      "ICPDistanceThreshold"  : float(self.ui.ICPDistanceThresholdSlider.value),
       "alpha" : self.ui.alpha.value,
       "beta" : self.ui.beta.value,
       "CPDIterations" : int(self.ui.CPDIterationsSlider.value),
@@ -569,16 +580,19 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     #Calculate rmse
     #Manual LM numpy array
     if bool(self.ui.targetLandmarkSetSelector.currentNode()) == True:
+      point = [0,0,0]
       self.manualLMNode = self.ui.targetLandmarkSetSelector.currentNode()
       self.manualLMNode.GetDisplayNode().SetSelectedColor(green)
       self.ui.showManualLMCheckBox.enabled = True
       self.ui.showManualLMCheckBox.checked = 0
       self.manualLMNode.GetDisplayNode().SetVisibility(False)
       manualLMs = np.zeros(shape=(self.manualLMNode.GetNumberOfControlPoints(),3))
+
       for i in range(self.manualLMNode.GetNumberOfControlPoints()):
         self.manualLMNode.GetNthControlPointPosition(i,point)
         manualLMs[i,:] = point
       #Source LM numpy array
+      point2 = [0,0,0]
       if not self.ui.skipProjectionCheckBox.isChecked():
         finalLMs = np.zeros(shape=(self.projectedLandmarks.GetNumberOfControlPoints(),3))
         for i in range(self.projectedLandmarks.GetNumberOfControlPoints()):
@@ -1038,6 +1052,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
       self.parameterDictionary["projectionFactor"] = self.ui.projectionFactorSlider.value
       self.parameterDictionary["pointDensity"] = self.ui.pointDensityAdvancedSlider.value
       self.parameterDictionary["normalNeighborsCount"] = int(self.ui.normalNeighborsCountSlider.value)
+      self.parameterDictionary["FPFHNeighbors"] = int(self.ui.FPFHNeighborsSlider.value)
       self.parameterDictionary["FPFHSearchRadius"] = int(self.ui.FPFHSearchRadiusSlider.value)
       self.parameterDictionary["distanceThreshold"] = self.ui.maximumCPDThreshold.value
       self.parameterDictionary["maxRANSAC"] = int(self.ui.maxRANSAC.value)
@@ -1374,6 +1389,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     number_of_iterations,
     number_of_ransac_points,
     inlier_value):
+    import itk
     def GenerateData(data, agreeData):
         """
             In current implmentation the agreedata contains two corressponding 
@@ -1457,6 +1473,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     return itk.dict_from_transform(transform), bestPercentage, bestPercentage
   
   def get_euclidean_distance(self, input_fixedPoints, input_movingPoints):
+    import itk
     mesh_fixed = itk.Mesh[itk.D, 3].New()
     mesh_moving = itk.Mesh[itk.D, 3].New()
 
@@ -1471,7 +1488,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
 
     return metric.GetValue()
 
-  def final_iteration(self, fixedPoints, movingPoints, transform_type):
+  def final_iteration(self, fixedPoints, movingPoints, transform_type, distanceThreshold):
     """
     Perform the final iteration of alignment.
     Args:
@@ -1479,6 +1496,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     Returns:
         (tranformed movingPoints, tranform)
     """
+    import itk
     mesh_fixed = itk.Mesh[itk.D, 3].New()
     mesh_moving = itk.Mesh[itk.D, 3].New()
     mesh_fixed.SetPoints(itk.vector_container_from_array(fixedPoints.flatten()))
@@ -1499,6 +1517,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     metric.SetMovingPointSet(mesh_moving)
     metric.SetFixedPointSet(mesh_fixed)
     metric.SetMovingTransform(transform)
+    metric.SetDistanceThreshold(float(distanceThreshold))
     metric.Initialize()
 
     number_of_epochs = 1000
@@ -1547,6 +1566,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     return vtk_polydata
 
   def transform_numpy_points(self, points_np, transform):
+    import itk
     mesh = itk.Mesh[itk.F, 3].New()
     mesh.SetPoints(itk.vector_container_from_array(points_np.flatten().astype('float32')))
     transformed_mesh = itk.transform_mesh_filter(mesh, transform=transform)
@@ -1556,7 +1576,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
 
   def estimateTransform(self, sourcePoints, targetPoints, sourceFeatures, targetFeatures, 
   voxelSize, skipScaling, parameters):
-    print('Inside estimateTransform')
+    import itk
     # Establish correspondences by nearest neighbour search in feature space
     corrs_A, corrs_B = self.find_correspondences(
         targetFeatures, sourceFeatures, mutual_filter=True
@@ -1602,12 +1622,14 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     print("Before Distance ", self.get_euclidean_distance(targetPoints, sourcePoints))
     transform_type = 0
     final_mesh_points, second_transform = self.final_iteration(
-        targetPoints, sourcePoints, transform_type
+        targetPoints, sourcePoints, transform_type,
+        parameters["ICPDistanceThreshold"]*voxelSize
     )
     print("After Distance ", self.get_euclidean_distance(targetPoints, final_mesh_points))
     return [first_transform, second_transform]
 
   def cleanMesh(self, vtk_mesh):
+    import vtk
     # Get largest connected component and clean the mesh to remove un-used points
     connectivityFilter = vtk.vtkPolyDataConnectivityFilter()
     connectivityFilter.SetInputData(vtk_mesh)
@@ -1722,6 +1744,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     return fpfh_feats
   
   def getBoxLengths(self, inputMesh):
+    import vtk
     box_filter = vtk.vtkBoundingBox()
     box_filter.SetBounds(inputMesh.GetBounds())
     diagonalLength = box_filter.GetDiagonalLength()
@@ -1801,7 +1824,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     print('------------------------------------------------------------')
 
     fpfh_radius = parameters['FPFHSearchRadius']*voxel_size
-    fpfh_neighbors = 100
+    fpfh_neighbors = parameters['FPFHNeighbors']
     # New FPFH Code
     pcS = np.expand_dims(fixedMeshPoints, -1)
     normal_np_pcl = fixedMeshPointNormals
@@ -1824,6 +1847,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
       clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(shNode, itemIDToClone)
       sourceLandmarkNode = shNode.GetItemDataNode(clonedItemID)
     sourceLandmarks = np.zeros(shape=(sourceLandmarkNode.GetNumberOfControlPoints(),3))
+    point = [0,0,0]
     for i in range(sourceLandmarkNode.GetNumberOfControlPoints()):
       sourceLandmarkNode.GetNthControlPointPosition(i,point)
       sourceLandmarks[i,:] = point
@@ -1881,6 +1905,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     return projectedLMNode
 
   def projectPointsPolydata(self, sourcePolydata, targetPolydata, originalPoints, rayLength):
+    import vtk
     print("original points: ", originalPoints.GetNumberOfPoints())
     #set up polydata for projected points to return
     projectedPointData = vtk.vtkPolyData()
@@ -2123,6 +2148,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     return templates, clusterID, templatesIndices
 
   def DownsampleTemplate(self, templatePolyData, spacingPercentage):
+    import vtk
     filter=vtk.vtkCleanPolyData()
     filter.SetToleranceIsAbsolute(False)
     filter.SetTolerance(spacingPercentage)
@@ -2131,6 +2157,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     return filter.GetOutput()
 
   def GetCorrespondingPoints(self, templatePolyData, subjectPolydata):
+    import vtk
     print(templatePolyData.GetNumberOfPoints())
     print(subjectPolydata.GetNumberOfPoints())
     templatePoints = templatePolyData.GetPoints()

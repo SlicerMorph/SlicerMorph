@@ -820,6 +820,32 @@
             </property>
            </widget>
           </item>
+          <item row="6" column="0">
+           <widget class="QLabel" name="FPFHNeighborsLabel">
+            <property name="text">
+             <string>FPFH Neighbor Count:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="6" column="1">
+           <widget class="ctkSliderWidget" name="FPFHNeighborsSlider">
+            <property name="toolTip">
+             <string>Set size of the max neighborhood points used when computing FPFH</string>
+            </property>
+            <property name="decimals">
+             <number>0</number>
+            </property>
+            <property name="minimum">
+             <double>10.000000000000000</double>
+            </property>
+            <property name="maximum">
+		    <double>200.000000000000000</double>
+            </property>
+            <property name="value">
+             <double>100.000000000000000</double>
+            </property>
+           </widget>
+          </item>
          </layout>
         </widget>
        </item>
