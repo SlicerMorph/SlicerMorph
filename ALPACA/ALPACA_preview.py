@@ -12,20 +12,39 @@ import vtk.util.numpy_support as vtk_np
 import numpy as np
 from datetime import datetime
 import time
+import sys
 
 #
 # ALPACA
 #
 
-class ALPACA(ScriptedLoadableModule):
+itkInstalled = False
+try:
+  import itk
+  itkInstalled = True
+except:
+  itkInstalled = False
+  pass
+
+def initializeITK():
+  if not itkInstalled:
+    return
+
+  # For loading itk library beforehand to avoid delay while usage
+  import itk
+  fpfh = itk.Fpfh.PointFeature.MF3MF3.New()
+
+initializeITK()
+
+class ALPACA_preview(ScriptedLoadableModule):
   """Uses ScriptedLoadableModule base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
 
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
-    self.parent.title = "ALPACA"
-    self.parent.categories = ["SlicerMorph.Geometric Morphometrics"]
+    self.parent.title = "ALPACA (preview)"
+    self.parent.categories = ["Testing.TestCases"]
     self.parent.dependencies = []
     self.parent.contributors = ["Arthur Porto (LSU), Sara Rolfe (UW), Murat Maga (UW)"]
     self.parent.helpText = """
@@ -134,7 +153,7 @@ def registerSampleData():
 # ALPACAWidget
 #
 
-class ALPACAWidget(ScriptedLoadableModuleWidget):
+class ALPACA_previewWidget(ScriptedLoadableModuleWidget):
   """Uses ScriptedLoadableModuleWidget base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
@@ -144,56 +163,40 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
 
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
-    # Ensure that correct version of open3d Python package is installed
-    needRestart = False
     needInstall = False
-    Open3dVersion = "0.14.1+816263b"
+    
     try:
-      import open3d as o3d
+      from itk import Fpfh
       import cpdalp
-      from packaging import version
-      if version.parse(o3d.__version__) != version.parse(Open3dVersion):
-        if not slicer.util.confirmOkCancelDisplay(f"ALPACA requires installation of open3d (version {Open3dVersion}).\nClick OK to upgrade open3d and restart the application."):
-          self.ui.showBrowserOnEnter = False
-          return
-        needRestart = True
-        needInstall = True
     except ModuleNotFoundError:
       needInstall = True
-
+    
     if needInstall:
-      progressDialog = slicer.util.createProgressDialog(labelText='Upgrading open3d. This may take a minute...', maximum=0)
+      progressDialog = slicer.util.createProgressDialog(labelText='Installing ITK RANSAC, ITK FPFH. This may take a minute...', maximum=0)
       slicer.app.processEvents()
-      import SampleData
-      sampleDataLogic = SampleData.SampleDataLogic()
       try:
-        if slicer.app.os == 'win':
-          url = "https://app.box.com/shared/static/friq8fhfi8n4syklt1v47rmuf58zro75.whl"
-          wheelName = "open3d-0.14.1+816263b-cp39-cp39-win_amd64.whl"
-          wheelPath = sampleDataLogic.downloadFile(url, slicer.app.cachePath, wheelName)
-        elif slicer.app.os == 'macosx':
-          url = "https://app.box.com/shared/static/ixhac95jrx7xdxtlagwgns7vt9b3mbqu.whl"
-          wheelName = "open3d-0.14.1+816263b-cp39-cp39-macosx_10_15_x86_64.whl"
-          wheelPath = sampleDataLogic.downloadFile(url, slicer.app.cachePath, wheelName)
-        elif slicer.app.os == 'linux':
-          url = "https://app.box.com/shared/static/wyzk0f9jhefrbm4uukzym0sow5bf26yi.whl"
-          wheelName = "open3d-0.14.1+816263b-cp39-cp39-manylinux_2_27_x86_64.whl"
-          wheelPath = sampleDataLogic.downloadFile(url, slicer.app.cachePath, wheelName)
+        slicer.util.pip_install(f'itk==5.3.0')
+        slicer.util.pip_install(['itk_fpfh==0.1.1'])
+        slicer.util.pip_install(['itk_ransac==0.1.1'])
+        slicer.util.pip_install(f'cpdalp')
       except:
-          slicer.util.infoDisplay('Error: please check the url of the open3d wheel in the script')
-          progressDialog.close()
-      slicer.util.pip_install(f'cpdalp')
+        slicer.util.infoDisplay('Issue while installing the ITK pip packages')
+        progressDialog.close()
       # wheelPath may contain spaces, therefore pass it as a list (that avoids splitting
       # the argument into multiple command-line arguments when there are spaces in the path)
-      slicer.util.pip_install([wheelPath])
-      import open3d as o3d
-      import cpdalp
-      progressDialog.close()
-    if needRestart:
-      slicer.util.restart()
+      if slicer.util.confirmOkCancelDisplay("Restart Slicer to load packages ?"):
+        slicer.util.restart()
 
+    try:
+      import cpdalp
+      import itk
+      from itk import Fpfh
+      from itk import Ransac
+    except ModuleNotFoundError as e:
+      print("Module Not found. Please restart Slicer to load packages.")
+    
     # Load widget from .ui file (created by Qt Designer).
-    uiWidget = slicer.util.loadUI(self.resourcePath('UI/ALPACA.ui'))
+    uiWidget = slicer.util.loadUI(self.resourcePath('UI/ALPACA_preview.ui'))
     self.layout.addWidget(uiWidget)
     self.ui = slicer.util.childWidgetVariables(uiWidget)
 
@@ -235,11 +238,12 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     # Advanced Settings connections
     self.ui.projectionFactorSlider.connect('valueChanged(double)', self.onChangeAdvanced)
     self.ui.pointDensityAdvancedSlider.connect('valueChanged(double)', self.onChangeAdvanced)
-    self.ui.normalSearchRadiusSlider.connect('valueChanged(double)', self.onChangeAdvanced)
+    self.ui.normalNeighborsCountSlider.connect('valueChanged(double)', self.onChangeAdvanced)
+    self.ui.FPFHNeighborsSlider.connect('valueChanged(double)', self.onChangeAdvanced)
     self.ui.FPFHSearchRadiusSlider.connect('valueChanged(double)', self.onChangeAdvanced)
     self.ui.maximumCPDThreshold.connect('valueChanged(double)', self.onChangeAdvanced)
     self.ui.maxRANSAC.connect('valueChanged(double)', self.onChangeAdvanced)
-    self.ui.RANSACConfidence.connect('valueChanged(double)', self.onChangeAdvanced)
+    self.ui.RANSACPoints.connect('valueChanged(double)', self.onChangeAdvanced)
     self.ui.ICPDistanceThresholdSlider.connect('valueChanged(double)', self.onChangeAdvanced)
     self.ui.alpha.connect('valueChanged(double)', self.onChangeAdvanced)
     self.ui.beta.connect('valueChanged(double)', self.onChangeAdvanced)
@@ -271,6 +275,11 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.ui.resetTableButton.connect('clicked(bool)', self.onRestTableButton)
     self.ui.kmeansTemplatesButton.connect('clicked(bool)', self.onkmeansTemplatesButton)
 
+    # RMSE Table initialization
+    self.col1List = []
+
+    # Test Target cloud initialization
+    self.targetCloudNodeTest = None
 
     #Add menu buttons
     self.addLayoutButton(503, 'MALPACA multi-templates View', 'Custom layout for MALPACA multi-templates tab', 'LayoutSlicerMorphView.png', slicer.customLayoutSM)
@@ -281,12 +290,13 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.parameterDictionary = {
       "projectionFactor": self.ui.projectionFactorSlider.value,
       "pointDensity": self.ui.pointDensityAdvancedSlider.value,
-      "normalSearchRadius" : self.ui.normalSearchRadiusSlider.value,
+      "normalNeighborsCount" : self.ui.normalNeighborsCountSlider.value,
+      "FPFHNeighbors" : int(self.ui.FPFHNeighborsSlider.value),
       "FPFHSearchRadius" : self.ui.FPFHSearchRadiusSlider.value,
       "distanceThreshold" : self.ui.maximumCPDThreshold.value,
       "maxRANSAC" : int(self.ui.maxRANSAC.value),
-      "RANSACConfidence" : self.ui.RANSACConfidence.value,
-      "ICPDistanceThreshold"  : self.ui.ICPDistanceThresholdSlider.value,
+      "RANSACPoints" : self.ui.RANSACPoints.value,
+      "ICPDistanceThreshold"  : float(self.ui.ICPDistanceThresholdSlider.value),
       "alpha" : self.ui.alpha.value,
       "beta" : self.ui.beta.value,
       "CPDIterations" : int(self.ui.CPDIterationsSlider.value),
@@ -337,9 +347,20 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.ui.replicationNumberLabel.enabled = bool( self.ui.replicateAnalysisCheckBox.isChecked())
     self.ui.replicationNumberSpinBox.enabled = bool ( self.ui.replicateAnalysisCheckBox.isChecked())
 
+  def transform_numpy_points(self, points_np, transform):
+    import itk
+    mesh = itk.Mesh[itk.F, 3].New()
+    mesh.SetPoints(itk.vector_container_from_array(points_np.flatten().astype('float32')))
+    transformed_mesh = itk.transform_mesh_filter(mesh, transform=transform)
+    points_tranformed = itk.array_from_vector_container(transformed_mesh.GetPoints())
+    points_tranformed = np.reshape(points_tranformed, [-1, 3])
+    return points_tranformed
+
   def onSubsampleButton(self):
     try:
-      slicer.mrmlScene.RemoveNode(self.targetCloudNodeTest)
+      if self.targetCloudNodeTest is not None:
+        slicer.mrmlScene.RemoveNode(self.targetCloudNodeTest)
+        self.targetCloudNodeTest = None
     except:
       pass
     logic = ALPACALogic()
@@ -359,9 +380,9 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.ui.sourceLandmarkSetSelector.currentNode().GetDisplayNode().SetVisibility(False)
 
     self.sourcePoints, self.targetPoints, self.sourceFeatures, \
-      self.targetFeatures, self.voxelSize, self.scaling = logic.runSubsample(self.sourceModelNode_clone, self.targetModelNode, self.ui.skipScalingCheckBox.checked, self.parameterDictionary)
+      self.targetFeatures, self.voxelSize, self.scaling, self.offset_amount = logic.runSubsample(self.sourceModelNode_clone, self.targetModelNode, self.ui.skipScalingCheckBox.checked, self.parameterDictionary)
     # Convert to VTK points for visualization
-    self.targetVTK = logic.convertPointsToVTK(self.targetPoints.points)
+    self.targetVTK = logic.convertPointsToVTK(self.targetPoints)
 
     slicer.mrmlScene.RemoveNode(self.sourceModelNode_clone)
 
@@ -373,8 +394,8 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
 
     # Output information on subsampling
     self.ui.subsampleInfo.clear()
-    self.ui.subsampleInfo.insertPlainText(f':: Your subsampled source pointcloud has a total of {len(self.sourcePoints.points)} points. \n')
-    self.ui.subsampleInfo.insertPlainText(f':: Your subsampled target pointcloud has a total of {len(self.targetPoints.points)} points. ')
+    self.ui.subsampleInfo.insertPlainText(f':: Your subsampled source pointcloud has a total of {len(self.sourcePoints)} points. \n')
+    self.ui.subsampleInfo.insertPlainText(f':: Your subsampled target pointcloud has a total of {len(self.targetPoints)} points. ')
 
     self.ui.runALPACAButton.enabled = True
     if bool(self.ui.targetLandmarkSetSelector.currentNode()) == True:
@@ -403,7 +424,9 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     except:
       pass
     try:
-      slicer.mrmlScene.RemoveNode(self.targetCloudNodeTest) #Remove targe cloud node created in the subsampling to avoid confusion
+      if self.targetCloudNodeTest is not None:
+        slicer.mrmlScene.RemoveNode(self.targetCloudNodeTest) #Remove targe cloud node created in the subsampling to avoid confusion
+        self.targetCloudNodeTest = None
       # slicer.mrmlScene.RemoveNode(self.sourceModelNode)
       self.ui.showTargetPCDCheckBox.checked = 0
       self.ui.showSourcePCDCheckBox.checked = 0
@@ -432,47 +455,54 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     self.ui.sourceLandmarkSetSelector.currentNode().GetDisplayNode().SetVisibility(False)
     #
     self.sourcePoints, self.targetPoints, self.sourceFeatures, \
-      self.targetFeatures, self.voxelSize, self.scaling = logic.runSubsample(self.sourceModelNode, self.targetModelNode, self.ui.skipScalingCheckBox.checked, self.parameterDictionary)
+      self.targetFeatures, self.voxelSize, self.scaling, self.offset_amount = logic.runSubsample(self.sourceModelNode, self.targetModelNode, self.ui.skipScalingCheckBox.checked, self.parameterDictionary)
     # Convert to VTK points for visualization
-    self.targetVTK = logic.convertPointsToVTK(self.targetPoints.points)
+    self.targetVTK = logic.convertPointsToVTK(self.targetPoints)
 
     blue=[0,0,1]
     self.targetCloudNode_2 = logic.displayPointCloud(self.targetVTK, self.voxelSize / 10, 'Target Pointcloud_'+run_counter, blue)
     self.targetCloudNode_2.GetDisplayNode().SetVisibility(False)
     # Output information on subsampling
     self.ui.subsampleInfo.clear()
-    self.ui.subsampleInfo.insertPlainText(f':: Your subsampled source pointcloud has a total of {len(self.sourcePoints.points)} points. \n')
-    self.ui.subsampleInfo.insertPlainText(f':: Your subsampled target pointcloud has a total of {len(self.targetPoints.points)} points. ')
+    self.ui.subsampleInfo.insertPlainText(f':: Your subsampled source pointcloud has a total of {len(self.sourcePoints)} points. \n')
+    self.ui.subsampleInfo.insertPlainText(f':: Your subsampled target pointcloud has a total of {len(self.targetPoints)} points. ')
     #
     #RANSAC & ICP transformation of source pointcloud
-    self.transformMatrix = logic.estimateTransform(self.sourcePoints, self.targetPoints, self.sourceFeatures, self.targetFeatures, self.voxelSize, self.ui.skipScalingCheckBox.checked, self.parameterDictionary)
-    self.ICPTransformNode = logic.convertMatrixToTransformNode(self.transformMatrix, 'Rigid Transformation Matrix_'+run_counter)
-    self.sourcePoints.transform(self.transformMatrix)
+    [self.transformMatrix, self.transformMatrix_rigid] = logic.estimateTransform(self.sourcePoints, self.targetPoints, self.sourceFeatures, self.targetFeatures, self.voxelSize, self.ui.skipScalingCheckBox.checked, self.parameterDictionary)
+    self.ICPTransformNode = logic.convertMatrixToTransformNode(self.transformMatrix, 'Similarity Transformation Matrix_'+run_counter)
+    self.sourcePoints = logic.transform_numpy_points(self.sourcePoints, self.transformMatrix)
+    self.sourcePoints = logic.transform_numpy_points(self.sourcePoints, self.transformMatrix_rigid)
+    
+    self.sourceModelNode.SetAndObserveMesh(logic.transform_points_in_vtk(self.sourceModelNode.GetPolyData(), self.transformMatrix))
+    self.sourceModelNode.SetAndObserveMesh(logic.transform_points_in_vtk(self.sourceModelNode.GetPolyData(), self.transformMatrix_rigid))
+
     #Setup source pointcloud VTK object
-    self.sourceVTK = logic.convertPointsToVTK(self.sourcePoints.points)
+    self.sourceVTK = logic.convertPointsToVTK(self.sourcePoints)
     #
     red=[1,0,0]
     self.sourceCloudNode = logic.displayPointCloud(self.sourceVTK, self.voxelSize / 10, ('Source Pointcloud (rigidly registered)_'+run_counter), red)
     self.sourceCloudNode.GetDisplayNode().SetVisibility(False)
     #
     #Transform the source model
-    self.sourceModelNode.SetAndObserveTransformNodeID(self.ICPTransformNode.GetID())
-    slicer.vtkSlicerTransformLogic().hardenTransform(self.sourceModelNode)
+    #self.sourceModelNode.SetAndObserveTransformNodeID(self.ICPTransformNode.GetID())
+    #slicer.vtkSlicerTransformLogic().hardenTransform(self.sourceModelNode)
     #
     self.sourceModelNode.GetDisplayNode().SetColor(red)
     self.sourceModelNode.GetDisplayNode().SetVisibility(False)
     #
     #CPD registration
-    self.sourceLandmarks, self.sourceLMNode =  logic.loadAndScaleFiducials(self.ui.sourceLandmarkSetSelector.currentNode(), self.scaling, scene = True)
-    self.sourceLandmarks.transform(self.transformMatrix)
+    print('Performing Deformable Registration ')
+    self.sourceLandmarks, self.sourceLMNode =  logic.loadAndScaleFiducials(self.ui.sourceLandmarkSetSelector.currentNode(), self.scaling, self.offset_amount, scene = True)
+    self.sourceLandmarks = logic.transform_numpy_points(self.sourceLandmarks, self.transformMatrix)
+    self.sourceLandmarks = logic.transform_numpy_points(self.sourceLandmarks, self.transformMatrix_rigid)
     self.sourceLMNode.SetName("Source_Landmarks_clone_"+run_counter)
     self.sourceLMNode.SetAndObserveTransformNodeID(self.ICPTransformNode.GetID())
-    slicer.vtkSlicerTransformLogic().hardenTransform(self.sourceLMNode)
+    #slicer.vtkSlicerTransformLogic().hardenTransform(self.sourceLMNode)
     #
     #Registration
-    self.registeredSourceArray = logic.runCPDRegistration(self.sourceLandmarks.points, self.sourcePoints.points, self.targetPoints.points, self.parameterDictionary)
+    self.registeredSourceArray = logic.runCPDRegistration(self.sourceLandmarks, self.sourcePoints, self.targetPoints, self.parameterDictionary)
     self.outputPoints = logic.exportPointCloud(self.registeredSourceArray, "Initial ALPACA landmark estimate(unprojected)_"+run_counter) #outputPoints = ininital predicted LMs, non projected
-    self.inputPoints = logic.exportPointCloud(self.sourceLandmarks.points, "Original Landmarks") #input points = source landmarks
+    self.inputPoints = logic.exportPointCloud(self.sourceLandmarks, "Original Landmarks") #input points = source landmarks
     #set up output initial predicted landmarkslandmark as vtk class
     #
     outputPoints_vtk = logic.getFiducialPoints(self.outputPoints)
@@ -554,40 +584,43 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     #Calculate rmse
     #Manual LM numpy array
     if bool(self.ui.targetLandmarkSetSelector.currentNode()) == True:
+      point = [0,0,0]
       self.manualLMNode = self.ui.targetLandmarkSetSelector.currentNode()
       self.manualLMNode.GetDisplayNode().SetSelectedColor(green)
       self.ui.showManualLMCheckBox.enabled = True
       self.ui.showManualLMCheckBox.checked = 0
       self.manualLMNode.GetDisplayNode().SetVisibility(False)
       manualLMs = np.zeros(shape=(self.manualLMNode.GetNumberOfControlPoints(),3))
+
       for i in range(self.manualLMNode.GetNumberOfControlPoints()):
-        point = self.manualLMNode.GetNthControlPointPosition(i)
+        self.manualLMNode.GetNthControlPointPosition(i,point)
         manualLMs[i,:] = point
       #Source LM numpy array
+      point2 = [0,0,0]
       if not self.ui.skipProjectionCheckBox.isChecked():
         finalLMs = np.zeros(shape=(self.projectedLandmarks.GetNumberOfControlPoints(),3))
         for i in range(self.projectedLandmarks.GetNumberOfControlPoints()):
-          point2 = self.projectedLandmarks.GetNthControlPointPosition(i)
+          self.projectedLandmarks.GetNthControlPointPosition(i,point2)
           finalLMs[i,:] = point2
       else:
         finalLMs = np.zeros(shape=(self.outputPoints.GetNumberOfControlPoints(),3))
         for i in range(self.outputPoints.GetNumberOfControlPoints()):
-          point2 = self.outputPoints.GetNthControlPointPosition(i)
+          self.outputPoints.GetNthControlPointPosition(i,point2)
           finalLMs[i,:] = point2
       #
       rmse = logic.rmse(manualLMs, finalLMs)
       print(rmse)
       self.singleRMSETable(rmse, run_counter)
+    #progressDialog.close()
 
   def singleRMSETable(self, rmse, counter_str):
-    listTableNodes = slicer.mrmlScene.GetNodesByName("Single Alignment RMSE table")
-    if listTableNodes.GetNumberOfItems() == 0:
-      # print(hasattr(self, 'rmseTableNode'))
+    self.rmseTableNode = slicer.mrmlScene.GetNodesByName("Single Alignment RMSE table Preview").GetItemAsObject(0)
+    if self.rmseTableNode is None:
       #Create rmseTableNode and add the first row of rmse
-      self.rmseTableNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTableNode', 'Single Alignment RMSE table')
-      #
+      self.rmseTableNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTableNode', 'Single Alignment RMSE table Preview')
+      
       col1=self.rmseTableNode.AddColumn()
-      col1.SetName('ALPACA test')
+      col1.SetName('ALPACA test (preview)')
       col1Item = 'ALPACA_' + counter_str
       self.col1List = [col1Item]
       self.rmseTableNode.AddEmptyRow()
@@ -620,7 +653,6 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
   def onSwitchSettingsButton(self):
     self.ui.tabsWidget.setCurrentWidget(self.ui.advancedSettingsTab)
     self.ui.runALPACAButton.enabled = True
-
 
   def onShowTargetPCDCheckBox(self):
     try:
@@ -1022,11 +1054,12 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
     if hasattr(self, 'parameterDictionary'):
       self.parameterDictionary["projectionFactor"] = self.ui.projectionFactorSlider.value
       self.parameterDictionary["pointDensity"] = self.ui.pointDensityAdvancedSlider.value
-      self.parameterDictionary["normalSearchRadius"] = int(self.ui.normalSearchRadiusSlider.value)
+      self.parameterDictionary["normalNeighborsCount"] = int(self.ui.normalNeighborsCountSlider.value)
+      self.parameterDictionary["FPFHNeighbors"] = int(self.ui.FPFHNeighborsSlider.value)
       self.parameterDictionary["FPFHSearchRadius"] = int(self.ui.FPFHSearchRadiusSlider.value)
       self.parameterDictionary["distanceThreshold"] = self.ui.maximumCPDThreshold.value
       self.parameterDictionary["maxRANSAC"] = int(self.ui.maxRANSAC.value)
-      self.parameterDictionary["RANSACConfidence"] = self.ui.RANSACConfidence.value
+      self.parameterDictionary["RANSACPoints"] = float(self.ui.RANSACPoints.value)
       self.parameterDictionary["ICPDistanceThreshold"] = self.ui.ICPDistanceThresholdSlider.value
       self.parameterDictionary["alpha"] = self.ui.alpha.value
       self.parameterDictionary["beta"] = self.ui.beta.value
@@ -1116,21 +1149,23 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     parameterFile = os.path.join(outputDirectory, 'advancedParameters.txt')
     json.dump(extras, open(parameterFile,'w'), indent = 2)
 
-
   def pairwiseAlignment (self, sourceFilePath, sourceLandmarkFile, targetFilePath, outputFilePath, skipScaling, projectionFactor, parameters):
     targetModelNode = slicer.util.loadModel(targetFilePath)
     targetModelNode.GetDisplayNode().SetVisibility(False)
     sourceModelNode = slicer.util.loadModel(sourceFilePath)
     sourceModelNode.GetDisplayNode().SetVisibility(False)
-    sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, scaling = self.runSubsample(sourceModelNode,
+    sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, scaling, offset_amount = self.runSubsample(sourceModelNode,
         targetModelNode, skipScaling, parameters)
-    ICPTransform = self.estimateTransform(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, skipScaling, parameters)
+    SimilarityTransform, ICPTransform = self.estimateTransform(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, skipScaling, parameters)
     #Rigid
-    sourceLandmarks, sourceLMNode = self.loadAndScaleFiducials(sourceLandmarkFile, scaling)
-    sourceLandmarks.transform(ICPTransform)
-    sourcePoints.transform(ICPTransform)
+    sourceLandmarks, sourceLMNode = self.loadAndScaleFiducials(sourceLandmarkFile, scaling, offset_amount)
+    sourceLandmarks = self.transform_numpy_points(sourceLandmarks, SimilarityTransform)
+    sourceLandmarks = self.transform_numpy_points(sourceLandmarks, ICPTransform)
+    sourcePoints = self.transform_numpy_points(sourcePoints, SimilarityTransform)
+    sourcePoints = self.transform_numpy_points(sourcePoints, ICPTransform)
+
     #Deformable
-    registeredSourceLM = self.runCPDRegistration(sourceLandmarks.points, sourcePoints.points, targetPoints.points, parameters)
+    registeredSourceLM = self.runCPDRegistration(sourceLandmarks, sourcePoints, targetPoints, parameters)
     outputPoints = self.exportPointCloud(registeredSourceLM, "Initial Predicted Landmarks")
     if projectionFactor == 0:
         self.propagateLandmarkTypes(sourceLMNode, outputPoints)
@@ -1141,12 +1176,12 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         slicer.mrmlScene.RemoveNode(sourceLMNode)
         return registeredSourceLM
     else:
-        inputPoints = self.exportPointCloud(sourceLandmarks.points, "Original Landmarks")
+        inputPoints = self.exportPointCloud(sourceLandmarks, "Original Landmarks")
         inputPoints_vtk = self.getFiducialPoints(inputPoints)
         outputPoints_vtk = self.getFiducialPoints(outputPoints)
 
-        ICPTransformNode = self.convertMatrixToTransformNode(ICPTransform, 'Rigid Transformation Matrix')
-        sourceModelNode.SetAndObserveTransformNodeID(ICPTransformNode.GetID())
+        #ICPTransformNode = self.convertMatrixToTransformNode(ICPTransform, 'Rigid Transformation Matrix')
+        #sourceModelNode.SetAndObserveTransformNodeID(ICPTransformNode.GetID())
         deformedModelNode = self.applyTPSTransform(inputPoints_vtk, outputPoints_vtk, sourceModelNode, 'Warped Source Mesh')
         deformedModelNode.GetDisplayNode().SetVisibility(False)
 
@@ -1166,11 +1201,10 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         slicer.mrmlScene.RemoveNode(targetModelNode)
         slicer.mrmlScene.RemoveNode(deformedModelNode)
         slicer.mrmlScene.RemoveNode(sourceLMNode)
-        slicer.mrmlScene.RemoveNode(ICPTransformNode)
+        #slicer.mrmlScene.RemoveNode(ICPTransformNode)
         slicer.mrmlScene.RemoveNode(inputPoints)
         np_array = vtk_np.vtk_to_numpy(projectedPoints.GetPoints().GetData())
         return np_array
-
 
   def exportPointCloud(self, pointCloud, nodeName):
     fiducialNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',nodeName)
@@ -1180,7 +1214,6 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     fiducialNode.SetFixedNumberOfControlPoints(True)
     return fiducialNode
 
-    #node.AddControlPoint(point)
   def applyTPSTransform(self, sourcePoints, targetPoints, modelNode, nodeName):
     transform=vtk.vtkThinPlateSplineTransform()
     transform.SetSourceLandmarks( sourcePoints)
@@ -1200,21 +1233,14 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     return warpedModelNode
 
   def runCPDRegistration(self, sourceLM, sourceSLM, targetSLM, parameters):
-    from open3d import geometry
-    from open3d import utility
     sourceArrayCombined = np.append(sourceSLM, sourceLM, axis=0)
     targetArray = np.asarray(targetSLM)
-    #Convert to pointcloud for scaling
-    sourceCloud = geometry.PointCloud()
-    sourceCloud.points = utility.Vector3dVector(sourceArrayCombined)
-    targetCloud = geometry.PointCloud()
-    targetCloud.points = utility.Vector3dVector(targetArray)
-    cloudSize = np.max(targetCloud.get_max_bound() - targetCloud.get_min_bound())
-    targetCloud.scale(25 / cloudSize, center = (0,0,0))
-    sourceCloud.scale   (25 / cloudSize, center = (0,0,0))
-    #Convert back to numpy for cpd
-    sourceArrayCombined = np.asarray(sourceCloud.points,dtype=np.float32)
-    targetArray = np.asarray(targetCloud.points,dtype=np.float32)
+    
+    cloudSize = np.max(targetArray, 0) - np.min(targetArray, 0)
+    
+    targetArray = targetArray*25/cloudSize
+    sourceArrayCombined = sourceArrayCombined*25/cloudSize
+
     if parameters['Acceleration'] == 0:
       registrationOutput = self.cpd_registration(targetArray, sourceArrayCombined, parameters["CPDIterations"], parameters["CPDTolerance"], parameters["alpha"], parameters["beta"])
       deformed_array, _ = registrationOutput.register()
@@ -1233,10 +1259,10 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
       os.remove(sourcePath)
     #Capture output landmarks from source pointcloud
     fiducial_prediction = deformed_array[-len(sourceLM):]
-    fiducialCloud = geometry.PointCloud()
-    fiducialCloud.points = utility.Vector3dVector(fiducial_prediction)
-    fiducialCloud.scale(cloudSize/25, center = (0,0,0))
-    return np.asarray(fiducialCloud.points)
+    
+    fiducialCloud = fiducial_prediction
+    fiducialCloud = fiducialCloud * cloudSize/25
+    return fiducialCloud
 
   def RAS2LPSTransform(self, modelNode):
     matrix=vtk.vtkMatrix4x4()
@@ -1258,17 +1284,24 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         matrix_vtk.SetElement(i,j,matrix[i][j])
     return matrix_vtk
 
-  def convertMatrixToTransformNode(self, matrix, transformName):
+  def itkToVTKTransform(self, itkTransform):
+    translation = itkTransform.GetTranslation()
+    matrix = itkTransform.GetMatrix()
     matrix_vtk = vtk.vtkMatrix4x4()
-    for i in range(4):
-      for j in range(4):
-        matrix_vtk.SetElement(i,j,matrix[i][j])
+    for i in range(3):
+      for j in range(3):
+        matrix_vtk.SetElement(i, j, matrix(i, j))
+    for i in range(3):
+      matrix_vtk.SetElement(i, 3, translation[i])
 
     transform = vtk.vtkTransform()
     transform.SetMatrix(matrix_vtk)
+    return transform
+  
+  def convertMatrixToTransformNode(self, itkTransform, transformName):
+    transform = self.itkToVTKTransform(itkTransform)
     transformNode =  slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', transformName)
     transformNode.SetAndObserveTransformToParent( transform )
-
     return transformNode
 
   def applyTransform(self, matrix, polydata):
@@ -1288,7 +1321,6 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     polydata_vtk = vtk.vtkPolyData()
     polydata_vtk.SetPoints(points_vtk)
     return polydata_vtk
-
 
   def displayPointCloud(self, polydata, pointRadius, nodeName, nodeColor):
     #set up glyph for visualizing point cloud
@@ -1310,7 +1342,6 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     modelNode.GetDisplayNode().SetColor(nodeColor)
     return modelNode
 
-
   def displayMesh(self, polydata, nodeName, nodeColor):
     modelNode=slicer.mrmlScene.GetFirstNodeByName(nodeName)
     if modelNode is None:  # if there is no node with this name, create with display node
@@ -1321,42 +1352,500 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     modelNode.GetDisplayNode().SetColor(nodeColor)
     return modelNode
 
-  def estimateTransform(self, sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, skipScaling, parameters):
-    ransac = self.execute_global_registration(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize,
-      parameters["distanceThreshold"], parameters["maxRANSAC"], parameters["RANSACConfidence"], skipScaling)
-    # Refine the initial registration using an Iterative Closest Point (ICP) registration
-    #import time
-    icp = self.refine_registration(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, ransac, parameters["ICPDistanceThreshold"])
-    return icp.transformation
+  def find_knn_cpu(self, feat0, feat1, knn=1, return_distance=False):
+    from scipy.spatial import cKDTree
+    feat1tree = cKDTree(feat1)
+    dists, nn_inds = feat1tree.query(feat0, k=knn)
+    if return_distance:
+        return nn_inds, dists
+    else:
+        return nn_inds
 
+  def find_correspondences(self, feats0, feats1, mutual_filter=True):
+    '''
+        Using the FPFH features find noisy corresspondes.
+        These corresspondes will be used inside the RANSAC.
+    '''
+    nns01, dists1 = self.find_knn_cpu(feats0, feats1, knn=1, return_distance=True)
+    corres01_idx0 = np.arange(len(nns01))
+    corres01_idx1 = nns01
+
+    if not mutual_filter:
+        return corres01_idx0, corres01_idx1
+
+    nns10, dists2 = self.find_knn_cpu(feats1, feats0, knn=1, return_distance=True)
+    corres10_idx1 = np.arange(len(nns10))
+    corres10_idx0 = nns10
+
+    mutual_filter = corres10_idx0[corres01_idx1] == corres01_idx0
+    corres_idx0 = corres01_idx0[mutual_filter]
+    corres_idx1 = corres01_idx1[mutual_filter]
+
+    return corres_idx0, corres_idx1
+  
+  # RANSAC using package
+  def ransac_using_package(self, 
+    movingMeshPoints,
+    fixedMeshPoints,
+    movingMeshFeaturePoints,
+    fixedMeshFeaturePoints,
+    number_of_iterations,
+    number_of_ransac_points,
+    inlier_value):
+    import itk
+    def GenerateData(data, agreeData):
+        """
+            In current implmentation the agreedata contains two corressponding 
+            points from moving and fixed mesh. However, after the subsampling step the 
+            number of points need not be equal in those meshes. So we randomly sample 
+            the points from larger mesh.
+        """
+        data.reserve(movingMeshFeaturePoints.shape[0])
+        for i in range(movingMeshFeaturePoints.shape[0]):
+            point1 = movingMeshFeaturePoints[i]
+            point2 = fixedMeshFeaturePoints[i]
+            input_data = [point1[0], point1[1], point1[2], point2[0], point2[1], point2[2]]
+            input_data = [float(x) for x in input_data]
+            data.push_back(input_data)
+    
+        count_min = int(np.min([movingMeshPoints.shape[0], fixedMeshPoints.shape[0]]))
+
+        mesh1_points  = copy.deepcopy(movingMeshPoints)
+        mesh2_points  = copy.deepcopy(fixedMeshPoints)
+
+        agreeData.reserve(count_min)
+        for i in range(count_min):
+            point1 = mesh1_points[i]
+            point2 = mesh2_points[i]
+            input_data = [point1[0], point1[1], point1[2], point2[0], point2[1], point2[2]]
+            input_data = [float(x) for x in input_data]
+            agreeData.push_back(input_data)
+        return
+
+    data = itk.vector[itk.Point[itk.D, 6]]()
+    agreeData = itk.vector[itk.Point[itk.D, 6]]()
+    GenerateData(data, agreeData)
+
+    transformParameters = itk.vector.D()
+    bestTransformParameters = itk.vector.D()
+
+    itk.MultiThreaderBase.SetGlobalDefaultThreader(itk.MultiThreaderBase.ThreaderTypeFromString("POOL"))
+    maximumDistance = inlier_value
+    RegistrationEstimatorType = itk.Ransac.LandmarkRegistrationEstimator[6]
+    registrationEstimator = RegistrationEstimatorType.New()
+    registrationEstimator.SetMinimalForEstimate(number_of_ransac_points)
+    registrationEstimator.SetAgreeData(agreeData)
+    registrationEstimator.SetDelta(maximumDistance)
+    registrationEstimator.LeastSquaresEstimate(data, transformParameters)
+
+    bestPercentage = 0
+    bestParameters = None
+
+    maxThreadCount = itk.MultiThreaderBase.New().GetMaximumNumberOfThreads()
+    #print('Number of max iterations ', int(number_of_iterations/maxThreadCount))
+
+    desiredProbabilityForNoOutliers = 0.99
+    RANSACType = itk.RANSAC[itk.Point[itk.D, 6], itk.D]
+    ransacEstimator = RANSACType.New()
+    ransacEstimator.SetData(data)
+    ransacEstimator.SetAgreeData(agreeData)
+    ransacEstimator.SetMaxIteration(int(number_of_iterations/maxThreadCount))
+    ransacEstimator.SetNumberOfThreads(maxThreadCount)
+    ransacEstimator.SetParametersEstimator(registrationEstimator)
+    
+    for i in range(1):    
+        percentageOfDataUsed = ransacEstimator.Compute( transformParameters, desiredProbabilityForNoOutliers )
+        print(i, ' Percentage of data used is ', percentageOfDataUsed)
+        if percentageOfDataUsed > bestPercentage:
+            bestPercentage = percentageOfDataUsed
+            bestParameters = transformParameters
+
+    print("Percentage of points used ", bestPercentage)
+    transformParameters = bestParameters
+    transform = itk.Similarity3DTransform.D.New()
+    p = transform.GetParameters()
+    f = transform.GetFixedParameters()
+    for i in range(7):
+        p.SetElement(i, transformParameters[i])
+    counter = 0
+    for i in range(7, 10):
+        f.SetElement(counter, transformParameters[i])
+        counter = counter + 1
+    transform.SetParameters(p)
+    transform.SetFixedParameters(f)
+    return itk.dict_from_transform(transform), bestPercentage, bestPercentage
+  
+  def get_euclidean_distance(self, input_fixedPoints, input_movingPoints, distance_threshold):
+    import itk
+    mesh_fixed = itk.Mesh[itk.D, 3].New()
+    mesh_moving = itk.Mesh[itk.D, 3].New()
+
+    mesh_fixed.SetPoints(itk.vector_container_from_array(input_fixedPoints.flatten()))
+    mesh_moving.SetPoints(itk.vector_container_from_array(input_movingPoints.flatten()))
+
+    MetricType = itk.EuclideanDistancePointSetToPointSetMetricv4.PSD3
+    metric = MetricType.New()
+    metric.SetMovingPointSet(mesh_moving)
+    metric.SetDistanceThreshold(distance_threshold)
+    metric.SetFixedPointSet(mesh_fixed)
+    metric.Initialize()
+
+    return metric.GetValue()
+
+  def final_iteration(self, fixedPoints, movingPoints, transform_type, distanceThreshold):
+    """
+    Perform the final iteration of alignment.
+    Args:
+        fixedPoints, movingPoints, transform_type: 0 or 1 or 2
+    Returns:
+        (tranformed movingPoints, tranform)
+    """
+    import itk
+    mesh_fixed = itk.Mesh[itk.D, 3].New()
+    mesh_moving = itk.Mesh[itk.D, 3].New()
+    mesh_fixed.SetPoints(itk.vector_container_from_array(fixedPoints.flatten()))
+    mesh_moving.SetPoints(itk.vector_container_from_array(movingPoints.flatten()))
+
+    if transform_type == 0:
+        TransformType = itk.Euler3DTransform[itk.D]
+    elif transform_type == 1:
+        TransformType = itk.ScaleVersor3DTransform[itk.D]
+    elif transform_type == 2:
+        TransformType = itk.Rigid3DTransform[itk.D]
+
+    transform = TransformType.New()
+    transform.SetIdentity()
+
+    MetricType = itk.EuclideanDistancePointSetToPointSetMetricv4.PSD3
+    metric = MetricType.New()
+    metric.SetMovingPointSet(mesh_moving)
+    metric.SetFixedPointSet(mesh_fixed)
+    metric.SetMovingTransform(transform)
+    metric.SetDistanceThreshold(float(distanceThreshold))
+    metric.Initialize()
+
+    number_of_epochs = 1000
+    optimizer = itk.GradientDescentOptimizerv4Template[itk.D].New()
+    optimizer.SetNumberOfIterations(number_of_epochs)
+    optimizer.SetLearningRate(0.00001)
+    optimizer.SetMinimumConvergenceValue(0.0)
+    optimizer.SetReturnBestParametersAndValue(True)
+    optimizer.SetConvergenceWindowSize(number_of_epochs)
+    optimizer.SetMetric(metric)
+
+    def print_iteration():
+        if optimizer.GetCurrentIteration()%100 == 0:
+            print(
+                f"It: {optimizer.GetCurrentIteration()}"
+                f" metric value: {optimizer.GetCurrentMetricValue():.6f} "
+            )
+    optimizer.AddObserver(itk.IterationEvent(), print_iteration)
+    optimizer.StartOptimization()
+
+    # Get the correct transform and perform the final alignment
+    current_transform = metric.GetMovingTransform().GetInverseTransform()
+
+    itk_transformed_mesh = itk.transform_mesh_filter(
+        mesh_moving, transform=current_transform
+    )
+
+    return (
+        itk.array_from_vector_container(itk_transformed_mesh.GetPoints()),
+        current_transform,
+    )
+  
+  def get_numpy_points_from_vtk(self, vtk_polydata):
+    """
+    Returns the points as numpy from a vtk_polydata
+    """
+    import vtk
+    from vtk.util import numpy_support
+    points = vtk_polydata.GetPoints()
+    pointdata = points.GetData()
+    points_as_numpy = numpy_support.vtk_to_numpy(pointdata)
+    return points_as_numpy
+  
+  def transform_points_in_vtk(self, vtk_polydata, itk_transform):
+    points_as_numpy = self.get_numpy_points_from_vtk(vtk_polydata)
+    transformed_points = self.transform_numpy_points(points_as_numpy, itk_transform)
+    self.set_numpy_points_in_vtk(vtk_polydata, transformed_points)
+    return vtk_polydata
+
+  def transform_numpy_points(self, points_np, transform):
+    import itk
+    mesh = itk.Mesh[itk.F, 3].New()
+    mesh.SetPoints(itk.vector_container_from_array(points_np.flatten().astype('float32')))
+    transformed_mesh = itk.transform_mesh_filter(mesh, transform=transform)
+    points_tranformed = itk.array_from_vector_container(transformed_mesh.GetPoints())
+    points_tranformed = np.reshape(points_tranformed, [-1, 3])
+    return points_tranformed
+
+  def estimateTransform(self, sourcePoints, targetPoints, sourceFeatures, targetFeatures, 
+  voxelSize, skipScaling, parameters):
+    import itk
+    # Establish correspondences by nearest neighbour search in feature space
+    corrs_A, corrs_B = self.find_correspondences(
+        targetFeatures, sourceFeatures, mutual_filter=True
+    )
+
+    targetPoints = targetPoints.T
+    sourcePoints = sourcePoints.T
+
+    fixed_corr = targetPoints[:, corrs_A]    # np array of size 3 by num_corrs
+    moving_corr = sourcePoints[:, corrs_B]  # np array of size 3 by num_corrs
+
+    num_corrs = fixed_corr.shape[1]
+    print(f"FPFH generates {num_corrs} putative correspondences.")
+
+    targetPoints = targetPoints.T
+    sourcePoints = sourcePoints.T
+
+    print(fixed_corr.shape, moving_corr.shape)
+    import time
+    bransac = time.time()
+    print('Before RANSAC ', bransac)
+    print('Parameters are ')
+    print(parameters)
+    # Perform Initial alignment using Ransac parallel iterations
+    transform_matrix, _, value = self.ransac_using_package(
+        movingMeshPoints=sourcePoints,
+        fixedMeshPoints=targetPoints,
+        movingMeshFeaturePoints=moving_corr.T,
+        fixedMeshFeaturePoints=fixed_corr.T,
+        number_of_iterations=parameters["maxRANSAC"],
+        number_of_ransac_points=int(num_corrs * parameters["RANSACPoints"]),
+        inlier_value=float(parameters["distanceThreshold"])*voxelSize,
+    )
+    aransac = time.time()
+    print('After RANSAC ', aransac)
+    print('Total Duraction ', aransac - bransac)
+
+    first_transform = itk.transform_from_dict(transform_matrix)
+    sourcePoints = self.transform_numpy_points(sourcePoints, first_transform)
+
+    print('-----------------------------------------------------------')
+    print("Starting Rigid Refinement")
+    distanceThreshold = parameters["ICPDistanceThreshold"]*voxelSize
+    print("Before Distance ", self.get_euclidean_distance(targetPoints, sourcePoints, distanceThreshold))
+    transform_type = 0
+    final_mesh_points, second_transform = self.final_iteration(
+        targetPoints, sourcePoints, transform_type,
+        distanceThreshold
+    )
+    print("After Distance ", self.get_euclidean_distance(targetPoints, final_mesh_points, distanceThreshold))
+    return [first_transform, second_transform]
+
+  def cleanMesh(self, vtk_mesh):
+    import vtk
+    # Get largest connected component and clean the mesh to remove un-used points
+    connectivityFilter = vtk.vtkPolyDataConnectivityFilter()
+    connectivityFilter.SetInputData(vtk_mesh)
+    connectivityFilter.SetExtractionModeToLargestRegion()
+    connectivityFilter.Update()
+    vtk_mesh_out = connectivityFilter.GetOutput()
+
+    filter1 = vtk.vtkCleanPolyData()
+    filter1.SetInputData(vtk_mesh_out)
+    filter1.Update()
+    vtk_mesh_out_clean = filter1.GetOutput()
+
+    triangle_filter = vtk.vtkTriangleFilter()
+    triangle_filter.SetInputData(vtk_mesh_out_clean)
+    triangle_filter.SetPassLines(False)
+    triangle_filter.SetPassVerts(False)
+    triangle_filter.Update()
+    vtk_mesh_out_clean = triangle_filter.GetOutput()
+    return vtk_mesh_out_clean
+
+  def set_numpy_points_in_vtk(self, vtk_polydata, points_as_numpy):
+    """
+    Sets the numpy points to a vtk_polydata
+    """
+    import vtk
+    from vtk.util import numpy_support
+    vtk_data_array = numpy_support.numpy_to_vtk(
+        num_array=points_as_numpy, deep=True, array_type=vtk.VTK_FLOAT
+    )
+    points2 = vtk.vtkPoints()
+    points2.SetData(vtk_data_array)
+    vtk_polydata.SetPoints(points2)
+    return
+  
+  def get_numpy_points_from_vtk(self, vtk_polydata):
+    import vtk
+    from vtk.util import numpy_support
+    """
+    Returns the points as numpy from a vtk_polydata
+    """
+    points = vtk_polydata.GetPoints()
+    pointdata = points.GetData()
+    points_as_numpy = numpy_support.vtk_to_numpy(pointdata)
+    return points_as_numpy
+
+  def getnormals(self, inputmesh):
+    _, normal = self.extract_pca_normal(inputmesh)
+    return normal
+
+  def subsample_points_voxelgrid_polydata(self, inputMesh, pointDensity):
+    subsample = vtk.vtkVoxelGrid()
+    subsample.SetInputData(inputMesh)
+    subsample.SetConfigurationStyleToManual()
+    # pointDensity has a stepsize of 0.1 which results in 1 step size in grid
+    numDivisions = 28 + round((pointDensity-1.0)*10)
+    subsample.SetDivisions(numDivisions, numDivisions, numDivisions)
+    subsample.Update()
+    points = subsample.GetOutput()
+    return points
+  
+  def extract_normal_from_tuple(self, input_mesh):
+    """
+    Extracts the normal data from the sampled points.
+    Returns points and normals for the points.
+    """
+    import vtk
+    from vtk.util import numpy_support
+    t1 = input_mesh.GetPointData().GetArray("Normals")
+    n1_array = []
+    for i in range(t1.GetNumberOfTuples()):
+        n1_array.append(t1.GetTuple(i))
+    n1_array = np.array(n1_array)
+
+    points = input_mesh.GetPoints()
+    pointdata = points.GetData()
+    as_numpy = numpy_support.vtk_to_numpy(pointdata)
+
+    return as_numpy, n1_array
+  
+  def extract_pca_normal(self, mesh, normalNeighbourCount):
+    import vtk
+    from vtk.util import numpy_support
+    normals = vtk.vtkPCANormalEstimation()
+    normals.SetSampleSize(normalNeighbourCount)
+    normals.SetFlipNormals(True)
+    #normals.SetNormalOrientationToPoint()
+    normals.SetNormalOrientationToGraphTraversal()
+    normals.SetInputData(mesh)
+    normals.Update()
+    out1 = normals.GetOutput()
+    normal_array = numpy_support.vtk_to_numpy(out1.GetPoints().GetData())
+    point_array = numpy_support.vtk_to_numpy(mesh.GetPoints().GetData())
+    return point_array, normal_array
+  
+  def get_fpfh_feature(self, points_np, normals_np, radius, neighbors):
+    import itk
+    pointset = itk.PointSet[itk.F, 3].New()
+    pointset.SetPoints(
+        itk.vector_container_from_array(points_np.flatten().astype("float32"))
+    )
+
+    normalset = itk.PointSet[itk.F, 3].New()
+    normalset.SetPoints(
+        itk.vector_container_from_array(normals_np.flatten().astype("float32"))
+    )
+    fpfh = itk.Fpfh.PointFeature.MF3MF3.New()
+    fpfh.ComputeFPFHFeature(pointset, normalset, float(radius), int(neighbors))
+    result = fpfh.GetFpfhFeature()
+
+    fpfh_feats = itk.array_from_vector_container(result)
+    fpfh_feats = np.reshape(fpfh_feats, [33, pointset.GetNumberOfPoints()]).T
+    return fpfh_feats
+  
+  def getBoxLengths(self, inputMesh):
+    import vtk
+    box_filter = vtk.vtkBoundingBox()
+    box_filter.SetBounds(inputMesh.GetBounds())
+    diagonalLength = box_filter.GetDiagonalLength()
+    fixedLengths = [0.0, 0.0, 0.0]
+    box_filter.GetLengths(fixedLengths)
+    return fixedLengths, diagonalLength
+  
   def runSubsample(self, sourceModel, targetModel, skipScaling, parameters):
-    from open3d import io
-    from open3d import geometry
-    from open3d import utility
+    import vtk
+    from vtk.util import numpy_support
+    print("parameters are ", parameters)
     print(":: Loading point clouds and downsampling")
-    sourcePoints = slicer.util.arrayFromModelPoints(sourceModel)
-    source = geometry.PointCloud()
-    source.points = utility.Vector3dVector(sourcePoints)
-    targetPoints = slicer.util.arrayFromModelPoints(targetModel)
-    target = geometry.PointCloud()
-    target.points = utility.Vector3dVector(targetPoints)
-    sourceSize = np.linalg.norm(np.asarray(source.get_max_bound()) - np.asarray(source.get_min_bound()))
-    targetSize = np.linalg.norm(np.asarray(target.get_max_bound()) - np.asarray(target.get_min_bound()))
-    voxel_size = targetSize/(55*parameters["pointDensity"])
-    scaling = (targetSize)/sourceSize
+    
+    sourceModelMesh = sourceModel.GetMesh()
+    targetModelMesh = targetModel.GetMesh()
+
+    # To enable cleaning un-comment these two lines
+    #sourceModelMesh = self.cleanMesh(sourceModelMesh)
+    #targetModelMesh = self.cleanMesh(targetModelMesh)
+
+    vtk_meshes = []
+    vtk_meshes.append(targetModelMesh)
+    vtk_meshes.append(sourceModelMesh)
+
+    # Scale the mesh and the landmark points
+    fixedBoxLengths, fixedlength = self.getBoxLengths(vtk_meshes[0])
+    movingBoxLengths, movinglength = self.getBoxLengths(vtk_meshes[1])
+
+    # Voxel size is the diagonal length of cuboid in the voxelGrid
+    voxel_size = np.sqrt(np.sum(np.square(np.array(movingBoxLengths)/27)))/2.0
+
+    print("Scale length are  ", fixedlength, movinglength)
+    scaling = fixedlength / movinglength
+
+    points = vtk_meshes[1].GetPoints()
+    pointdata = points.GetData()
+    points_as_numpy = numpy_support.vtk_to_numpy(pointdata)
+
     if skipScaling != 0:
         scaling = 1
-    source.scale(scaling, center = (0,0,0))
-    points = slicer.util.arrayFromModelPoints(sourceModel)
-    points[:] = np.asarray(source.points)
-    sourceModel.GetPolyData().GetPoints().GetData().Modified()
-    source_down, source_fpfh = self.preprocess_point_cloud(source, voxel_size, parameters["normalSearchRadius"], parameters["FPFHSearchRadius"])
-    target_down, target_fpfh = self.preprocess_point_cloud(target, voxel_size, parameters["normalSearchRadius"], parameters["FPFHSearchRadius"])
-    return source_down, target_down, source_fpfh, target_fpfh, voxel_size, scaling
+    points_as_numpy = points_as_numpy * scaling
+    self.set_numpy_points_in_vtk(vtk_meshes[1], points_as_numpy)
 
-  def loadAndScaleFiducials (self, fiducial, scaling, scene = False):
-    from open3d import geometry
-    from open3d import utility
+    # Get the offsets to align the minimum of moving and fixed mesh
+    vtk_mesh_offsets = []
+    for i, mesh in enumerate(vtk_meshes):
+        mesh_points = self.get_numpy_points_from_vtk(mesh)
+        vtk_mesh_offset = np.min(mesh_points, axis=0)
+        vtk_mesh_offsets.append(vtk_mesh_offset)
+    
+    # Only move the moving mesh
+    mesh_points = self.get_numpy_points_from_vtk(vtk_meshes[1])
+    offset_amount = (vtk_mesh_offsets[1] - vtk_mesh_offsets[0])
+    mesh_points = mesh_points - offset_amount
+    self.set_numpy_points_in_vtk(vtk_meshes[1], mesh_points)
+
+    # Update the sourceModel with the cleaned mesh
+    sourceModel.SetAndObserveMesh(vtk_meshes[1])
+
+    sourceFullMesh_vtk = vtk_meshes[1]
+    targetFullMesh_vtk = vtk_meshes[0]
+    
+    # Sub-Sample the points for rigid refinement and deformable registration
+    point_density = parameters['pointDensity']
+    
+    sourceMesh_vtk = self.subsample_points_voxelgrid_polydata(sourceFullMesh_vtk, pointDensity=point_density)
+    targetMesh_vtk = self.subsample_points_voxelgrid_polydata(targetFullMesh_vtk, pointDensity=point_density)
+    
+    movingMeshPoints, movingMeshPointNormals = self.extract_pca_normal(sourceMesh_vtk, int(parameters["normalNeighborsCount"]))
+    fixedMeshPoints, fixedMeshPointNormals = self.extract_pca_normal(targetMesh_vtk, int(parameters["normalNeighborsCount"]))
+
+    print('------------------------------------------------------------')
+    print("movingMeshPoints.shape ", movingMeshPoints.shape)
+    print("movingMeshPointNormals.shape ", movingMeshPointNormals.shape)
+    print("fixedMeshPoints.shape ", fixedMeshPoints.shape)
+    print("fixedMeshPointNormals.shape ", fixedMeshPointNormals.shape)
+    print('------------------------------------------------------------')
+
+    fpfh_radius = parameters['FPFHSearchRadius']*voxel_size
+    fpfh_neighbors = parameters['FPFHNeighbors']
+    # New FPFH Code
+    pcS = np.expand_dims(fixedMeshPoints, -1)
+    normal_np_pcl = fixedMeshPointNormals
+    target_fpfh = self.get_fpfh_feature(pcS, normal_np_pcl, fpfh_radius, fpfh_neighbors)
+
+    pcS = np.expand_dims(movingMeshPoints, -1)
+    normal_np_pcl = movingMeshPointNormals
+    source_fpfh = self.get_fpfh_feature(pcS, normal_np_pcl, fpfh_radius, fpfh_neighbors)
+
+    target_down = fixedMeshPoints
+    source_down = movingMeshPoints
+    return source_down, target_down, source_fpfh, target_fpfh, voxel_size, scaling, offset_amount
+
+  def loadAndScaleFiducials (self, fiducial, scaling, offset_amount, scene = False):
     if not scene:
       sourceLandmarkNode =  slicer.util.loadMarkups(fiducial)
     else:
@@ -1365,15 +1854,15 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
       clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(shNode, itemIDToClone)
       sourceLandmarkNode = shNode.GetItemDataNode(clonedItemID)
     sourceLandmarks = np.zeros(shape=(sourceLandmarkNode.GetNumberOfControlPoints(),3))
+    point = [0,0,0]
     for i in range(sourceLandmarkNode.GetNumberOfControlPoints()):
-      point = sourceLandmarkNode.GetNthControlPointPosition(i)
+      sourceLandmarkNode.GetNthControlPointPosition(i,point)
       sourceLandmarks[i,:] = point
-    cloud = geometry.PointCloud()
-    cloud.points = utility.Vector3dVector(sourceLandmarks)
-    cloud.scale(scaling, center = (0,0,0))
-    slicer.util.updateMarkupsControlPointsFromArray(sourceLandmarkNode,np.asarray(cloud.points))
+    sourceLandmarks = sourceLandmarks * scaling
+    sourceLandmarks = sourceLandmarks - offset_amount
+    slicer.util.updateMarkupsControlPointsFromArray(sourceLandmarkNode, sourceLandmarks)
     sourceLandmarkNode.GetDisplayNode().SetVisibility(False)
-    return cloud, sourceLandmarkNode
+    return sourceLandmarks, sourceLandmarkNode
 
   def propagateLandmarkTypes(self,sourceNode, targetNode):
      for i in range(sourceNode.GetNumberOfControlPoints()):
@@ -1393,75 +1882,6 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     dy=fnx(a[:,1])
     dz=fnx(a[:,2])
     return (dx**2.0+dy**2.0+dz**2.0)**0.5
-
-  def preprocess_point_cloud(self, pcd, voxel_size, radius_normal_factor, radius_feature_factor):
-    from open3d import geometry
-    from open3d import pipelines
-    registration = pipelines.registration
-    print(":: Downsample with a voxel size %.3f." % voxel_size)
-    pcd_down = pcd.voxel_down_sample(voxel_size)
-    radius_normal = voxel_size * radius_normal_factor
-    print(":: Estimate normal with search radius %.3f." % radius_normal)
-    pcd_down.estimate_normals(
-        geometry.KDTreeSearchParamHybrid(radius=radius_normal, max_nn=30))
-    radius_feature = voxel_size * radius_feature_factor
-    print(":: Compute FPFH feature with search radius %.3f." % radius_feature)
-    pcd_fpfh = registration.compute_fpfh_feature(
-        pcd_down,
-        geometry.KDTreeSearchParamHybrid(radius=radius_feature, max_nn=100))
-    return pcd_down, pcd_fpfh
-
-
-  def execute_global_registration(self, source_down, target_down, source_fpfh,
-                                target_fpfh, voxel_size, distance_threshold_factor, maxIter, confidence, skipScaling):
-    from open3d import pipelines
-    registration = pipelines.registration
-    distance_threshold = voxel_size * distance_threshold_factor
-    print(":: RANSAC registration on downsampled point clouds.")
-    print("   Since the downsampling voxel size is %.3f," % voxel_size)
-    print("   we use a liberal distance threshold %.3f." % distance_threshold)
-
-    no_scaling = registration.registration_ransac_based_on_feature_matching(
-          source_down, target_down, source_fpfh, target_fpfh, True, distance_threshold,
-          registration.TransformationEstimationPointToPoint(False), 3, [
-              registration.CorrespondenceCheckerBasedOnEdgeLength(0.9),
-              registration.CorrespondenceCheckerBasedOnDistance(
-                  distance_threshold)
-          ], registration.RANSACConvergenceCriteria(maxIter, confidence))
-    no_scaling_eval = registration.evaluate_registration(target_down, source_down, distance_threshold, np.linalg.inv(no_scaling.transformation))
-    best_result = no_scaling
-    fitness = (no_scaling.fitness + no_scaling_eval.fitness)/2
-    if skipScaling == 0:
-      count = 0
-      maxAttempts = 10
-      while fitness < 0.99 and count < maxAttempts:
-        result = registration.registration_ransac_based_on_feature_matching(
-            source_down, target_down, source_fpfh, target_fpfh, True, distance_threshold,
-            registration.TransformationEstimationPointToPoint(skipScaling == 0), 3, [
-                registration.CorrespondenceCheckerBasedOnEdgeLength(0.9),
-                registration.CorrespondenceCheckerBasedOnDistance(
-                    distance_threshold)
-            ], registration.RANSACConvergenceCriteria(maxIter, confidence))
-        evaluation = registration.evaluate_registration(target_down, source_down, distance_threshold, np.linalg.inv(result.transformation))
-        mean_fitness = (result.fitness + evaluation.fitness)/2
-        if mean_fitness > fitness:
-          fitness = mean_fitness
-          best_result = result
-        count += 1
-    return best_result
-
-
-  def refine_registration(self, source, target, source_fpfh, target_fpfh, voxel_size, result_ransac, ICPThreshold_factor):
-    from open3d import pipelines
-    registration = pipelines.registration
-    distance_threshold = voxel_size * ICPThreshold_factor
-    print(":: Point-to-plane ICP registration is applied on original point")
-    print("   clouds to refine the alignment. This time we use a strict")
-    print("   distance threshold %.3f." % distance_threshold)
-    result = registration.registration_icp(
-        source, target, distance_threshold, result_ransac.transformation,
-        registration.TransformationEstimationPointToPlane())
-    return result
 
   def cpd_registration(self, targetArray, sourceArray, CPDIterations, CPDTolerance, alpha_parameter, beta_parameter):
     from cpdalp import DeformableRegistration
@@ -1492,6 +1912,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     return projectedLMNode
 
   def projectPointsPolydata(self, sourcePolydata, targetPolydata, originalPoints, rayLength):
+    import vtk
     print("original points: ", originalPoints.GetNumberOfPoints())
     #set up polydata for projected points to return
     projectedPointData = vtk.vtkPolyData()
@@ -1639,6 +2060,8 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
       extensionLM = ".fcsv"
     template_density = sparseTemplate.GetNumberOfPoints()
     ID_list = list()
+    logic = ALPACALogic()
+
     #Alignment and matching points
     referenceFileList = [f for f in os.listdir(modelsDir) if f.endswith(('.ply', '.stl', '.obj', '.vtk', '.vtp'))]
     for file in referenceFileList:
@@ -1647,12 +2070,17 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
       sourceModelNode.GetDisplayNode().SetVisibility(False)
       rootName = os.path.splitext(file)[0]
       skipScalingOption = False
-      sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, scaling = self.runSubsample(sourceModelNode, targetModelNode,
+      sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, scaling, offset_amount = self.runSubsample(sourceModelNode, targetModelNode,
         skipScalingOption, parameterDictionary)
-      ICPTransform = self.estimateTransform(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, skipScalingOption, parameterDictionary)
-      ICPTransformNode = self.convertMatrixToTransformNode(ICPTransform, 'Rigid Transformation Matrix')
+      [ICPTransform_similarity, ICPTransform_rigid] = self.estimateTransform(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, skipScalingOption, parameterDictionary)
+      ICPTransformNode = self.convertMatrixToTransformNode(ICPTransform_rigid, 'Rigid Transformation Matrix')
+      
+      sourceModelNode.SetAndObserveMesh(logic.transform_points_in_vtk(sourceModelNode.GetPolyData(), ICPTransform_similarity))
+      sourceModelNode.SetAndObserveMesh(logic.transform_points_in_vtk(sourceModelNode.GetPolyData(), ICPTransform_rigid))
+
       sourceModelNode.SetAndObserveTransformNodeID(ICPTransformNode.GetID())
-      slicer.vtkSlicerTransformLogic().hardenTransform(sourceModelNode)
+      #slicer.vtkSlicerTransformLogic().hardenTransform(sourceModelNode)
+
       alignedSubjectPolydata = sourceModelNode.GetPolyData()
       ID, correspondingSubjectPoints = self.GetCorrespondingPoints(sparseTemplate, alignedSubjectPolydata)
       ID_list.append(ID)
@@ -1727,6 +2155,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     return templates, clusterID, templatesIndices
 
   def DownsampleTemplate(self, templatePolyData, spacingPercentage):
+    import vtk
     filter=vtk.vtkCleanPolyData()
     filter.SetToleranceIsAbsolute(False)
     filter.SetTolerance(spacingPercentage)
@@ -1735,6 +2164,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     return filter.GetOutput()
 
   def GetCorrespondingPoints(self, templatePolyData, subjectPolydata):
+    import vtk
     print(templatePolyData.GetNumberOfPoints())
     print(subjectPolydata.GetNumberOfPoints())
     templatePoints = templatePolyData.GetPoints()
@@ -1753,8 +2183,6 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
       ID.append(closestPointId)
       #Index.append(index)
     return ID, correspondingPoints
-
-
 
 
   def makeScatterPlotWithFactors(self, data, files, factors, title, xAxis, yAxis, pcNumber, templatesIndices):
