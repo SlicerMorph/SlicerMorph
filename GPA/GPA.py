@@ -1879,8 +1879,9 @@ class GPALogic(ScriptedLoadableModuleLogic):
       tempTable = pandas.DataFrame.from_dict(pandas.read_json(filePathList[0])['markups'][0]['controlPoints'])
       landmarkNumber = len(tempTable)
       landmarkTypeArray=[]
+      errorString = ""
       for i in range(landmarkNumber):
-        if tempTable['description'][i]=='Semi':
+        if tempTable['description'][i] =='Semi':
           landmarkTypeArray.append(str(i+1))
       landmarks=np.zeros(shape=(landmarkNumber,3,len(filePathList)))
       for i in range(len(filePathList)):
@@ -1892,11 +1893,19 @@ class GPALogic(ScriptedLoadableModuleLogic):
         if len(tmp1) == landmarkNumber:
           lmArray = tmp1['position'].to_numpy()
           for j in range(landmarkNumber):
-            landmarks[j,:,i]=lmArray[j]
+            if tmp1['positionStatus'][j] == 'defined':
+              landmarks[j,:,i]=lmArray[j]
+            else:
+              message = f"{os.path.basename(filePathList[i])}: Landmark {str(j)} \n"
+              errorString += message
         else:
           warning = f"Error: Load file {filePathList[i]} failed. There are {len(tmp1)} landmarks instead of the expected {landmarkNumber}."
           slicer.util.messageBox(warning)
           return
+      if errorString != "":
+        warning = "Error: The following undefined landmarks were found in the dataset: \n" + errorString + " Please exclude these landmarks or remove the subjects from the analysis and rerun."
+        slicer.util.messageBox(warning)
+        return
     else:
       landmarks, landmarkTypeArray = self.initDataArray(filePathList)
       landmarkNumber = landmarks.shape[0]
