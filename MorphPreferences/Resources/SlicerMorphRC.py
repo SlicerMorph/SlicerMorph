@@ -77,8 +77,10 @@ qt.QSettings().setValue("Modules/HomeModule", "Data")
 # set volume rendering modes
 #
 settings = slicer.app.settings()
-settings.setValue("VolumeRendering/RenderingMethod", "vtkMRMLCPURayCastVolumeRenderingDisplayNode")
-settings.setValue("VolumeRendering/DefaultQuality", "Normal")
+if settings.value("SlicerMorph/RenderingPreferenceSet", "False") == "False":
+    settings.setValue("VolumeRendering/RenderingMethod", "vtkMRMLCPURayCastVolumeRenderingDisplayNode")
+    settings.setValue("VolumeRendering/DefaultQuality", "Normal")
+settings.setValue("SlicerMorph/RenderingPreferenceSet", "True")
 
 #
 # orthographic view mode and turn on rulers
@@ -194,4 +196,3 @@ logging.info(f"  {len(shortcuts)} keyboard shortcuts installed")
 
 logging.info("Done customizing with SlicerMorphRC.py")
 logging.info("On first load of customization, restart Slicer to take effect.")
-
