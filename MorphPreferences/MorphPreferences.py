@@ -83,21 +83,23 @@ class _ui_MorphPreferencesSettingsPanel:
     loadNowButton.connect("clicked()", lambda rcPath=rcPath: MorphPreferences.loadRCFile(rcPath))
     self.loadMorphPreferencesCheckBox.connect("toggled(bool)", self.onLoadMorphPreferencesCheckBoxToggled)
 
-    hbox = qt.QHBoxLayout()
-    self.downloadDirectory = qt.QLineEdit()
-    self.downloadDirectory.readOnly = True
-    key = "MorphPreferences/downloadDirectory"
-    downloadDirectory = slicer.util.settingsValue(key, "", converter=str)
-    if downloadDirectory == "":
-        self.downloadDirectory.setText("Defaults")
-    else:
-        self.downloadDirectory.setText(downloadDirectory)
-        self.setDownloadDirectories(downloadDirectory)
-    self.setDownloadDirectoryButton = qt.QPushButton("Set")
-    self.setDownloadDirectoryButton.connect("clicked()", self.onSetDownloadDirectory)
-    hbox.addWidget(self.downloadDirectory)
-    hbox.addWidget(self.setDownloadDirectoryButton)
-    genericGroupBoxFormLayout.addRow("Download directory:", hbox)
+    addDownloadDirectory = False
+    if addDownloadDirectory:
+        hbox = qt.QHBoxLayout()
+        self.downloadDirectory = qt.QLineEdit()
+        self.downloadDirectory.readOnly = True
+        key = "MorphPreferences/downloadDirectory"
+        downloadDirectory = slicer.util.settingsValue(key, "", converter=str)
+        if downloadDirectory == "":
+            self.downloadDirectory.setText("Defaults")
+        else:
+            self.downloadDirectory.setText(downloadDirectory)
+            self.setDownloadDirectories(downloadDirectory)
+        self.setDownloadDirectoryButton = qt.QPushButton("Set")
+        self.setDownloadDirectoryButton.connect("clicked()", self.onSetDownloadDirectory)
+        hbox.addWidget(self.downloadDirectory)
+        hbox.addWidget(self.setDownloadDirectoryButton)
+        genericGroupBoxFormLayout.addRow("Download directory:", hbox)
 
     vBoxLayout.addWidget(genericGroupBox)
     vBoxLayout.addStretch(1)
@@ -121,4 +123,3 @@ class MorphPreferencesSettingsPanel(ctk.ctkSettingsPanel):
   def __init__(self, rcPath, *args, **kwargs):
     ctk.ctkSettingsPanel.__init__(self, *args, **kwargs)
     self.ui = _ui_MorphPreferencesSettingsPanel(self, rcPath)
-
