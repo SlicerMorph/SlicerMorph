@@ -1903,7 +1903,9 @@ class GPALogic(ScriptedLoadableModuleLogic):
           slicer.util.messageBox(warning)
           return
       if errorString != "":
-        warning = "Error: The following undefined landmarks were found in the dataset: \n" + errorString + " Please exclude these landmarks or remove the subjects from the analysis and rerun."
+        warning = "Error: The following undefined landmarks were found: \n" + errorString +\
+                  "To resolve,  exclude affected landmarks from all subjects using the 'Exclude landmarks' field or "\
+                  "remove affected subjects from the landmark file selector and rerun."
         slicer.util.messageBox(warning)
         return
     else:
