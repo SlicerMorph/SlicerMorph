@@ -177,7 +177,7 @@ class ALPACA_previewWidget(ScriptedLoadableModuleWidget):
       try:
         slicer.util.pip_install(f'itk==5.3.0')
         slicer.util.pip_install(['itk_fpfh==0.1.1'])
-        slicer.util.pip_install(['itk_ransac==0.1.1'])
+        slicer.util.pip_install(['itk_ransac==0.1.2'])
         slicer.util.pip_install(f'cpdalp')
       except:
         slicer.util.infoDisplay('Issue while installing the ITK pip packages')
@@ -380,7 +380,7 @@ class ALPACA_previewWidget(ScriptedLoadableModuleWidget):
     self.ui.sourceLandmarkSetSelector.currentNode().GetDisplayNode().SetVisibility(False)
 
     self.sourcePoints, self.targetPoints, self.sourceFeatures, \
-      self.targetFeatures, self.voxelSize, self.scaling, self.offset_amount = logic.runSubsample(self.sourceModelNode_clone, self.targetModelNode, self.ui.skipScalingCheckBox.checked, self.parameterDictionary)
+      self.targetFeatures, self.voxelSize, self.scaling= logic.runSubsample(self.sourceModelNode_clone, self.targetModelNode, self.ui.skipScalingCheckBox.checked, self.parameterDictionary)
     # Convert to VTK points for visualization
     self.targetVTK = logic.convertPointsToVTK(self.targetPoints)
 
@@ -455,7 +455,7 @@ class ALPACA_previewWidget(ScriptedLoadableModuleWidget):
     self.ui.sourceLandmarkSetSelector.currentNode().GetDisplayNode().SetVisibility(False)
     #
     self.sourcePoints, self.targetPoints, self.sourceFeatures, \
-      self.targetFeatures, self.voxelSize, self.scaling, self.offset_amount = logic.runSubsample(self.sourceModelNode, self.targetModelNode, self.ui.skipScalingCheckBox.checked, self.parameterDictionary)
+      self.targetFeatures, self.voxelSize, self.scaling = logic.runSubsample(self.sourceModelNode, self.targetModelNode, self.ui.skipScalingCheckBox.checked, self.parameterDictionary)
     # Convert to VTK points for visualization
     self.targetVTK = logic.convertPointsToVTK(self.targetPoints)
 
@@ -469,13 +469,14 @@ class ALPACA_previewWidget(ScriptedLoadableModuleWidget):
     #
     #RANSAC & ICP transformation of source pointcloud
     [self.transformMatrix, self.transformMatrix_rigid] = logic.estimateTransform(self.sourcePoints, self.targetPoints, self.sourceFeatures, self.targetFeatures, self.voxelSize, self.ui.skipScalingCheckBox.checked, self.parameterDictionary)
-    self.ICPTransformNode = logic.convertMatrixToTransformNode(self.transformMatrix, 'Similarity Transformation Matrix_'+run_counter)
+    vtkTransformMatrix      = logic.itkToVTKTransform(self.transformMatrix)
+    vtkRigidTransformMatrix = logic.itkToVTKTransform(self.transformMatrix_rigid)
+    vtkTransformMatrix.Concatenate(vtkRigidTransformMatrix)
+
+    self.ICPTransformNode = logic.convertMatrixToTransformNode(vtkTransformMatrix, 'Rigid Transformation Matrix_'+run_counter)
     self.sourcePoints = logic.transform_numpy_points(self.sourcePoints, self.transformMatrix)
     self.sourcePoints = logic.transform_numpy_points(self.sourcePoints, self.transformMatrix_rigid)
     
-    self.sourceModelNode.SetAndObserveMesh(logic.transform_points_in_vtk(self.sourceModelNode.GetPolyData(), self.transformMatrix))
-    self.sourceModelNode.SetAndObserveMesh(logic.transform_points_in_vtk(self.sourceModelNode.GetPolyData(), self.transformMatrix_rigid))
-
     #Setup source pointcloud VTK object
     self.sourceVTK = logic.convertPointsToVTK(self.sourcePoints)
     #
@@ -484,21 +485,22 @@ class ALPACA_previewWidget(ScriptedLoadableModuleWidget):
     self.sourceCloudNode.GetDisplayNode().SetVisibility(False)
     #
     #Transform the source model
-    #self.sourceModelNode.SetAndObserveTransformNodeID(self.ICPTransformNode.GetID())
-    #slicer.vtkSlicerTransformLogic().hardenTransform(self.sourceModelNode)
+    self.sourceModelNode.SetAndObserveTransformNodeID(self.ICPTransformNode.GetID())
+    slicer.vtkSlicerTransformLogic().hardenTransform(self.sourceModelNode)
     #
     self.sourceModelNode.GetDisplayNode().SetColor(red)
     self.sourceModelNode.GetDisplayNode().SetVisibility(False)
     #
     #CPD registration
+    
     print('Performing Deformable Registration ')
-    self.sourceLandmarks, self.sourceLMNode =  logic.loadAndScaleFiducials(self.ui.sourceLandmarkSetSelector.currentNode(), self.scaling, self.offset_amount, scene = True)
+    self.sourceLandmarks, self.sourceLMNode =  logic.loadAndScaleFiducials(self.ui.sourceLandmarkSetSelector.currentNode(), self.scaling, scene = True)
     self.sourceLandmarks = logic.transform_numpy_points(self.sourceLandmarks, self.transformMatrix)
     self.sourceLandmarks = logic.transform_numpy_points(self.sourceLandmarks, self.transformMatrix_rigid)
     self.sourceLMNode.SetName("Source_Landmarks_clone_"+run_counter)
     self.sourceLMNode.SetAndObserveTransformNodeID(self.ICPTransformNode.GetID())
-    #slicer.vtkSlicerTransformLogic().hardenTransform(self.sourceLMNode)
-    #
+    slicer.vtkSlicerTransformLogic().hardenTransform(self.sourceLMNode)
+    
     #Registration
     self.registeredSourceArray = logic.runCPDRegistration(self.sourceLandmarks, self.sourcePoints, self.targetPoints, self.parameterDictionary)
     self.outputPoints = logic.exportPointCloud(self.registeredSourceArray, "Initial ALPACA landmark estimate(unprojected)_"+run_counter) #outputPoints = ininital predicted LMs, non projected
@@ -1154,15 +1156,19 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     targetModelNode.GetDisplayNode().SetVisibility(False)
     sourceModelNode = slicer.util.loadModel(sourceFilePath)
     sourceModelNode.GetDisplayNode().SetVisibility(False)
-    sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, scaling, offset_amount = self.runSubsample(sourceModelNode,
+    sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, scaling = self.runSubsample(sourceModelNode,
         targetModelNode, skipScaling, parameters)
     SimilarityTransform, ICPTransform = self.estimateTransform(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, skipScaling, parameters)
     #Rigid
-    sourceLandmarks, sourceLMNode = self.loadAndScaleFiducials(sourceLandmarkFile, scaling, offset_amount)
+    sourceLandmarks, sourceLMNode = self.loadAndScaleFiducials(sourceLandmarkFile, scaling)
     sourceLandmarks = self.transform_numpy_points(sourceLandmarks, SimilarityTransform)
     sourceLandmarks = self.transform_numpy_points(sourceLandmarks, ICPTransform)
     sourcePoints = self.transform_numpy_points(sourcePoints, SimilarityTransform)
     sourcePoints = self.transform_numpy_points(sourcePoints, ICPTransform)
+
+    vtkSimilarityTransform = self.itkToVTKTransform(SimilarityTransform)
+    vtkICPTransform = self.itkToVTKTransform(ICPTransform)
+    vtkSimilarityTransform.Concatenate(vtkICPTransform)
 
     #Deformable
     registeredSourceLM = self.runCPDRegistration(sourceLandmarks, sourcePoints, targetPoints, parameters)
@@ -1180,8 +1186,9 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         inputPoints_vtk = self.getFiducialPoints(inputPoints)
         outputPoints_vtk = self.getFiducialPoints(outputPoints)
 
-        #ICPTransformNode = self.convertMatrixToTransformNode(ICPTransform, 'Rigid Transformation Matrix')
-        #sourceModelNode.SetAndObserveTransformNodeID(ICPTransformNode.GetID())
+        ICPTransformNode = self.convertMatrixToTransformNode(vtkSimilarityTransform, 'Rigid Transformation Matrix')
+        sourceModelNode.SetAndObserveTransformNodeID(ICPTransformNode.GetID())
+
         deformedModelNode = self.applyTPSTransform(inputPoints_vtk, outputPoints_vtk, sourceModelNode, 'Warped Source Mesh')
         deformedModelNode.GetDisplayNode().SetVisibility(False)
 
@@ -1201,7 +1208,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         slicer.mrmlScene.RemoveNode(targetModelNode)
         slicer.mrmlScene.RemoveNode(deformedModelNode)
         slicer.mrmlScene.RemoveNode(sourceLMNode)
-        #slicer.mrmlScene.RemoveNode(ICPTransformNode)
+        slicer.mrmlScene.RemoveNode(ICPTransformNode)
         slicer.mrmlScene.RemoveNode(inputPoints)
         np_array = vtk_np.vtk_to_numpy(projectedPoints.GetPoints().GetData())
         return np_array
@@ -1285,23 +1292,23 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     return matrix_vtk
 
   def itkToVTKTransform(self, itkTransform):
-    translation = itkTransform.GetTranslation()
     matrix = itkTransform.GetMatrix()
+    offset = itkTransform.GetOffset()
+    
     matrix_vtk = vtk.vtkMatrix4x4()
     for i in range(3):
       for j in range(3):
         matrix_vtk.SetElement(i, j, matrix(i, j))
     for i in range(3):
-      matrix_vtk.SetElement(i, 3, translation[i])
+      matrix_vtk.SetElement(i, 3, offset[i])
 
     transform = vtk.vtkTransform()
     transform.SetMatrix(matrix_vtk)
     return transform
   
-  def convertMatrixToTransformNode(self, itkTransform, transformName):
-    transform = self.itkToVTKTransform(itkTransform)
+  def convertMatrixToTransformNode(self, vtkTransform, transformName):
     transformNode =  slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', transformName)
-    transformNode.SetAndObserveTransformToParent( transform )
+    transformNode.SetAndObserveTransformToParent( vtkTransform )
     return transformNode
 
   def applyTransform(self, matrix, polydata):
@@ -1391,7 +1398,8 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     fixedMeshFeaturePoints,
     number_of_iterations,
     number_of_ransac_points,
-    inlier_value):
+    inlier_value,
+    skip_scaling):
     import itk
     def GenerateData(data, agreeData):
         """
@@ -1431,7 +1439,12 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
 
     itk.MultiThreaderBase.SetGlobalDefaultThreader(itk.MultiThreaderBase.ThreaderTypeFromString("POOL"))
     maximumDistance = inlier_value
-    RegistrationEstimatorType = itk.Ransac.LandmarkRegistrationEstimator[6]
+    if skip_scaling:
+      TransformType = itk.VersorRigid3DTransform[itk.D]
+      RegistrationEstimatorType = itk.Ransac.LandmarkRegistrationEstimator[6, TransformType]
+    else:
+      TransformType = itk.Similarity3DTransform[itk.D]
+      RegistrationEstimatorType = itk.Ransac.LandmarkRegistrationEstimator[6, TransformType]
     registrationEstimator = RegistrationEstimatorType.New()
     registrationEstimator.SetMinimalForEstimate(number_of_ransac_points)
     registrationEstimator.SetAgreeData(agreeData)
@@ -1445,7 +1458,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     #print('Number of max iterations ', int(number_of_iterations/maxThreadCount))
 
     desiredProbabilityForNoOutliers = 0.99
-    RANSACType = itk.RANSAC[itk.Point[itk.D, 6], itk.D]
+    RANSACType = itk.RANSAC[itk.Point[itk.D, 6], itk.D, TransformType]
     ransacEstimator = RANSACType.New()
     ransacEstimator.SetData(data)
     ransacEstimator.SetAgreeData(agreeData)
@@ -1462,13 +1475,14 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
 
     print("Percentage of points used ", bestPercentage)
     transformParameters = bestParameters
-    transform = itk.Similarity3DTransform.D.New()
+    transform = TransformType.New()
     p = transform.GetParameters()
     f = transform.GetFixedParameters()
-    for i in range(7):
+    for i in range(p.GetSize()):
         p.SetElement(i, transformParameters[i])
     counter = 0
-    for i in range(7, 10):
+    totalParameters = p.GetSize() + f.GetSize()
+    for i in range(p.GetSize(), totalParameters):
         f.SetElement(counter, transformParameters[i])
         counter = counter + 1
     transform.SetParameters(p)
@@ -1544,14 +1558,20 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
 
     # Get the correct transform and perform the final alignment
     current_transform = metric.GetMovingTransform().GetInverseTransform()
-
+    
     itk_transformed_mesh = itk.transform_mesh_filter(
         mesh_moving, transform=current_transform
     )
 
+    transform = itk.Rigid3DTransform[itk.D].New()
+    o1 = itk.OptimizerParameters[itk.D](list(current_transform.GetFixedParameters()))
+    transform.SetFixedParameters(o1)
+    o2 = itk.OptimizerParameters[itk.D](list(current_transform.GetParameters()))
+    transform.SetParameters(o2)
+    
     return (
         itk.array_from_vector_container(itk_transformed_mesh.GetPoints()),
-        current_transform,
+        transform,
     )
   
   def get_numpy_points_from_vtk(self, vtk_polydata):
@@ -1615,6 +1635,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         number_of_iterations=parameters["maxRANSAC"],
         number_of_ransac_points=int(num_corrs * parameters["RANSACPoints"]),
         inlier_value=float(parameters["distanceThreshold"])*voxelSize,
+        skip_scaling=skipScaling
     )
     aransac = time.time()
     print('After RANSAC ', aransac)
@@ -1792,24 +1813,9 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
 
     if skipScaling != 0:
         scaling = 1
+        print('Scaling factor is ', scaling)
     points_as_numpy = points_as_numpy * scaling
     self.set_numpy_points_in_vtk(vtk_meshes[1], points_as_numpy)
-
-    # Get the offsets to align the minimum of moving and fixed mesh
-    vtk_mesh_offsets = []
-    for i, mesh in enumerate(vtk_meshes):
-        mesh_points = self.get_numpy_points_from_vtk(mesh)
-        vtk_mesh_offset = np.min(mesh_points, axis=0)
-        vtk_mesh_offsets.append(vtk_mesh_offset)
-    
-    # Only move the moving mesh
-    mesh_points = self.get_numpy_points_from_vtk(vtk_meshes[1])
-    offset_amount = (vtk_mesh_offsets[1] - vtk_mesh_offsets[0])
-    mesh_points = mesh_points - offset_amount
-    self.set_numpy_points_in_vtk(vtk_meshes[1], mesh_points)
-
-    # Update the sourceModel with the cleaned mesh
-    sourceModel.SetAndObserveMesh(vtk_meshes[1])
 
     sourceFullMesh_vtk = vtk_meshes[1]
     targetFullMesh_vtk = vtk_meshes[0]
@@ -1843,9 +1849,9 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
 
     target_down = fixedMeshPoints
     source_down = movingMeshPoints
-    return source_down, target_down, source_fpfh, target_fpfh, voxel_size, scaling, offset_amount
+    return source_down, target_down, source_fpfh, target_fpfh, voxel_size, scaling
 
-  def loadAndScaleFiducials (self, fiducial, scaling, offset_amount, scene = False):
+  def loadAndScaleFiducials (self, fiducial, scaling, scene = False):
     if not scene:
       sourceLandmarkNode =  slicer.util.loadMarkups(fiducial)
     else:
@@ -1859,7 +1865,6 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
       sourceLandmarkNode.GetNthControlPointPosition(i,point)
       sourceLandmarks[i,:] = point
     sourceLandmarks = sourceLandmarks * scaling
-    sourceLandmarks = sourceLandmarks - offset_amount
     slicer.util.updateMarkupsControlPointsFromArray(sourceLandmarkNode, sourceLandmarks)
     sourceLandmarkNode.GetDisplayNode().SetVisibility(False)
     return sourceLandmarks, sourceLandmarkNode
@@ -2070,16 +2075,18 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
       sourceModelNode.GetDisplayNode().SetVisibility(False)
       rootName = os.path.splitext(file)[0]
       skipScalingOption = False
-      sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, scaling, offset_amount = self.runSubsample(sourceModelNode, targetModelNode,
+      sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, scaling = self.runSubsample(sourceModelNode, targetModelNode,
         skipScalingOption, parameterDictionary)
       [ICPTransform_similarity, ICPTransform_rigid] = self.estimateTransform(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, skipScalingOption, parameterDictionary)
-      ICPTransformNode = self.convertMatrixToTransformNode(ICPTransform_rigid, 'Rigid Transformation Matrix')
       
-      sourceModelNode.SetAndObserveMesh(logic.transform_points_in_vtk(sourceModelNode.GetPolyData(), ICPTransform_similarity))
-      sourceModelNode.SetAndObserveMesh(logic.transform_points_in_vtk(sourceModelNode.GetPolyData(), ICPTransform_rigid))
+      vtkSimilarityTransform = self.itkToVTKTransform(ICPTransform_similarity)
+      vtkICPTransform = self.itkToVTKTransform(ICPTransform_rigid)
+      vtkSimilarityTransform.Concatenate(vtkICPTransform)
 
+      ICPTransformNode = self.convertMatrixToTransformNode(vtkSimilarityTransform, 'Rigid Transformation Matrix')
+      
       sourceModelNode.SetAndObserveTransformNodeID(ICPTransformNode.GetID())
-      #slicer.vtkSlicerTransformLogic().hardenTransform(sourceModelNode)
+      slicer.vtkSlicerTransformLogic().hardenTransform(sourceModelNode)
 
       alignedSubjectPolydata = sourceModelNode.GetPolyData()
       ID, correspondingSubjectPoints = self.GetCorrespondingPoints(sparseTemplate, alignedSubjectPolydata)
