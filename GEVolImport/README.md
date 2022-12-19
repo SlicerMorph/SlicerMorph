@@ -15,5 +15,5 @@ Click `...` button to and navigate to the **XXXXX.pcr** file, where XXXXX is the
 ### Output Files: 
 Hit the Generate NHDR button, this will create a NHDR file for you in the same directory of the PCR and VOL files to be able to load the volume next time, as well as immediately loading it into the active scene. 
 
-## USAGE SUGGESTIONS:
+## USAGE SUGGESTIONS
 Currently only FLOAT, UNSIGNED 16 BIT INTEGER and UNSIGNED 16 BIT INTEGER data types are supported. Please contact us with a sample dataset to enable additional data types.
