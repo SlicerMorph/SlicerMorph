@@ -315,22 +315,3 @@ class GEVolImportLogic(ScriptedLoadableModuleLogic):
         print("The format of this dataset is currently not supported by this module. Currently only float (format=10), unsigned 16 bit integer (format=5) and unsigned 8 bit integer (format=1) data types are supported. Please contact us with this dataset to enable this data type. ")
     else:
       print("This is not a PCR file, please re-select a PCR file")
-    
-    #Automatically rendering volume after .vol file is loaded
-    #volRendering = slicer.modules.volumrendering.logic()
-    #showNode = volRendering.CreateDefaultVolumeRenderingNodes(VolumNode)
-    
-    #def showVolumeRendering(volumeNode):
-      #volRenLogic = slicer.modules.volumerendering.logic()
-      #displayNode = volRenLogic.CreateDefaultVolumeRenderingNodes(volumeNode)
-      #displayNode.SetVisibility(True)
-    
-    #filePathSplit = []
-    #filePathSplit = filePathName.split('/')
-    #NodeName = filePathSplit[len(filePathSplit)-1] #File name without extension = node name
-    #print("Node name is {}".format(NodeName))
-    
-    #volNode = slicer.mrmlScene.GetFirstNodeByName(NodeName) #Accessing the loaded node
-    #showVolumeRendering(volNode)
-    #print("Volume rendering done")
-
