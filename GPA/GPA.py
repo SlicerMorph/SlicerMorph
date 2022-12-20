@@ -1879,10 +1879,14 @@ class GPALogic(ScriptedLoadableModuleLogic):
       tempTable = pandas.DataFrame.from_dict(pandas.read_json(filePathList[0])['markups'][0]['controlPoints'])
       landmarkNumber = len(tempTable)
       landmarkTypeArray=[]
+      errorString = ""
+      subjectErrorArray = []
+      landmarkErrorArray = []
+      lmToRemove = [x - 1 for x in lmToRemove]
       for i in range(landmarkNumber):
-        if tempTable['description'][i]=='Semi':
+        if tempTable['description'][i] =='Semi':
           landmarkTypeArray.append(str(i+1))
-      landmarks=np.zeros(shape=(landmarkNumber,3,len(filePathList)))
+      landmarks=np.zeros(shape=(landmarkNumber-len(lmToRemove),3,len(filePathList)))
       for i in range(len(filePathList)):
         try:
           tmp1=pandas.DataFrame.from_dict(pandas.read_json(filePathList[i])['markups'][0]['controlPoints'])
@@ -1891,12 +1895,34 @@ class GPALogic(ScriptedLoadableModuleLogic):
           logging.debug(f"Error: Load file {filePathList[i]} failed:.")
         if len(tmp1) == landmarkNumber:
           lmArray = tmp1['position'].to_numpy()
+          landmarkIndex = 0
           for j in range(landmarkNumber):
-            landmarks[j,:,i]=lmArray[j]
+            if j not in lmToRemove:
+              if tmp1['positionStatus'][j] == 'defined':
+                landmarks[landmarkIndex,:,i]=lmArray[j]
+                landmarkIndex += 1
+              else:
+                subjectFileName = os.path.basename(filePathList[i])
+                message = f"{subjectFileName}: Landmark {str(j+1)} \n"
+                errorString += message
+                if subjectFileName not in subjectErrorArray:
+                  subjectErrorArray.append(subjectFileName)
+                if j not in landmarkErrorArray:
+                  landmarkErrorArray.append(j)
         else:
           warning = f"Error: Load file {filePathList[i]} failed. There are {len(tmp1)} landmarks instead of the expected {landmarkNumber}."
           slicer.util.messageBox(warning)
           return
+      if (errorString != "") and not all(x in lmToRemove for x in landmarkErrorArray):
+        landmarkErrorArrayString = ', '.join(map(str, [x+1 for x in landmarkErrorArray]))
+        subjectErrorArrayString = ', '.join(subjectErrorArray)
+        warning = "Error: The following undefined landmarks were found: \n" + errorString +\
+                  "To resolve,  exclude the affected landmarks from all subjects using the 'Exclude landmarks' field: " +\
+                  landmarkErrorArrayString +"\n" +\
+                  "Alternatively,  remove the affected subjects from the landmark file selector: " + \
+                  subjectErrorArrayString
+        slicer.util.messageBox(warning)
+        return
     else:
       landmarks, landmarkTypeArray = self.initDataArray(filePathList)
       landmarkNumber = landmarks.shape[0]
@@ -1908,11 +1934,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
           warning = f"Error: Load file {filePathList[i]} failed. There are {len(tmp1)} landmarks instead of the expected {landmarkNumber}."
           slicer.util.messageBox(warning)
           return
-    if len(lmToRemove)>0:
-      indexToRemove=[]
-      for i in range(len(lmToRemove)):
-        indexToRemove.append(lmToRemove[i]-1)
-      landmarks=np.delete(landmarks,indexToRemove,axis=0)
+      landmarks = np.delete(landmarks, indexToRemove, axis=0)
     return landmarks, landmarkTypeArray
 
   def importLandMarks(self, filePath):
