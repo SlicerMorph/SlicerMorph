@@ -1886,7 +1886,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
       for i in range(landmarkNumber):
         if tempTable['description'][i] =='Semi':
           landmarkTypeArray.append(str(i+1))
-      landmarks=np.zeros(shape=(landmarkNumber,3,len(filePathList)))
+      landmarks=np.zeros(shape=(landmarkNumber-len(lmToRemove),3,len(filePathList)))
       for i in range(len(filePathList)):
         try:
           tmp1=pandas.DataFrame.from_dict(pandas.read_json(filePathList[i])['markups'][0]['controlPoints'])
@@ -1895,10 +1895,12 @@ class GPALogic(ScriptedLoadableModuleLogic):
           logging.debug(f"Error: Load file {filePathList[i]} failed:.")
         if len(tmp1) == landmarkNumber:
           lmArray = tmp1['position'].to_numpy()
+          landmarkIndex = 0
           for j in range(landmarkNumber):
             if j not in lmToRemove:
               if tmp1['positionStatus'][j] == 'defined':
-                landmarks[j,:,i]=lmArray[j]
+                landmarks[landmarkIndex,:,i]=lmArray[j]
+                landmarkIndex += 1
               else:
                 subjectFileName = os.path.basename(filePathList[i])
                 message = f"{subjectFileName}: Landmark {str(j+1)} \n"
