@@ -1421,6 +1421,9 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         mesh1_points  = copy.deepcopy(movingMeshPoints)
         mesh2_points  = copy.deepcopy(fixedMeshPoints)
 
+        np.random.shuffle(mesh1_points)
+        np.random.shuffle(mesh2_points)
+
         agreeData.reserve(count_min)
         for i in range(count_min):
             point1 = mesh1_points[i]
@@ -1707,12 +1710,17 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     _, normal = self.extract_pca_normal(inputmesh)
     return normal
 
-  def subsample_points_voxelgrid_polydata(self, inputMesh, pointDensity):
+  def subsample_points_voxelgrid_polydata(self, inputMesh, pointDensity, boxLength, radius):
     subsample = vtk.vtkVoxelGrid()
     subsample.SetInputData(inputMesh)
     subsample.SetConfigurationStyleToManual()
     # pointDensity has a stepsize of 0.1 which results in 1 step size in grid
     numDivisions = 28 + round((pointDensity-1.0)*10)
+
+    #x_divisions = int(boxLength[0]/radius)
+    #y_divisions = int(boxLength[1]/radius)
+    #z_divisions = int(boxLength[2]/radius)
+
     subsample.SetDivisions(numDivisions, numDivisions, numDivisions)
     subsample.Update()
     points = subsample.GetOutput()
@@ -1802,7 +1810,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     movingBoxLengths, movinglength = self.getBoxLengths(vtk_meshes[1])
 
     # Voxel size is the diagonal length of cuboid in the voxelGrid
-    voxel_size = np.sqrt(np.sum(np.square(np.array(movingBoxLengths)/27)))/2.0
+    voxel_size = np.sqrt(np.sum(np.square(np.array(movingBoxLengths)/28)))/2.0
 
     print("Scale length are  ", fixedlength, movinglength)
     scaling = fixedlength / movinglength
@@ -1823,8 +1831,8 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     # Sub-Sample the points for rigid refinement and deformable registration
     point_density = parameters['pointDensity']
     
-    sourceMesh_vtk = self.subsample_points_voxelgrid_polydata(sourceFullMesh_vtk, pointDensity=point_density)
-    targetMesh_vtk = self.subsample_points_voxelgrid_polydata(targetFullMesh_vtk, pointDensity=point_density)
+    sourceMesh_vtk = self.subsample_points_voxelgrid_polydata(sourceFullMesh_vtk, pointDensity=point_density, boxLength=movingBoxLengths, radius=voxel_size)
+    targetMesh_vtk = self.subsample_points_voxelgrid_polydata(targetFullMesh_vtk, pointDensity=point_density, boxLength=fixedBoxLengths, radius=voxel_size)
     
     movingMeshPoints, movingMeshPointNormals = self.extract_pca_normal(sourceMesh_vtk, int(parameters["normalNeighborsCount"]))
     fixedMeshPoints, fixedMeshPointNormals = self.extract_pca_normal(targetMesh_vtk, int(parameters["normalNeighborsCount"]))
