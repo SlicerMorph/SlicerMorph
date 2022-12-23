@@ -459,7 +459,8 @@ class ALPACA_previewWidget(ScriptedLoadableModuleWidget):
     self.sourcePoints, self.targetPoints, self.sourceFeatures, \
       self.targetFeatures, self.voxelSize, self.scaling = logic.runSubsample(self.sourceModelNode, self.targetModelNode,
                         self.ui.skipScalingCheckBox.checked,
-                        self.parameterDictionary, self.ui.poissonSubsampleCheckBox.checked)
+                        self.parameterDictionary,
+                        self.ui.poissonSubsampleCheckBox.checked)
 
     # Convert to VTK points for visualization
     self.targetVTK = logic.convertPointsToVTK(self.targetPoints)
@@ -1410,13 +1411,15 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     pointsLocator.Initialize()
 
     fitness = 0
+    inlier_rmse = 0
     for i in range(fixedPointSet.GetNumberOfPoints()):
       closestPoint = pointsLocator.FindClosestPoint(fixedPointSet.GetPoint(i))
       distance = (movingPointSet.GetPoint(closestPoint) - fixedPointSet.GetPoint(i)).GetNorm()
       if distance < distanceThrehold:
         fitness = fitness + 1
+        inlier_rmse = inlier_rmse + distance
     
-    return fitness/fixedPointSet.GetNumberOfPoints()
+    return fitness/fixedPointSet.GetNumberOfPoints(), inlier_rmse/fitness
   
   # RANSAC using package
   def ransac_using_package(self, 
@@ -1484,7 +1487,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     registrationEstimator.SetDelta(maximumDistance)
     registrationEstimator.LeastSquaresEstimate(data, transformParameters)
 
-    maxThreadCount = itk.MultiThreaderBase.New().GetMaximumNumberOfThreads()
+    maxThreadCount = int(itk.MultiThreaderBase.New().GetMaximumNumberOfThreads()/2)
     
     desiredProbabilityForNoOutliers = 0.99
     RANSACType = itk.RANSAC[itk.Point[itk.D, 6], itk.D, TransformType]
@@ -1512,7 +1515,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         counter = counter + 1
     transform.SetParameters(p)
     transform.SetFixedParameters(f)
-    return itk.dict_from_transform(transform), percentageOfDataUsed[0]
+    return itk.dict_from_transform(transform), percentageOfDataUsed[0], percentageOfDataUsed[1]
   
   def get_euclidean_distance(self, input_fixedPoints, input_movingPoints, distance_threshold):
     import itk
@@ -1563,7 +1566,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     metric.SetDistanceThreshold(float(distanceThreshold))
     metric.Initialize()
 
-    number_of_epochs = 1000
+    number_of_epochs = 10000
     optimizer = itk.GradientDescentOptimizerv4Template[itk.D].New()
     optimizer.SetNumberOfIterations(number_of_epochs)
     optimizer.SetLearningRate(0.00001)
@@ -1573,7 +1576,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     optimizer.SetMetric(metric)
 
     def print_iteration():
-        if optimizer.GetCurrentIteration()%100 == 0:
+        if optimizer.GetCurrentIteration()%1000 == 0:
             print(
                 f"It: {optimizer.GetCurrentIteration()}"
                 f" metric value: {optimizer.GetCurrentMetricValue():.6f} "
@@ -1582,6 +1585,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     optimizer.StartOptimization()
 
     # Get the correct transform and perform the final alignment
+    print("Current value is ", metric.GetCurrentValue())
     current_transform = metric.GetMovingTransform().GetInverseTransform()
     
     itk_transformed_mesh = itk.transform_mesh_filter(
@@ -1657,61 +1661,95 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     import time
     bransac = time.time()
     
-    # Perform Initial alignment using Ransac parallel iterations with no scaling
-    transform_matrix, best_fitness = self.ransac_using_package(
-        movingMeshPoints=sourcePoints,
-        fixedMeshPoints=targetPoints,
-        movingMeshFeaturePoints=moving_corr.T,
-        fixedMeshFeaturePoints=fixed_corr.T,
-        number_of_iterations=parameters["maxRANSAC"],
-        number_of_ransac_points=3,
-        inlier_value=float(parameters["distanceThreshold"])*voxelSize,
-        skip_scaling=True,
-        check_edge_length=True,
-        correspondence_distance=0.9
-    )
-
-    transform = itk.transform_from_dict(transform_matrix)
-    fitness_forward = self.get_fitness(sourcePoints, targetPoints, float(parameters["distanceThreshold"])*voxelSize, transform)
-    fitness_backward = self.get_fitness(targetPoints, sourcePoints, float(parameters["distanceThreshold"])*voxelSize, transform.GetInverseTransform())
-
-    mean_fitness = (fitness_forward + fitness_backward)/2.0
-
-    best_fitness = mean_fitness
-    best_transform = transform_matrix
-
-    print('Best Fitness without Scaling ', best_fitness)
-
-    if not skipScaling:
-      maxAttempts = 10
-      attempt = 0
-      while(mean_fitness < 0.99 and attempt < maxAttempts):
-        transform_matrix, fitness = self.ransac_using_package(
+    maxAttempts = 5
+    attempt = 0
+    best_fitness = -1
+    best_rmse = np.Inf
+    while(attempt < maxAttempts):
+      # Perform Initial alignment using Ransac parallel iterations with no scaling
+      transform_matrix, fitness, rmse = self.ransac_using_package(
           movingMeshPoints=sourcePoints,
           fixedMeshPoints=targetPoints,
           movingMeshFeaturePoints=moving_corr.T,
           fixedMeshFeaturePoints=fixed_corr.T,
-          number_of_iterations=int(parameters["maxRANSAC"]/5),
+          number_of_iterations=parameters["maxRANSAC"],
           number_of_ransac_points=3,
           inlier_value=float(parameters["distanceThreshold"])*voxelSize,
-          skip_scaling=False,
+          skip_scaling=True,
           check_edge_length=True,
           correspondence_distance=0.9
+      )
+
+      transform = itk.transform_from_dict(transform_matrix)
+      fitness_forward, rmse_forward = self.get_fitness(sourcePoints,
+                                  targetPoints,
+                                  float(parameters["distanceThreshold"])*voxelSize,
+                                  transform)
+      fitness_backward, rmse_backward = self.get_fitness(targetPoints,
+                                  sourcePoints,
+                                  float(parameters["distanceThreshold"])*voxelSize,
+                                  transform.GetInverseTransform())
+
+      mean_fitness = (fitness_forward + fitness_backward)/2.0
+      mean_rmse = (rmse_forward + rmse_backward)/2.0
+      print('Non-Scaling Attempt = ', attempt, " Fitness = ", mean_fitness, ' RMSE is ', mean_rmse)
+      
+      if mean_fitness > 0.99:
+        # Only compare RMSE if mean_fitness is greater than 0.99
+        if mean_rmse < best_rmse:
+          best_fitness = mean_fitness
+          best_rmse = mean_rmse
+          best_transform = transform_matrix
+      else:
+        if(mean_fitness > best_fitness):
+          best_fitness = mean_fitness
+          best_rmse = mean_rmse
+          best_transform = transform_matrix
+      
+      # Rigid Transform is un-fit for this use-case so perform scaling based RANSAC
+      #if mean_fitness < 0.9:
+      #  break
+      attempt = attempt + 1
+    
+    print('Best Fitness without Scaling ', best_fitness, ' RMSE is ', best_rmse)
+
+    if not skipScaling:
+      maxAttempts = 10
+      attempt = 0
+    
+      correspondence_distance = 0.9
+      ransac_points = 3
+      ransac_iterations = int(parameters["maxRANSAC"])
+      
+      while(mean_fitness < 0.99 and attempt < maxAttempts):
+        transform_matrix, fitness, rmse = self.ransac_using_package(
+          movingMeshPoints=sourcePoints,
+          fixedMeshPoints=targetPoints,
+          movingMeshFeaturePoints=moving_corr.T,
+          fixedMeshFeaturePoints=fixed_corr.T,
+          number_of_iterations=ransac_iterations,
+          number_of_ransac_points=ransac_points,
+          inlier_value=float(parameters["distanceThreshold"])*voxelSize,
+          skip_scaling=False,
+          check_edge_length=False,
+          correspondence_distance=correspondence_distance
         )
 
         transform = itk.transform_from_dict(transform_matrix)
-        fitness_forward = self.get_fitness(sourcePoints, targetPoints, 
+        fitness_forward, rmse_forward = self.get_fitness(sourcePoints, targetPoints, 
                 float(parameters["distanceThreshold"])*voxelSize,
                 transform)
-        fitness_backward = self.get_fitness(targetPoints, sourcePoints,
+        fitness_backward, rmse_backward = self.get_fitness(targetPoints, sourcePoints,
                 float(parameters["distanceThreshold"])*voxelSize,
                 transform.GetInverseTransform())
 
         mean_fitness = (fitness_forward + fitness_backward)/2.0
-        print('Attempt = ', attempt, " Fitness = ", mean_fitness)
+        mean_rmse = (rmse_forward + rmse_backward)/2.0
+        print('Scaling Attempt = ', attempt, " Fitness = ", mean_fitness,  " RMSE = ", mean_rmse)
 
-        if mean_fitness > best_fitness:
+        if (mean_fitness > best_fitness) or (mean_fitness == best_fitness and mean_rmse < best_rmse):
           best_fitness = mean_fitness
+          best_rmse = mean_rmse
           best_transform = transform_matrix
         attempt = attempt + 1
     
@@ -1719,8 +1757,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     print('RANSAC Duraction ', aransac - bransac)
     print('Best Fitness after scaling ', best_fitness)
 
-    transform_matrix = best_transform
-    first_transform = itk.transform_from_dict(transform_matrix)
+    first_transform = itk.transform_from_dict(best_transform)
     sourcePoints = self.transform_numpy_points(sourcePoints, first_transform)
 
     print('-----------------------------------------------------------')
@@ -1800,29 +1837,28 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     f.Update()
 
     sampled_points = f.GetOutput()
-    #points = sampled_points.GetPoints()
-    #pointdata = points.GetData()
-    #as_numpy = numpy_support.vtk_to_numpy(pointdata)
     return sampled_points
 
   def subsample_points_voxelgrid_polydata(self, inputMesh, boxLength, radius, divisions=None):
     subsample = vtk.vtkVoxelGrid()
     subsample.SetInputData(inputMesh)
-    subsample.SetConfigurationStyleToManual()
+    subsample.SetConfigurationStyleToLeafSize()
     
-    if divisions is not None:
-      x_divisions = divisions[0]
-      y_divisions = divisions[1]
-      z_divisions = divisions[2]
-    else:
-      x_divisions = int(boxLength[0]/radius)
-      y_divisions = int(boxLength[1]/radius)
-      z_divisions = int(boxLength[2]/radius)
-
-    subsample.SetDivisions(x_divisions, y_divisions, z_divisions)
+    #subsample.SetConfigurationStyleToManual()
+    # if divisions is not None:
+    #   x_divisions = divisions[0]
+    #   y_divisions = divisions[1]
+    #   z_divisions = divisions[2]
+    # else:
+    #   x_divisions = int(boxLength[0]/radius)
+    #   y_divisions = int(boxLength[1]/radius)
+    #   z_divisions = int(boxLength[2]/radius)
+    # return points, [x_divisions, y_divisions, z_divisions]
+    
+    subsample.SetLeafSize(radius, radius, radius)
     subsample.Update()
     points = subsample.GetOutput()
-    return points, [x_divisions, y_divisions, z_divisions]
+    return points
   
   def extract_normal_from_tuple(self, input_mesh):
     """
@@ -1936,8 +1972,8 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
       sourceMesh_vtk = self.subsample_points_poisson(sourceFullMesh_vtk, radius=voxel_size)
       targetMesh_vtk = self.subsample_points_poisson(targetFullMesh_vtk, radius=voxel_size)
     else:
-      sourceMesh_vtk, source_divisions = self.subsample_points_voxelgrid_polydata(sourceFullMesh_vtk, boxLength=movingBoxLengths, radius=voxel_size)
-      targetMesh_vtk, _ = self.subsample_points_voxelgrid_polydata(targetFullMesh_vtk, boxLength=fixedBoxLengths, radius=voxel_size, divisions=source_divisions)
+      sourceMesh_vtk = self.subsample_points_voxelgrid_polydata(sourceFullMesh_vtk, boxLength=movingBoxLengths, radius=voxel_size)
+      targetMesh_vtk = self.subsample_points_voxelgrid_polydata(targetFullMesh_vtk, boxLength=fixedBoxLengths, radius=voxel_size)
     
     movingMeshPoints, movingMeshPointNormals = self.extract_pca_normal(sourceMesh_vtk, int(parameters["normalNeighborsCount"]))
     fixedMeshPoints, fixedMeshPointNormals = self.extract_pca_normal(targetMesh_vtk, int(parameters["normalNeighborsCount"]))
