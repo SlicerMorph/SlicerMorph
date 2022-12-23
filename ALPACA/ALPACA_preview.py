@@ -13,7 +13,8 @@ import numpy as np
 from datetime import datetime
 import time
 import sys
-
+import os
+import platform
 #
 # ALPACA
 #
@@ -34,7 +35,8 @@ def initializeITK():
   import itk
   fpfh = itk.Fpfh.PointFeature.MF3MF3.New()
 
-initializeITK()
+if platform.system() != 'Darwin':
+  initializeITK()
 
 class ALPACA_preview(ScriptedLoadableModule):
   """Uses ScriptedLoadableModule base class, available at:
@@ -182,10 +184,9 @@ class ALPACA_previewWidget(ScriptedLoadableModuleWidget):
       except:
         slicer.util.infoDisplay('Issue while installing the ITK pip packages')
         progressDialog.close()
-      # wheelPath may contain spaces, therefore pass it as a list (that avoids splitting
-      # the argument into multiple command-line arguments when there are spaces in the path)
-      if slicer.util.confirmOkCancelDisplay("Restart Slicer to load packages ?"):
-        slicer.util.restart()
+      import itk
+      fpfh = itk.Fpfh.PointFeature.MF3MF3.New()
+      progressDialog.close()
 
     try:
       import cpdalp
@@ -195,6 +196,12 @@ class ALPACA_previewWidget(ScriptedLoadableModuleWidget):
     except ModuleNotFoundError as e:
       print("Module Not found. Please restart Slicer to load packages.")
     
+    # Needed to support Mac systems
+    if platform.system() == 'Darwin':
+      with slicer.util.MessageDialog('Loading ALPACA relevant Packages...'):
+        with slicer.util.WaitCursor():
+          fpfh = itk.Fpfh.PointFeature.MF3MF3.New()
+
     # Load widget from .ui file (created by Qt Designer).
     uiWidget = slicer.util.loadUI(self.resourcePath('UI/ALPACA_preview.ui'))
     self.layout.addWidget(uiWidget)
@@ -1398,6 +1405,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
   
   # Returns the fitness of alignment of two pointSets
   def get_fitness(self, movingMeshPoints, fixedMeshPoints, distanceThrehold, transform):
+    import itk
     movingPointSet = itk.Mesh.F3.New()
     movingPointSet.SetPoints(itk.vector_container_from_array(movingMeshPoints.flatten().astype('float32')))
 
