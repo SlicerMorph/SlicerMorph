@@ -1414,7 +1414,9 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
 
     movingPointSet = itk.transform_mesh_filter(movingPointSet, transform=transform)
 
-    pointsLocator = itk.PointsLocator.VCULPF3.New()
+    PointType = itk.Point[itk.F, 3]
+    PointsContainerType = itk.VectorContainer[itk.IT, PointType]
+    pointsLocator = itk.PointsLocator[PointsContainerType].New()
     pointsLocator.SetPoints(movingPointSet.GetPoints())
     pointsLocator.Initialize()
 
