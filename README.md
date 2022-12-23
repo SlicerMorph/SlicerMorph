@@ -22,6 +22,8 @@ If you use SlicerMorph in your research, please cite one or more of these public
 
 * For **ALPACA**: Porto, A., Rolfe, S. M., & Maga, A. M. (2021). _ALPACA: A fast and accurate approach for automated landmarking of three-dimensional biological structures_. Methods in Ecology and Evolution. 12:2129–2144. http://doi.org/10.1111/2041-210X.13689 (Open access).
 
+* For **MALPACA (Multi-Template ALPACA)**: Zhang, C., Porto, A., Rolfe, S., Kocatulum, A., & Maga, A. M. (2022). _Automated landmarking via multiple templates_. PLOS ONE. 17(12). e0278035. https://doi.org/10.1371/journal.pone.0278035 (Open access).
+
 To cite 3D Slicer as a general purpose biomedical visualization platform, please use: Kikinis, R., Pieper, S. D., & Vosburgh, K. G. (2014). 3D Slicer: A Platform for Subject-Specific Image Analysis, Visualization, and Clinical Support. In Intraoperative Imaging and Image-Guided Therapy (pp. 277–289). Springer, New York, NY. https://doi.org/10.1007/978-1-4614-7657-3_19
 
 ## Updating SlicerMorph
