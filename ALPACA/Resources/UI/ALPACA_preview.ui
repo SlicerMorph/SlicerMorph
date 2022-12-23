@@ -692,7 +692,7 @@
 		    <double>100.000000000000000</double>
             </property>
             <property name="value">
-             <double>40.000000000000000</double>
+             <double>100.000000000000000</double>
             </property>
            </widget>
           </item>
@@ -758,39 +758,27 @@
              <number>0</number>
             </property>
             <property name="maximum">
-             <double>5000000.000000000000000</double>
+             <double>10000000.000000000000000</double>
             </property>
             <property name="singleStep" stdset="0">
              <double>1000.00000000000000</double>
             </property>
             <property name="value">
-             <double>250000.000000000000000</double>
+             <double>5000000.000000000000000</double>
             </property>
            </widget>
           </item>
           <item row="4" column="0">
-           <widget class="QLabel" name="RANSACPointslabel">
+           <widget class="QLabel" name="PointSubsamplelabel">
             <property name="text">
-             <string>Fraction of points for RANSAC:</string>
+             <string>Poisson Point Subsample</string>
             </property>
            </widget>
           </item>
           <item row="4" column="1">
-           <widget class="ctkDoubleSpinBox" name="RANSACPoints" native="true">
+           <widget class="QCheckBox" name="poissonSubsampleCheckBox">
             <property name="toolTip">
-             <string>Fraction of points out of corresponding feature points for RANSAC global registration</string>
-            </property>
-            <property name="decimals" stdset="0">
-             <number>3</number>
-            </property>
-            <property name="maximum" stdset="0">
-             <double>1.000000000000000</double>
-            </property>
-            <property name="singleStep" stdset="0">
-             <double>0.0500000000000</double>
-            </property>
-            <property name="value" stdset="0">
-             <double>0.100000000000000</double>
+             <string>If checked, ALPACA will use Poisson Point Sub-Sampling Method.</string>
             </property>
            </widget>
           </item>
