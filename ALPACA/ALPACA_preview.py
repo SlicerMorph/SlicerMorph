@@ -464,7 +464,8 @@ class ALPACA_previewWidget(ScriptedLoadableModuleWidget):
     self.ui.sourceLandmarkSetSelector.currentNode().GetDisplayNode().SetVisibility(False)
     #
     self.sourcePoints, self.targetPoints, self.sourceFeatures, \
-      self.targetFeatures, self.voxelSize, self.scaling = logic.runSubsample(self.sourceModelNode, self.targetModelNode,
+      self.targetFeatures, self.voxelSize, self.scaling = logic.runSubsample(self.sourceModelNode,
+                        self.targetModelNode,
                         self.ui.skipScalingCheckBox.checked,
                         self.parameterDictionary,
                         self.ui.poissonSubsampleCheckBox.checked)
@@ -481,14 +482,11 @@ class ALPACA_previewWidget(ScriptedLoadableModuleWidget):
     self.ui.subsampleInfo.insertPlainText(f':: Your subsampled target pointcloud has a total of {len(self.targetPoints)} points. ')
     #
     #RANSAC & ICP transformation of source pointcloud
-    [self.transformMatrix, self.transformMatrix_rigid] = logic.estimateTransform(self.sourcePoints, self.targetPoints, self.sourceFeatures, self.targetFeatures, self.voxelSize, self.ui.skipScalingCheckBox.checked, self.parameterDictionary)
-    vtkTransformMatrix      = logic.itkToVTKTransform(self.transformMatrix)
-    vtkRigidTransformMatrix = logic.itkToVTKTransform(self.transformMatrix_rigid)
-    vtkTransformMatrix.Concatenate(vtkRigidTransformMatrix)
-
+    self.transformMatrix, similarityFlag = logic.estimateTransform(self.sourcePoints, self.targetPoints, self.sourceFeatures, self.targetFeatures, self.voxelSize, self.ui.skipScalingCheckBox.checked, self.parameterDictionary)
+    
+    vtkTransformMatrix    = logic.itkToVTKTransform(self.transformMatrix, similarityFlag)
     self.ICPTransformNode = logic.convertMatrixToTransformNode(vtkTransformMatrix, 'Rigid Transformation Matrix_'+run_counter)
     self.sourcePoints = logic.transform_numpy_points(self.sourcePoints, self.transformMatrix)
-    self.sourcePoints = logic.transform_numpy_points(self.sourcePoints, self.transformMatrix_rigid)
     
     #Setup source pointcloud VTK object
     self.sourceVTK = logic.convertPointsToVTK(self.sourcePoints)
@@ -510,7 +508,6 @@ class ALPACA_previewWidget(ScriptedLoadableModuleWidget):
     print('Performing Deformable Registration ')
     self.sourceLandmarks, self.sourceLMNode =  logic.loadAndScaleFiducials(self.ui.sourceLandmarkSetSelector.currentNode(), self.scaling, scene = True)
     self.sourceLandmarks = logic.transform_numpy_points(self.sourceLandmarks, self.transformMatrix)
-    self.sourceLandmarks = logic.transform_numpy_points(self.sourceLandmarks, self.transformMatrix_rigid)
     self.sourceLMNode.SetName("Source_Landmarks_clone_"+run_counter)
     self.sourceLMNode.SetAndObserveTransformNodeID(self.ICPTransformNode.GetID())
     slicer.vtkSlicerTransformLogic().hardenTransform(self.sourceLMNode)
@@ -1171,17 +1168,12 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     sourceModelNode.GetDisplayNode().SetVisibility(False)
     sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, scaling = self.runSubsample(sourceModelNode,
         targetModelNode, skipScaling, parameters, usePoisson)
-    SimilarityTransform, ICPTransform = self.estimateTransform(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, skipScaling, parameters)
+    SimilarityTransform, similarityFlag = self.estimateTransform(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, skipScaling, parameters)
     #Rigid
     sourceLandmarks, sourceLMNode = self.loadAndScaleFiducials(sourceLandmarkFile, scaling)
     sourceLandmarks = self.transform_numpy_points(sourceLandmarks, SimilarityTransform)
-    sourceLandmarks = self.transform_numpy_points(sourceLandmarks, ICPTransform)
     sourcePoints = self.transform_numpy_points(sourcePoints, SimilarityTransform)
-    sourcePoints = self.transform_numpy_points(sourcePoints, ICPTransform)
-
-    vtkSimilarityTransform = self.itkToVTKTransform(SimilarityTransform)
-    vtkICPTransform = self.itkToVTKTransform(ICPTransform)
-    vtkSimilarityTransform.Concatenate(vtkICPTransform)
+    vtkSimilarityTransform = self.itkToVTKTransform(SimilarityTransform, similarityFlag)
 
     #Deformable
     registeredSourceLM = self.runCPDRegistration(sourceLandmarks, sourcePoints, targetPoints, parameters)
@@ -1304,7 +1296,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         matrix_vtk.SetElement(i,j,matrix[i][j])
     return matrix_vtk
 
-  def itkToVTKTransform(self, itkTransform):
+  def itkToVTKTransform(self, itkTransform, similarityFlag=False):
     matrix = itkTransform.GetMatrix()
     offset = itkTransform.GetOffset()
     
@@ -1404,7 +1396,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     return corres_idx0, corres_idx1
   
   # Returns the fitness of alignment of two pointSets
-  def get_fitness(self, movingMeshPoints, fixedMeshPoints, distanceThrehold, transform):
+  def get_fitness(self, movingMeshPoints, fixedMeshPoints, distanceThrehold, transform=None):
     import itk
     movingPointSet = itk.Mesh.F3.New()
     movingPointSet.SetPoints(itk.vector_container_from_array(movingMeshPoints.flatten().astype('float32')))
@@ -1412,24 +1404,25 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     fixedPointSet = itk.Mesh.F3.New()
     fixedPointSet.SetPoints(itk.vector_container_from_array(fixedMeshPoints.flatten().astype('float32')))
 
-    movingPointSet = itk.transform_mesh_filter(movingPointSet, transform=transform)
+    if transform is not None:
+      movingPointSet = itk.transform_mesh_filter(movingPointSet, transform=transform)
 
     PointType = itk.Point[itk.F, 3]
     PointsContainerType = itk.VectorContainer[itk.IT, PointType]
     pointsLocator = itk.PointsLocator[PointsContainerType].New()
-    pointsLocator.SetPoints(movingPointSet.GetPoints())
+    pointsLocator.SetPoints(fixedPointSet.GetPoints())
     pointsLocator.Initialize()
 
     fitness = 0
     inlier_rmse = 0
-    for i in range(fixedPointSet.GetNumberOfPoints()):
-      closestPoint = pointsLocator.FindClosestPoint(fixedPointSet.GetPoint(i))
-      distance = (movingPointSet.GetPoint(closestPoint) - fixedPointSet.GetPoint(i)).GetNorm()
+    for i in range(movingPointSet.GetNumberOfPoints()):
+      closestPoint = pointsLocator.FindClosestPoint(movingPointSet.GetPoint(i))
+      distance = (fixedPointSet.GetPoint(closestPoint) - movingPointSet.GetPoint(i)).GetNorm()
       if distance < distanceThrehold:
         fitness = fitness + 1
         inlier_rmse = inlier_rmse + distance
     
-    return fitness/fixedPointSet.GetNumberOfPoints(), inlier_rmse/fitness
+    return fitness/movingPointSet.GetNumberOfPoints(), inlier_rmse/fitness
   
   # RANSAC using package
   def ransac_using_package(self, 
@@ -1544,11 +1537,49 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
 
     return metric.GetValue()
 
-  def final_iteration(self, fixedPoints, movingPoints, transform_type, distanceThreshold):
+
+  def get_correspondence_and_fitness(self, fixedPoints, movingPoints, distanceThreshold, transform=None):
+    import itk
+    movingPointSet = itk.Mesh.F3.New()
+    movingPointSet.SetPoints(itk.vector_container_from_array(movingPoints.flatten().astype('float32')))
+
+    fixedPointSet = itk.Mesh.F3.New()
+    fixedPointSet.SetPoints(itk.vector_container_from_array(fixedPoints.flatten().astype('float32')))
+
+    if transform is not None:
+      movingPointSet = itk.transform_mesh_filter(movingPointSet, transform=transform)
+
+    PointType = itk.Point[itk.F, 3]
+    PointsContainerType = itk.VectorContainer[itk.IT, PointType]
+    pointsLocator = itk.PointsLocator[PointsContainerType].New()
+    pointsLocator.SetPoints(fixedPointSet.GetPoints())
+    pointsLocator.Initialize()
+
+    fixed_array = itk.VectorContainer[itk.IT, itk.Point[itk.D, 3]].New()
+    moving_array = itk.VectorContainer[itk.IT, itk.Point[itk.D, 3]].New()
+
+    fitness = 0
+    inlier_rmse = 0
+    count = 0
+    for i in range(movingPointSet.GetNumberOfPoints()):
+      closestPoint = pointsLocator.FindClosestPoint(movingPointSet.GetPoint(i))
+      distance = (fixedPointSet.GetPoint(closestPoint) - movingPointSet.GetPoint(i)).GetNorm()
+      if distance < distanceThreshold:
+        fitness = fitness + 1
+        inlier_rmse = inlier_rmse + distance
+        fixed_point = fixedPointSet.GetPoint(closestPoint)
+        moving_point = movingPointSet.GetPoint(i)
+        fixed_array.InsertElement(count, fixed_point)
+        moving_array.InsertElement(count, moving_point)
+        count = count + 1
+
+    return fixed_array, moving_array, fitness, inlier_rmse/fitness
+
+  def final_iteration_icp(self, fixedPoints, movingPoints, distanceThreshold):
     """
     Perform the final iteration of alignment.
     Args:
-        fixedPoints, movingPoints, transform_type: 0 or 1 or 2
+        fixedPoints, movingPoints, distanceThreshold
     Returns:
         (tranformed movingPoints, tranform)
     """
@@ -1558,60 +1589,42 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     mesh_fixed.SetPoints(itk.vector_container_from_array(fixedPoints.flatten()))
     mesh_moving.SetPoints(itk.vector_container_from_array(movingPoints.flatten()))
 
-    if transform_type == 0:
-        TransformType = itk.Euler3DTransform[itk.D]
-    elif transform_type == 1:
-        TransformType = itk.ScaleVersor3DTransform[itk.D]
-    elif transform_type == 2:
-        TransformType = itk.Rigid3DTransform[itk.D]
+    # Get Corresspondences and fitness
+    fixed, moving, inlier, rmse = self.get_correspondence_and_fitness(fixedPoints, movingPoints, distanceThreshold)
 
-    transform = TransformType.New()
-    transform.SetIdentity()
+    final_moving_points = movingPoints
 
-    MetricType = itk.EuclideanDistancePointSetToPointSetMetricv4.PSD3
-    metric = MetricType.New()
-    metric.SetMovingPointSet(mesh_moving)
-    metric.SetFixedPointSet(mesh_fixed)
-    metric.SetMovingTransform(transform)
-    metric.SetDistanceThreshold(float(distanceThreshold))
-    metric.Initialize()
+    init_itk_transform = itk.Rigid3DTransform.New()
+    for i in range(1000):
+      TransformType = itk.VersorRigid3DTransform[itk.D]
+      transform = TransformType.New()
+      transform.SetIdentity()
 
-    number_of_epochs = 10000
-    optimizer = itk.GradientDescentOptimizerv4Template[itk.D].New()
-    optimizer.SetNumberOfIterations(number_of_epochs)
-    optimizer.SetLearningRate(0.00001)
-    optimizer.SetMinimumConvergenceValue(0.0)
-    optimizer.SetReturnBestParametersAndValue(True)
-    optimizer.SetConvergenceWindowSize(number_of_epochs)
-    optimizer.SetMetric(metric)
+      landmark_init = itk.LandmarkBasedTransformInitializer[itk.Transform[itk.D, 3, 3]].New()
+      landmark_init.SetTransform(transform)
+      landmark_init.SetFixedLandmarks(moving.CastToSTLConstContainer())
+      landmark_init.SetMovingLandmarks(fixed.CastToSTLConstContainer())
+      landmark_init.InitializeTransform()
+      
+      current_transform_itk = transform
+      movingPoints = self.transform_numpy_points(movingPoints, current_transform_itk)
 
-    def print_iteration():
-        if optimizer.GetCurrentIteration()%1000 == 0:
-            print(
-                f"It: {optimizer.GetCurrentIteration()}"
-                f" metric value: {optimizer.GetCurrentMetricValue():.6f} "
-            )
-    optimizer.AddObserver(itk.IterationEvent(), print_iteration)
-    optimizer.StartOptimization()
-
-    # Get the correct transform and perform the final alignment
-    print("Current value is ", metric.GetCurrentValue())
-    current_transform = metric.GetMovingTransform().GetInverseTransform()
+      fixed, moving, new_inlier, new_rmse = self.get_correspondence_and_fitness(fixedPoints, movingPoints, distanceThreshold)
+      if (new_inlier < inlier) or (new_inlier == inlier and new_rmse > rmse):
+        break
+      inlier = new_inlier
+      rmse = new_rmse
+      init_itk_transform.Compose(current_transform_itk)
+      final_moving_points = movingPoints
     
-    itk_transformed_mesh = itk.transform_mesh_filter(
-        mesh_moving, transform=current_transform
-    )
+    print('Refinement took ', i, ' iterations')
 
-    transform = itk.Rigid3DTransform[itk.D].New()
-    o1 = itk.OptimizerParameters[itk.D](list(current_transform.GetFixedParameters()))
-    transform.SetFixedParameters(o1)
-    o2 = itk.OptimizerParameters[itk.D](list(current_transform.GetParameters()))
-    transform.SetParameters(o2)
+    final_transform_itk = itk.Rigid3DTransform[itk.D].New()
+    final_transform_itk.SetMatrix(init_itk_transform.GetMatrix())
+    final_transform_itk.SetOffset(init_itk_transform.GetOffset())
+    final_transform_itk.SetTranslation(init_itk_transform.GetTranslation())
+    return (final_moving_points, final_transform_itk)
     
-    return (
-        itk.array_from_vector_container(itk_transformed_mesh.GetPoints()),
-        transform,
-    )
   
   def get_numpy_points_from_vtk(self, vtk_polydata):
     """
@@ -1642,6 +1655,8 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
   def estimateTransform(self, sourcePoints, targetPoints, sourceFeatures, targetFeatures, 
   voxelSize, skipScaling, parameters):
     import itk
+
+    similarityFlag = False
     # Establish correspondences by nearest neighbour search in feature space
     corrs_A, corrs_B = self.find_correspondences(
         targetFeatures, sourceFeatures, mutual_filter=True
@@ -1671,7 +1686,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     import time
     bransac = time.time()
     
-    maxAttempts = 5
+    maxAttempts = 1
     attempt = 0
     best_fitness = -1
     best_rmse = np.Inf
@@ -1695,13 +1710,9 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
                                   targetPoints,
                                   float(parameters["distanceThreshold"])*voxelSize,
                                   transform)
-      fitness_backward, rmse_backward = self.get_fitness(targetPoints,
-                                  sourcePoints,
-                                  float(parameters["distanceThreshold"])*voxelSize,
-                                  transform.GetInverseTransform())
-
-      mean_fitness = (fitness_forward + fitness_backward)/2.0
-      mean_rmse = (rmse_forward + rmse_backward)/2.0
+      
+      mean_fitness = fitness_forward
+      mean_rmse = rmse_forward
       print('Non-Scaling Attempt = ', attempt, " Fitness = ", mean_fitness, ' RMSE is ', mean_rmse)
       
       if mean_fitness > 0.99:
@@ -1749,18 +1760,16 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         fitness_forward, rmse_forward = self.get_fitness(sourcePoints, targetPoints, 
                 float(parameters["distanceThreshold"])*voxelSize,
                 transform)
-        fitness_backward, rmse_backward = self.get_fitness(targetPoints, sourcePoints,
-                float(parameters["distanceThreshold"])*voxelSize,
-                transform.GetInverseTransform())
-
-        mean_fitness = (fitness_forward + fitness_backward)/2.0
-        mean_rmse = (rmse_forward + rmse_backward)/2.0
+        
+        mean_fitness = fitness_forward
+        mean_rmse = rmse_forward
         print('Scaling Attempt = ', attempt, " Fitness = ", mean_fitness,  " RMSE = ", mean_rmse)
 
         if (mean_fitness > best_fitness) or (mean_fitness == best_fitness and mean_rmse < best_rmse):
           best_fitness = mean_fitness
           best_rmse = mean_rmse
           best_transform = transform_matrix
+          similarityFlag = True
         attempt = attempt + 1
     
     aransac = time.time()
@@ -1773,14 +1782,16 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     print('-----------------------------------------------------------')
     print("Starting Rigid Refinement")
     distanceThreshold = parameters["ICPDistanceThreshold"]*voxelSize
-    print("Before Distance ", self.get_euclidean_distance(targetPoints, sourcePoints, distanceThreshold))
-    transform_type = 0
-    final_mesh_points, second_transform = self.final_iteration(
-        targetPoints, sourcePoints, transform_type,
-        distanceThreshold
+    inlier, rmse = self.get_fitness(sourcePoints, targetPoints, distanceThreshold)
+    print("Before Inlier = ", inlier, " RMSE = ", rmse)
+    final_mesh_points, second_transform = self.final_iteration_icp(
+        targetPoints, sourcePoints, distanceThreshold
     )
-    print("After Distance ", self.get_euclidean_distance(targetPoints, final_mesh_points, distanceThreshold))
-    return [first_transform, second_transform]
+    inlier, rmse = self.get_fitness(final_mesh_points, targetPoints, distanceThreshold)
+    print("After Inlier = ", inlier, " RMSE = ", rmse)
+
+    first_transform.Compose(second_transform)
+    return first_transform, similarityFlag
 
   def cleanMesh(self, vtk_mesh):
     import vtk
@@ -2236,13 +2247,10 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
       skipScalingOption = False
       sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, scaling = self.runSubsample(sourceModelNode, targetModelNode,
         skipScalingOption, parameterDictionary, usePoisson)
-      [ICPTransform_similarity, ICPTransform_rigid] = self.estimateTransform(sourcePoints, targetPoints, sourceFeatures, 
+      ICPTransform_similarity, similarityFlag = self.estimateTransform(sourcePoints, targetPoints, sourceFeatures, 
                           targetFeatures, voxelSize, skipScalingOption, parameterDictionary)
       
-      vtkSimilarityTransform = self.itkToVTKTransform(ICPTransform_similarity)
-      vtkICPTransform = self.itkToVTKTransform(ICPTransform_rigid)
-      vtkSimilarityTransform.Concatenate(vtkICPTransform)
-
+      vtkSimilarityTransform = self.itkToVTKTransform(ICPTransform_similarity, similarityFlag)
       ICPTransformNode = self.convertMatrixToTransformNode(vtkSimilarityTransform, 'Rigid Transformation Matrix')
       
       sourceModelNode.SetAndObserveTransformNodeID(ICPTransformNode.GetID())
