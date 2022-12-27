@@ -1874,6 +1874,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
 
   def loadLandmarks(self, filePathList, lmToRemove, extension):
     # initial data array
+    lmToRemove = [x - 1 for x in lmToRemove]
     if 'json' in extension:
       import pandas
       tempTable = pandas.DataFrame.from_dict(pandas.read_json(filePathList[0])['markups'][0]['controlPoints'])
@@ -1882,7 +1883,6 @@ class GPALogic(ScriptedLoadableModuleLogic):
       errorString = ""
       subjectErrorArray = []
       landmarkErrorArray = []
-      lmToRemove = [x - 1 for x in lmToRemove]
       for i in range(landmarkNumber):
         if tempTable['description'][i] =='Semi':
           landmarkTypeArray.append(str(i+1))
@@ -1934,7 +1934,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
           warning = f"Error: Load file {filePathList[i]} failed. There are {len(tmp1)} landmarks instead of the expected {landmarkNumber}."
           slicer.util.messageBox(warning)
           return
-      landmarks = np.delete(landmarks, indexToRemove, axis=0)
+      landmarks = np.delete(landmarks, lmToRemove, axis=0)
     return landmarks, landmarkTypeArray
 
   def importLandMarks(self, filePath):
