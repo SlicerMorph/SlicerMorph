@@ -22,7 +22,6 @@ class GEVolImport(ScriptedLoadableModule):
     self.parent.helpText = """
 This module imports VOL files output by the GE tome microCT scanner into 3D Slicer. It parses the PCR file to obtain the 3D image dimensions, voxel spacing, data format and other relevant metadata about the VOL file and generate a NHDR file to load the VOL file into Slicer.
 """
-    # TODO: replace with organization, grant and thanks
     self.parent.acknowledgementText = """
 This module was developed by Chi Zhang and Murat Maga, through a NSF ABI Development grant, "An Integrated Platform for Retrieval, Visualization and Analysis of
 3D Morphology From Digital Biological Collections" (Award Numbers: 1759883 (Murat Maga), 1759637 (Adam Summers), 1759839 (Douglas Boyer)).
@@ -30,7 +29,7 @@ https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
 """
 
     slicer.app.connect("startupCompleted()", registerSampleData)
-    
+
 def registerSampleData():
   """
   Add data sets to Sample Data module.
@@ -71,9 +70,7 @@ def registerSampleData():
     nodeNames='GEVolImport2'
   )
 
-#
-# GEVolImportWidget
-#
+
 
 class GEVolImportWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
   """Uses ScriptedLoadableModuleWidget base class, available at:
@@ -94,7 +91,7 @@ class GEVolImportWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.layout.addWidget(parametersCollapsibleButton)
     # Layout within the dummy collapsible button
     parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
-    
+
     # File dialog to select a file template for series
     self.inputFileSelector = ctk.ctkPathLineEdit()
     self.inputFileSelector.filters  = ctk.ctkPathLineEdit().Files
@@ -123,11 +120,9 @@ class GEVolImportWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
   def onSelect(self):
     self.applyButton.enabled = bool(self.inputFileSelector.currentPath)
 
-
   def onApplyButton(self):
     logic = GEVolImportLogic()
     logic.generateNHDRHeader(self.inputFileSelector.currentPath)
-
 
 #Import .pcr file pointing to a .vol file
 
@@ -155,11 +150,6 @@ class PCRDataObject:
         if(element.find("VoxelSizeRec=")>=0):
           self.voxelSize = float(element.split('=', 1)[1])
 
-
-#
-# GEVolImportLogic
-#
-
 class GEVolImportLogic(ScriptedLoadableModuleLogic):
   def generateNHDRHeader(self, inputFile):
     """
@@ -167,7 +157,7 @@ class GEVolImportLogic(ScriptedLoadableModuleLogic):
     Information from .pcr file: x, y, z, voxel size, .vol file name.
     Parameter "inputfile"" is the file path specificed by the input file selector wideget
     """
-    
+
     logging.info('Processing started')
     #initialize PCR object
     imagePCRFile = PCRDataObject()
@@ -177,7 +167,7 @@ class GEVolImportLogic(ScriptedLoadableModuleLogic):
     filePathName, fileExtension = os.path.splitext(inputFile)
     #The directory of the .nhdr file
     nhdrPathName = filePathName + ".nhdr"
-      
+
     if fileExtension == ".pcr":
       if imagePCRFile.form == '3' or imagePCRFile.form == '5' or imagePCRFile.form =='10':
         with open(nhdrPathName, "w") as headerFile:
@@ -207,7 +197,6 @@ class GEVolImportLogic(ScriptedLoadableModuleLogic):
           volPathSplit = volPathName.split('/')
           volFileName = volPathSplit[len(volPathSplit)-1]
           headerFile.write("data file: {}\n".format(volFileName))
-        
         print(".nhdr file path is: {}".format(nhdrPathName))
         #Automatically loading .vol file using the generated .nhdr file.
         slicer.util.loadVolume(nhdrPathName)
