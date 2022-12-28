@@ -5,9 +5,7 @@ import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 
-#
-# GEVolImport
-#
+
 
 class GEVolImport(ScriptedLoadableModule):
   """Uses ScriptedLoadableModule base class, available at:
@@ -31,21 +29,15 @@ This module was developed by Chi Zhang and Murat Maga, through a NSF ABI Develop
 https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
 """
 
-    # Additional initialization step after application startup is complete
     slicer.app.connect("startupCompleted()", registerSampleData)
     
 def registerSampleData():
   """
   Add data sets to Sample Data module.
   """
-  # It is always recommended to provide sample data for users to make it easy to try the module,
-  # but if no sample data is available then this method (and associated startupCompeted signal connection) can be removed.
-
   import SampleData
   iconsPath = os.path.join(os.path.dirname(__file__), 'Resources/Icons')
 
-  # To ensure that the source code repository remains small (can be downloaded and installed quickly)
-  # it is recommended to store data sets that are larger than a few MB in a Github release.
 
   # GEVolImport1
   SampleData.SampleDataLogic.registerCustomSampleDataSource(
@@ -89,9 +81,6 @@ class GEVolImportWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
   """
 
   def __init__(self, parent=None):
-    """
-    Called when the user opens the module the first time and the widget is initialized.
-    """
     ScriptedLoadableModuleWidget.__init__(self, parent)
     VTKObservationMixin.__init__(self)  # needed for parameter node observation
     self.logic = None
@@ -143,8 +132,6 @@ class GEVolImportWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 #Import .pcr file pointing to a .vol file
 
 class PCRDataObject:
-  """This class i
-     """
   def __init__(self):
     self.X  = "NULL"
     self.Y = "NULL"
@@ -174,15 +161,6 @@ class PCRDataObject:
 #
 
 class GEVolImportLogic(ScriptedLoadableModuleLogic):
-  """This class should implement all the actual
-  computation done by your module.  The interface
-  should be such that other python code can import
-  this class and make use of the functionality without
-  requiring an instance of the Widget.
-  Uses ScriptedLoadableModuleLogic base class, available at:
-  https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
-  """
-
   def generateNHDRHeader(self, inputFile):
     """
     Generate entrie of .nhdr file from the .pcr file.Information from .pcr file
@@ -211,7 +189,7 @@ class GEVolImportLogic(ScriptedLoadableModuleLogic):
           elif imagePCRFile.form == '10':
             headerFile.write("type: float\n")
           else:
-            headerFile.write("type: uchar\n") #form =3
+            headerFile.write("type: uchar\n")
           headerFile.write("dimension: 3\n")
           headerFile.write("space: left-posterior-superior\n")
           sizeX = imagePCRFile.X
@@ -224,7 +202,7 @@ class GEVolImportLogic(ScriptedLoadableModuleLogic):
           headerFile.write("endian: little\n")
           headerFile.write("encoding: raw\n")
           headerFile.write("space origin: (0.0, 0.0, 0.0)\n")
-          volPathName = filePathName + ".vol" #The path of the .vol file
+          volPathName = filePathName + ".vol"
           volPathSplit = []
           volPathSplit = volPathName.split('/')
           volFileName = volPathSplit[len(volPathSplit)-1]
@@ -235,6 +213,6 @@ class GEVolImportLogic(ScriptedLoadableModuleLogic):
         slicer.util.loadVolume(nhdrPathName)
         print("{} loaded\n".format(volFileName))
       else:
-        print("The format of this dataset is currently not supported by this module. Currently only float (format=10), unsigned 16 bit integer (format=5) and unsigned 8 bit integer (format=1) data types are supported. Please contact us with this dataset to enable this data type. ")
+        print("The format of this dataset is currently not supported by this module. Currently only float (format=10), unsigned 16 bit integer (format=5) and unsigned 8 bit integer (format=1) data types are supported. Please contact us with this dataset to enable this data type.")
     else:
       print("This is not a PCR file, please re-select a PCR file")
