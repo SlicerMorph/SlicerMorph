@@ -155,7 +155,7 @@ class GEVolImportLogic(ScriptedLoadableModuleLogic):
     """
     Generate entry of .nhdr file from the .pcr file.Information from .pcr file
     Information from .pcr file: x, y, z, voxel size, .vol file name.
-    Parameter /"inputfile/" is the file path specificed by the input file selector wideget
+    Parameter "inputfile" is the file path specified by the input file selector wideget
     """
 
     logging.info('Processing started')
