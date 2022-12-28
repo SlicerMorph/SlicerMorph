@@ -134,13 +134,13 @@ class PCRDataObject:
     self.VoxelSize = "NULL"
 
   def ImportFromFile(self, pcrFilename):
-    #Import and parse .pcr file. File name is 
-    lines = [] 					#Declare an empty list to read file into
+    #Import and parse .pcr file. File name is
+    lines = []
     with open (pcrFilename, 'rt') as in_file:
       for line in in_file:
-        lines.append(line.strip("\n"))     # add that line list, get rid of line endings
+        lines.append(line.strip("\n"))
       self.form = lines[33].split('=')[1]
-      for element in lines:  # For each element in list
+      for element in lines:
         if(element.find("Volume_SizeX=")>=0):
           self.X = int(element.split('=', 1)[1])
         if(element.find("Volume_SizeY=")>=0):
