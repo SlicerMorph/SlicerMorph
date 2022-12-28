@@ -136,7 +136,7 @@ class PCRDataObject:
   def ImportFromFile(self, pcrFilename):
     #Import and parse .pcr file. File name is
     lines = []
-    with open (pcrFilename, 'rt') as in_file:
+    with open (pcrFilename) as in_file:
       for line in in_file:
         lines.append(line.strip("\n"))
       self.form = lines[33].split('=')[1]
@@ -153,9 +153,9 @@ class PCRDataObject:
 class GEVolImportLogic(ScriptedLoadableModuleLogic):
   def generateNHDRHeader(self, inputFile):
     """
-    Generate entrie of .nhdr file from the .pcr file.Information from .pcr file
+    Generate entry of .nhdr file from the .pcr file.Information from .pcr file
     Information from .pcr file: x, y, z, voxel size, .vol file name.
-    Parameter "inputfile"" is the file path specificed by the input file selector wideget
+    Parameter "inputfile" is the file path specificed by the input file selector wideget
     """
 
     logging.info('Processing started')
@@ -185,9 +185,9 @@ class GEVolImportLogic(ScriptedLoadableModuleLogic):
           sizeX = imagePCRFile.X
           sizeY = imagePCRFile.Y
           sizeZ = imagePCRFile.Z
-          headerFile.write("sizes: {} {} {}\n".format(sizeX, sizeY, sizeZ))
+          headerFile.write(f"sizes: {sizeX} {sizeY} {sizeZ}\n")
           volSpace = imagePCRFile.voxelSize
-          headerFile.write("space directions: ({}, 0.0, 0.0) (0.0, {}, 0.0) (0.0, 0.0, {})\n".format(volSpace, volSpace, volSpace))
+          headerFile.write(f"space directions: ({volSpace}, 0.0, 0.0) (0.0, {volSpace}, 0.0) (0.0, 0.0, {volSpace})\n")
           headerFile.write("kinds: domain domain domain\n")
           headerFile.write("endian: little\n")
           headerFile.write("encoding: raw\n")
@@ -196,12 +196,13 @@ class GEVolImportLogic(ScriptedLoadableModuleLogic):
           volPathSplit = []
           volPathSplit = volPathName.split('/')
           volFileName = volPathSplit[len(volPathSplit)-1]
-          headerFile.write("data file: {}\n".format(volFileName))
-        print(".nhdr file path is: {}".format(nhdrPathName))
+          headerFile.write(f"data file: {volFileName}\n")
+        print(f".nhdr file path is: {nhdrPathName}")
         #Automatically loading .vol file using the generated .nhdr file.
         slicer.util.loadVolume(nhdrPathName)
-        print("{} loaded\n".format(volFileName))
+        print(f"{volFileName} loaded\n")
       else:
         print("The format of this dataset is currently not supported by this module. Currently only float (format=10), unsigned 16 bit integer (format=5) and unsigned 8 bit integer (format=1) data types are supported. Please contact us with this dataset to enable this data type.")
     else:
       print("This is not a PCR file, please re-select a PCR file")
+
