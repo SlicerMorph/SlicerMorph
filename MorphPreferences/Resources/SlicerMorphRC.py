@@ -2,29 +2,6 @@ import logging
 
 logging.info("Customizing with SlicerMorphRC.py")
 
-# setting presets
-moduleDir = os.path.dirname(slicer.util.modulePath("MorphPreferences"))
-presetsScenePath = os.path.join(moduleDir, 'Resources/SM_presets.mrml')
-
-# Read presets scene
-customPresetsScene = slicer.vtkMRMLScene()
-vrPropNode = slicer.vtkMRMLVolumePropertyNode()
-customPresetsScene.RegisterNodeClass(vrPropNode)
-customPresetsScene.SetURL(presetsScenePath)
-customPresetsScene.Connect()
-
-# Add presets to volume rendering logic
-vrLogic = slicer.modules.volumerendering.logic()
-presetsScene = vrLogic.GetPresetsScene()
-vrNodes = customPresetsScene.GetNodesByClass("vtkMRMLVolumePropertyNode")
-vrNodes.UnRegister(None)
-for itemNum in range(vrNodes.GetNumberOfItems()):
-  node = vrNodes.GetItemAsObject(itemNum)
-  vrLogic.AddPreset(node)
-
-
-
-#
 #set the default volume storage to not compress by default
 #
 defaultVolumeStorageNode = slicer.vtkMRMLVolumeArchetypeStorageNode()
@@ -77,10 +54,8 @@ qt.QSettings().setValue("Modules/HomeModule", "Data")
 # set volume rendering modes
 #
 settings = slicer.app.settings()
-if settings.value("SlicerMorph/RenderingPreferenceSet", "False") == "False":
-    settings.setValue("VolumeRendering/RenderingMethod", "vtkMRMLCPURayCastVolumeRenderingDisplayNode")
-    settings.setValue("VolumeRendering/DefaultQuality", "Normal")
-settings.setValue("SlicerMorph/RenderingPreferenceSet", "True")
+settings.setValue("VolumeRendering/RenderingMethod", "vtkMRMLCPURayCastVolumeRenderingDisplayNode")
+settings.setValue("VolumeRendering/DefaultQuality", "Normal")
 
 #
 # orthographic view mode and turn on rulers
@@ -196,3 +171,4 @@ logging.info(f"  {len(shortcuts)} keyboard shortcuts installed")
 
 logging.info("Done customizing with SlicerMorphRC.py")
 logging.info("On first load of customization, restart Slicer to take effect.")
+
