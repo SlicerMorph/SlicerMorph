@@ -20,6 +20,7 @@ class MorphPreferences(ScriptedLoadableModule):
         # register Settings panel and perform customizations
         #
         def onStartupCompleted():
+            MorphPreferences.loadPresetFile(self.vrPresetPath())
             toBool = slicer.util.toBool
             key = "MorphPreferences/customize"
             customize = slicer.util.settingsValue(key, False, converter=toBool)
@@ -49,7 +50,21 @@ class MorphPreferences(ScriptedLoadableModule):
         traceback.print_exc()
         errorMessage = "Error loading SlicerMorphRC.py\n\n" + str(e) + "\n\nSee Python Console for Stack Trace"
         slicer.util.errorDisplay(errorMessage)
+        
+### path to the volume rendering customization file.
+    def vrPresetPath(self):
+        moduleDir = os.path.dirname(self.parent.path)
+        return os.path.join(moduleDir, 'Resources', 'SM_VolumePresets.py')
 
+    @staticmethod
+    def loadPresetFile(vrPresetPath):
+      try:
+        exec(open(vrPresetPath).read(), globals())
+      except Exception as e:
+        import traceback
+        traceback.print_exc()
+        errorMessage = "Error loading SlicerMorphRC.py\n\n" + str(e) + "\n\nSee Python Console for Stack Trace"
+        slicer.util.errorDisplay(errorMessage)
 
 class _ui_MorphPreferencesSettingsPanel:
   def __init__(self, parent, rcPath):
