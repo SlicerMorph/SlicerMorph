@@ -50,7 +50,7 @@ class MorphPreferences(ScriptedLoadableModule):
         traceback.print_exc()
         errorMessage = "Error loading SlicerMorphRC.py\n\n" + str(e) + "\n\nSee Python Console for Stack Trace"
         slicer.util.errorDisplay(errorMessage)
-        
+
 ### path to the volume rendering customization file.
     def vrPresetPath(self):
         moduleDir = os.path.dirname(self.parent.path)
