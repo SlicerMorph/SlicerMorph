@@ -2003,7 +2003,9 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             mesh1_points = copy.deepcopy(movingMeshPoints)
             mesh2_points = copy.deepcopy(fixedMeshPoints)
 
+            np.random.seed(0)
             np.random.shuffle(mesh1_points)
+            np.random.seed(0)
             np.random.shuffle(mesh2_points)
 
             agreeData.reserve(count_min)
