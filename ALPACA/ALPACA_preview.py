@@ -116,8 +116,8 @@ class ALPACA_preview(ScriptedLoadableModule):
 
 def registerSampleData():
     """
-  Add data sets to Sample Data module.
-  """
+    Add data sets to Sample Data module.
+    """
     # It is always recommended to provide sample data for users to make it easy to try the module,
     # but if no sample data is available then this method (and associated startupCompeted signal connection) can be removed.
 
@@ -521,8 +521,10 @@ class ALPACA_previewWidget(ScriptedLoadableModuleWidget):
             slicer.mrmlScene
         )
         itemIDToClone = shNode.GetItemByDataNode(self.sourceModelNode_orig)
-        clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(
-            shNode, itemIDToClone
+        clonedItemID = (
+            slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(
+                shNode, itemIDToClone
+            )
         )
         self.sourceModelNode_clone = shNode.GetItemDataNode(clonedItemID)
         self.sourceModelNode_clone.SetName("SourceModelNode_clone")
@@ -535,7 +537,14 @@ class ALPACA_previewWidget(ScriptedLoadableModuleWidget):
             False
         )
 
-        self.sourcePoints, self.targetPoints, self.sourceFeatures, self.targetFeatures, self.voxelSize, self.scaling = logic.runSubsample(
+        (
+            self.sourcePoints,
+            self.targetPoints,
+            self.sourceFeatures,
+            self.targetFeatures,
+            self.voxelSize,
+            self.scaling,
+        ) = logic.runSubsample(
             self.sourceModelNode_clone,
             self.targetModelNode,
             self.ui.skipScalingCheckBox.checked,
@@ -618,8 +627,10 @@ class ALPACA_previewWidget(ScriptedLoadableModuleWidget):
             slicer.mrmlScene
         )
         itemIDToClone = shNode.GetItemByDataNode(self.sourceModelNode_orig)
-        clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(
-            shNode, itemIDToClone
+        clonedItemID = (
+            slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(
+                shNode, itemIDToClone
+            )
         )
         self.sourceModelNode = shNode.GetItemDataNode(clonedItemID)
         self.sourceModelNode.GetDisplayNode().SetVisibility(False)
@@ -634,7 +645,14 @@ class ALPACA_previewWidget(ScriptedLoadableModuleWidget):
             False
         )
         #
-        self.sourcePoints, self.targetPoints, self.sourceFeatures, self.targetFeatures, self.voxelSize, self.scaling = logic.runSubsample(
+        (
+            self.sourcePoints,
+            self.targetPoints,
+            self.sourceFeatures,
+            self.targetFeatures,
+            self.voxelSize,
+            self.scaling,
+        ) = logic.runSubsample(
             self.sourceModelNode,
             self.targetModelNode,
             self.ui.skipScalingCheckBox.checked,
@@ -1635,7 +1653,14 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         targetModelNode.GetDisplayNode().SetVisibility(False)
         sourceModelNode = slicer.util.loadModel(sourceFilePath)
         sourceModelNode.GetDisplayNode().SetVisibility(False)
-        sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, scaling = self.runSubsample(
+        (
+            sourcePoints,
+            targetPoints,
+            sourceFeatures,
+            targetFeatures,
+            voxelSize,
+            scaling,
+        ) = self.runSubsample(
             sourceModelNode, targetModelNode, skipScaling, parameters, usePoisson
         )
         SimilarityTransform, similarityFlag = self.estimateTransform(
@@ -1898,7 +1923,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         """
         Using the FPFH features find noisy corresspondes.
         These corresspondes will be used inside the RANSAC.
-    """
+        """
         nns01, dists1 = self.find_knn_cpu(feats0, feats1, knn=1, return_distance=True)
         corres01_idx0 = np.arange(len(nns01))
         corres01_idx1 = nns01
@@ -1976,11 +2001,11 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
 
         def GenerateData(data, agreeData):
             """
-            In current implmentation the agreedata contains two corressponding 
-            points from moving and fixed mesh. However, after the subsampling step the 
-            number of points need not be equal in those meshes. So we randomly sample 
+            In current implmentation the agreedata contains two corressponding
+            points from moving and fixed mesh. However, after the subsampling step the
+            number of points need not be equal in those meshes. So we randomly sample
             the points from larger mesh.
-        """
+            """
             data.reserve(movingMeshFeaturePoints.shape[0])
             for i in range(movingMeshFeaturePoints.shape[0]):
                 point1 = movingMeshFeaturePoints[i]
@@ -2141,6 +2166,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
 
         fixed_array = itk.VectorContainer[itk.IT, itk.Point[itk.D, 3]].New()
         moving_array = itk.VectorContainer[itk.IT, itk.Point[itk.D, 3]].New()
+        index_array = []
 
         fitness = 0
         inlier_rmse = 0
@@ -2155,75 +2181,113 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
                 inlier_rmse = inlier_rmse + distance
                 fixed_point = fixedPointSet.GetPoint(closestPoint)
                 moving_point = movingPointSet.GetPoint(i)
+                index_array.append([closestPoint, i])
                 fixed_array.InsertElement(count, fixed_point)
                 moving_array.InsertElement(count, moving_point)
                 count = count + 1
 
-        return fixed_array, moving_array, fitness, inlier_rmse / fitness
+        return (
+            fixed_array,
+            moving_array,
+            fitness,
+            inlier_rmse / fitness,
+            np.array(index_array),
+        )
 
     def final_iteration_icp(self, fixedPoints, movingPoints, distanceThreshold):
-        """
-    Perform the final iteration of alignment.
-    Args:
-        fixedPoints, movingPoints, distanceThreshold
-    Returns:
-        (tranformed movingPoints, tranform)
-    """
-        import itk
-
-        mesh_fixed = itk.Mesh[itk.D, 3].New()
-        mesh_moving = itk.Mesh[itk.D, 3].New()
-        mesh_fixed.SetPoints(itk.vector_container_from_array(fixedPoints.flatten()))
-        mesh_moving.SetPoints(itk.vector_container_from_array(movingPoints.flatten()))
+        init_transform = itk.Rigid3DTransform.D.New()
 
         # Get Corresspondences and fitness
-        fixed, moving, inlier, rmse = self.get_correspondence_and_fitness(
+        (
+            fixedPoints_corres,
+            movingPoints_corres,
+            prev_inlier,
+            prev_rmse,
+            index_array,
+        ) = self.get_correspondence_and_fitness(
             fixedPoints, movingPoints, distanceThreshold
         )
 
-        final_moving_points = movingPoints
+        for i in range(30):
+            fixedPoints_corres = itk.array_from_vector_container(fixedPoints_corres)
+            movingPoints_corres = itk.array_from_vector_container(movingPoints_corres)
 
-        init_itk_transform = itk.Rigid3DTransform.New()
-        for i in range(1000):
-            TransformType = itk.VersorRigid3DTransform[itk.D]
-            transform = TransformType.New()
-            transform.SetIdentity()
+            R, t = self.ralign(movingPoints_corres.T, fixedPoints_corres.T)
 
-            landmark_init = itk.LandmarkBasedTransformInitializer[
-                itk.Transform[itk.D, 3, 3]
-            ].New()
-            landmark_init.SetTransform(transform)
-            landmark_init.SetFixedLandmarks(moving.CastToSTLConstContainer())
-            landmark_init.SetMovingLandmarks(fixed.CastToSTLConstContainer())
-            landmark_init.InitializeTransform()
+            transform = itk.Rigid3DTransform.D.New()
+            transform.SetMatrix(itk.matrix_from_array(R), 0.000001)
+            transform.SetTranslation([t[0, 0], t[1, 0], t[2, 0]])
+            movingPoints = self.transform_numpy_points(movingPoints, transform)
 
-            current_transform_itk = transform
-            movingPoints = self.transform_numpy_points(
-                movingPoints, current_transform_itk
-            )
-
-            fixed, moving, new_inlier, new_rmse = self.get_correspondence_and_fitness(
+            # Get Corresspondences and fitness
+            (
+                fixedPoints_corres,
+                movingPoints_corres,
+                inlier,
+                rmse,
+                index_array,
+            ) = self.get_correspondence_and_fitness(
                 fixedPoints, movingPoints, distanceThreshold
             )
-            if (new_inlier < inlier) or (new_inlier == inlier and new_rmse > rmse):
+
+            if (np.abs(inlier - prev_inlier)) <  0.000001 and (np.abs(rmse - prev_rmse) < 0.000001):
                 break
-            inlier = new_inlier
-            rmse = new_rmse
-            init_itk_transform.Compose(current_transform_itk)
-            final_moving_points = movingPoints
+            # Update the Transform
+            prev_inlier = inlier
+            prev_rmse = rmse
+            init_transform.Compose(transform)
+        print('Number of Refinement Iterations is ', i)
+        return movingPoints, init_transform
 
-        print("Refinement took ", i, " iterations")
+    def ralign(self, X, Y):
+        """
+        RALIGN - Rigid alignment of two sets of points in k-dimensional
+                Euclidean space.  Given two sets of points in
+                correspondence, this function computes the scaling,
+                rotation, and translation that define the transform TR
+                that minimizes the sum of squared errors between TR(X)
+                and its corresponding points in Y.  This routine takes
+                O(n k^3)-time.
 
-        final_transform_itk = itk.Rigid3DTransform[itk.D].New()
-        final_transform_itk.SetMatrix(init_itk_transform.GetMatrix())
-        final_transform_itk.SetOffset(init_itk_transform.GetOffset())
-        final_transform_itk.SetTranslation(init_itk_transform.GetTranslation())
-        return (final_moving_points, final_transform_itk)
+        Inputs:
+        X - a k x n matrix whose columns are points
+        Y - a k x n matrix whose columns are points that correspond to
+            the points in X
+        Outputs:
+        c, R, t - the scaling, rotation matrix, and translation vector
+                    defining the linear map TR as
+
+                            TR(x) = c * R * x + t
+
+                    such that the average norm of TR(X(:, i) - Y(:, i))
+                    is minimized.
+        """
+        m, n = X.shape
+
+        mx = np.expand_dims(np.mean(X, 1), 1)
+        my = np.expand_dims(np.mean(Y, 1), 1)
+
+        Xc = X - mx  # np.tile(mx, (n, 1)).T
+        Yc = Y - my  # np.tile(my, (n, 1)).T
+
+        Sxy = np.dot(Yc, Xc.T) / n
+
+        U, D, V = np.linalg.svd(Sxy, full_matrices=True, compute_uv=True)
+        V = V.T.copy()
+
+        S = np.eye(m)
+
+        if np.linalg.det(U) * np.linalg.det(V) < 0:
+            S[m - 1, m - 1] = -1
+
+        R = np.dot(np.dot(U, S), V.T)
+        t = my - np.dot(R, mx)
+        return R, t
 
     def get_numpy_points_from_vtk(self, vtk_polydata):
         """
-    Returns the points as numpy from a vtk_polydata
-    """
+        Returns the points as numpy from a vtk_polydata
+        """
         import vtk
         from vtk.util import numpy_support
 
@@ -2414,14 +2478,15 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         distanceThreshold = parameters["ICPDistanceThreshold"] * voxelSize
         inlier, rmse = self.get_fitness(sourcePoints, targetPoints, distanceThreshold)
         print("Before Inlier = ", inlier, " RMSE = ", rmse)
-        final_mesh_points, second_transform = self.final_iteration_icp(
+        _, second_transform = self.final_iteration_icp(
             targetPoints, sourcePoints, distanceThreshold
         )
+
+        final_mesh_points = self.transform_numpy_points(sourcePoints, second_transform)
         inlier, rmse = self.get_fitness(
             final_mesh_points, targetPoints, distanceThreshold
         )
         print("After Inlier = ", inlier, " RMSE = ", rmse)
-
         first_transform.Compose(second_transform)
         return first_transform, similarityFlag
 
@@ -2450,8 +2515,8 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
 
     def set_numpy_points_in_vtk(self, vtk_polydata, points_as_numpy):
         """
-    Sets the numpy points to a vtk_polydata
-    """
+        Sets the numpy points to a vtk_polydata
+        """
         import vtk
         from vtk.util import numpy_support
 
@@ -2483,7 +2548,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         """
         Return sub-sampled points as numpy array.
         The radius might need to be tuned as per the requirements.
-    """
+        """
         import vtk
         from vtk.util import numpy_support
 
@@ -2509,9 +2574,9 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
 
     def extract_normal_from_tuple(self, input_mesh):
         """
-    Extracts the normal data from the sampled points.
-    Returns points and normals for the points.
-    """
+        Extracts the normal data from the sampled points.
+        Returns points and normals for the points.
+        """
         import vtk
         from vtk.util import numpy_support
 
@@ -2685,8 +2750,10 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
                 slicer.mrmlScene
             )
             itemIDToClone = shNode.GetItemByDataNode(fiducial)
-            clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(
-                shNode, itemIDToClone
+            clonedItemID = (
+                slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(
+                    shNode, itemIDToClone
+                )
             )
             sourceLandmarkNode = shNode.GetItemDataNode(clonedItemID)
         sourceLandmarks = np.zeros(
@@ -2712,15 +2779,15 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
 
     def distanceMatrix(self, a):
         """
-    Computes the euclidean distance matrix for n points in a 3D space
-    Returns a nXn matrix
-     """
+        Computes the euclidean distance matrix for n points in a 3D space
+        Returns a nXn matrix
+        """
         id, jd = a.shape
         fnx = lambda q: q - np.reshape(q, (id, 1))
         dx = fnx(a[:, 0])
         dy = fnx(a[:, 1])
         dz = fnx(a[:, 2])
-        return (dx ** 2.0 + dy ** 2.0 + dz ** 2.0) ** 0.5
+        return (dx**2.0 + dy**2.0 + dz**2.0) ** 0.5
 
     def cpd_registration(
         self,
@@ -2896,14 +2963,14 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         self, inputVolume, outputVolume, imageThreshold, invert=False, showResult=True
     ):
         """
-    Run the processing algorithm.
-    Can be used without GUI widget.
-    :param inputVolume: volume to be thresholded
-    :param outputVolume: thresholding result
-    :param imageThreshold: values above/below this threshold will be set to 0
-    :param invert: if True then values above the threshold will be set to 0, otherwise values below are set to 0
-    :param showResult: show output volume in slice viewers
-    """
+        Run the processing algorithm.
+        Can be used without GUI widget.
+        :param inputVolume: volume to be thresholded
+        :param outputVolume: thresholding result
+        :param imageThreshold: values above/below this threshold will be set to 0
+        :param invert: if True then values above the threshold will be set to 0, otherwise values below are set to 0
+        :param showResult: show output volume in slice viewers
+        """
 
         if not inputVolume or not outputVolume:
             raise ValueError("Input or output volume is invalid")
@@ -2973,7 +3040,14 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             sourceModelNode.GetDisplayNode().SetVisibility(False)
             rootName = os.path.splitext(file)[0]
             skipScalingOption = False
-            sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, scaling = self.runSubsample(
+            (
+                sourcePoints,
+                targetPoints,
+                sourceFeatures,
+                targetFeatures,
+                voxelSize,
+                scaling,
+            ) = self.runSubsample(
                 sourceModelNode,
                 targetModelNode,
                 skipScalingOption,
@@ -3434,27 +3508,25 @@ class ALPACATest(ScriptedLoadableModuleTest):
     """
 
     def setUp(self):
-        """ Do whatever is needed to reset the state - typically a scene clear will be enough.
-      """
+        """Do whatever is needed to reset the state - typically a scene clear will be enough."""
         slicer.mrmlScene.Clear(0)
 
     def runTest(self):
-        """Run as few or as many tests as needed here.
-      """
+        """Run as few or as many tests as needed here."""
         self.setUp()
         self.test_ALPACA1()
 
     def test_ALPACA1(self):
-        """ Ideally you should have several levels of tests.  At the lowest level
-    tests should exercise the functionality of the logic with different inputs
-    (both valid and invalid).  At higher levels your tests should emulate the
-    way the user would interact with your code and confirm that it still works
-    the way you intended.
-    One of the most important features of the tests is that it should alert other
-    developers when their changes will have an impact on the behavior of your
-    module.  For example, if a developer removes a feature that you depend on,
-    your test should break so they know that the feature is needed.
-    """
+        """Ideally you should have several levels of tests.  At the lowest level
+        tests should exercise the functionality of the logic with different inputs
+        (both valid and invalid).  At higher levels your tests should emulate the
+        way the user would interact with your code and confirm that it still works
+        the way you intended.
+        One of the most important features of the tests is that it should alert other
+        developers when their changes will have an impact on the behavior of your
+        module.  For example, if a developer removes a feature that you depend on,
+        your test should break so they know that the feature is needed.
+        """
 
         self.delayDisplay("Starting the test")
 
