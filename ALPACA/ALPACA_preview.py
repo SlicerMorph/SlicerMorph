@@ -16,6 +16,7 @@ import time
 import sys
 import os
 import platform
+import math
 
 #
 # ALPACA
@@ -293,7 +294,7 @@ class ALPACA_previewWidget(ScriptedLoadableModuleWidget):
         self.ui.pointDensityAdvancedSlider.connect(
             "valueChanged(double)", self.onChangeAdvanced
         )
-        self.ui.normalNeighborsCountSlider.connect(
+        self.ui.normalSearchRadiusSlider.connect(
             "valueChanged(double)", self.onChangeAdvanced
         )
         self.ui.FPFHNeighborsSlider.connect(
@@ -401,7 +402,7 @@ class ALPACA_previewWidget(ScriptedLoadableModuleWidget):
         self.parameterDictionary = {
             "projectionFactor": self.ui.projectionFactorSlider.value,
             "pointDensity": self.ui.pointDensityAdvancedSlider.value,
-            "normalNeighborsCount": self.ui.normalNeighborsCountSlider.value,
+            "normalSearchRadius": self.ui.normalSearchRadiusSlider.value,
             "FPFHNeighbors": int(self.ui.FPFHNeighborsSlider.value),
             "FPFHSearchRadius": self.ui.FPFHSearchRadiusSlider.value,
             "distanceThreshold": self.ui.maximumCPDThreshold.value,
@@ -522,10 +523,8 @@ class ALPACA_previewWidget(ScriptedLoadableModuleWidget):
             slicer.mrmlScene
         )
         itemIDToClone = shNode.GetItemByDataNode(self.sourceModelNode_orig)
-        clonedItemID = (
-            slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(
-                shNode, itemIDToClone
-            )
+        clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(
+            shNode, itemIDToClone
         )
         self.sourceModelNode_clone = shNode.GetItemDataNode(clonedItemID)
         self.sourceModelNode_clone.SetName("SourceModelNode_clone")
@@ -628,10 +627,8 @@ class ALPACA_previewWidget(ScriptedLoadableModuleWidget):
             slicer.mrmlScene
         )
         itemIDToClone = shNode.GetItemByDataNode(self.sourceModelNode_orig)
-        clonedItemID = (
-            slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(
-                shNode, itemIDToClone
-            )
+        clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(
+            shNode, itemIDToClone
         )
         self.sourceModelNode = shNode.GetItemDataNode(clonedItemID)
         self.sourceModelNode.GetDisplayNode().SetVisibility(False)
@@ -1486,8 +1483,8 @@ class ALPACA_previewWidget(ScriptedLoadableModuleWidget):
             self.parameterDictionary[
                 "pointDensity"
             ] = self.ui.pointDensityAdvancedSlider.value
-            self.parameterDictionary["normalNeighborsCount"] = int(
-                self.ui.normalNeighborsCountSlider.value
+            self.parameterDictionary["normalSearchRadius"] = int(
+                self.ui.normalSearchRadiusSlider.value
             )
             self.parameterDictionary["FPFHNeighbors"] = int(
                 self.ui.FPFHNeighborsSlider.value
@@ -2195,95 +2192,78 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             np.array(index_array),
         )
 
-    def final_iteration_icp(self, fixedPoints, movingPoints, distanceThreshold):
-        init_transform = itk.Rigid3DTransform.D.New()
-
-        # Get Corresspondences and fitness
-        (
-            fixedPoints_corres,
-            movingPoints_corres,
-            prev_inlier,
-            prev_rmse,
-            index_array,
-        ) = self.get_correspondence_and_fitness(
-            fixedPoints, movingPoints, distanceThreshold
+    def final_iteration_icp(
+        self, fixedPoints, movingPoints, distanceThreshold, normalSearchRadius
+    ):
+        fixedPointsNormal = self.extract_pca_normal_scikit(
+            fixedPoints, normalSearchRadius
+        )
+        movingPointsNormal = self.extract_pca_normal_scikit(
+            movingPoints, normalSearchRadius
         )
 
-        for i in range(100):
-            fixedPoints_corres = itk.array_from_vector_container(fixedPoints_corres)
-            movingPoints_corres = itk.array_from_vector_container(movingPoints_corres)
+        _, (T, R, t) = self.point_to_plane_icp(
+            movingPoints,
+            fixedPoints,
+            movingPointsNormal,
+            fixedPointsNormal,
+            distanceThreshold,
+        )
 
-            R, t = self.ralign(movingPoints_corres.T, fixedPoints_corres.T)
+        transform = itk.Rigid3DTransform.D.New()
+        transform.SetMatrix(itk.matrix_from_array(R), 0.000001)
+        transform.SetTranslation([t[0], t[1], t[2]])
+        return movingPoints, transform
 
-            transform = itk.Rigid3DTransform.D.New()
-            transform.SetMatrix(itk.matrix_from_array(R), 0.000001)
-            transform.SetTranslation([t[0, 0], t[1, 0], t[2, 0]])
-            movingPoints = self.transform_numpy_points(movingPoints, transform)
-
-            # Get Corresspondences and fitness
-            (
-                fixedPoints_corres,
-                movingPoints_corres,
-                inlier,
-                rmse,
-                index_array,
-            ) = self.get_correspondence_and_fitness(
-                fixedPoints, movingPoints, distanceThreshold
-            )
-
-            if (np.abs(inlier - prev_inlier)) <  0.000001 and (np.abs(rmse - prev_rmse) < 0.000001):
-                break
-            # Update the Transform
-            prev_inlier = inlier
-            prev_rmse = rmse
-            init_transform.Compose(transform)
-        print('Number of Refinement Iterations is ', i)
-        return movingPoints, init_transform
-
-    def ralign(self, X, Y):
+    def euler_matrix(self, ai, aj, ak):
+        """Return homogeneous rotation matrix from Euler angles and axis sequence.
+        ai, aj, ak : Euler's roll, pitch and yaw angles
+        axes : One of 24 axis sequences as string or encoded tuple
+        >>> R = euler_matrix(1, 2, 3, 'syxz')
+        >>> numpy.allclose(numpy.sum(R[0]), -1.34786452)
+        True
+        >>> R = euler_matrix(1, 2, 3, (0, 1, 0, 1))
         """
-        RALIGN - Rigid alignment of two sets of points in k-dimensional
-                Euclidean space.  Given two sets of points in
-                correspondence, this function computes the scaling,
-                rotation, and translation that define the transform TR
-                that minimizes the sum of squared errors between TR(X)
-                and its corresponding points in Y.  This routine takes
-                O(n k^3)-time.
 
-        Inputs:
-        X - a k x n matrix whose columns are points
-        Y - a k x n matrix whose columns are points that correspond to
-            the points in X
-        Outputs:
-        c, R, t - the scaling, rotation matrix, and translation vector
-                    defining the linear map TR as
+        firstaxis, parity, repetition, frame = (0, 0, 0, 0)
+        _NEXT_AXIS = [1, 2, 0, 1]
 
-                            TR(x) = c * R * x + t
+        i = firstaxis
+        j = _NEXT_AXIS[i + parity]
+        k = _NEXT_AXIS[i - parity + 1]
 
-                    such that the average norm of TR(X(:, i) - Y(:, i))
-                    is minimized.
-        """
-        m, n = X.shape
+        if frame:
+            ai, ak = ak, ai
+        if parity:
+            ai, aj, ak = -ai, -aj, -ak
 
-        mx = np.expand_dims(np.mean(X, 1), 1)
-        my = np.expand_dims(np.mean(Y, 1), 1)
+        si, sj, sk = math.sin(ai), math.sin(aj), math.sin(ak)
+        ci, cj, ck = math.cos(ai), math.cos(aj), math.cos(ak)
+        cc, cs = ci * ck, ci * sk
+        sc, ss = si * ck, si * sk
 
-        Xc = X - mx  # np.tile(mx, (n, 1)).T
-        Yc = Y - my  # np.tile(my, (n, 1)).T
-
-        Sxy = np.dot(Yc, Xc.T) / n
-
-        U, D, V = np.linalg.svd(Sxy, full_matrices=True, compute_uv=True)
-        V = V.T.copy()
-
-        S = np.eye(m)
-
-        if np.linalg.det(U) * np.linalg.det(V) < 0:
-            S[m - 1, m - 1] = -1
-
-        R = np.dot(np.dot(U, S), V.T)
-        t = my - np.dot(R, mx)
-        return R, t
+        M = np.identity(4)
+        if repetition:
+            M[i, i] = cj
+            M[i, j] = sj * si
+            M[i, k] = sj * ci
+            M[j, i] = sj * sk
+            M[j, j] = -cj * ss + cc
+            M[j, k] = -cj * cs - sc
+            M[k, i] = -sj * ck
+            M[k, j] = cj * sc + cs
+            M[k, k] = cj * cc - ss
+        else:
+            M[i, i] = cj * ck
+            M[i, j] = sj * sc - cs
+            M[i, k] = sj * cc + ss
+            M[j, i] = cj * sk
+            M[j, j] = sj * ss + cc
+            M[j, k] = sj * cs - sc
+            M[k, i] = -sj
+            M[k, j] = cj * si
+            M[k, k] = cj * ci
+        return M
 
     def best_fit_transform_point2plane(self, A, B, normals):
         """
@@ -2327,7 +2307,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         b = np.array(b)
 
         tr = np.dot(np.linalg.pinv(H), b)
-        T = transform.euler_matrix(tr[0], tr[1], tr[2])
+        T = self.euler_matrix(tr[0], tr[1], tr[2])
         T[0, 3] = tr[3]
         T[1, 3] = tr[4]
         T[2, 3] = tr[5]
@@ -2367,7 +2347,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
 
         # special reflection case
         if np.linalg.det(R) < 0:
-            Vt[m-1, :] *= -1
+            Vt[m - 1, :] *= -1
         R = np.dot(Vt.T, U.T)
 
         # translation
@@ -2391,13 +2371,21 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             indices: dst indices of the nearest neighbor
         """
         # assert src.shape == dst.shape
-        neigh = NearestNeighbors(n_neighbors=1, algorithm='kd_tree')
+        neigh = NearestNeighbors(n_neighbors=1, algorithm="kd_tree")
         neigh.fit(dst)
         distances, indices = neigh.kneighbors(src, return_distance=True)
         return distances.ravel(), indices.ravel()
 
-    def point_to_plane_icp(self, src_pts, dst_pts, src_pt_normals,
-                dst_pt_normals, max_iterations=20, tolerance=None):
+    def point_to_plane_icp(
+        self,
+        src_pts,
+        dst_pts,
+        src_pt_normals,
+        dst_pt_normals,
+        dist_threshold=np.inf,
+        max_iterations=30,
+        tolerance=0.000001,
+    ):
         """
             The Iterative Closest Point method: finds best-fit transform that
                 maps points A on to points B
@@ -2419,17 +2407,19 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         m = A.shape[1]
 
         # make points homogeneous, copy them to maintain the originals
-        src = np.ones((m+1, A.shape[0]))
-        dst = np.ones((m+1, B.shape[0]))
+        src = np.ones((m + 1, A.shape[0]))
+        dst = np.ones((m + 1, B.shape[0]))
         src[:m, :] = np.copy(A.T)
         dst[:m, :] = np.copy(B.T)
 
         prev_error = 0
         MeanError = []
 
+        finalT = np.identity(4)
+
         for i in range(max_iterations):
             # find the nearest neighbors between the current source and destination points
-            distances, indices = nearest_neighbor(src[:m, :].T, dst[:m, :].T)
+            distances, indices = self.nearest_neighbor(src[:m, :].T, dst[:m, :].T)
 
             # match each point of source-set to closest point of destination-set,
             matched_src_pts = src[:m, :].T.copy()
@@ -2446,11 +2436,11 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
                 angles[k] = np.arccos(cos_angle) / np.pi * 180
 
             # and reject the bad corresponding
-            dist_threshold = np.inf
-            dist_bool_flag = (distances < dist_threshold)
+            # dist_threshold = np.inf
+            dist_bool_flag = distances < dist_threshold
             angle_threshold = 20
-            angle_bool_flag = (angles < angle_threshold)
-            reject_part_flag = dist_bool_flag * angle_bool_flag
+            angle_bool_flag = angles < angle_threshold
+            reject_part_flag = dist_bool_flag  # * angle_bool_flag
 
             # get matched vertexes and dst_vertexes' normals
             matched_src_pts = matched_src_pts[reject_part_flag, :]
@@ -2458,27 +2448,30 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             matched_dst_pt_normals = matched_dst_pt_normals[reject_part_flag, :]
 
             # compute the transformation between the current source and nearest destination points
-            T, _, _ = self.best_fit_transform_point2plane(matched_src_pts, matched_dst_pts, matched_dst_pt_normals)
+            T, _, _ = self.best_fit_transform_point2plane(
+                matched_src_pts, matched_dst_pts, matched_dst_pt_normals
+            )
+
+            finalT = np.dot(T, finalT)
 
             # update the current source
             src = np.dot(T, src)
 
             # print iteration
-            print('\ricp iteration: %d/%d ...' % (i+1, max_iterations), end='', flush=True)
+            # print('\ricp iteration: %d/%d ...' % (i+1, max_iterations), end='', flush=True)
 
             # check error
             mean_error = np.mean(distances[reject_part_flag])
             MeanError.append(mean_error)
             if tolerance is not None:
                 if np.abs(prev_error - mean_error) < tolerance:
-                    print('\nbreak iteration, the distance between two adjacent iterations '
-                        'is lower than tolerance (%.f < %f)'
-                        % (np.abs(prev_error - mean_error), tolerance))
                     break
             prev_error = mean_error
+        print("Refinement took ", i, " iterations")
         # calculate final transformation
-        T, _, _ = self.best_fit_transform_point2point(A, src[:m, :].T)
-        return T, MeanError
+        # T, R, t = self.best_fit_transform_point2point(A, src[:m, :].T)
+        # return MeanError, (T, R, t)
+        return MeanError, (finalT, finalT[:3, :3], finalT[:, 3])
 
     def get_numpy_points_from_vtk(self, vtk_polydata):
         """
@@ -2541,8 +2534,6 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
 
         targetPoints = targetPoints.T
         sourcePoints = sourcePoints.T
-
-        print(fixed_corr.shape, moving_corr.shape)
 
         # Check corner case when both meshes are same
         if np.allclose(fixed_corr, moving_corr):
@@ -2670,12 +2661,16 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         sourcePoints = self.transform_numpy_points(sourcePoints, first_transform)
 
         print("-----------------------------------------------------------")
+        print(parameters)
         print("Starting Rigid Refinement")
         distanceThreshold = parameters["ICPDistanceThreshold"] * voxelSize
         inlier, rmse = self.get_fitness(sourcePoints, targetPoints, distanceThreshold)
         print("Before Inlier = ", inlier, " RMSE = ", rmse)
         _, second_transform = self.final_iteration_icp(
-            targetPoints, sourcePoints, distanceThreshold
+            targetPoints,
+            sourcePoints,
+            distanceThreshold,
+            float(parameters["normalSearchRadius"] * voxelSize),
         )
 
         final_mesh_points = self.transform_numpy_points(sourcePoints, second_transform)
@@ -2685,29 +2680,6 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         print("After Inlier = ", inlier, " RMSE = ", rmse)
         first_transform.Compose(second_transform)
         return first_transform, similarityFlag
-
-    def cleanMesh(self, vtk_mesh):
-        import vtk
-
-        # Get largest connected component and clean the mesh to remove un-used points
-        connectivityFilter = vtk.vtkPolyDataConnectivityFilter()
-        connectivityFilter.SetInputData(vtk_mesh)
-        connectivityFilter.SetExtractionModeToLargestRegion()
-        connectivityFilter.Update()
-        vtk_mesh_out = connectivityFilter.GetOutput()
-
-        filter1 = vtk.vtkCleanPolyData()
-        filter1.SetInputData(vtk_mesh_out)
-        filter1.Update()
-        vtk_mesh_out_clean = filter1.GetOutput()
-
-        triangle_filter = vtk.vtkTriangleFilter()
-        triangle_filter.SetInputData(vtk_mesh_out_clean)
-        triangle_filter.SetPassLines(False)
-        triangle_filter.SetPassVerts(False)
-        triangle_filter.Update()
-        vtk_mesh_out_clean = triangle_filter.GetOutput()
-        return vtk_mesh_out_clean
 
     def set_numpy_points_in_vtk(self, vtk_polydata, points_as_numpy):
         """
@@ -2735,10 +2707,6 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         pointdata = points.GetData()
         points_as_numpy = numpy_support.vtk_to_numpy(pointdata)
         return points_as_numpy
-
-    def getnormals(self, inputmesh):
-        _, normal = self.extract_pca_normal(inputmesh)
-        return normal
 
     def subsample_points_poisson(self, inputMesh, radius):
         """
@@ -2768,25 +2736,36 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         points = subsample.GetOutput()
         return points
 
-    def extract_normal_from_tuple(self, input_mesh):
-        """
-        Extracts the normal data from the sampled points.
-        Returns points and normals for the points.
-        """
-        import vtk
-        from vtk.util import numpy_support
+    def extract_pca_normal_scikit(self, inputPoints, searchRadius):
+        from sklearn.neighbors import KDTree
+        from sklearn.decomposition import PCA
 
-        t1 = input_mesh.GetPointData().GetArray("Normals")
-        n1_array = []
-        for i in range(t1.GetNumberOfTuples()):
-            n1_array.append(t1.GetTuple(i))
-        n1_array = np.array(n1_array)
+        data = inputPoints
+        tree = KDTree(data, metric="minkowski")  # minkowki is p2 (euclidean)
 
-        points = input_mesh.GetPoints()
-        pointdata = points.GetData()
-        as_numpy = numpy_support.vtk_to_numpy(pointdata)
+        # Get indices and distances:
+        ind, dist = tree.query_radius(data, r=searchRadius, return_distance=True)
 
-        return as_numpy, n1_array
+        def PCA_unit_vector(array, pca=PCA(n_components=3)):
+            pca.fit(array)
+            eigenvalues = pca.explained_variance_
+            return pca.components_[np.argmin(eigenvalues)]
+
+        def calc_angle_with_xy(vectors):
+            l = np.sum(vectors[:, :2] ** 2, axis=1) ** 0.5
+            return np.arctan2(vectors[:, 2], l)
+
+        normals2 = []
+        for i in range(data.shape[0]):
+            if len(ind[i]) < 3:
+                normal_vector = np.identity(3)
+            else:
+                normal_vector = data[ind[i]]
+            normals2.append(PCA_unit_vector(normal_vector))
+
+        n = np.array(normals2)
+        n[calc_angle_with_xy(n) < 0] *= -1
+        return n
 
     def extract_pca_normal(self, mesh, normalNeighbourCount):
         import vtk
@@ -2794,9 +2773,9 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
 
         normals = vtk.vtkPCANormalEstimation()
         normals.SetSampleSize(normalNeighbourCount)
-        normals.SetFlipNormals(True)
-        # normals.SetNormalOrientationToPoint()
-        normals.SetNormalOrientationToGraphTraversal()
+        # normals.SetFlipNormals(True)
+        normals.SetNormalOrientationToPoint()
+        # normals.SetNormalOrientationToGraphTraversal()
         normals.SetInputData(mesh)
         normals.Update()
         out1 = normals.GetOutput()
@@ -2851,10 +2830,6 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         sourceModelMesh = sourceModel.GetMesh()
         targetModelMesh = targetModel.GetMesh()
 
-        # To enable cleaning un-comment these two lines
-        # sourceModelMesh = self.cleanMesh(sourceModelMesh)
-        # targetModelMesh = self.cleanMesh(targetModelMesh)
-
         vtk_meshes = []
         vtk_meshes.append(targetModelMesh)
         vtk_meshes.append(sourceModelMesh)
@@ -2906,10 +2881,10 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             )
 
         movingMeshPoints, movingMeshPointNormals = self.extract_pca_normal(
-            sourceMesh_vtk, int(parameters["normalNeighborsCount"])
+            sourceMesh_vtk, 30
         )
         fixedMeshPoints, fixedMeshPointNormals = self.extract_pca_normal(
-            targetMesh_vtk, int(parameters["normalNeighborsCount"])
+            targetMesh_vtk, 30
         )
 
         print("------------------------------------------------------------")
@@ -2946,10 +2921,8 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
                 slicer.mrmlScene
             )
             itemIDToClone = shNode.GetItemByDataNode(fiducial)
-            clonedItemID = (
-                slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(
-                    shNode, itemIDToClone
-                )
+            clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(
+                shNode, itemIDToClone
             )
             sourceLandmarkNode = shNode.GetItemDataNode(clonedItemID)
         sourceLandmarks = np.zeros(
@@ -2983,7 +2956,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         dx = fnx(a[:, 0])
         dy = fnx(a[:, 1])
         dz = fnx(a[:, 2])
-        return (dx**2.0 + dy**2.0 + dz**2.0) ** 0.5
+        return (dx ** 2.0 + dy ** 2.0 + dz ** 2.0) ** 0.5
 
     def cpd_registration(
         self,
