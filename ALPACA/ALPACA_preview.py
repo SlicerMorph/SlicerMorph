@@ -10,7 +10,6 @@ from slicer.ScriptedLoadableModule import *
 import glob
 import vtk.util.numpy_support as vtk_np
 import numpy as np
-from sklearn.neighbors import NearestNeighbors
 from datetime import datetime
 import time
 import sys
@@ -193,7 +192,8 @@ class ALPACA_previewWidget(ScriptedLoadableModuleWidget):
             )
             slicer.app.processEvents()
             try:
-                slicer.util.pip_install(f"itk==5.3.0")
+                slicer.util.pip_install(["itk==5.3.0"])
+                slicer.util.pip_install(["scikit-learn"])
                 slicer.util.pip_install(["itk_fpfh==0.1.1"])
                 slicer.util.pip_install(["itk_ransac==0.1.4"])
                 slicer.util.pip_install(f"cpdalp")
@@ -2195,6 +2195,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     def final_iteration_icp(
         self, fixedPoints, movingPoints, distanceThreshold, normalSearchRadius
     ):
+        import itk
         fixedPointsNormal = self.extract_pca_normal_scikit(
             fixedPoints, normalSearchRadius
         )
@@ -2370,7 +2371,8 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             distances: Euclidean distances of the nearest neighbor
             indices: dst indices of the nearest neighbor
         """
-        # assert src.shape == dst.shape
+            # assert src.shape == dst.shape
+        from sklearn.neighbors import NearestNeighbors
         neigh = NearestNeighbors(n_neighbors=1, algorithm="kd_tree")
         neigh.fit(dst)
         distances, indices = neigh.kneighbors(src, return_distance=True)
