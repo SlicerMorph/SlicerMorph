@@ -195,7 +195,7 @@ class ALPACA_previewWidget(ScriptedLoadableModuleWidget):
             try:
                 slicer.util.pip_install(f"itk==5.3.0")
                 slicer.util.pip_install(["itk_fpfh==0.1.1"])
-                slicer.util.pip_install(["itk_ransac==0.1.3"])
+                slicer.util.pip_install(["itk_ransac==0.1.4"])
                 slicer.util.pip_install(f"cpdalp")
             except:
                 slicer.util.infoDisplay("Issue while installing the ITK pip packages")
