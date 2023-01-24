@@ -26,6 +26,8 @@ If you use SlicerMorph in your research, please cite one or more of these public
 
 To cite 3D Slicer as a general purpose biomedical visualization platform, please use: Kikinis, R., Pieper, S. D., & Vosburgh, K. G. (2014). 3D Slicer: A Platform for Subject-Specific Image Analysis, Visualization, and Clinical Support. In Intraoperative Imaging and Image-Guided Therapy (pp. 277–289). Springer, New York, NY. https://doi.org/10.1007/978-1-4614-7657-3_19
 
+[Follow this link to obtain a list of publications that cite the main SlicerMorph paper (Rolfe et al., 2021)](https://scholar.google.com/scholar?hl=en&as_sdt=5,48&sciodt=0,48&cites=13786917364486709604&scipsc=&q=&scisbd=1)
+
 ## Updating SlicerMorph
 
 We continuously add new features and functionalities to SlicerMorph packages. To make sure you are using the latest version, go to Extension Manager, click Manage Extensions tab and then use the "Check for updates" function. Once updates are installed, please restart Slicer for changes to take effect. This feature is only available for stable releases. If you are using the preview version, you have to install a newer preview version to obtain the changes introduced to SlicerMorph.
