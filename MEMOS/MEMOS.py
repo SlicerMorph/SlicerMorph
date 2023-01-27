@@ -74,8 +74,8 @@ class MEMOS(ScriptedLoadableModule):
       This model loads a PyTorch Deep Learning model and does inference on an image loaded in the scene.
       """
         self.parent.acknowledgementText = """
-      This module was developed by Sara Rolfe for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections" 
-      awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839). 
+      This module was developed by Sara Rolfe for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections"
+      awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839).
       https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
       """  # replace with organization, grant and thanks.
 
@@ -85,7 +85,7 @@ class MEMOSWidget(ScriptedLoadableModuleWidget):
       """
     def setup(self):
         ScriptedLoadableModuleWidget.setup(self)
-        
+
         # Set up tabs to split workflow
         tabsWidget = qt.QTabWidget()
         singleTab = qt.QWidget()
@@ -95,7 +95,7 @@ class MEMOSWidget(ScriptedLoadableModuleWidget):
         tabsWidget.addTab(singleTab, "Single volume")
         tabsWidget.addTab(batchTab, "Batch mode")
         self.layout.addWidget(tabsWidget)
-        
+
         ################################### Single Tab ###################################
         # Instantiate and connect widgets
         #
@@ -107,7 +107,7 @@ class MEMOSWidget(ScriptedLoadableModuleWidget):
 
         # Layout within the dummy collapsible button
         singleParametersFormLayout = qt.QFormLayout(singleParametersCollapsibleButton)
-        
+
         #
         # Select base mesh
         #
@@ -138,7 +138,7 @@ class MEMOSWidget(ScriptedLoadableModuleWidget):
         self.applySingleButton.toolTip = "Generate MEMOS segmentation for loaded volume"
         self.applySingleButton.enabled = False
         singleParametersFormLayout.addRow(self.applySingleButton)
-        
+
         #
         # Evaluation Area
         #
@@ -148,7 +148,7 @@ class MEMOSWidget(ScriptedLoadableModuleWidget):
 
         # Layout within the dummy collapsible button
         #singleEvaluationFormLayout = qt.QFormLayout(singleEvaluationCollapsibleButton)
-        
+
         #
         # Select MEMOS segmentation
         #
@@ -161,7 +161,7 @@ class MEMOSWidget(ScriptedLoadableModuleWidget):
         self.MEMOSSelector.showHidden = False
         self.MEMOSSelector.setMRMLScene( slicer.mrmlScene )
         #singleEvaluationFormLayout.addRow("MEMOS segmentation: ", self.MEMOSSelector)
-        
+
         #
         # Select Reference segmentation
         #
@@ -182,7 +182,7 @@ class MEMOSWidget(ScriptedLoadableModuleWidget):
         self.evaluateSegmentationButton.toolTip = "Compare MEMOS segmentation to a reference"
         self.evaluateSegmentationButton.enabled = False
         #singleEvaluationFormLayout.addRow(self.evaluateSegmentationButton)
-        
+
         # connections
         self.volumeSelector.connect('currentNodeChanged(vtkMRMLNode*)', self.onSelectSingle)
         self.modelPathSingle.connect('currentPathChanged(const QString &)', self.onSelectSingleModelPath)
@@ -249,18 +249,18 @@ class MEMOSWidget(ScriptedLoadableModuleWidget):
 
     def onSelectSingle(self):
         self.applySingleButton.enabled = bool(self.volumeSelector.currentNode() and self.modelPathSingle.currentPath)
-    
+
     def onSelectSingleModelPath(self):
         self.saveMEMOSModelPath(self.modelPathSingle.currentPath)
         self.modelPath.currentPath = self.getMEMOSModelPath()
         self.applySingleButton.enabled = bool(self.volumeSelector.currentNode() and self.modelPathSingle.currentPath)
-    
+
     def onSelectSingleEval(self):
         self.evaluateSegmentationButton.enabled = bool(self.MEMOSSelector.currentNode() and self.referenceSelector.currentNode())
-        
+
     def onSelect(self):
         self.applyButton.enabled = bool(self.modelPath.currentPath and self.volumePath.currentPath and self.outputPath.currentPath)
-    
+
     def onSelectModelPath(self):
         self.saveMEMOSModelPath(self.modelPathSingle.currentPath)
         self.modelPathSingle.currentPath = self.getMEMOSModelPath()
@@ -271,7 +271,7 @@ class MEMOSWidget(ScriptedLoadableModuleWidget):
         logic = MEMOSLogic()
         logic.runBatch(self.volumePath.currentPath, self.modelPath.currentPath, self.outputPath.currentPath, self.colorNode)
 
-    def onApplySingleButton(self):       
+    def onApplySingleButton(self):
         start = time.time()
         self.setColorTable()
         tempVolumePath = os.path.join(slicer.app.temporaryPath, 'tempMEMOSVolume')
@@ -281,11 +281,11 @@ class MEMOSWidget(ScriptedLoadableModuleWidget):
         volumeNode = self.volumeSelector.currentNode()
         originalSpacing = volumeNode.GetSpacing()
         if originalSpacing != (1,1,1):
-           volumeNode.SetSpacing((1,1,1)) 
+           volumeNode.SetSpacing((1,1,1))
         tempVolumeFile = os.path.join(tempVolumePath, volumeNode.GetName() +'.nii.gz')
         slicer.util.saveNode(volumeNode, tempVolumeFile)
         tempOutputPath = os.path.join(slicer.app.temporaryPath,'tempMEMOSOut')
-        if os.path.isdir(tempOutputPath):  
+        if os.path.isdir(tempOutputPath):
           shutil.rmtree(tempOutputPath)
         os.mkdir(tempOutputPath)
         logic = MEMOSLogic()
@@ -303,36 +303,36 @@ class MEMOSWidget(ScriptedLoadableModuleWidget):
           shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
           volID = shNode.GetItemByDataNode(volumeNode)
           segID = shNode.GetItemByDataNode(segmentationNode)
-          shNode.SetItemParent(segID,volID)       
+          shNode.SetItemParent(segID,volID)
           self.MEMOSSelector.setCurrentNode(segmentationNode)
           end = time.time()
           print("MEMOS Inference time: ", end - start)
-        else: 
-          print("No segmentation was saved to the temporary folder")  
+        else:
+          print("No segmentation was saved to the temporary folder")
         slicer.mrmlScene.RemoveNode(labelNode)
         shutil.rmtree(tempVolumePath)
         shutil.rmtree(tempOutputPath)
-    
+
 #    def onEvaluateSegmentationButton(self):
 #      logic = MEMOSLogic()
 #      logic.getDiceTable(self.referenceSelector.currentNode(), self.MEMOSSelector.currentNode())
-      
+
     def setColorTable(self):
       if hasattr(self, 'colorNode'):
         try:
           slicer.util.getNode(self.colorNode)
-          return 
+          return
         except:
           print("Color node is not in the scene, reloading from file")
-          self.colorNode = None 
+          self.colorNode = None
       # Load color table
       colorNodePath = self.resourcePath("Support/KOMP2.ctbl")
       try:
         self.colorNode = slicer.util.loadColorTable(colorNodePath)
       except:
         print("Error loading color node from: ", colorNodePath)
-        self.colorNode = None 
-    
+        self.colorNode = None
+
     def saveMEMOSModelPath(self, modelPath):
       # don't save if identical to saved
       settings = qt.QSettings()
@@ -359,8 +359,8 @@ class MEMOSWidget(ScriptedLoadableModuleWidget):
         return True
       else:
         print("MEMOS model path invalid: No model found")
-        return False 
-      
+        return False
+
 #
 # MEMOSLogic
 #
@@ -376,7 +376,7 @@ class MEMOSLogic(ScriptedLoadableModuleLogic):
       """
 
     def runSingle(self, imagePath, modelPath, outputPath):
-        # import MONAI and dependencies 
+        # import MONAI and dependencies
         import nibabel as nib
         import numpy as np
         import torch
@@ -387,7 +387,7 @@ class MEMOSLogic(ScriptedLoadableModuleLogic):
         from monai.inferers import sliding_window_inference
         from monai.networks.nets import UNETR
         from monai.data.nifti_writer import write_nifti
-        
+
         from monai.transforms import (
           Activationsd,
           AsDiscreted,
@@ -416,16 +416,16 @@ class MEMOSLogic(ScriptedLoadableModuleLogic):
             AddChanneld(keys=["image"]),
             ToTensord(keys=["image"]),
         ])
-        
-        # get volume 
+
+        # get volume
         filepath = {"image": imagePath}
 
         # set up model
         os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-        
+
         # set GPU
         if torch.cuda.is_available():
-          os.environ["CUDA_VISIBLE_DEVICES"]="0" 
+          os.environ["CUDA_VISIBLE_DEVICES"]="0"
           print("Using device: ", os.environ["CUDA_VISIBLE_DEVICES"])
         # check configuration
         print_config()
@@ -465,9 +465,9 @@ class MEMOSLogic(ScriptedLoadableModuleLogic):
             data=output_formatted,
             file_name=os.path.join(outputPath, outputFile)
               )
-    
+
     def runBatch(self, volumePath, modelPath, outputPath, colorNode):
-        # import MONAI and dependencies 
+        # import MONAI and dependencies
         import nibabel as nib
         import numpy as np
         import torch
@@ -478,7 +478,7 @@ class MEMOSLogic(ScriptedLoadableModuleLogic):
         from monai.inferers import sliding_window_inference
         from monai.networks.nets import UNETR
         from monai.data.nifti_writer import write_nifti
-        
+
         from monai.transforms import (
           Activationsd,
           AsDiscreted,
@@ -519,10 +519,10 @@ class MEMOSLogic(ScriptedLoadableModuleLogic):
 
         # set up model
         os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-        
+
         # set GPU
         if torch.cuda.is_available():
-          os.environ["CUDA_VISIBLE_DEVICES"]="0" 
+          os.environ["CUDA_VISIBLE_DEVICES"]="0"
           print("Using device: ", os.environ["CUDA_VISIBLE_DEVICES"])
         # check configuration
         print_config()
@@ -530,7 +530,7 @@ class MEMOSLogic(ScriptedLoadableModuleLogic):
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         print("Using device: ", device)
         image_dim = 128
-   
+
         net = UNETR(
             in_channels=1,
             out_channels=51,
@@ -576,8 +576,8 @@ class MEMOSLogic(ScriptedLoadableModuleLogic):
             slicer.mrmlScene.RemoveNode(segmentationNode)
             os.remove(outputLabelPath)
             end = time.time()
-            print("MEMOS Inference time: ", end - start)    
-               
+            print("MEMOS Inference time: ", end - start)
+
 #    def getDiceTable(self, refSeg, predictedSeg):
 #      pnode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentComparisonNode")
 #      pnode.SetAndObserveReferenceSegmentationNode(refSeg)
@@ -621,7 +621,7 @@ class MEMOSLogic(ScriptedLoadableModuleLogic):
 #      fullTable.SetUseFirstColumnAsRowHeader(True)
 #      fullTable.SetUseColumnNameAsColumnHeader(True)
 #      slicer.mrmlScene.RemoveNode(dtab)
-      
+
 class MEMOSTest(ScriptedLoadableModuleTest):
     """
       This is the test case for your scripted module.
