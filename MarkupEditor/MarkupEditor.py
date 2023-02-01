@@ -330,8 +330,8 @@ class MarkupEditorLogic(ScriptedLoadableModuleLogic):
       ras = [0]*3
       fiducialsNode.GetNthControlPointPositionWorld(index, ras)
       column, row = rasToColumnRow(ras)
-      if (column >= 0 and column < pickImage.width
-              and row >= 0 and row < pickImage.height):
+      if (column >= 0 and column < pickImage.width()
+              and row >= 0 and row < pickImage.height()):
           pickColor = pickImage.pixelColor(column, row)
           picked = (pickColor != backgroundColor)
           if picked:
