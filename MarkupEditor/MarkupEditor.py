@@ -106,7 +106,12 @@ class MarkupEditorSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin)
         slicer.mrmlScene.AddNode(self.closedCurveNode)
         self.closedCurveNode.SetCurveTypeToLinear()
         self.closedCurveNode.CreateDefaultDisplayNodes()
-        self.closedCurveNode.SetName("Enclose points to delete")
+        if selectOption == "add":
+          self.closedCurveNode.SetName("Enclose points to add")
+        elif selectOption == "unset":
+            self.closedCurveNode.SetName("Enclose points to remove")
+        else:
+          self.closedCurveNode.SetName("Enclose points to set")
         interactionNode.SetCurrentInteractionMode(interactionNode.Place)
         eventID = interactionNode.EndPlacementEvent
         self.observerTag = interactionNode.AddObserver(eventID, self.onCurveInteractionEnded)
