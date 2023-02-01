@@ -97,7 +97,9 @@ class OBJFileFileReader(object):
         #parse the mtl file to look for texture image file name
         if os.path.exists(mtl_path):
           with open(mtl_path) as f:
-            lines = f.read().splitlines() 
+            lines = f.read().splitlines()
+        
+        lines = [i for i in lines if i!='']
         
         texture_filename = lines[len(lines)-1].split(" ")[1]
         texture_path = os.path.join(obj_dir, texture_filename)
