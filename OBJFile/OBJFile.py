@@ -10,16 +10,14 @@ class OBJFile(ScriptedLoadableModule):
     parent.title = 'OBJFile'
     parent.categories = ['Testing.TestCases']
     parent.dependencies = []
-    parent.contributors = ["Chi Zhang (SCRI), Steve Pieper (Isomics)"]
+    parent.contributors = ["Chi Zhang (SCRI), Steve Pieper (Isomics), A. Murat Maga (UW)"]
     parent.helpText = '''
-    This module is used to implement diffusion nifti reading and writing using the conversion tool from PNL at BWH.
+    This module is used to import OBJ file while automatically map .
     '''
     parent.acknowledgementText = '''
     Thanks to:
 
-    Billah, Tashrif; Bouix; Sylvain; Rathi, Yogesh; Various MRI Conversion Tools, https://github.com/pnlbwh/conversion, 2019, DOI: 10.5281/zenodo.2584003
-
-    Supported by NIH Grant 5R01MH119222
+    Steve Pieper and Andras Lasso (functions from TextureModel module of SlicerIGT used in this script to map texture)
     '''
     self.parent = parent
 
@@ -59,27 +57,10 @@ class OBJFileFileReader(object):
     """
     uses properties:
         obj_path - path to the .obj file
-        name (optional) - name for the loaded node
-        bval (optional) - path to the bval file, defaults to match fileName
-        bvec  (optional)- path to the bvec file, defaults to match fileName
     """
     try:
 
-      # _NIfTIFileInstallPackage()
-      # import conversion
-      # import nibabel
-      # import numpy
-
-
       obj_path = properties['fileName'] #obj file path
-
-      # Get node base name from filename
-      # if 'name' in properties.keys():
-      #   baseName = properties['name']
-      # else:
-      #   baseName = os.path.splitext(os.path.basename(filePath))[0]
-      # baseName = slicer.mrmlScene.GenerateUniqueName(baseName)
-      # diffusionNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLDiffusionWeightedVolumeNode', baseName)
       
       obj_dir = os.path.dirname(obj_path)
       obj_filename = os.path.basename(obj_path)
@@ -94,7 +75,7 @@ class OBJFileFileReader(object):
         mtl_filename = base_name + ".mtl"
         mtl_path = os.path.join(obj_dir, mtl_filename)
         
-        #parse the mtl file to look for texture image file name
+        #parse the mtl file to get texture image file name
         if os.path.exists(mtl_path):
           with open(mtl_path) as f:
             lines = f.read().splitlines()
@@ -114,54 +95,15 @@ class OBJFileFileReader(object):
         logic.loadVolume(outputNode=vectorVolNode, progressCallback = None)
         
         
-        import TextureModel
-        textureModelLogic = TextureModel.TextureModelLogic()
-        textureModelLogic.applyTexture(obj_node, vectorVolNode, None)
+        #Map texture to the imported OBJ file
+        modelDisplayNode = obj_node.GetDisplayNode()
+        modelDisplayNode.SetBackfaceCulling(0)
+        textureImageFlipVert = vtk.vtkImageFlip()
+        textureImageFlipVert.SetFilteredAxis(1)
+        textureImageFlipVert.SetInputConnection(vectorVolNode.GetImageDataConnection())
+        modelDisplayNode.SetTextureImageDataConnection(textureImageFlipVert.GetOutputPort())
         
         slicer.mrmlScene.RemoveNode(vectorVolNode)
-          
-      
-      # measurementFrame = vtk.vtkMatrix4x4()
-      # measurementFrame.Identity()
-      # measurementFrame.SetElement(0,0,-1)
-      # measurementFrame.SetElement(1,1,-1)
-      # diffusionNode.SetMeasurementFrameMatrix(measurementFrame)
-      # 
-      # niftiImage = nibabel.load(filePath)
-      # 
-      # affine = niftiImage.affine
-      # ijkToRAS = vtk.vtkMatrix4x4()
-      # for row in range(4):
-      #   for column in range(4):
-      #     ijkToRAS.SetElement(row, column, affine[row][column])
-      # diffusionNode.SetIJKToRASMatrix(ijkToRAS)
-      # 
-      # fdata = niftiImage.get_fdata()
-      # diffusionArray = numpy.transpose(fdata, axes=[2,1,0,3])
-      # 
-      # diffusionImage = vtk.vtkImageData()
-      # dshape = diffusionArray.shape
-      # diffusionImage.SetDimensions(dshape[2],dshape[1],dshape[0])
-      # diffusionImage.AllocateScalars(vtk.VTK_FLOAT, dshape[3])
-      # diffusionNode.SetAndObserveImageData(diffusionImage)
-      # 
-      # nodeArray = slicer.util.arrayFromVolume(diffusionNode)
-      # nodeArray[:] = diffusionArray
-      # slicer.util.arrayFromVolumeModified(diffusionNode)
-      # 
-      # 
-      # pathBase = filePath[:-len(".nii.gz")]
-      # bvalPath = f"{pathBase}.bval"
-      # bvecPath = f"{pathBase}.bvec"
-      # bval = conversion.bval_bvec_io.read_bvals(bvalPath)
-      # bvec = conversion.bval_bvec_io.read_bvecs(bvecPath)
-      # 
-      # diffusionNode.SetNumberOfGradients(len(bval))
-      # for index in range(len(bval)):
-      #   diffusionNode.SetBValue(index, bval[index])
-      #   diffusionNode.SetDiffusionGradient(index, bvec[index])
-      # 
-      # diffusionNode.CreateDefaultDisplayNodes()
 
     except Exception as e:
       logging.error('Failed to load file: '+str(e))
