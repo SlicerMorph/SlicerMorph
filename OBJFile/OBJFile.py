@@ -12,7 +12,7 @@ class OBJFile(ScriptedLoadableModule):
     parent.dependencies = []
     parent.contributors = ["Chi Zhang (SCRI), Steve Pieper (Isomics), A. Murat Maga (UW)"]
     parent.helpText = '''
-    This module is used to import OBJ file while automatically map .
+    This module is used to import OBJ file while automatically map.
     '''
     parent.acknowledgementText = '''
     Thanks to:
