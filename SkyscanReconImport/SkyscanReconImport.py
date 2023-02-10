@@ -146,7 +146,7 @@ class SkyscanReconImportWidget(ScriptedLoadableModuleWidget):
     self.encodingSelector.addWidget(self.utf8CodingButton)
     self.encodingSelector.addWidget(self.latin1CodingButton)
     parametersFormLayout.addRow("Select log file encoding type: ", self.encodingSelector)
-    
+
     #
     # Apply Button
     #
