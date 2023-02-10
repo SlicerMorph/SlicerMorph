@@ -34,7 +34,7 @@ class OBJFileWidget(ScriptedLoadableModuleWidget):
     # Default reload&test widgets are enough.
     # Note that reader and writer is not reloaded.
 
-class OBJFileFileReader(object):
+class OBJFileFileReader:
 
   def __init__(self, parent):
     self.parent = parent
