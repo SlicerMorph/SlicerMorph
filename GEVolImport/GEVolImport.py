@@ -132,6 +132,7 @@ class PCRDataObject:
     self.Y = "NULL"
     self.Z = "NULL"
     self.VoxelSize = "NULL"
+    self.form = "NULL"
 
   def ImportFromFile(self, pcrFilename):
     #Import and parse .pcr file. File name is
@@ -139,7 +140,6 @@ class PCRDataObject:
     with open (pcrFilename) as in_file:
       for line in in_file:
         lines.append(line.strip("\n"))
-      self.form = lines[33].split('=')[1]
       for element in lines:
         if(element.find("Volume_SizeX=")>=0):
           self.X = int(element.split('=', 1)[1])
@@ -149,6 +149,8 @@ class PCRDataObject:
           self.Z = int(element.split('=', 1)[1])
         if(element.find("VoxelSizeRec=")>=0):
           self.voxelSize = float(element.split('=', 1)[1])
+        if(element.find("Format=")>=0):
+          self.form = int(element.split('=')[1])
 
 class GEVolImportLogic(ScriptedLoadableModuleLogic):
   def generateNHDRHeader(self, inputFile):
@@ -169,16 +171,16 @@ class GEVolImportLogic(ScriptedLoadableModuleLogic):
     nhdrPathName = filePathName + ".nhdr"
 
     if fileExtension == ".pcr":
-      if imagePCRFile.form == '3' or imagePCRFile.form == '5' or imagePCRFile.form =='10':
+      if imagePCRFile.form == 1 or imagePCRFile.form == 5 or imagePCRFile.form == 10:
         with open(nhdrPathName, "w") as headerFile:
           headerFile.write("NRRD0004\n")
           headerFile.write("# Complete NRRD file format specification at:\n")
           headerFile.write("# http://teem.sourceforge.net/nrrd/format.html\n")
-          if imagePCRFile.form == '5':
+          if imagePCRFile.form == 5:
             headerFile.write("type: ushort\n")
-          elif imagePCRFile.form == '10':
+          elif imagePCRFile.form == 10:
             headerFile.write("type: float\n")
-          else:
+          elif imagePCRFile.form == 1:
             headerFile.write("type: uchar\n")
           headerFile.write("dimension: 3\n")
           headerFile.write("space: left-posterior-superior\n")
@@ -197,10 +199,14 @@ class GEVolImportLogic(ScriptedLoadableModuleLogic):
           volPathSplit = volPathName.split('/')
           volFileName = volPathSplit[len(volPathSplit)-1]
           headerFile.write(f"data file: {volFileName}\n")
+        # print(imagePCRFile.form)
         print(f".nhdr file path is: {nhdrPathName}")
         #Automatically loading .vol file using the generated .nhdr file.
-        slicer.util.loadVolume(nhdrPathName)
-        print(f"{volFileName} loaded\n")
+        if os.path.exists(volPathName):
+          slicer.util.loadVolume(nhdrPathName)
+          print(f"{volFileName} loaded\n")
+        else:
+          print(f"{volFileName} is not in the same directory\n")
       else:
         print("The format of this dataset is currently not supported by this module. Currently only float (format=10), unsigned 16 bit integer (format=5) and unsigned 8 bit integer (format=1) data types are supported. Please contact us with this dataset to enable this data type.")
     else:
