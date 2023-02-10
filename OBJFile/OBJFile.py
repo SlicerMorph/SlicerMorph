@@ -59,9 +59,7 @@ class OBJFileFileReader(object):
         obj_path - path to the .obj file
     """
     try:
-
       obj_path = properties['fileName'] #obj file path
-      
       obj_dir = os.path.dirname(obj_path)
       obj_filename = os.path.basename(obj_path)
       base_name = os.path.splitext(obj_filename)[0]
@@ -79,12 +77,12 @@ class OBJFileFileReader(object):
         if os.path.exists(mtl_path):
           with open(mtl_path) as f:
             lines = f.read().splitlines()
-        
+            
         lines = [i for i in lines if i!='']
         
         texture_filename = lines[len(lines)-1].split(" ")[1]
         texture_path = os.path.join(obj_dir, texture_filename)
-      
+        
         import ImageStacks
         logic = ImageStacks.ImageStacksLogic()
         vectorVolNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLVectorVolumeNode")
@@ -94,7 +92,6 @@ class OBJFileFileReader(object):
         logic.filePaths = [texture_path]
         logic.loadVolume(outputNode=vectorVolNode, progressCallback = None)
         
-        
         #Map texture to the imported OBJ file
         modelDisplayNode = obj_node.GetDisplayNode()
         modelDisplayNode.SetBackfaceCulling(0)
@@ -102,7 +99,6 @@ class OBJFileFileReader(object):
         textureImageFlipVert.SetFilteredAxis(1)
         textureImageFlipVert.SetInputConnection(vectorVolNode.GetImageDataConnection())
         modelDisplayNode.SetTextureImageDataConnection(textureImageFlipVert.GetOutputPort())
-        
         slicer.mrmlScene.RemoveNode(vectorVolNode)
 
     except Exception as e:
@@ -112,55 +108,4 @@ class OBJFileFileReader(object):
       return False
 
     self.parent.loadedNodes = [obj_node.GetID()]
-    # return True
     return True
-
-
-# class OBJFileWriter(object):
-# 
-#   def __init__(self, parent):
-#     self.parent = parent
-# 
-#   def description(self):
-#     return 'OBJ textured model'
-# 
-#   def fileType(self):
-#     return 'OBJ'
-# 
-#   def extensions(self, obj):
-#     return ['OBJ (*.obj)']
-# 
-#   def canWriteObject(self, obj):
-#     # Only enable this writer in testing mode
-#     if not slicer.app.testingEnabled():
-#       return False
-# 
-#     return bool(obj.IsA("vtkMRMLModelNode"))
-# 
-#   def write(self, properties):
-#     return Fale
-# 
-# 
-# class OBJFileTest(ScriptedLoadableModuleTest):
-#   def runTest(self):
-#     """Run as few or as many tests as needed here.
-#     """
-#     self.setUp()
-#     self.test_Writer()
-#     self.test_Reader()
-#     self.tearDown()
-#     self.delayDisplay('Testing complete')
-# 
-#   def setUp(self):
-#     self.tempDir = slicer.util.tempDirectory()
-#     slicer.mrmlScene.Clear()
-# 
-#   def tearDown(self):
-#     import shutil
-#     shutil.rmtree(self.tempDir, True)
-# 
-#   def test_WriterReader(self):
-#     # Writer and reader tests are put in the same function to ensure
-#     # that writing is done before reading (it generates input data for reading).
-# 
-#     # TODO: rewrite this for NIfTI
