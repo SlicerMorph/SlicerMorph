@@ -137,14 +137,16 @@ class SkyscanReconImportWidget(ScriptedLoadableModuleWidget):
     # self.outputSelector.setToolTip( "Pick the output to the algorithm." )
     # parametersFormLayout.addRow("Output Volume: ", self.outputSelector)
 
-    #
-    # check box to trigger taking screen shots for later use in tutorials
-    #
-    self.enableScreenshotsFlagCheckBox = qt.QCheckBox()
-    self.enableScreenshotsFlagCheckBox.checked = 0
-    self.enableScreenshotsFlagCheckBox.setToolTip("If checked, take screen shots for tutorials. Use Save Data to write them to disk.")
-    parametersFormLayout.addRow("Enable Screenshots", self.enableScreenshotsFlagCheckBox)
-
+    self.defaultCodingButton = qt.QRadioButton("Default")
+    self.defaultCodingButton.checked = True
+    self.utf8CodingButton = qt.QRadioButton("Utf-8")
+    self.latin1CodingButton = qt.QRadioButton("Latin-1")
+    self.encodingSelector = qt.QVBoxLayout()
+    self.encodingSelector.addWidget(self.defaultCodingButton)
+    self.encodingSelector.addWidget(self.utf8CodingButton)
+    self.encodingSelector.addWidget(self.latin1CodingButton)
+    parametersFormLayout.addRow("Select log file encoding type: ", self.encodingSelector)
+    
     #
     # Apply Button
     #
@@ -173,8 +175,13 @@ class SkyscanReconImportWidget(ScriptedLoadableModuleWidget):
 
   def onApplyButton(self):
     logic = SkyscanReconImportLogic()
-    enableScreenshotsFlag = self.enableScreenshotsFlagCheckBox.checked
-    logic.run(self.inputFileSelector.currentPath, enableScreenshotsFlag)
+    if self.defaultCodingButton.checked:
+      encodingType = ""
+    elif self.utf8CodingButton.checked:
+      encodingType = "utf8"
+    else:
+      encodingType = "ISO-8859-1"
+    logic.run(self.inputFileSelector.currentPath, encodingType)
 
 
 class LogDataObject:
@@ -191,9 +198,9 @@ class LogDataObject:
     self.SequenceStart = "NULL"
     self.SequenceEnd = "NULL"
 
-  def ImportFromFile(self, LogFilename):
-    lines = [] 					#Declare an empty list to read file into
-    with open (LogFilename) as in_file:
+  def ImportFromFile(self, LogFilename, encodingType):
+    lines = []       #Declare an empty list to read file into
+    with open (LogFilename, encoding= encodingType) as in_file:
       for line in in_file:
         lines.append(line.strip("\n"))     # add that line list, get rid of line endings
       for element in lines:  # For each element in list
@@ -249,10 +256,6 @@ class SkyscanReconImportLogic(ScriptedLoadableModuleLogic):
       return False
     return True
 
-  def takeScreenshot(self,name,description,type=-1):
-    # show the message even if not taking a screen shot
-    slicer.util.delayDisplay('Take screenshot: '+description+'.\nResult is available in the Annotations module.', 3000)
-
     lm = slicer.app.layoutManager()
     # switch on the type to get the requested window
     widget = 0
@@ -304,14 +307,14 @@ class SkyscanReconImportLogic(ScriptedLoadableModuleLogic):
     slicer.vtkSlicerTransformLogic().hardenTransform(volumeNode)
     slicer.mrmlScene.RemoveNode(transformNode)
 
-  def run(self, inputFile, enableScreenshots=0):
+  def run(self, inputFile, encodingType):
     """
     Run the actual algorithm
     """
     #parse logfile
     logging.info('Processing started')
     imageLogFile = LogDataObject()   #initialize log object
-    imageLogFile.ImportFromFile(inputFile)  #import image parameters of log object
+    imageLogFile.ImportFromFile(inputFile, encodingType)  #import image parameters of log object
 
     if not(imageLogFile.VerifyParameters()): #check that all parameters were set
       logging.info('Failed: Log file parameters not set')
@@ -354,9 +357,6 @@ class SkyscanReconImportLogic(ScriptedLoadableModuleLogic):
     self.applySkyscanTransform(scalarVolumeNode)
     slicer.util.resetSliceViews() #update the field of view
 
-    # Capture screenshot
-    if enableScreenshots:
-      self.takeScreenshot('SkyscanReconImportTest-Start','MyScreenshot',-1)
     logging.info('Processing completed')
 
     return True
