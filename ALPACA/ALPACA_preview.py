@@ -1999,7 +1999,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
 
         def GenerateData(data, agreeData):
             """
-            In current implmentation the agreedata contains two corressponding
+            In current implementation the agreedata contains two corressponding
             points from moving and fixed mesh. However, after the subsampling step the
             number of points need not be equal in those meshes. So we randomly sample
             the points from larger mesh.
@@ -2444,7 +2444,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             angle_bool_flag = angles < angle_threshold
             reject_part_flag = dist_bool_flag  # * angle_bool_flag
 
-            # get matched vertexes and dst_vertexes' normals
+            # get matched vertices and dst_vertexes' normals
             matched_src_pts = matched_src_pts[reject_part_flag, :]
             matched_dst_pts = matched_dst_pts[reject_part_flag, :]
             matched_dst_pt_normals = matched_dst_pt_normals[reject_part_flag, :]
