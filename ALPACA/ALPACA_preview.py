@@ -1999,7 +1999,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
 
         def GenerateData(data, agreeData):
             """
-            In current implementation the agreedata contains two corressponding
+            In current implementation the agreedata contains two corresponding
             points from moving and fixed mesh. However, after the subsampling step the
             number of points need not be equal in those meshes. So we randomly sample
             the points from larger mesh.
