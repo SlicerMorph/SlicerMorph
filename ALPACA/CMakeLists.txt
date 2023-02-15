@@ -4,6 +4,7 @@ set(MODULE_NAME ALPACA)
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}.py
+  ${MODULE_NAME}_preview.py
   )
 
 set(MODULE_PYTHON_RESOURCES
@@ -11,6 +12,7 @@ set(MODULE_PYTHON_RESOURCES
   Resources/Icons/switch_off.png
   Resources/Icons/switch_on.png
   Resources/UI/${MODULE_NAME}.ui
+  Resources/UI/${MODULE_NAME}_preview.ui
   )
 
 #-----------------------------------------------------------------------------
