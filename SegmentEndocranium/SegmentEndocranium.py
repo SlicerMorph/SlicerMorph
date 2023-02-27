@@ -53,13 +53,12 @@ class SegmentEndocraniumWidget(ScriptedLoadableModuleWidget, VTKObservationMixin
         extensionName = 'SurfaceWrapSolidify'
         em = slicer.app.extensionsManagerModel()
         if not em.isExtensionInstalled(extensionName):
-          extensionMetaData = em.retrieveExtensionMetadataByName(extensionName)
-          url = f"{em.serverUrl().toString()}/api/v1/item/{extensionMetaData['_id']}/download"
-          extensionPackageFilename = slicer.app.temporaryPath+'/'+extensionMetaData['_id']
-          slicer.util.downloadFile(url, extensionPackageFilename)
-          em.interactive = False  # Disable popups (automatically install dependencies)
-          em.installExtension(extensionPackageFilename)
-          slicer.util.restart()
+          em.interactive = False  # prevent display of popups
+          em.updateExtensionsMetadataFromServer(True, True)  # update extension metadata from server
+          if not em.downloadAndInstallExtensionByName(extensionName, True, True): 
+            raise ValueError(f"Failed to install {extensionName} extension")
+          else:
+            slicer.util.restart()
   def setup(self):
     """
     Called when the user opens the module the first time and the widget is initialized.
