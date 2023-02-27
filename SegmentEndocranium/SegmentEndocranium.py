@@ -55,7 +55,7 @@ class SegmentEndocraniumWidget(ScriptedLoadableModuleWidget, VTKObservationMixin
         if not em.isExtensionInstalled(extensionName):
           em.interactive = False  # prevent display of popups
           em.updateExtensionsMetadataFromServer(True, True)  # update extension metadata from server
-          if not em.downloadAndInstallExtensionByName(extensionName, True, True): 
+          if not em.downloadAndInstallExtensionByName(extensionName, True, True):
             raise ValueError(f"Failed to install {extensionName} extension")
           else:
             slicer.util.restart()
