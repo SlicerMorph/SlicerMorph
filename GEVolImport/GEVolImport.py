@@ -15,7 +15,7 @@ class GEVolImport(ScriptedLoadableModule):
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "GEVolImport"
-    self.parent.categories = ["Testing.TestCases"]
+    self.parent.categories = ["SlicerMorph.Input and Output"]
     self.parent.dependencies = []
     self.parent.contributors = ["Chi Zhang (SCRI), Murat Maga (UW)"]
     # TODO: update with short description of the module and a link to online module documentation
