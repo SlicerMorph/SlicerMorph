@@ -1,4 +1,4 @@
-<img src="https://raw.githubusercontent.com/SlicerMorph/SlicerMorph/master/GPA/Resources/Icons/GPA.png" alt="SlicerMorph logo" width="256" height="256">
+<img src="https://raw.githubusercontent.com/SlicerMorph/Images/main/husky_small.png" alt="SlicerMorph logo">
 
 This is the official repository for SlicerMorph project.
 
