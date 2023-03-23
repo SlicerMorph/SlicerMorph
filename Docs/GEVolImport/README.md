@@ -6,7 +6,7 @@ This module imports VOL files output by the GE/tome microCT scanner into 3D Slic
 ### Usage
 Click `...` button to and navigate to the **XXXXX.pcr** file, where XXXXX is the name of the VOL file you would like to import. It is assumed that the .VOL file resides in the same place as the .PCR file
 
-### Output Files: 
+### Output Files:
 Hit the Generate NHDR button, this will create a NHDR file for you in the same directory of the PCR and VOL files to be able to load the volume next time, as well as immediately loading it into the active scene.
 
 ### Known Limitations:
