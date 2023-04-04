@@ -2,7 +2,9 @@
 
 This is the official repository for SlicerMorph project.
 
-SlicerMorph enable biologists to retrieve, visualize, measure and annotate high-resolution 3D specimen data both from volumetric scans (CTs and MRs) as well as from  surface scanners more effectively within 3D Slicer. It has a number of modules that facilitate Geometric Morphometrics analysis on these 3D specimens.
+Our project aims to enhance the open-source 3D Slicer platform with cutting-edge tools to assist biologists, anthropologists, and morphologists in analyzing 3D data from research imaging modalities. Our ultimate goal is to foster a collaborative community within the 3D Slicer ecosystem to facilitate seamless data exchange and promote the advancement of open science.
+
+SlicerMorph streamlines digital morphology research by enabling effortless data import, visualization, measurement, annotation, and geometric morphometric analysis on 3D data, including volumetric scans (CTs and MRs) and 3D surface scans, all within the 3D Slicer application. Say goodbye to multiple programs, different file formats, and workflows!
 
 [SlicerMorph: An open and extensible platform to retrieve, visualize and analyze 3D morphology](https://besjournals.onlinelibrary.wiley.com/doi/10.1111/2041-210X.13669) is now available in Methods in Ecology and Evolution as an open-access paper. A more detailed version of this manuscript that explains all digital anatomy workflows in Slicer now is also [available as a preprint on Biorxiv](https://www.biorxiv.org/content/10.1101/2020.11.09.374926v1).
 
