@@ -2235,10 +2235,10 @@ class GPALogic(ScriptedLoadableModuleLogic):
 
   def convertFudicialToVTKPoint(self, fnode):
     import numpy as np
-    numberOfLM=fnode.GetNumberOfFiducials()
+    numberOfLM=fnode.GetNumberOfControlPoints()
     lmData=np.zeros((numberOfLM,3))
     for i in range(numberOfLM):
-      loc = fnode.GetNthFiducialPosition(i)
+      loc = fnode.GetNthControlPointPosition(i)
       lmData[i,:]=np.asarray(loc)
     points=vtk.vtkPoints()
     for i in range(numberOfLM):
@@ -2247,11 +2247,11 @@ class GPALogic(ScriptedLoadableModuleLogic):
 
   def convertFudicialToNP(self, fnode):
     import numpy as np
-    numberOfLM=fnode.GetNumberOfFiducials()
+    numberOfLM=fnode.GetNumberOfControlPoints()
     lmData=np.zeros((numberOfLM,3))
 
     for i in range(numberOfLM):
-      loc = fnode.GetNthFiducialPosition(i)
+      loc = fnode.GetNthControlPointPosition(i)
       lmData[i,:]=np.asarray(loc)
     return lmData
 
