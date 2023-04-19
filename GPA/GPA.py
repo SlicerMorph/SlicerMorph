@@ -1763,7 +1763,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     else:
       index = 0
       for targetLandmark in target:
-        self.cloneLandmarkNode.SetNthControlPointPositionFromArray(index,targetLandmark)
+        self.cloneLandmarkNode.SetNthControlPointPosition(index, targetLandmark)
         index+=1
 
 
@@ -2236,11 +2236,9 @@ class GPALogic(ScriptedLoadableModuleLogic):
   def convertFudicialToVTKPoint(self, fnode):
     import numpy as np
     numberOfLM=fnode.GetNumberOfFiducials()
-    x=y=z=0
-    loc=[x,y,z]
     lmData=np.zeros((numberOfLM,3))
     for i in range(numberOfLM):
-      fnode.GetNthFiducialPosition(i,loc)
+      loc = fnode.GetNthFiducialPosition(i)
       lmData[i,:]=np.asarray(loc)
     points=vtk.vtkPoints()
     for i in range(numberOfLM):
@@ -2250,12 +2248,10 @@ class GPALogic(ScriptedLoadableModuleLogic):
   def convertFudicialToNP(self, fnode):
     import numpy as np
     numberOfLM=fnode.GetNumberOfFiducials()
-    x=y=z=0
-    loc=[x,y,z]
     lmData=np.zeros((numberOfLM,3))
 
     for i in range(numberOfLM):
-      fnode.GetNthFiducialPosition(i,loc)
+      loc = fnode.GetNthFiducialPosition(i)
       lmData[i,:]=np.asarray(loc)
     return lmData
 
