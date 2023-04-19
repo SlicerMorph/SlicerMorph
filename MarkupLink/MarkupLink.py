@@ -19,74 +19,18 @@ class MarkupLink(ScriptedLoadableModule):
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
         self.parent.title = "MarkupLink"
-        self.parent.categories = ["Testing.TestCases"]  
-        self.parent.dependencies = []  
-        self.parent.contributors = ["Sara Rolfe (SCRI), Murat Maga (SCRI, UW)"]  
+        self.parent.categories = ["Testing.TestCases"]
+        self.parent.dependencies = []
+        self.parent.contributors = ["Sara Rolfe (SCRI), Murat Maga (SCRI, UW)"]
         self.parent.helpText = """
-This is an example of scripted loadable module bundled in an extension.
-See more information in <a href="https://github.com/organization/projectname#MarkupLink">module documentation</a>.
-"""
+        This is test module to link two markup nodes for joint editing.
+        """
         # TODO: replace with organization, grant and thanks
         self.parent.acknowledgementText = """
-This file was originally developed by Jean-Christophe Fillion-Robin, Kitware Inc., Andras Lasso, PerkLab,
-and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR013218-12S1.
-"""
-
-        # Additional initialization step after application startup is complete
-        slicer.app.connect("startupCompleted()", registerSampleData)
-
-        
-
-
-#
-# Register sample data sets in Sample Data module
-#
-
-def registerSampleData():
-    """
-    Add data sets to Sample Data module.
-    """
-    # It is always recommended to provide sample data for users to make it easy to try the module,
-    # but if no sample data is available then this method (and associated startupCompeted signal connection) can be removed.
-
-    import SampleData
-    iconsPath = os.path.join(os.path.dirname(__file__), 'Resources/Icons')
-
-    # To ensure that the source code repository remains small (can be downloaded and installed quickly)
-    # it is recommended to store data sets that are larger than a few MB in a Github release.
-
-    # MarkupLink1
-    SampleData.SampleDataLogic.registerCustomSampleDataSource(
-        # Category and sample name displayed in Sample Data module
-        category='MarkupLink',
-        sampleName='MarkupLink1',
-        # Thumbnail should have size of approximately 260x280 pixels and stored in Resources/Icons folder.
-        # It can be created by Screen Capture module, "Capture all views" option enabled, "Number of images" set to "Single".
-        thumbnailFileName=os.path.join(iconsPath, 'MarkupLink1.png'),
-        # Download URL and target file name
-        uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
-        fileNames='MarkupLink1.nrrd',
-        # Checksum to ensure file integrity. Can be computed by this command:
-        #  import hashlib; print(hashlib.sha256(open(filename, "rb").read()).hexdigest())
-        checksums='SHA256:998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95',
-        # This node name will be used when the data set is loaded
-        nodeNames='MarkupLink1'
-    )
-
-    # MarkupLink2
-    SampleData.SampleDataLogic.registerCustomSampleDataSource(
-        # Category and sample name displayed in Sample Data module
-        category='MarkupLink',
-        sampleName='MarkupLink2',
-        thumbnailFileName=os.path.join(iconsPath, 'MarkupLink2.png'),
-        # Download URL and target file name
-        uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
-        fileNames='MarkupLink2.nrrd',
-        checksums='SHA256:1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97',
-        # This node name will be used when the data set is loaded
-        nodeNames='MarkupLink2'
-    )
-
+        This module was developed by Sara Rolfe and Murat Maga for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections"
+        awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839).
+        https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
+        """
 
 #
 # MarkupLinkWidget
@@ -104,7 +48,7 @@ class MarkupLinkWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         ScriptedLoadableModuleWidget.__init__(self, parent)
         VTKObservationMixin.__init__(self)  # needed for parameter node observation
         self.logic = None
-                
+
         # Define custom layouts for GPA modules in slicer global namespace
         slicer.customLayoutMarkupLink = """
           <layout type=\"vertical\" split=\"true\" >
@@ -123,8 +67,7 @@ class MarkupLinkWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
              </layout>
            </item>
           </layout>
-      """
-
+        """
 
     def setup(self):
         """
@@ -160,7 +103,7 @@ class MarkupLinkWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.inputSelector2.connect('currentNodeChanged(vtkMRMLNode*)', self.onSelect)
         self.ui.linkButton.connect('clicked(bool)', self.onLinkButton)
         self.ui.unlinkButton.connect('clicked(bool)', self.onUnlinkButton)
-        
+
         # Custom Layout button
         self.addLayoutButton(700, 'MarkupLink View', 'Custom layout for MarkupLink module', 'LayoutSlicerMorphView.png', slicer.customLayoutMarkupLink)
 
@@ -228,7 +171,7 @@ class MarkupLinkWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         layoutSwitchAction.setToolTip(toolTip)
         layoutSwitchAction.connect('triggered()', lambda layoutId = layoutID: slicer.app.layoutManager().setLayout(layoutId))
         layoutSwitchAction.setData(layoutID)
-    
+
     def assignLayoutDescription(self, node1, node2):
         customLayoutId1=700
         layoutManager = slicer.app.layoutManager()
@@ -268,7 +211,7 @@ class MarkupLinkLogic(ScriptedLoadableModuleLogic):
         ScriptedLoadableModuleLogic.__init__(self)
     @vtk.calldata_type(vtk.VTK_INT)
     def updateinputNode2(self, caller, eventId, callData):
-        if not self.updatingNodesActive: 
+        if not self.updatingNodesActive:
           print(f"PointRemovedEvent: {callData}")
           self.updatingNodesActive = True
           self.node2.RemoveNthControlPoint(callData)
@@ -283,21 +226,21 @@ class MarkupLinkLogic(ScriptedLoadableModuleLogic):
           self.node1.RemoveNthControlPoint(callData)
         else:
           self.updatingNodesActive = False
-    
+
     def updateSelectPoints1(self, caller, eventId):
-      if not self.updatingNodesActive: 
+      if not self.updatingNodesActive:
         self.updatingNodesActive = True
         for i in range(self.node1.GetNumberOfControlPoints()):
           self.node2.SetNthControlPointSelected(i,self.node1.GetNthControlPointSelected(i))
         self.updatingNodesActive = False
-    
+
     def updateSelectPoints2(self, caller, eventId):
-      if not self.updatingNodesActive: 
+      if not self.updatingNodesActive:
         self.updatingNodesActive = True
         for i in range(self.node2.GetNumberOfControlPoints()):
           self.node1.SetNthControlPointSelected(i,self.node2.GetNthControlPointSelected(i))
           self.updatingNodesActive = False
-    
+
     def linkNodes(self, inputNode1, inputNode2):
         logging.info('Linking nodes')
         if inputNode1.GetNumberOfControlPoints() != inputNode2.GetNumberOfControlPoints():
@@ -307,12 +250,10 @@ class MarkupLinkLogic(ScriptedLoadableModuleLogic):
         self.node2 = inputNode2
         self.updatingNodesActive = False
         self.node1.SetFixedNumberOfControlPoints(True)
-        self.node2.SetFixedNumberOfControlPoints(True)       
+        self.node2.SetFixedNumberOfControlPoints(True)
         observerTag1 = inputNode1.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent, self.updateSelectPoints1)
         observerTag2 = inputNode2.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent, self.updateSelectPoints2)
-        #observerTag1 = inputNode1.AddObserver(slicer.vtkMRMLMarkupsNode.PointRemovedEvent, self.updateinputNode2)
-        #observerTag2 = inputNode2.AddObserver(slicer.vtkMRMLMarkupsNode.PointRemovedEvent, self.updateinputNode1)
-        
+
         return[observerTag1, observerTag2]
 
     def unLinkNodes(self, inputNode1, inputNode2, observerTags):
@@ -326,71 +267,3 @@ class MarkupLinkLogic(ScriptedLoadableModuleLogic):
         except:
           print(f"No tag found for {inputNode2.GetName()}")
 
-
-#
-# MarkupLinkTest
-#
-
-class MarkupLinkTest(ScriptedLoadableModuleTest):
-    """
-    This is the test case for your scripted module.
-    Uses ScriptedLoadableModuleTest base class, available at:
-    https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
-    """
-
-    def setUp(self):
-        """ Do whatever is needed to reset the state - typically a scene clear will be enough.
-        """
-        slicer.mrmlScene.Clear()
-
-    def runTest(self):
-        """Run as few or as many tests as needed here.
-        """
-        self.setUp()
-        self.test_MarkupLink1()
-
-    def test_MarkupLink1(self):
-        """ Ideally you should have several levels of tests.  At the lowest level
-        tests should exercise the functionality of the logic with different inputs
-        (both valid and invalid).  At higher levels your tests should emulate the
-        way the user would interact with your code and confirm that it still works
-        the way you intended.
-        One of the most important features of the tests is that it should alert other
-        developers when their changes will have an impact on the behavior of your
-        module.  For example, if a developer removes a feature that you depend on,
-        your test should break so they know that the feature is needed.
-        """
-
-        self.delayDisplay("Starting the test")
-
-        # Get/create input data
-
-        import SampleData
-        registerSampleData()
-        inputVolume = SampleData.downloadSample('MarkupLink1')
-        self.delayDisplay('Loaded test data set')
-
-        inputScalarRange = inputVolume.GetImageData().GetScalarRange()
-        self.assertEqual(inputScalarRange[0], 0)
-        self.assertEqual(inputScalarRange[1], 695)
-
-        outputVolume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode")
-        threshold = 100
-
-        # Test the module logic
-
-        logic = MarkupLinkLogic()
-
-        # Test algorithm with non-inverted threshold
-        logic.process(inputVolume, outputVolume, threshold, True)
-        outputScalarRange = outputVolume.GetImageData().GetScalarRange()
-        self.assertEqual(outputScalarRange[0], inputScalarRange[0])
-        self.assertEqual(outputScalarRange[1], threshold)
-
-        # Test algorithm with inverted threshold
-        logic.process(inputVolume, outputVolume, threshold, False)
-        outputScalarRange = outputVolume.GetImageData().GetScalarRange()
-        self.assertEqual(outputScalarRange[0], inputScalarRange[0])
-        self.assertEqual(outputScalarRange[1], inputScalarRange[1])
-
-        self.delayDisplay('Test passed')
