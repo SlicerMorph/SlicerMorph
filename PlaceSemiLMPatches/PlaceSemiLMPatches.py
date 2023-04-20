@@ -213,7 +213,7 @@ class PlaceSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
             smoothNormalArray = SLLogic.getSmoothNormals(meshNode,smoothingIterations)
             lmFilePath = os.path.join(lmDirectory, lmFileName)
             landmarkNode = slicer.util.loadMarkupsFiducialList(lmFilePath)
-            landmarkNumber=landmarkNode.GetNumberOfControlPoints()
+            [success, landmarkNode] = landmarkNode.GetNumberOfControlPoints()
             for n in range(landmarkNumber):
               landmarkNode.SetNthControlPointLabel(n, str(n+1))
             for triangle in gridVertices:
