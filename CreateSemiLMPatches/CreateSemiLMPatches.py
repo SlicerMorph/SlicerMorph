@@ -341,9 +341,8 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
     sourcePoints.InsertNextPoint(gridPoints.GetPoint(1))
     sourcePoints.InsertNextPoint(gridPoints.GetPoint(2))
 
-    point=[0,0,0]
     for gridVertex in gridLandmarks:
-      LMNode.GetMarkupPoint(0,int(gridVertex-1),point)
+      point = LMNode.GetNthControlPointPosition(int(gridVertex-1))
       targetPoints.InsertNextPoint(point)
 
     #transform grid to triangle
@@ -370,7 +369,7 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
     rayDirection=[0,0,0]
 
     for gridVertex in gridLandmarks:
-      LMNode.GetMarkupPoint(0,int(gridVertex-1),point)
+      point = LMNode.GetNthControlPointPosition(int(gridVertex-1))
       closestPointId = pointLocator.FindClosestPoint(point)
       tempNormal = polydataNormalArray.GetTuple(closestPointId)
       rayDirection[0] += tempNormal[0]
@@ -385,7 +384,7 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
     # gridIndex=0
     # for gridVertex in gridLandmarks:
       # print(gridVertex)
-      # LMNode.GetMarkupPoint(0,int(gridVertex-1),point)
+      # point = LMNode.GetNthControlPointPosition(int(gridVertex-1))
       # closestPointId = pointLocator.FindClosestPoint(point)
       # tempNormal = polydataNormalArray.GetTuple(closestPointId)
       # print(tempNormal)
@@ -414,9 +413,9 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
     # set initial three grid points
     for index in range(0,3):
       origLMPoint=resampledPolydata.GetPoint(index)
-      #landmarkLabel = LMNode.GetNthFiducialLabel(gridLandmarks[index]-1)
+      #landmarkLabel = LMNode.GetNthControlPointLabel(gridLandmarks[index]-1)
       landmarkLabel = str(gridLandmarks[index])
-      semilandmarkPoints.AddFiducialFromArray(origLMPoint, landmarkLabel)
+      semilandmarkPoints.AddControlPoint(origLMPoint, landmarkLabel)
 
     # calculate maximum projection distance
     projectionTolerance = maximumProjectionDistance/.25
@@ -452,7 +451,7 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
       #if there are intersections, update the point to most external one.
       if intersectionPoints.GetNumberOfPoints()>0:
         exteriorPoint = intersectionPoints.GetPoint(intersectionPoints.GetNumberOfPoints()-1)
-        semilandmarkPoints.AddFiducialFromArray(exteriorPoint)
+        semilandmarkPoints.AddControlPoint(exteriorPoint)
       #if there are no intersections, reverse the normal vector
       else:
         for dim in range(len(rayEndPoint)):
@@ -460,12 +459,12 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
         obbTree.IntersectWithLine(modelPoint,rayEndPoint,intersectionPoints,intersectionIds)
         if intersectionPoints.GetNumberOfPoints()>0:
           exteriorPoint = intersectionPoints.GetPoint(0)
-          semilandmarkPoints.AddFiducialFromArray(exteriorPoint)
+          semilandmarkPoints.AddControlPoint(exteriorPoint)
         else:
           print("No intersection, using closest point")
           closestPointId = pointLocator.FindClosestPoint(modelPoint)
           rayOrigin = surfacePolydata.GetPoint(closestPointId)
-          semilandmarkPoints.AddFiducialFromArray(rayOrigin)
+          semilandmarkPoints.AddControlPoint(rayOrigin)
 
     # update lock status and color
     semilandmarkPoints.SetLocked(True)
@@ -475,7 +474,7 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
     #clean up
     slicer.mrmlScene.RemoveNode(transformNode)
     slicer.mrmlScene.RemoveNode(model)
-    print("Total points:", semilandmarkPoints.GetNumberOfFiducials() )
+    print("Total points:", semilandmarkPoints.GetNumberOfControlPoints() )
     return semilandmarkPoints
 
   def getSmoothNormals(self, surfaceNode,iterations):
@@ -559,13 +558,13 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
     # Add semi-landmark points within triangle patches
     for currentNode in nodeList:
       if currentNode != landmarkNode:
-        for index in range(3,currentNode.GetNumberOfFiducials()):
-          currentNode.GetNthFiducialPosition(index,pt)
-          fiducialLabel = currentNode.GetNthFiducialLabel(index)
-          mergedNode.AddFiducialFromArray(pt,fiducialLabel)
-        p1=currentNode.GetNthFiducialLabel(0)
-        p2=currentNode.GetNthFiducialLabel(1)
-        p3=currentNode.GetNthFiducialLabel(2)
+        for index in range(3,currentNode.GetNumberOfControlPoints()):
+          pt = currentNode.GetNthControlPointPosition(index)
+          fiducialLabel = currentNode.GetNthControlPointLabel(index)
+          mergedNode.AddControlPoint(pt,fiducialLabel)
+        p1=currentNode.GetNthControlPointLabel(0)
+        p2=currentNode.GetNthControlPointLabel(1)
+        p3=currentNode.GetNthControlPointLabel(2)
         landmarkVector = [p1,p2,p3]
         triangleList.append(landmarkVector)
         lineSegmentList.append(sorted([p1,p2]))
@@ -600,25 +599,25 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
     tempCurve = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsCurveNode', 'temporaryCurve')
     for segment in lineSegmentList_edit:
       landmarkIndex = int(segment[0])
-      landmarkNode.GetMarkupPoint(0,int(landmarkIndex-1),controlPoint)
+      landmarkNode.GetNthControlPointPosition(int(landmarkIndex-1),controlPoint)
       tempCurve.AddControlPoint(controlPoint)
       landmarkIndex = int(segment[1])
-      landmarkNode.GetMarkupPoint(0,int(landmarkIndex-1),controlPoint)
+      landmarkNode.GetNthControlPointPosition(int(landmarkIndex-1),controlPoint)
       tempCurve.AddControlPoint(controlPoint)
       sampleDist = tempCurve.GetCurveLengthWorld() / (rowColNumber - 1);
       tempCurve.SetAndObserveSurfaceConstraintNode(modelNode)
       tempCurve.ResampleCurveWorld(sampleDist)
       tempCurve.GetControlPointPositionsWorld(edgePoints)
       for i in range(1,edgePoints.GetNumberOfPoints()-1):
-        mergedNode.AddFiducialFromArray(edgePoints.GetPoint(i))
+        mergedNode.AddControlPoint(edgePoints.GetPoint(i))
       tempCurve.RemoveAllControlPoints()
 
     # ------ removing manual points from SL set, leaving this as a placeholder while testing
     # add original landmark points
     #for originalLandmarkPoint in pointList_edit:
     #  landmarkIndex = int(originalLandmarkPoint)
-    #  landmarkNode.GetMarkupPoint(0,int(landmarkIndex-1),controlPoint)
-    #  mergedNode.AddFiducialFromArray(controlPoint)
+    #  landmarkNode.GetNthControlPointPosition(int(landmarkIndex-1),controlPoint)
+    #  mergedNode.AddControlPoint(controlPoint)
 
     # update lock status and color of merged node
     mergedNode.SetLocked(True)
@@ -683,8 +682,7 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
         print("Error: no normal array")
 
     for index in range(originalPoints.GetNumberOfMarkups()):
-      originalPoint=[0,0,0]
-      originalPoints.GetMarkupPoint(0,index,originalPoint)
+      originalPoint = originalPoints.GetNthControlPointPosition(index)
       # get ray direction from closest normal
       closestPointId = pointLocator.FindClosestPoint(originalPoint)
       rayDirection = normalArray.GetTuple(closestPointId)
@@ -697,7 +695,7 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
       #if there are intersections, update the point to most external one.
       if intersectionPoints.GetNumberOfPoints() > 0:
         exteriorPoint = intersectionPoints.GetPoint(intersectionPoints.GetNumberOfPoints()-1)
-        projectedPoints.AddFiducialFromArray(exteriorPoint)
+        projectedPoints.AddControlPoint(exteriorPoint)
       #if there are no intersections, reverse the normal vector
       else:
         for dim in range(len(rayEndPoint)):
@@ -705,12 +703,12 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
         obbTree.IntersectWithLine(originalPoint,rayEndPoint,intersectionPoints,intersectionIds)
         if intersectionPoints.GetNumberOfPoints()>0:
           exteriorPoint = intersectionPoints.GetPoint(0)
-          projectedPoints.AddFiducialFromArray(exteriorPoint)
+          projectedPoints.AddControlPoint(exteriorPoint)
         #if none in reverse direction, use closest mesh point
         else:
           closestPointId = targetPointLocator.FindClosestPoint(originalPoint)
           rayOrigin = targetPolydata.GetPoint(closestPointId)
-          projectedPoints.AddFiducialFromArray(rayOrigin)
+          projectedPoints.AddControlPoint(rayOrigin)
     return True
 
   def projectPointsOut(self, sourcePolydata, targetPolydata, originalPoints, projectedPoints, rayLength):
@@ -744,8 +742,7 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
         print("Error: no normal array")
 
     for index in range(originalPoints.GetNumberOfMarkups()):
-      originalPoint=[0,0,0]
-      originalPoints.GetMarkupPoint(0,index,originalPoint)
+      originalPoint = originalPoints.GetNthControlPointPosition(index)
       # get ray direction from closest normal
       closestPointId = pointLocator.FindClosestPoint(originalPoint)
       rayDirection = normalArray.GetTuple(closestPointId)
@@ -758,7 +755,7 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
       #if there are intersections, update the point to most external one.
       if intersectionPoints.GetNumberOfPoints() > 0:
         exteriorPoint = intersectionPoints.GetPoint(intersectionPoints.GetNumberOfPoints()-1)
-        projectedPoints.AddFiducialFromArray(exteriorPoint)
+        projectedPoints.AddControlPoint(exteriorPoint)
     return True
 
   def projectPointsOutIn(self, sourcePolydata, targetPolydata, originalPoints, projectedPoints, rayLength):
@@ -789,8 +786,7 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
         print("Error: no normal array")
 
     for index in range(originalPoints.GetNumberOfMarkups()):
-      originalPoint=[0,0,0]
-      originalPoints.GetMarkupPoint(0,index,originalPoint)
+      originalPoint = originalPoints.GetNthControlPointPosition(index)
       # get ray direction from closest normal
       closestPointId = pointLocator.FindClosestPoint(originalPoint)
       rayDirection = normalArray.GetTuple(closestPointId)
@@ -803,7 +799,7 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
       #if there are intersections, update the point to most external one.
       if intersectionPoints.GetNumberOfPoints() > 0:
         exteriorPoint = intersectionPoints.GetPoint(intersectionPoints.GetNumberOfPoints()-1)
-        projectedPoints.AddFiducialFromArray(exteriorPoint)
+        projectedPoints.AddControlPoint(exteriorPoint)
       #if there are no intersections, reverse the normal vector
       else:
         for dim in range(len(rayEndPoint)):
@@ -811,7 +807,7 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
         obbTree.IntersectWithLine(originalPoint,rayEndPoint,intersectionPoints,intersectionIds)
         if intersectionPoints.GetNumberOfPoints()>0:
           exteriorPoint = intersectionPoints.GetPoint(0)
-          projectedPoints.AddFiducialFromArray(exteriorPoint)
+          projectedPoints.AddControlPoint(exteriorPoint)
     return True
 
   def takeScreenshot(self,name,description,type=-1):
