@@ -221,7 +221,7 @@ class PlaceSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
             nodeList = slicer.mrmlScene.GetNodesByClass("vtkMRMLMarkupsFiducialNode")
             mergedLandmarkNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode', meshFileName+'_merged')
             success = SLLogic.mergeList(nodeList, landmarkNode, meshNode, sampleRate, mergedLandmarkNode)
-            print("Number of merged landmark points", mergedLandmarkNode.GetNumberOfFiducials())
+            print("Number of merged landmark points", mergedLandmarkNode.GetNumberOfControlPoints())
             if not success:
               print("Something went wrong in CreateSemiLMPatchesLogic.merge")
             #Set all landmarks to semilandmark type
