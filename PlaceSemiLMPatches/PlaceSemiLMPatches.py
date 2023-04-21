@@ -212,8 +212,8 @@ class PlaceSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
             meshNode =slicer.util.loadModel(meshFilePath)
             smoothNormalArray = SLLogic.getSmoothNormals(meshNode,smoothingIterations)
             lmFilePath = os.path.join(lmDirectory, lmFileName)
-            landmarkNode = slicer.util.loadMarkupsFiducialList(lmFilePath)
-            [success, landmarkNumber] = landmarkNode.GetNumberOfControlPoints()
+            [success, landmarkNode] = slicer.util.loadMarkupsFiducialList(lmFilePath)
+            landmarkNumber=landmarkNode.GetNumberOfControlPoints()
             for n in range(landmarkNumber):
               landmarkNode.SetNthControlPointLabel(n, str(n+1))
             for triangle in gridVertices:
@@ -237,8 +237,7 @@ class PlaceSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
     landmarkDescription = "Semi"
     if setToSemiType is False:
       landmarkDescription = "Fixed"
-    [success, landmarkNumber] = landmarkNode.GetNumberOfControlPoints()
-    for controlPointIndex in range(landmarkNumber):
+    for controlPointIndex in range(landmarkNode.GetNumberOfControlPoints()):
       landmarkNode.SetNthControlPointDescription(controlPointIndex, landmarkDescription)
 
   def takeScreenshot(self,name,description,type=-1):
