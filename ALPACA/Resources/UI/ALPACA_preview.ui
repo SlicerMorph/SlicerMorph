@@ -445,7 +445,7 @@
             </property>
             <property name="nameFilters">
              <stringlist>
-              <string>*.ply</string>
+              <string>*.ply *.obj *.vtk</string>
              </stringlist>
             </property>
            </widget>
