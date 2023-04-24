@@ -1661,26 +1661,26 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         subjectFiducial.AddControlPoint(correspondingSubjectPoints.GetPoint(i))
       slicer.mrmlScene.AddNode(subjectFiducial)
       subjectFiducial.SetFixedNumberOfControlPoints(True)
-      
+
       #Inverse subjectFiducial
       ICPTransformNode.Inverse()
       subjectFiducial.SetAndObserveTransformNodeID(ICPTransformNode.GetID())
       slicer.vtkSlicerTransformLogic().hardenTransform(subjectFiducial)
-      
+
       sourceArray = np.zeros(shape=(correspondingSubjectPoints.GetNumberOfPoints(), 3))
       point = [0, 0, 0]
       for i in range(subjectFiducial.GetNumberOfControlPoints()):
         subjectFiducial.GetNthControlPointPosition(i, point)
         sourceArray[i, :] = point
         subjectFiducial.SetNthControlPointLocked(i, 1)
-      
+
       from open3d import geometry
       from open3d import utility
       cloud = geometry.PointCloud()
       cloud.points = utility.Vector3dVector(sourceArray)
       cloud.scale((1/scaling), center = (0,0,0))
       slicer.util.updateMarkupsControlPointsFromArray(subjectFiducial,np.asarray(cloud.points))
-      
+
       slicer.util.saveNode(subjectFiducial, os.path.join(pcdOutputDir, f"{rootName}" + extensionLM))
       slicer.mrmlScene.RemoveNode(sourceModelNode)
       slicer.mrmlScene.RemoveNode(ICPTransformNode)
