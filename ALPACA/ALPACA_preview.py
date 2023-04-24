@@ -3255,22 +3255,22 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
                 subjectFiducial.AddControlPoint(correspondingSubjectPoints.GetPoint(i))
             slicer.mrmlScene.AddNode(subjectFiducial)
             subjectFiducial.SetFixedNumberOfControlPoints(True)
-            
+
             ICPTransformNode.Inverse()
             subjectFiducial.SetAndObserveTransformNodeID(ICPTransformNode.GetID())
             slicer.vtkSlicerTransformLogic().hardenTransform(subjectFiducial)
-            
+
             sourceArray = np.zeros(shape=(correspondingSubjectPoints.GetNumberOfPoints(), 3))
             point = [0, 0, 0]
             for i in range(subjectFiducial.GetNumberOfControlPoints()):
               subjectFiducial.GetNthControlPointPosition(i, point)
               sourceArray[i, :] = point
               subjectFiducial.SetNthControlPointLocked(i, 1)
-            
+
             sourceArray = sourceArray * (1/scaling)
 
             slicer.util.updateMarkupsControlPointsFromArray(subjectFiducial, sourceArray)
-            
+
             slicer.util.saveNode(
                 subjectFiducial, os.path.join(pcdOutputDir, f"{rootName}" + extensionLM)
             )
