@@ -239,7 +239,7 @@ class LMData:
       self.centriodSize=self.centriodSize.reshape(-1,1)
       LMHeaders = [name for name in outputData.columns if 'LM ' in name]
       points = outputData[LMHeaders].to_numpy().transpose()
-      self.lm = points.reshape(int(points.shape[0]/3), 3, -1, order='F')
+      self.lm = points.reshape(int(points.shape[0]/3), 3, -1, order='C')
       self.lmOrig = self.lm
       self.mShape = meanShape[['X','Y','Z']].to_numpy()
       self.val = eigenValues.Scores.to_numpy()
@@ -1146,26 +1146,19 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.meanLandmarkNode.GetDisplayNode().SetSliceProjectionOpacity(1)
 
     #set scaling factor using mean of landmarks
-    self.rawMeanLandmarks = self.LM.lmOrig.mean(2)
+    self.rawMeanLandmarks = self.LM.mShape
     logic = GPALogic()
     self.sampleSizeScaleFactor = logic.dist2(self.rawMeanLandmarks).max()
     print("Scale Factor: " + str(self.sampleSizeScaleFactor))
 
-    # get mean landmarks as a fiducial node
-    self.meanLandmarkNode=slicer.mrmlScene.GetFirstNodeByName('Mean Landmark Node')
-    if self.meanLandmarkNode is None:
-      self.meanLandmarkNode = slicer.vtkMRMLMarkupsFiducialNode()
-      self.meanLandmarkNode.SetName('Mean Landmark Node')
-      slicer.mrmlScene.AddNode(self.meanLandmarkNode)
-      GPANodeCollection.AddItem(self.meanLandmarkNode)
-      modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
-      GPANodeCollection.AddItem(modelDisplayNode)
-
     for landmarkNumber in range (shape[0]):
       name = str(landmarkNumber+1) #start numbering at 1
-      self.meanLandmarkNode.AddFiducialFromArray(self.rawMeanLandmarks[landmarkNumber,:], name)
+      self.meanLandmarkNode.AddControlPoint(self.rawMeanLandmarks[landmarkNumber,:], name)
     self.meanLandmarkNode.SetDisplayVisibility(1)
     self.meanLandmarkNode.LockedOn() #lock position so when displayed they cannot be moved
+    self.meanLandmarkNode.EndModify(True)
+    self.meanLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(1)
+    self.meanLandmarkNode.GetDisplayNode().SetTextScale(3)
     #initialize mean LM display
     self.scaleMeanGlyph()
     self.toggleMeanColor()
