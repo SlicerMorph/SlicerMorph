@@ -1,5 +1,5 @@
 #-----------------------------------------------------------------------------
-set(MODULE_NAME ModelRegistration)
+set(MODULE_NAME ALPACAModelRegistration)
 
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS
