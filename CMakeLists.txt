@@ -19,7 +19,7 @@ include(${Slicer_USE_FILE})
 
 #-----------------------------------------------------------------------------
 # Extension modules
-add_subdirectory(ModelRegistration)
+add_subdirectory(ALPACAModelRegistration)
 ## NEXT_MODULE
 
 #-----------------------------------------------------------------------------
