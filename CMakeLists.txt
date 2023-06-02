@@ -4,7 +4,7 @@ project(registration_test)
 
 #-----------------------------------------------------------------------------
 # Extension meta-information
-set(EXTENSION_HOMEPAGE "https://www.slicer.org/wiki/Documentation/Nightly/Extensions/registration_test")
+set(EXTENSION_HOMEPAGE "https://github.com/chz31/registration_test")
 set(EXTENSION_CATEGORY "Examples")
 set(EXTENSION_CONTRIBUTORS "Chi Zhang (SCRI)")
 set(EXTENSION_DESCRIPTION "Testing registration functions from ALPACA (ITK)")
