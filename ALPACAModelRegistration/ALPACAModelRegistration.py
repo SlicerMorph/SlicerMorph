@@ -141,14 +141,66 @@ class ALPACAModelRegistrationWidget(ScriptedLoadableModuleWidget, VTKObservation
         self.ui.sourceModelSelector.setMRMLScene( slicer.mrmlScene)
         self.ui.targetModelSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onSelect)
         self.ui.targetModelSelector.setMRMLScene( slicer.mrmlScene)
-
+        #run subsampling
+        self.ui.pointDensitySlider.connect('valueChanged(double)', self.onChangeDensitySingle)
+        self.ui.subsampleButton.connect('clicked(bool)', self.onSubsampleButton)
         # Buttons
         self.ui.runRegistrationButton.connect('clicked(bool)', self.onApplyButton)
 
+        # Advanced Settings connections
+        self.ui.pointDensityAdvancedSlider.connect('valueChanged(double)', self.onChangeAdvanced)
+        self.ui.normalSearchRadiusSlider.connect('valueChanged(double)', self.onChangeAdvanced)
+        self.ui.FPFHSearchRadiusSlider.connect('valueChanged(double)', self.onChangeAdvanced)
+        self.ui.maximumCPDThreshold.connect('valueChanged(double)', self.onChangeAdvanced)
+        self.ui.maxRANSAC.connect('valueChanged(double)', self.onChangeAdvanced)
+        # self.ui.RANSACConfidence.connect('valueChanged(double)', self.onChangeAdvanced)
+        self.ui.poissonSubsampleCheckBox.connect("toggled(bool)", self.onChangeAdvanced)
+        self.ui.ICPDistanceThresholdSlider.connect('valueChanged(double)', self.onChangeAdvanced)
+        self.ui.FPFHNeighborsSlider.connect("valueChanged(double)", self.onChangeAdvanced)
+
+        # initialize the parameter dictionary from single run parameters
+        self.parameterDictionary = {
+            "pointDensity": self.ui.pointDensityAdvancedSlider.value,
+            "normalSearchRadius": self.ui.normalSearchRadiusSlider.value,
+            "FPFHNeighbors": int(self.ui.FPFHNeighborsSlider.value),
+            "FPFHSearchRadius": self.ui.FPFHSearchRadiusSlider.value,
+            "distanceThreshold": self.ui.maximumCPDThreshold.value,
+            "maxRANSAC": int(self.ui.maxRANSAC.value),
+            "ICPDistanceThreshold": float(self.ui.ICPDistanceThresholdSlider.value)
+            }
+
 
     def onSelect(self):
+        #Enable subsampling pointcloud button
+        self.ui.subsampleButton.enabled = bool(self.ui.sourceModelSelector.currentNode() and self.ui.targetModelSelector.currentNode())
         #Enable run registration button
         self.ui.runRegistrationButton.enabled = bool ( self.ui.sourceModelSelector.currentNode() and self.ui.targetModelSelector.currentNode())
+
+    def updateLayout(self):
+        layoutManager = slicer.app.layoutManager()
+        layoutManager.setLayout(9)  # set layout to 3D only
+        layoutManager.threeDWidget(0).threeDView().resetFocalPoint()
+        layoutManager.threeDWidget(0).threeDView().resetCamera()
+
+
+    def onChangeAdvanced(self):
+        self.ui.pointDensitySlider.value = self.ui.pointDensityAdvancedSlider.value
+        self.updateParameterDictionary()
+
+    def onChangeDensitySingle(self):
+        self.ui.pointDensityAdvancedSlider.value = self.ui.pointDensitySlider.value
+        self.updateParameterDictionary()
+
+    def updateParameterDictionary(self):
+        # update the parameter dictionary from single run parameters
+        if hasattr(self, "parameterDictionary"):
+            self.parameterDictionary["pointDensity"] = self.ui.pointDensityAdvancedSlider.value
+            self.parameterDictionary["normalSearchRadius"] = int(self.ui.normalSearchRadiusSlider.value)
+            self.parameterDictionary["FPFHNeighbors"] = int(self.ui.FPFHNeighborsSlider.value)
+            self.parameterDictionary["FPFHSearchRadius"] = int(self.ui.FPFHSearchRadiusSlider.value)
+            self.parameterDictionary["distanceThreshold"] = self.ui.maximumCPDThreshold.value
+            self.parameterDictionary["maxRANSAC"] = int(self.ui.maxRANSAC.value)
+            self.parameterDictionary["ICPDistanceThreshold"] = self.ui.ICPDistanceThresholdSlider.value
 
 
     def cleanup(self):
@@ -186,22 +238,127 @@ class ALPACAModelRegistrationWidget(ScriptedLoadableModuleWidget, VTKObservation
         # if self.parent.isEntered:
         #     self.initializeParameterNode()
 
+    def onSubsampleButton(self):
+        try:
+            if self.targetCloudNodeTest is not None:
+                slicer.mrmlScene.RemoveNode(self.targetCloudNodeTest)
+                self.targetCloudNodeTest = None
+        except:
+            pass
+        import ALPACA_preview
+        logic = ALPACA_preview.ALPACALogic()
+        self.sourceModelNode_orig = self.ui.sourceModelSelector.currentNode()
+        self.sourceModelNode_orig.GetDisplayNode().SetVisibility(False)
+        # Create a copy of sourceModelNode then clone it for ALPACA steps
+        shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(
+            slicer.mrmlScene
+        )
+        itemIDToClone = shNode.GetItemByDataNode(self.sourceModelNode_orig)
+        clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(
+            shNode, itemIDToClone
+        )
+        self.sourceModelNode_clone = shNode.GetItemDataNode(clonedItemID)
+        self.sourceModelNode_clone.SetName("SourceModelNode_clone")
+        self.sourceModelNode_clone.GetDisplayNode().SetVisibility(False)
+        # slicer.mrmlScene.RemoveNode(self.sourceModelNode_copy)
+        # Create target Model Node
+        self.targetModelNode = self.ui.targetModelSelector.currentNode()
+        self.targetModelNode.GetDisplayNode().SetVisibility(False)
+        # self.ui.sourceLandmarkSetSelector.currentNode().GetDisplayNode().SetVisibility(
+        #     False
+        # )
+
+        (
+            self.sourcePoints,
+            self.targetPoints,
+            self.sourceFeatures,
+            self.targetFeatures,
+            self.voxelSize,
+            self.scaling,
+        ) = logic.runSubsample(
+            self.sourceModelNode_clone,
+            self.targetModelNode,
+            self.ui.skipScalingCheckBox.checked,
+            self.parameterDictionary,
+            self.ui.poissonSubsampleCheckBox.checked,
+        )
+        # Convert to VTK points for visualization
+        self.targetVTK = logic.convertPointsToVTK(self.targetPoints)
+
+        slicer.mrmlScene.RemoveNode(self.sourceModelNode_clone)
+
+        # Display target points
+        blue = [0, 0, 1]
+        self.targetCloudNodeTest = logic.displayPointCloud(
+            self.targetVTK, self.voxelSize / 10, "Target Pointcloud_test", blue
+        )
+        self.targetCloudNodeTest.GetDisplayNode().SetVisibility(True)
+        self.updateLayout()
+
+        # Output information on subsampling
+        self.ui.subsampleInfo.clear()
+        self.ui.subsampleInfo.insertPlainText(
+            f":: Your subsampled source pointcloud has a total of {len(self.sourcePoints)} points. \n"
+        )
+        self.ui.subsampleInfo.insertPlainText(
+            f":: Your subsampled target pointcloud has a total of {len(self.targetPoints)} points. "
+        )
+
+        # self.ui.runALPACAButton.enabled = True
+        # if bool(self.ui.targetLandmarkSetSelector.currentNode()) == True:
+        #     self.ui.targetLandmarkSetSelector.currentNode().GetDisplayNode().SetVisibility(
+        #         False
+        #     )
+        # try:
+        #     self.manualLMNode.GetDisplayNode().SetVisibility(False)
+        # except:
+        #     pass
+
+    def runALPACACounter(self, run_counter=[0]):
+        run_counter[0] += 1
+        return str(run_counter[0])
+
 
     def onApplyButton(self):
         """
         Run processing when user clicks "Apply" button.
         """
-        
-        self.sourceModelNode = self.ui.sourceModelSelector.currentNode()
+        try:
+            self.sourceModelNode.GetDisplayNode().SetVisibility(False)
+            if self.targetCloudNodeTest is not None:
+                slicer.mrmlScene.RemoveNode(self.targetCloudNodeTest)  # Remove targe cloud node created in the subsampling to avoid confusion
+                self.targetCloudNodeTest = None
+        except:
+            pass
+
+        run_counter = self.runALPACACounter()
+        self.sourceModelNode_orig = self.ui.sourceModelSelector.currentNode()
+        self.sourceModelNode_orig.GetDisplayNode().SetVisibility(False)
+        # Clone the original source mesh stored in the node sourceModelNode_orig
+        shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(
+            slicer.mrmlScene
+        )
+        itemIDToClone = shNode.GetItemByDataNode(self.sourceModelNode_orig)
+        clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(
+            shNode, itemIDToClone
+        )
+        self.sourceModelNode = shNode.GetItemDataNode(clonedItemID)
+        self.sourceModelNode.GetDisplayNode().SetVisibility(False)
+        self.sourceModelNode.SetName(
+            "Source model(rigidly registered)_" + run_counter
+        )  # Create a cloned source model node
+
         self.targetModelNode = self.ui.targetModelSelector.currentNode()
         logic = ALPACAModelRegistrationLogic()
         
-        if self.ui.methodComboBox.currentText == "Open3D":
-          logic.o3dRegistration(self.sourceModelNode, self.targetModelNode)
+        # if self.ui.methodComboBox.currentText == "Open3D":
+        #   logic.o3dRegistration(self.sourceModelNode, self.targetModelNode)
         
-        else:
-          logic.ITKRegistration(self.sourceModelNode, self.targetModelNode)
-          
+        # else:
+        print("skip scaling option is: " + str(self.ui.skipScalingCheckBox.checked))
+        logic.ITKRegistration(self.sourceModelNode, self.targetModelNode, self.ui.skipScalingCheckBox.checked,
+            self.parameterDictionary, self.ui.poissonSubsampleCheckBox.checked, run_counter)
+
 
     def initializeParameterNode(self):
         """
@@ -322,12 +479,12 @@ class ALPACAModelRegistrationLogic(ScriptedLoadableModuleLogic):
         slicer.vtkSlicerTransformLogic().hardenTransform(sourceModelNode)
 
 
-    def ITKRegistration(self, sourceModelNode, targetModelNode):
+    def ITKRegistration(self, sourceModelNode, targetModelNode, skipScalingOption, parameterDictionary, usePoisson, run_counter):
         import ALPACA_preview
         logic = ALPACA_preview.ALPACALogic()
-        parameterDictionary = ALPACA_preview.ALPACA_previewWidget().parameterDictionary
-        skipScalingOption = False
-        usePoisson = False
+        # parameterDictionary = ALPACA_preview.ALPACA_previewWidget().parameterDictionary
+        # skipScalingOption = False
+        # usePoisson = False
         (
             sourcePoints,
             targetPoints,
@@ -356,10 +513,15 @@ class ALPACAModelRegistrationLogic(ScriptedLoadableModuleLogic):
             ICPTransform_similarity, similarityFlag
         )
         ICPTransformNode = logic.convertMatrixToTransformNode(
-            vtkSimilarityTransform, "Rigid Transformation Matrix"
+            vtkSimilarityTransform, ("Rigid Transformation Matrix " + run_counter)
         )
+        # slicer.mrmlScene.AddNode(ICPTransformNode)
         sourceModelNode.SetAndObserveTransformNodeID(ICPTransformNode.GetID())
         slicer.vtkSlicerTransformLogic().hardenTransform(sourceModelNode)
+        sourceModelNode.GetDisplayNode().SetVisibility(True)
+        red = [1, 0, 0]
+        sourceModelNode.GetDisplayNode().SetColor(red)
+        targetModelNode.GetDisplayNode().SetVisibility(True)
 
 #
 # ALPACAModelRegistrationTest
