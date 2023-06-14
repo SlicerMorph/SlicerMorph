@@ -146,6 +146,7 @@ class ALPACAModelRegistrationWidget(ScriptedLoadableModuleWidget, VTKObservation
         self.ui.subsampleButton.connect('clicked(bool)', self.onSubsampleButton)
         # Buttons
         self.ui.runRegistrationButton.connect('clicked(bool)', self.onApplyButton)
+        self.ui.runCPDAffineButton.connect('clicked(bool)', self.onRunCPDAffineButton)
 
         # Advanced Settings connections
         self.ui.pointDensityAdvancedSlider.connect('valueChanged(double)', self.onChangeAdvanced)
@@ -356,8 +357,15 @@ class ALPACAModelRegistrationWidget(ScriptedLoadableModuleWidget, VTKObservation
         
         # else:
         print("skip scaling option is: " + str(self.ui.skipScalingCheckBox.checked))
-        logic.ITKRegistration(self.sourceModelNode, self.targetModelNode, self.ui.skipScalingCheckBox.checked,
+        self.sourcePoints, self.targetPoints = logic.ITKRegistration(self.sourceModelNode, self.targetModelNode, self.ui.skipScalingCheckBox.checked,
             self.parameterDictionary, self.ui.poissonSubsampleCheckBox.checked, run_counter)
+        self.ui.runCPDAffineButton.enabled = True
+
+
+    def onRunCPDAffineButton(self):
+        logic = ALPACAModelRegistrationLogic()
+        # logic.CPDAffineTransform(self.sourcePoints, self.targetPoints)
+
 
 
     def initializeParameterNode(self):
@@ -522,6 +530,16 @@ class ALPACAModelRegistrationLogic(ScriptedLoadableModuleLogic):
         red = [1, 0, 0]
         sourceModelNode.GetDisplayNode().SetColor(red)
         targetModelNode.GetDisplayNode().SetVisibility(True)
+        
+        sourcePoints = logic.transform_numpy_points(sourcePoints, ICPTransform_similarity)
+        
+        return sourcePoints, targetPoints
+
+    # def CPDAffineTransform(sourcePoints, targetPoints):
+    #   from pycpd import AffineRegistration
+    #   #sourcePoints #np array after rigid registration
+    #   #targetPoints #np array of target PCD
+
 
 #
 # ALPACAModelRegistrationTest
