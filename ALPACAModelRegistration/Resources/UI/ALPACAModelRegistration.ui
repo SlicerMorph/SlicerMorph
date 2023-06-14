@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>665</width>
-    <height>426</height>
+    <height>470</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
@@ -180,7 +180,23 @@
         <string>Run the algorithm.</string>
        </property>
        <property name="text">
-        <string>Apply</string>
+        <string>Run Rigid Registration</string>
+       </property>
+      </widget>
+      <widget class="QPushButton" name="runCPDAffineButton">
+       <property name="enabled">
+        <bool>false</bool>
+       </property>
+       <property name="geometry">
+        <rect>
+         <x>0</x>
+         <y>350</y>
+         <width>631</width>
+         <height>21</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>Run CPD Affine Registration</string>
        </property>
       </widget>
      </widget>
