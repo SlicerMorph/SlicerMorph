@@ -296,7 +296,7 @@ class ALPACAModelRegistrationWidget(ScriptedLoadableModuleWidget, VTKObservation
         self.targetCloudNodeTest.GetDisplayNode().SetVisibility(True)
         self.updateLayout()
 
-        # Output information on subsampling
+        # Output information on spycpdubsampling
         self.ui.subsampleInfo.clear()
         self.ui.subsampleInfo.insertPlainText(
             f":: Your subsampled source pointcloud has a total of {len(self.sourcePoints)} points. \n"
@@ -364,7 +364,7 @@ class ALPACAModelRegistrationWidget(ScriptedLoadableModuleWidget, VTKObservation
 
     def onRunCPDAffineButton(self):
         logic = ALPACAModelRegistrationLogic()
-        # logic.CPDAffineTransform(self.sourcePoints, self.targetPoints)
+        logic.CPDAffineTransform(self.sourceModelNode, self.sourcePoints, self.targetPoints)
 
 
 
@@ -535,10 +535,24 @@ class ALPACAModelRegistrationLogic(ScriptedLoadableModuleLogic):
         
         return sourcePoints, targetPoints
 
-    # def CPDAffineTransform(sourcePoints, targetPoints):
-    #   from pycpd import AffineRegistration
-    #   #sourcePoints #np array after rigid registration
-    #   #targetPoints #np array of target PCD
+    def CPDAffineTransform(self, sourceModelNode, sourcePoints, targetPoints):
+       from cpdalp import AffineRegistration
+       import vtk.util.numpy_support as nps
+
+       polyData = sourceModelNode.GetPolyData()
+       points = polyData.GetPoints()
+       numpyModel = nps.vtk_to_numpy(points.GetData())
+
+       reg = AffineRegistration(**{'X': targetPoints, 'Y': sourcePoints, 'low_rank':True})
+       reg.register()
+       TY = reg.transform_point_cloud(numpyModel)
+       vtkArray = nps.numpy_to_vtk(TY)
+       points.SetData(vtkArray)
+       polyData.Modified()
+       sourceModelNode.GetDisplayNode().Modified()
+       sourceModelNode.GetDisplayNode().SetVisibility(True)
+
+
 
 
 #
