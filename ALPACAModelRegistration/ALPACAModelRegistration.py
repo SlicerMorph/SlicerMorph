@@ -364,7 +364,17 @@ class ALPACAModelRegistrationWidget(ScriptedLoadableModuleWidget, VTKObservation
 
     def onRunCPDAffineButton(self):
         logic = ALPACAModelRegistrationLogic()
-        logic.CPDAffineTransform(self.sourceModelNode, self.sourcePoints, self.targetPoints)
+        transformation, translation = logic.CPDAffineTransform(self.sourceModelNode, self.sourcePoints, self.targetPoints)   
+        matrix_vtk = vtk.vtkMatrix4x4()
+        for i in range(3):
+          for j in range(3):
+            matrix_vtk.SetElement(i,j,transformation[j][i])
+        for i in range(3):
+          matrix_vtk.SetElement(i,3,translation[i])
+        affineTransform = vtk.vtkTransform()
+        affineTransform.SetMatrix(matrix_vtk)
+        affineTransformNode =  slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', "Affine_transform_matrix")
+        affineTransformNode.SetAndObserveTransformToParent( affineTransform )
 
 
 
@@ -516,10 +526,13 @@ class ALPACAModelRegistrationLogic(ScriptedLoadableModuleLogic):
             skipScalingOption,
             parameterDictionary,
         )
+        
+        print(ICPTransform_similarity)
     
         vtkSimilarityTransform = logic.itkToVTKTransform(
             ICPTransform_similarity, similarityFlag
         )
+        
         ICPTransformNode = logic.convertMatrixToTransformNode(
             vtkSimilarityTransform, ("Rigid Transformation Matrix " + run_counter)
         )
@@ -551,6 +564,11 @@ class ALPACAModelRegistrationLogic(ScriptedLoadableModuleLogic):
        polyData.Modified()
        sourceModelNode.GetDisplayNode().Modified()
        sourceModelNode.GetDisplayNode().SetVisibility(True)
+       
+       affine_matrix, translation = reg.get_registration_parameters()
+       
+       return affine_matrix, translation
+
 
 
 
