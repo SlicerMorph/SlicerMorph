@@ -91,7 +91,7 @@
          <bool>false</bool>
         </property>
         <property name="toolTip">
-         <string>Initilize the double 3D view</string>
+         <string>Initialize the double 3D view</string>
         </property>
         <property name="text">
          <string>Initialize View</string>

@@ -201,7 +201,7 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       c2View2 = np.array(c2.GetViewUp())
       c2FocalPoint2 = np.array(c2.GetFocalPoint())
       c2Angle2 = np.array(c2.GetViewAngle())
-    
+
       upAngle = self.angle(c1View, c2View) #column 2 (PA)
       v_1 = c1Pos-c1FocalPoint
       v_1=v_1/np.linalg.norm(v_1)
@@ -222,8 +222,8 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       for threeDViewIndex in range(layoutManager.threeDViewCount) :
         view = layoutManager.threeDWidget(threeDViewIndex).threeDView()
         view.resetFocalPoint()
-    
-      #update focal points 
+
+      #update focal points
       c1FocalPoint = np.array(c1.GetFocalPoint())
       c2FocalPoint = np.array(c2.GetFocalPoint())
 
@@ -290,8 +290,8 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         viewNode1.SetLinkedControl(False)
         viewNode2.SetLinkedControl(False)
         self.ui.linkButton.enabled = True
-        
-        
+
+
 #
 # QuickAlignLogic
 #
