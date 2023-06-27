@@ -160,19 +160,18 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         fixedModel = self.ui.inputSelector1.currentNode()
         movingModel = self.ui.inputSelector2.currentNode()
-        self.tieCameras(movingModel, fixedModel)
+        self.alignmentTransform = self.tieCameras(movingModel, fixedModel)
         self.ui.unlinkButton.enabled = True
         self.ui.linkButton.enabled = False
 
     def tieCameras(self, movingModel, templateModel):
       #set layout manager to dual 3d view
       layoutManager = slicer.app.layoutManager()
-      layoutManager.setLayout(15)
+      layoutManager.setLayout(701)
       if layoutManager.threeDViewCount != 2:
         print("Error: Can not find 2 3d views to link.")
         return
 
-      layoutManager.threeDViewCount
       v1 = layoutManager.threeDWidget(0).threeDView().mrmlViewNode()
       v2 = layoutManager.threeDWidget(1).threeDView().mrmlViewNode()
       c1 = slicer.modules.cameras.logic().GetViewActiveCameraNode(v1)
@@ -235,14 +234,20 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       for threeDViewIndex in range(layoutManager.threeDViewCount) :
         view = layoutManager.threeDWidget(threeDViewIndex).threeDView()
         view.resetFocalPoint()
+      
+      return transformNode
 
     def onUnlinkButton(self):
         """
         Run processing when user clicks "Unlink" button.
         """
-        self.logic.unLinkNodes(self.ui.inputSelector1.currentNode(), self.ui.inputSelector1.currentNode(), self.observerList)
+        slicer.mrmlScene.RemoveNode(self.alignmentTransform)
         self.ui.unlinkButton.enabled = False
         self.ui.linkButton.enabled = bool(self.ui.inputSelector1.currentNode and self.ui.inputSelector2.currentNode)
+        # unlink the views
+        layoutManager = slicer.app.layoutManager()
+        v1 = layoutManager.threeDWidget(0).threeDView().mrmlViewNode()
+        v1.SetLinkedControl(False)
 
     def addLayoutButton(self, layoutID, buttonAction, toolTip, imageFileName, layoutDiscription):
         layoutManager = slicer.app.layoutManager()
@@ -290,6 +295,11 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         viewNode1.SetLinkedControl(False)
         viewNode2.SetLinkedControl(False)
         self.ui.linkButton.enabled = True
+        
+        #update camera
+        for threeDViewIndex in range(layoutManager.threeDViewCount) :
+          view = layoutManager.threeDWidget(threeDViewIndex).threeDView()
+          view.resetFocalPoint()
 
 
 #
