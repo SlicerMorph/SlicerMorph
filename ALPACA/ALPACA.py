@@ -27,7 +27,7 @@ class ALPACA(ScriptedLoadableModule):
     self.parent.title = "ALPACA"
     self.parent.categories = ["SlicerMorph.Geometric Morphometrics"]
     self.parent.dependencies = []
-    self.parent.contributors = ["Arthur Porto (LSU), Sara Rolfe (UW), Murat Maga (UW)"]
+    self.parent.contributors = ["Arthur Porto (LSU), Sara Rolfe (UW), Chi Zhang (SCRI), Murat Maga (UW)"]
     self.parent.helpText = """
       This module automatically transfers landmarks on a reference 3D model (mesh) to a target 3D model using dense correspondence and deformable registration. First optimize the parameters in single alignment analysis, then use them in batch mode to apply to all 3D models.
       <p>For more information see the <a href="https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/ALPACA">online documentation.</a>.</p>

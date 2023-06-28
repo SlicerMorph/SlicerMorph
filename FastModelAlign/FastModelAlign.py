@@ -20,9 +20,9 @@ class FastModelAlign(ScriptedLoadableModule):
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
         self.parent.title = "FastModelAlign"  # TODO: make this more human readable by adding spaces
-        self.parent.categories = ["Examples"]  # TODO: set categories (folders where the module shows up in the module selector)
+        self.parent.categories = ["SlicerMorph.Utilities"]  # TODO: set categories (folders where the module shows up in the module selector)
         self.parent.dependencies = []  # TODO: add here list of module names that this module requires
-        self.parent.contributors = ["Chi Zhang (SCRI)"]  # TODO: replace with "Firstname Lastname (Organization)"
+        self.parent.contributors = ["Chi Zhang (SCRI), Arthur Porto (Lousiana State University), Murat Maga (UW)"]  # TODO: replace with "Firstname Lastname (Organization)"
         # TODO: update with short description of the module and a link to online module documentation
         self.parent.helpText = """
 This is an example of scripted loadable module bundled in an extension.
@@ -30,7 +30,7 @@ See more information in <a href="https://github.com/organization/projectname#Fas
 """
         # TODO: replace with organization, grant and thanks
         self.parent.acknowledgementText = """
-The development is supported by Imageomics Institue (NSF 2118240).
+The development is supported by Imageomics Institue NSF OAC-2118240.
 """
 
         # Additional initialization step after application startup is complete
@@ -287,14 +287,6 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         slicer.mrmlScene.RemoveNode(self.sourceModelNode_clone)
 
-        # Display target points
-        # blue = [0, 0, 1]
-        # self.targetCloudNodeTest = logic.displayPointCloud(
-        #     self.targetVTK, self.voxelSize / 10, "Target Pointcloud_test", blue
-        # )
-        # self.targetCloudNodeTest.GetDisplayNode().SetVisibility(True)
-        # self.updateLayout()
-
         # Output information on spycpdubsampling
         self.ui.subsampleInfo.clear()
         self.ui.subsampleInfo.insertPlainText(
@@ -342,9 +334,9 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         run_counter = self.runALPACACounter()
         self.sourceModelNode_orig = self.ui.sourceModelSelector.currentNode()
         self.sourceModelNode_orig.GetDisplayNode().SetVisibility(False)
-        
+
         self.sourceModelName = self.sourceModelNode_orig.GetName()
-        
+
         # Clone the original source mesh stored in the node sourceModelNode_orig
         shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(
             slicer.mrmlScene
@@ -356,13 +348,13 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.sourceModelNode = shNode.GetItemDataNode(clonedItemID)
         self.sourceModelNode.GetDisplayNode().SetVisibility(False)
         self.sourceModelNode.SetName("Source model(rigidly registered)_" + run_counter)  # Create a cloned source model node
-        
+
         self.targetModelNode = self.ui.targetModelSelector.currentNode()
         logic = FastModelAlignLogic()
-        
+
         self.sourcePoints, self.targetPoints, self.scalingTransformNode, self.ICPTransformNode = logic.ITKRegistration(self.sourceModelNode, self.targetModelNode, self.ui.skipScalingCheckBox.checked,
             self.parameterDictionary, self.ui.poissonSubsampleCheckBox.checked, run_counter)
-        
+
         scalingNodeName = self.sourceModelName + "_scaling"
         rigidNodeName = self.sourceModelName + "_rigid"
         self.scalingTransformNode.SetName(scalingNodeName)
@@ -374,9 +366,6 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.sourcePolyData = self.sourceModelNode.GetPolyData()
             self.outputModelNode.SetAndObservePolyData(self.sourcePolyData)
             #Create a display node
-            # displayNode = slicer.vtkMRMLModelDisplayNode()
-            # slicer.mrmlScene.AddNode(displayNode)
-            # self.outputModelNode.SetAndObserveDisplayNodeID(displayNode.GetID())
             self.outputModelNode.CreateDefaultDisplayNodes()
             #
             self.outputModelNode.GetDisplayNode().SetVisibility(True)
@@ -406,12 +395,11 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         affineTransform.SetMatrix(matrix_vtk)
         affineTransformNode =  slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', "Affine_transform_matrix")
         affineTransformNode.SetAndObserveTransformToParent( affineTransform )
-        
+
         affineNodeName = self.sourceModelName + "_affine"
         affineTransformNode.SetName(affineNodeName)
-        
+
         #Put affine transform node under scaling  transform node, which has been put under the rigid transform node
-        
         self.ICPTransformNode.SetAndObserveTransformNodeID(affineTransformNode.GetID())
         self.ui.runCPDAffineButton.enabled = False
 
@@ -468,18 +456,6 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
         """
         ScriptedLoadableModuleLogic.__init__(self)
 
-    def o3dRegistration(self, sourceModelNode, targetModelNode):
-        import ALPACA
-        logic = ALPACA.ALPACALogic()
-        parameterDictionary = ALPACA.ALPACAWidget().parameterDictionary
-        skipScalingOption = False
-        sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, scaling = logic.runSubsample(sourceModelNode, targetModelNode,
-          skipScalingOption, parameterDictionary)
-        ICPTransform = logic.estimateTransform(sourcePoints, targetPoints, sourceFeatures, targetFeatures, voxelSize, skipScalingOption, parameterDictionary)
-        ICPTransformNode = logic.convertMatrixToTransformNode(ICPTransform, 'Rigid Transformation Matrix')
-        sourceModelNode.SetAndObserveTransformNodeID(ICPTransformNode.GetID())
-        slicer.vtkSlicerTransformLogic().hardenTransform(sourceModelNode)
-
 
     def ITKRegistration(self, sourceModelNode, targetModelNode, skipScalingOption, parameterDictionary, usePoisson, run_counter):
         import ALPACA_preview
@@ -527,7 +503,7 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
         vtkSimilarityTransform = logic.itkToVTKTransform(
             ICPTransform_similarity, similarityFlag
         )
-        
+
         ICPTransformNode = logic.convertMatrixToTransformNode(
             vtkSimilarityTransform, ("Rigid Transformation Matrix " + run_counter)
         )
@@ -537,10 +513,10 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
         red = [1, 0, 0]
         sourceModelNode.GetDisplayNode().SetColor(red)
         targetModelNode.GetDisplayNode().SetVisibility(True)
-        
+
         sourcePoints = logic.transform_numpy_points(sourcePoints, ICPTransform_similarity)
-        
-        
+
+
         #Put scaling transform under ICP transform = rigid transform after scaling
         scalingTransformNode.SetAndObserveTransformNodeID(ICPTransformNode.GetID())
         
@@ -560,12 +536,9 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
        vtkArray = nps.numpy_to_vtk(TY)
        points.SetData(vtkArray)
        polyData.Modified()
-       # sourceModelNode.GetDisplayNode().Modified()
-       # sourceModelNode.GetDisplayNode().SetVisibility(True)
-       
+
        affine_matrix, translation = reg.get_registration_parameters()
-       
-       
+
        return affine_matrix, translation
 
 
