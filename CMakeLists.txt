@@ -1,5 +1,5 @@
 #-----------------------------------------------------------------------------
-set(MODULE_NAME ALPACAModelRegistration)
+set(MODULE_NAME FastModelAlign)
 
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS

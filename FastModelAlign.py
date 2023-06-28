@@ -9,29 +9,28 @@ from slicer.util import VTKObservationMixin
 
 
 #
-# ALPACAModelRegistration
+# FastModelAlign
 #
 
-class ALPACAModelRegistration(ScriptedLoadableModule):
+class FastModelAlign(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class, available at:
     https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
     """
 
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
-        self.parent.title = "ALPACAModelRegistration"  # TODO: make this more human readable by adding spaces
+        self.parent.title = "FastModelAlign"  # TODO: make this more human readable by adding spaces
         self.parent.categories = ["Examples"]  # TODO: set categories (folders where the module shows up in the module selector)
         self.parent.dependencies = []  # TODO: add here list of module names that this module requires
         self.parent.contributors = ["Chi Zhang (SCRI)"]  # TODO: replace with "Firstname Lastname (Organization)"
         # TODO: update with short description of the module and a link to online module documentation
         self.parent.helpText = """
 This is an example of scripted loadable module bundled in an extension.
-See more information in <a href="https://github.com/organization/projectname#ALPACAModelRegistration">module documentation</a>.
+See more information in <a href="https://github.com/organization/projectname#FastModelAlign">module documentation</a>.
 """
         # TODO: replace with organization, grant and thanks
         self.parent.acknowledgementText = """
-This file was originally developed by Jean-Christophe Fillion-Robin, Kitware Inc., Andras Lasso, PerkLab,
-and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR013218-12S1.
+The development is supported by Imageomics Institue (NSF 2118240).
 """
 
         # Additional initialization step after application startup is complete
@@ -55,44 +54,44 @@ def registerSampleData():
     # To ensure that the source code repository remains small (can be downloaded and installed quickly)
     # it is recommended to store data sets that are larger than a few MB in a Github release.
 
-    # ALPACAModelRegistration1
+    # FastModelAlign1
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
         # Category and sample name displayed in Sample Data module
-        category='ALPACAModelRegistration',
-        sampleName='ALPACAModelRegistration1',
+        category='FastModelAlign',
+        sampleName='FastModelAlign1',
         # Thumbnail should have size of approximately 260x280 pixels and stored in Resources/Icons folder.
         # It can be created by Screen Capture module, "Capture all views" option enabled, "Number of images" set to "Single".
-        thumbnailFileName=os.path.join(iconsPath, 'ALPACAModelRegistration1.png'),
+        thumbnailFileName=os.path.join(iconsPath, 'FastModelAlign1.png'),
         # Download URL and target file name
         uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
-        fileNames='ALPACAModelRegistration1.nrrd',
+        fileNames='FastModelAlign1.nrrd',
         # Checksum to ensure file integrity. Can be computed by this command:
         #  import hashlib; print(hashlib.sha256(open(filename, "rb").read()).hexdigest())
         checksums='SHA256:998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95',
         # This node name will be used when the data set is loaded
-        nodeNames='ALPACAModelRegistration1'
+        nodeNames='FastModelAlign1'
     )
 
-    # ALPACAModelRegistration2
+    # FastModelAlign2
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
         # Category and sample name displayed in Sample Data module
-        category='ALPACAModelRegistration',
-        sampleName='ALPACAModelRegistration2',
-        thumbnailFileName=os.path.join(iconsPath, 'ALPACAModelRegistration2.png'),
+        category='FastModelAlign',
+        sampleName='FastModelAlign2',
+        thumbnailFileName=os.path.join(iconsPath, 'FastModelAlign2.png'),
         # Download URL and target file name
         uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
-        fileNames='ALPACAModelRegistration2.nrrd',
+        fileNames='FastModelAlign2.nrrd',
         checksums='SHA256:1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97',
         # This node name will be used when the data set is loaded
-        nodeNames='ALPACAModelRegistration2'
+        nodeNames='FastModelAlign2'
     )
 
 
 #
-# ALPACAModelRegistrationWidget
+# FastModelAlignWidget
 #
 
-class ALPACAModelRegistrationWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
+class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     """Uses ScriptedLoadableModuleWidget base class, available at:
     https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
     """
@@ -115,7 +114,7 @@ class ALPACAModelRegistrationWidget(ScriptedLoadableModuleWidget, VTKObservation
 
         # Load widget from .ui file (created by Qt Designer).
         # Additional widgets can be instantiated manually and added to self.layout.
-        uiWidget = slicer.util.loadUI(self.resourcePath('UI/ALPACAModelRegistration.ui'))
+        uiWidget = slicer.util.loadUI(self.resourcePath('UI/FastModelAlign.ui'))
         self.layout.addWidget(uiWidget)
         self.ui = slicer.util.childWidgetVariables(uiWidget)
 
@@ -126,7 +125,7 @@ class ALPACAModelRegistrationWidget(ScriptedLoadableModuleWidget, VTKObservation
 
         # Create logic class. Logic implements all computations that should be possible to run
         # in batch mode, without a graphical user interface.
-        self.logic = ALPACAModelRegistrationLogic()
+        self.logic = FastModelAlignLogic()
 
         # Connections
 
@@ -141,12 +140,15 @@ class ALPACAModelRegistrationWidget(ScriptedLoadableModuleWidget, VTKObservation
         self.ui.sourceModelSelector.setMRMLScene( slicer.mrmlScene)
         self.ui.targetModelSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onSelect)
         self.ui.targetModelSelector.setMRMLScene( slicer.mrmlScene)
+        self.ui.outputSelector.setMRMLScene( slicer.mrmlScene)
+        self.ui.outputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onSelect)
         #run subsampling
         self.ui.pointDensitySlider.connect('valueChanged(double)', self.onChangeDensitySingle)
         self.ui.subsampleButton.connect('clicked(bool)', self.onSubsampleButton)
         # Buttons
-        self.ui.runRegistrationButton.connect('clicked(bool)', self.onApplyButton)
+        self.ui.runRigidRegistrationButton.connect('clicked(bool)', self.onApplyButton)
         self.ui.runCPDAffineButton.connect('clicked(bool)', self.onRunCPDAffineButton)
+
 
         # Advanced Settings connections
         self.ui.pointDensityAdvancedSlider.connect('valueChanged(double)', self.onChangeAdvanced)
@@ -173,9 +175,9 @@ class ALPACAModelRegistrationWidget(ScriptedLoadableModuleWidget, VTKObservation
 
     def onSelect(self):
         #Enable subsampling pointcloud button
-        self.ui.subsampleButton.enabled = bool(self.ui.sourceModelSelector.currentNode() and self.ui.targetModelSelector.currentNode())
+        self.ui.subsampleButton.enabled = bool(self.ui.sourceModelSelector.currentNode() and self.ui.targetModelSelector.currentNode() and self.ui.outputSelector.currentNode())
         #Enable run registration button
-        self.ui.runRegistrationButton.enabled = bool ( self.ui.sourceModelSelector.currentNode() and self.ui.targetModelSelector.currentNode())
+        self.ui.runRigidRegistrationButton.enabled = bool ( self.ui.sourceModelSelector.currentNode() and self.ui.targetModelSelector.currentNode() and self.ui.outputSelector.currentNode())
 
     def updateLayout(self):
         layoutManager = slicer.app.layoutManager()
@@ -249,7 +251,7 @@ class ALPACAModelRegistrationWidget(ScriptedLoadableModuleWidget, VTKObservation
         import ALPACA_preview
         logic = ALPACA_preview.ALPACALogic()
         self.sourceModelNode_orig = self.ui.sourceModelSelector.currentNode()
-        self.sourceModelNode_orig.GetDisplayNode().SetVisibility(False)
+        # self.sourceModelNode_orig.GetDisplayNode().SetVisibility(False)
         # Create a copy of sourceModelNode then clone it for ALPACA steps
         shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(
             slicer.mrmlScene
@@ -260,14 +262,11 @@ class ALPACAModelRegistrationWidget(ScriptedLoadableModuleWidget, VTKObservation
         )
         self.sourceModelNode_clone = shNode.GetItemDataNode(clonedItemID)
         self.sourceModelNode_clone.SetName("SourceModelNode_clone")
-        self.sourceModelNode_clone.GetDisplayNode().SetVisibility(False)
+        # self.sourceModelNode_clone.GetDisplayNode().SetVisibility(False)
         # slicer.mrmlScene.RemoveNode(self.sourceModelNode_copy)
         # Create target Model Node
         self.targetModelNode = self.ui.targetModelSelector.currentNode()
-        self.targetModelNode.GetDisplayNode().SetVisibility(False)
-        # self.ui.sourceLandmarkSetSelector.currentNode().GetDisplayNode().SetVisibility(
-        #     False
-        # )
+        # self.targetModelNode.GetDisplayNode().SetVisibility(False)
 
         (
             self.sourcePoints,
@@ -289,12 +288,12 @@ class ALPACAModelRegistrationWidget(ScriptedLoadableModuleWidget, VTKObservation
         slicer.mrmlScene.RemoveNode(self.sourceModelNode_clone)
 
         # Display target points
-        blue = [0, 0, 1]
-        self.targetCloudNodeTest = logic.displayPointCloud(
-            self.targetVTK, self.voxelSize / 10, "Target Pointcloud_test", blue
-        )
-        self.targetCloudNodeTest.GetDisplayNode().SetVisibility(True)
-        self.updateLayout()
+        # blue = [0, 0, 1]
+        # self.targetCloudNodeTest = logic.displayPointCloud(
+        #     self.targetVTK, self.voxelSize / 10, "Target Pointcloud_test", blue
+        # )
+        # self.targetCloudNodeTest.GetDisplayNode().SetVisibility(True)
+        # self.updateLayout()
 
         # Output information on spycpdubsampling
         self.ui.subsampleInfo.clear()
@@ -305,19 +304,27 @@ class ALPACAModelRegistrationWidget(ScriptedLoadableModuleWidget, VTKObservation
             f":: Your subsampled target pointcloud has a total of {len(self.targetPoints)} points. "
         )
 
-        # self.ui.runALPACAButton.enabled = True
-        # if bool(self.ui.targetLandmarkSetSelector.currentNode()) == True:
-        #     self.ui.targetLandmarkSetSelector.currentNode().GetDisplayNode().SetVisibility(
-        #         False
-        #     )
-        # try:
-        #     self.manualLMNode.GetDisplayNode().SetVisibility(False)
-        # except:
-        #     pass
 
     def runALPACACounter(self, run_counter=[0]):
         run_counter[0] += 1
         return str(run_counter[0])
+
+    def currentNode(self):
+      # TODO: this should be moved to qMRMLSubjectHierarchyComboBox::currentNode()
+      if self.outputSelector.className() == "qMRMLSubjectHierarchyComboBox":
+        shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+        selectedItem = self.outputSelector.currentItem()
+        outputNode = shNode.GetItemDataNode(selectedItem)
+      else:
+        return self.ui.outputSelector.currentNode()
+
+    def setCurrentNode(self, node):
+      if self.ui.outputSelector.className() == "qMRMLSubjectHierarchyComboBox":
+        # not sure how to select in the subject hierarychy
+        pass
+      else:
+        self.ui.outputSelector.setCurrentNode(node)
+
 
 
     def onApplyButton(self):
@@ -335,6 +342,9 @@ class ALPACAModelRegistrationWidget(ScriptedLoadableModuleWidget, VTKObservation
         run_counter = self.runALPACACounter()
         self.sourceModelNode_orig = self.ui.sourceModelSelector.currentNode()
         self.sourceModelNode_orig.GetDisplayNode().SetVisibility(False)
+        
+        self.sourceModelName = self.sourceModelNode_orig.GetName()
+        
         # Clone the original source mesh stored in the node sourceModelNode_orig
         shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(
             slicer.mrmlScene
@@ -345,26 +355,47 @@ class ALPACAModelRegistrationWidget(ScriptedLoadableModuleWidget, VTKObservation
         )
         self.sourceModelNode = shNode.GetItemDataNode(clonedItemID)
         self.sourceModelNode.GetDisplayNode().SetVisibility(False)
-        self.sourceModelNode.SetName(
-            "Source model(rigidly registered)_" + run_counter
-        )  # Create a cloned source model node
-
+        self.sourceModelNode.SetName("Source model(rigidly registered)_" + run_counter)  # Create a cloned source model node
+        
         self.targetModelNode = self.ui.targetModelSelector.currentNode()
-        logic = ALPACAModelRegistrationLogic()
+        logic = FastModelAlignLogic()
         
-        # if self.ui.methodComboBox.currentText == "Open3D":
-        #   logic.o3dRegistration(self.sourceModelNode, self.targetModelNode)
-        
-        # else:
-        print("skip scaling option is: " + str(self.ui.skipScalingCheckBox.checked))
-        self.sourcePoints, self.targetPoints = logic.ITKRegistration(self.sourceModelNode, self.targetModelNode, self.ui.skipScalingCheckBox.checked,
+        self.sourcePoints, self.targetPoints, self.scalingTransformNode, self.ICPTransformNode = logic.ITKRegistration(self.sourceModelNode, self.targetModelNode, self.ui.skipScalingCheckBox.checked,
             self.parameterDictionary, self.ui.poissonSubsampleCheckBox.checked, run_counter)
+        
+        scalingNodeName = self.sourceModelName + "_scaling"
+        rigidNodeName = self.sourceModelName + "_rigid"
+        self.scalingTransformNode.SetName(scalingNodeName)
+        self.ICPTransformNode.SetName(rigidNodeName)
+
+        red = [1, 0, 0]
+        if bool(self.ui.outputSelector.currentNode()):
+            self.outputModelNode = self.ui.outputSelector.currentNode()
+            self.sourcePolyData = self.sourceModelNode.GetPolyData()
+            self.outputModelNode.SetAndObservePolyData(self.sourcePolyData)
+            #Create a display node
+            # displayNode = slicer.vtkMRMLModelDisplayNode()
+            # slicer.mrmlScene.AddNode(displayNode)
+            # self.outputModelNode.SetAndObserveDisplayNodeID(displayNode.GetID())
+            self.outputModelNode.CreateDefaultDisplayNodes()
+            #
+            self.outputModelNode.GetDisplayNode().SetVisibility(True)
+            self.outputModelNode.GetDisplayNode().SetColor(red)
+
+        slicer.mrmlScene.RemoveNode(self.sourceModelNode)
+        
+        if self.ui.skipScalingCheckBox.checked:
+            slicer.mrmlScene.RemoveNode(self.scalingTransformNode)
+
         self.ui.runCPDAffineButton.enabled = True
 
 
     def onRunCPDAffineButton(self):
-        logic = ALPACAModelRegistrationLogic()
-        transformation, translation = logic.CPDAffineTransform(self.sourceModelNode, self.sourcePoints, self.targetPoints)   
+        logic = FastModelAlignLogic()
+        if bool(self.ui.outputSelector.currentNode()):
+            transformation, translation = logic.CPDAffineTransform(self.outputModelNode, self.sourcePoints, self.targetPoints)
+        else:
+            transformation, translation = logic.CPDAffineTransform(self.sourceModelNode, self.sourcePoints, self.targetPoints)
         matrix_vtk = vtk.vtkMatrix4x4()
         for i in range(3):
           for j in range(3):
@@ -375,23 +406,20 @@ class ALPACAModelRegistrationWidget(ScriptedLoadableModuleWidget, VTKObservation
         affineTransform.SetMatrix(matrix_vtk)
         affineTransformNode =  slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', "Affine_transform_matrix")
         affineTransformNode.SetAndObserveTransformToParent( affineTransform )
-
+        
+        affineNodeName = self.sourceModelName + "_affine"
+        affineTransformNode.SetName(affineNodeName)
+        
+        #Put affine transform node under scaling  transform node, which has been put under the rigid transform node
+        
+        self.ICPTransformNode.SetAndObserveTransformNodeID(affineTransformNode.GetID())
+        self.ui.runCPDAffineButton.enabled = False
 
 
     def initializeParameterNode(self):
         """
         Ensure parameter node exists and observed.
         """
-        # Parameter node stores all user choices in parameter values, node selections, etc.
-        # so that when the scene is saved and reloaded, these settings are restored.
-
-        # self.setParameterNode(self.logic.getParameterNode())
-        # 
-        # # Select default input nodes if nothing is selected yet to save a few clicks for the user
-        # if not self._parameterNode.GetNodeReference("InputVolume"):
-        #     firstVolumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
-        #     if firstVolumeNode:
-        #         self._parameterNode.SetNodeReferenceID("InputVolume", firstVolumeNode.GetID())
 
     def setParameterNode(self, inputParameterNode):
         """
@@ -399,20 +427,6 @@ class ALPACAModelRegistrationWidget(ScriptedLoadableModuleWidget, VTKObservation
         Observation is needed because when the parameter node is changed then the GUI must be updated immediately.
         """
 
-        # if inputParameterNode:
-        #     self.logic.setDefaultParameters(inputParameterNode)
-        # 
-        # # Unobserve previously selected parameter node and add an observer to the newly selected.
-        # # Changes of parameter node are observed so that whenever parameters are changed by a script or any other module
-        # # those are reflected immediately in the GUI.
-        # if self._parameterNode is not None and self.hasObserver(self._parameterNode, vtk.vtkCommand.ModifiedEvent, self.updateGUIFromParameterNode):
-        #     self.removeObserver(self._parameterNode, vtk.vtkCommand.ModifiedEvent, self.updateGUIFromParameterNode)
-        # self._parameterNode = inputParameterNode
-        # if self._parameterNode is not None:
-        #     self.addObserver(self._parameterNode, vtk.vtkCommand.ModifiedEvent, self.updateGUIFromParameterNode)
-        # 
-        # # Initial GUI update
-        # self.updateGUIFromParameterNode()
 
     def updateGUIFromParameterNode(self, caller=None, event=None):
         """
@@ -423,26 +437,6 @@ class ALPACAModelRegistrationWidget(ScriptedLoadableModuleWidget, VTKObservation
         if self._parameterNode is None or self._updatingGUIFromParameterNode:
             return
 
-        # # Make sure GUI changes do not call updateParameterNodeFromGUI (it could cause infinite loop)
-        # self._updatingGUIFromParameterNode = True
-        # 
-        # # Update node selectors and sliders
-        # self.ui.inputSelector.setCurrentNode(self._parameterNode.GetNodeReference("InputVolume"))
-        # self.ui.outputSelector.setCurrentNode(self._parameterNode.GetNodeReference("OutputVolume"))
-        # self.ui.invertedOutputSelector.setCurrentNode(self._parameterNode.GetNodeReference("OutputVolumeInverse"))
-        # self.ui.imageThresholdSliderWidget.value = float(self._parameterNode.GetParameter("Threshold"))
-        # self.ui.invertOutputCheckBox.checked = (self._parameterNode.GetParameter("Invert") == "true")
-        # 
-        # # Update buttons states and tooltips
-        # if self._parameterNode.GetNodeReference("InputVolume") and self._parameterNode.GetNodeReference("OutputVolume"):
-        #     self.ui.applyButton.toolTip = "Compute output volume"
-        #     self.ui.applyButton.enabled = True
-        # else:
-        #     self.ui.applyButton.toolTip = "Select input and output volume nodes"
-        #     self.ui.applyButton.enabled = False
-        # 
-        # # All the GUI updates are done
-        # self._updatingGUIFromParameterNode = False
 
     def updateParameterNodeFromGUI(self, caller=None, event=None):
         """
@@ -453,22 +447,12 @@ class ALPACAModelRegistrationWidget(ScriptedLoadableModuleWidget, VTKObservation
         if self._parameterNode is None or self._updatingGUIFromParameterNode:
             return
 
-        # wasModified = self._parameterNode.StartModify()  # Modify all properties in a single batch
-        # 
-        # self._parameterNode.SetNodeReferenceID("InputVolume", self.ui.inputSelector.currentNodeID)
-        # self._parameterNode.SetNodeReferenceID("OutputVolume", self.ui.outputSelector.currentNodeID)
-        # self._parameterNode.SetParameter("Threshold", str(self.ui.imageThresholdSliderWidget.value))
-        # self._parameterNode.SetParameter("Invert", "true" if self.ui.invertOutputCheckBox.checked else "false")
-        # self._parameterNode.SetNodeReferenceID("OutputVolumeInverse", self.ui.invertedOutputSelector.currentNodeID)
-        # 
-        # self._parameterNode.EndModify(wasModified)
-          
 
 #
-# ALPACAModelRegistrationLogic
+# FastModelAlignLogic
 #
 
-class ALPACAModelRegistrationLogic(ScriptedLoadableModuleLogic):
+class FastModelAlignLogic(ScriptedLoadableModuleLogic):
     """This class should implement all the actual
     computation done by your module.  The interface
     should be such that other python code can import
@@ -500,9 +484,6 @@ class ALPACAModelRegistrationLogic(ScriptedLoadableModuleLogic):
     def ITKRegistration(self, sourceModelNode, targetModelNode, skipScalingOption, parameterDictionary, usePoisson, run_counter):
         import ALPACA_preview
         logic = ALPACA_preview.ALPACALogic()
-        # parameterDictionary = ALPACA_preview.ALPACA_previewWidget().parameterDictionary
-        # skipScalingOption = False
-        # usePoisson = False
         (
             sourcePoints,
             targetPoints,
@@ -517,6 +498,21 @@ class ALPACAModelRegistrationLogic(ScriptedLoadableModuleLogic):
             parameterDictionary,
             usePoisson,
         )
+
+        #Scaling transform
+        print("scaling factor for the source is: " + str(scaling))
+        scalingMatrix_vtk = vtk.vtkMatrix4x4()
+        for i in range(3):
+            for j in range(3):
+                scalingMatrix_vtk.SetElement(i,j,0)
+        for i in range(3):
+            scalingMatrix_vtk.SetElement(i, i, scaling)
+        scalingTransform = vtk.vtkTransform()
+        scalingTransform.SetMatrix(scalingMatrix_vtk)
+        scalingTransformNode =  slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', "scaling_transform_matrix")
+        scalingTransformNode.SetAndObserveTransformToParent(scalingTransform)
+
+
         ICPTransform_similarity, similarityFlag = logic.estimateTransform(
             sourcePoints,
             targetPoints,
@@ -527,8 +523,7 @@ class ALPACAModelRegistrationLogic(ScriptedLoadableModuleLogic):
             parameterDictionary,
         )
         
-        print(ICPTransform_similarity)
-    
+
         vtkSimilarityTransform = logic.itkToVTKTransform(
             ICPTransform_similarity, similarityFlag
         )
@@ -536,7 +531,6 @@ class ALPACAModelRegistrationLogic(ScriptedLoadableModuleLogic):
         ICPTransformNode = logic.convertMatrixToTransformNode(
             vtkSimilarityTransform, ("Rigid Transformation Matrix " + run_counter)
         )
-        # slicer.mrmlScene.AddNode(ICPTransformNode)
         sourceModelNode.SetAndObserveTransformNodeID(ICPTransformNode.GetID())
         slicer.vtkSlicerTransformLogic().hardenTransform(sourceModelNode)
         sourceModelNode.GetDisplayNode().SetVisibility(True)
@@ -546,7 +540,11 @@ class ALPACAModelRegistrationLogic(ScriptedLoadableModuleLogic):
         
         sourcePoints = logic.transform_numpy_points(sourcePoints, ICPTransform_similarity)
         
-        return sourcePoints, targetPoints
+        
+        #Put scaling transform under ICP transform = rigid transform after scaling
+        scalingTransformNode.SetAndObserveTransformNodeID(ICPTransformNode.GetID())
+        
+        return sourcePoints, targetPoints, scalingTransformNode, ICPTransformNode
 
     def CPDAffineTransform(self, sourceModelNode, sourcePoints, targetPoints):
        from cpdalp import AffineRegistration
@@ -562,10 +560,11 @@ class ALPACAModelRegistrationLogic(ScriptedLoadableModuleLogic):
        vtkArray = nps.numpy_to_vtk(TY)
        points.SetData(vtkArray)
        polyData.Modified()
-       sourceModelNode.GetDisplayNode().Modified()
-       sourceModelNode.GetDisplayNode().SetVisibility(True)
+       # sourceModelNode.GetDisplayNode().Modified()
+       # sourceModelNode.GetDisplayNode().SetVisibility(True)
        
        affine_matrix, translation = reg.get_registration_parameters()
+       
        
        return affine_matrix, translation
 
@@ -574,10 +573,10 @@ class ALPACAModelRegistrationLogic(ScriptedLoadableModuleLogic):
 
 
 #
-# ALPACAModelRegistrationTest
+# FastModelAlignTest
 #
 
-class ALPACAModelRegistrationTest(ScriptedLoadableModuleTest):
+class FastModelAlignTest(ScriptedLoadableModuleTest):
     """
     This is the test case for your scripted module.
     Uses ScriptedLoadableModuleTest base class, available at:
@@ -593,9 +592,9 @@ class ALPACAModelRegistrationTest(ScriptedLoadableModuleTest):
         """Run as few or as many tests as needed here.
         """
         self.setUp()
-        self.test_ALPACAModelRegistration1()
+        self.test_FastModelAlign1()
 
-    def test_ALPACAModelRegistration1(self):
+    def test_FastModelAlign1(self):
         """ Ideally you should have several levels of tests.  At the lowest level
         tests should exercise the functionality of the logic with different inputs
         (both valid and invalid).  At higher levels your tests should emulate the
@@ -613,7 +612,7 @@ class ALPACAModelRegistrationTest(ScriptedLoadableModuleTest):
 
         import SampleData
         registerSampleData()
-        inputVolume = SampleData.downloadSample('ALPACAModelRegistration1')
+        inputVolume = SampleData.downloadSample('FastModelAlign1')
         self.delayDisplay('Loaded test data set')
 
         inputScalarRange = inputVolume.GetImageData().GetScalarRange()
@@ -625,7 +624,7 @@ class ALPACAModelRegistrationTest(ScriptedLoadableModuleTest):
 
         # Test the module logic
 
-        logic = ALPACAModelRegistrationLogic()
+        logic = FastModelAlignLogic()
 
         # Test algorithm with non-inverted threshold
         logic.process(inputVolume, outputVolume, threshold, True)
