@@ -30,7 +30,7 @@ See more information in <a href="https://github.com/organization/projectname#Fas
 """
         # TODO: replace with organization, grant and thanks
         self.parent.acknowledgementText = """
-The development is supported by Imageomics Institue NSF OAC-2118240.
+The development is supported by Imageomics Institute NSF OAC-2118240.
 """
 
         # Additional initialization step after application startup is complete
