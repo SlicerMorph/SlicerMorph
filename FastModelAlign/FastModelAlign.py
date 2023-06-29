@@ -496,7 +496,7 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
             skipScalingOption,
             parameterDictionary,
         )
-        
+
 
         vtkSimilarityTransform = logic.itkToVTKTransform(
             ICPTransform_similarity, similarityFlag
