@@ -234,7 +234,7 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       for threeDViewIndex in range(layoutManager.threeDViewCount) :
         view = layoutManager.threeDWidget(threeDViewIndex).threeDView()
         view.resetFocalPoint()
-      
+
       return transformNode
 
     def onUnlinkButton(self):
@@ -295,7 +295,7 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         viewNode1.SetLinkedControl(False)
         viewNode2.SetLinkedControl(False)
         self.ui.linkButton.enabled = True
-        
+
         #update camera
         for threeDViewIndex in range(layoutManager.threeDViewCount) :
           view = layoutManager.threeDWidget(threeDViewIndex).threeDView()
