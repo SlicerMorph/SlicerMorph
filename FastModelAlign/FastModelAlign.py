@@ -87,9 +87,7 @@ def registerSampleData():
     )
 
 
-#
 # FastModelAlignWidget
-#
 
 class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     """Uses ScriptedLoadableModuleWidget base class, available at:
@@ -372,7 +370,7 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.outputModelNode.GetDisplayNode().SetColor(red)
 
         slicer.mrmlScene.RemoveNode(self.sourceModelNode)
-        
+
         if self.ui.skipScalingCheckBox.checked:
             slicer.mrmlScene.RemoveNode(self.scalingTransformNode)
 
@@ -519,7 +517,7 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
 
         #Put scaling transform under ICP transform = rigid transform after scaling
         scalingTransformNode.SetAndObserveTransformNodeID(ICPTransformNode.GetID())
-        
+
         return sourcePoints, targetPoints, scalingTransformNode, ICPTransformNode
 
     def CPDAffineTransform(self, sourceModelNode, sourcePoints, targetPoints):
