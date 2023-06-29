@@ -133,7 +133,7 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # These connections ensure that whenever user changes some settings on the GUI, that is saved in the MRML scene
         # (in the selected parameter node).
-        
+
         self.ui.sourceModelSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onSelect)
         self.ui.sourceModelSelector.setMRMLScene( slicer.mrmlScene)
         self.ui.targetModelSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onSelect)
