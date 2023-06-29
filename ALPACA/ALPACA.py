@@ -1434,20 +1434,23 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     if skipScaling == 0:
       count = 0
       maxAttempts = 10
-      while fitness < 0.99 and count < maxAttempts:
-        result = registration.registration_ransac_based_on_feature_matching(
-            source_down, target_down, source_fpfh, target_fpfh, True, distance_threshold,
-            registration.TransformationEstimationPointToPoint(skipScaling == 0), 3, [
-                registration.CorrespondenceCheckerBasedOnEdgeLength(0.9),
-                registration.CorrespondenceCheckerBasedOnDistance(
-                    distance_threshold)
-            ], registration.RANSACConvergenceCriteria(maxIter, confidence))
-        evaluation = registration.evaluate_registration(target_down, source_down, distance_threshold, np.linalg.inv(result.transformation))
-        mean_fitness = (result.fitness + evaluation.fitness)/2
-        if mean_fitness > fitness:
-          fitness = mean_fitness
-          best_result = result
-        count += 1
+      try:
+        while fitness < 0.99 and count < maxAttempts:
+          result = registration.registration_ransac_based_on_feature_matching(
+              source_down, target_down, source_fpfh, target_fpfh, True, distance_threshold,
+              registration.TransformationEstimationPointToPoint(skipScaling == 0), 3, [
+                  registration.CorrespondenceCheckerBasedOnEdgeLength(0.9),
+                  registration.CorrespondenceCheckerBasedOnDistance(
+                      distance_threshold)
+              ], registration.RANSACConvergenceCriteria(maxIter, confidence))
+          evaluation = registration.evaluate_registration(target_down, source_down, distance_threshold, np.linalg.inv(result.transformation))
+          mean_fitness = (result.fitness + evaluation.fitness)/2
+          if mean_fitness > fitness:
+            fitness = mean_fitness
+            best_result = result
+          count += 1
+      except:
+        pass
     return best_result
 
 
