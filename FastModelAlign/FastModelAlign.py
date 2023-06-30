@@ -110,6 +110,14 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         ScriptedLoadableModuleWidget.setup(self)
 
+        # Install required packages by running alpaca_preview setup
+        try:
+          from itk import Fpfh
+          import cpdalp
+        except ModuleNotFoundError:
+          slicer.util.selectModule(slicer.modules.alpaca_preview)
+          slicer.util.selectModule(slicer.modules.fastmodelalign)
+
         # Load widget from .ui file (created by Qt Designer).
         # Additional widgets can be instantiated manually and added to self.layout.
         uiWidget = slicer.util.loadUI(self.resourcePath('UI/FastModelAlign.ui'))
