@@ -53,7 +53,7 @@ class ALPACA_preview(ScriptedLoadableModule):
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
         self.parent.title = "ALPACA (preview)"
-        self.parent.categories = ["Testing.TestCases"]
+        self.parent.categories = ["SlicerMorph.Geometric Morphometrics"]
         self.parent.dependencies = []
         self.parent.contributors = [
             "Arthur Porto (LSU), Sara Rolfe (UW), Chi Zhang (SCRI), Murat Maga (UW)"
