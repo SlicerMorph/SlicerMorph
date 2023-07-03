@@ -28,50 +28,6 @@ This module was developed by Chi Zhang and Murat Maga, through a NSF ABI Develop
 https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
 """
 
-    slicer.app.connect("startupCompleted()", registerSampleData)
-
-def registerSampleData():
-  """
-  Add data sets to Sample Data module.
-  """
-  import SampleData
-  iconsPath = os.path.join(os.path.dirname(__file__), 'Resources/Icons')
-
-
-  # GEVolImport1
-  SampleData.SampleDataLogic.registerCustomSampleDataSource(
-    # Category and sample name displayed in Sample Data module
-    category='GEVolImport',
-    sampleName='GEVolImport1',
-    # Thumbnail should have size of approximately 260x280 pixels and stored in Resources/Icons folder.
-    # It can be created by Screen Capture module, "Capture all views" option enabled, "Number of images" set to "Single".
-    thumbnailFileName=os.path.join(iconsPath, 'GEVolImport1.png'),
-    # Download URL and target file name
-    uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
-    fileNames='GEVolImport1.nrrd',
-    # Checksum to ensure file integrity. Can be computed by this command:
-    #  import hashlib; print(hashlib.sha256(open(filename, "rb").read()).hexdigest())
-    checksums = 'SHA256:998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95',
-    # This node name will be used when the data set is loaded
-    nodeNames='GEVolImport1'
-  )
-
-  # GEVolImport2
-  SampleData.SampleDataLogic.registerCustomSampleDataSource(
-    # Category and sample name displayed in Sample Data module
-    category='GEVolImport',
-    sampleName='GEVolImport2',
-    thumbnailFileName=os.path.join(iconsPath, 'GEVolImport2.png'),
-    # Download URL and target file name
-    uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
-    fileNames='GEVolImport2.nrrd',
-    checksums = 'SHA256:1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97',
-    # This node name will be used when the data set is loaded
-    nodeNames='GEVolImport2'
-  )
-
-
-
 class GEVolImportWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
   """Uses ScriptedLoadableModuleWidget base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
