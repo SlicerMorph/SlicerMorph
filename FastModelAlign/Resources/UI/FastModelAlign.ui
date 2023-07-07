@@ -10,7 +10,7 @@
     <x>0</x>
     <y>0</y>
     <width>778</width>
-    <height>851</height>
+    <height>800</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
@@ -33,7 +33,7 @@
        <item>
         <widget class="ctkCollapsibleButton" name="alignSingleWidget">
          <property name="text">
-          <string>Set up source and target meshes and landmark sets</string>
+          <string>Set up source and target models</string>
          </property>
          <property name="collapsed">
           <bool>false</bool>
