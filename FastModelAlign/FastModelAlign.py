@@ -61,7 +61,7 @@ def registerSampleData():
         sampleName='Partial photogrammetry models',
         uris= ["https://raw.githubusercontent.com/SlicerMorph/SampleData/d31deba22c620588a5f8b388a915be6759ce1116/partial_photogram_model1.obj", "https://raw.githubusercontent.com/SlicerMorph/SampleData/d31deba22c620588a5f8b388a915be6759ce1116/partial_photogram_model2.obj"],
         checksums= [None, None],
-        loadFiles=[False, False],
+        loadFiles=[True, True],
         fileNames=['partial_photogram_model1.obj', 'partial_photogram_model2.obj'],
         nodeNames=['partial_photogram_model1', 'partial_photogram_model2'],
         thumbnailFileName=os.path.join(iconsPath, 'FastModelAlign1.png'),
@@ -581,8 +581,10 @@ class FastModelAlignTest(ScriptedLoadableModuleTest):
         except:
             pass
 
-        sourcePath_test = slicer.app.cachePath + "/partial_photogram_model2.obj"
-        self.sourceModelNode_orig_test = slicer.util.loadModel(sourcePath_test)
+        # sourcePath_test = slicer.app.cachePath + "/partial_photogram_model2.obj"
+        # self.sourceModelNode_orig_test = slicer.util.loadModel(sourcePath_test)
+        self.sourceModelNode_orig_test = slicer.util.getNode("partial_photogram_model2_1")
+        self.sourceModelNode_orig_test.GetDisplayNode().SetVisibility(False)
         self.sourceModelName_test = self.sourceModelNode_orig_test.GetName()
 
         # Clone the original source mesh stored in the node sourceModelNode_orig
@@ -594,11 +596,13 @@ class FastModelAlignTest(ScriptedLoadableModuleTest):
             shNode, itemIDToClone
         )
         self.sourceModelNode_test = shNode.GetItemDataNode(clonedItemID)
-        self.sourceModelNode_test.GetDisplayNode().SetVisibility(False)
-        self.sourceModelNode_test.SetName("Source model_test(rigidly registered)")  # Create a cloned source model node
+        self.sourceModelNode_test.GetDisplayNode().SetVisibility(True)
+        self.sourceModelNode_test.SetName(self.sourceModelName_test + "_registered")  # Create a cloned source model node
 
-        targetPath_test = slicer.app.cachePath + "/partial_photogram_model1.obj"
-        self.targetModelNode_test = slicer.util.loadModel(targetPath_test)
+        # targetPath_test = slicer.app.cachePath + "/partial_photogram_model1.obj"
+        # self.targetModelNode_test = slicer.util.loadModel(targetPath_test)
+        self.targetModelNode_test = slicer.util.getNode("partial_photogram_model1_1")
+        self.targetModelNode_test.GetDisplayNode().SetVisibility(True)
         logic = FastModelAlignLogic()
 
         self.parameterDictionary_test = {
@@ -620,6 +624,7 @@ class FastModelAlignTest(ScriptedLoadableModuleTest):
         self.scalingTransformNode_test.SetName(scalingNodeName_test)
         self.ICPTransformNode_test.SetName(rigidNodeName_test)
 
-        slicer.mrmlScene.RemoveNode(self.sourceModelNode_test)
+        red = [1, 0, 0]
+        self.sourceModelNode_test.GetDisplayNode().SetColor(red)
 
         self.delayDisplay('Test passed')
