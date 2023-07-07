@@ -58,33 +58,17 @@ def registerSampleData():
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
         # Category and sample name displayed in Sample Data module
         category='FastModelAlign',
-        sampleName='FastModelAlign1',
-        # Thumbnail should have size of approximately 260x280 pixels and stored in Resources/Icons folder.
-        # It can be created by Screen Capture module, "Capture all views" option enabled, "Number of images" set to "Single".
+        sampleName='Partial photogrammetry models',
+        uris= ["https://raw.githubusercontent.com/SlicerMorph/SampleData/d31deba22c620588a5f8b388a915be6759ce1116/partial_photogram_model1.obj", "https://raw.githubusercontent.com/SlicerMorph/SampleData/d31deba22c620588a5f8b388a915be6759ce1116/partial_photogram_model2.obj"],
+        checksums= [None, None],
+        loadFiles=[False, False],
+        fileNames=['partial_photogram_model1.obj', 'partial_photogram_model2.obj'],
+        nodeNames=['partial_photogram_model1', 'partial_photogram_model2'],
         thumbnailFileName=os.path.join(iconsPath, 'FastModelAlign1.png'),
-        # Download URL and target file name
-        uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
-        fileNames='FastModelAlign1.nrrd',
-        # Checksum to ensure file integrity. Can be computed by this command:
-        #  import hashlib; print(hashlib.sha256(open(filename, "rb").read()).hexdigest())
-        checksums='SHA256:998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95',
-        # This node name will be used when the data set is loaded
-        nodeNames='FastModelAlign1'
+        loadFileType=['ModelFile', 'ModelFile']
+
     )
 
-    # FastModelAlign2
-    SampleData.SampleDataLogic.registerCustomSampleDataSource(
-        # Category and sample name displayed in Sample Data module
-        category='FastModelAlign',
-        sampleName='FastModelAlign2',
-        thumbnailFileName=os.path.join(iconsPath, 'FastModelAlign2.png'),
-        # Download URL and target file name
-        uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
-        fileNames='FastModelAlign2.nrrd',
-        checksums='SHA256:1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97',
-        # This node name will be used when the data set is loaded
-        nodeNames='FastModelAlign2'
-    )
 
 
 # FastModelAlignWidget
@@ -302,11 +286,6 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             f":: Your subsampled target pointcloud has a total of {len(self.targetPoints)} points. "
         )
 
-
-    def runALPACACounter(self, run_counter=[0]):
-        run_counter[0] += 1
-        return str(run_counter[0])
-
     def currentNode(self):
       # TODO: this should be moved to qMRMLSubjectHierarchyComboBox::currentNode()
       if self.outputSelector.className() == "qMRMLSubjectHierarchyComboBox":
@@ -337,7 +316,6 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         except:
             pass
 
-        run_counter = self.runALPACACounter()
         self.sourceModelNode_orig = self.ui.sourceModelSelector.currentNode()
         self.sourceModelNode_orig.GetDisplayNode().SetVisibility(False)
 
@@ -353,13 +331,13 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         )
         self.sourceModelNode = shNode.GetItemDataNode(clonedItemID)
         self.sourceModelNode.GetDisplayNode().SetVisibility(False)
-        self.sourceModelNode.SetName("Source model(rigidly registered)_" + run_counter)  # Create a cloned source model node
+        self.sourceModelNode.SetName("Source model(rigidly registered)")  # Create a cloned source model node
 
         self.targetModelNode = self.ui.targetModelSelector.currentNode()
         logic = FastModelAlignLogic()
 
         self.sourcePoints, self.targetPoints, self.scalingTransformNode, self.ICPTransformNode = logic.ITKRegistration(self.sourceModelNode, self.targetModelNode, self.ui.skipScalingCheckBox.checked,
-            self.parameterDictionary, self.ui.poissonSubsampleCheckBox.checked, run_counter)
+            self.parameterDictionary, self.ui.poissonSubsampleCheckBox.checked)
 
         scalingNodeName = self.sourceModelName + "_scaling"
         rigidNodeName = self.sourceModelName + "_rigid"
@@ -463,7 +441,7 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
         ScriptedLoadableModuleLogic.__init__(self)
 
 
-    def ITKRegistration(self, sourceModelNode, targetModelNode, skipScalingOption, parameterDictionary, usePoisson, run_counter):
+    def ITKRegistration(self, sourceModelNode, targetModelNode, skipScalingOption, parameterDictionary, usePoisson):
         import ALPACA_preview
         logic = ALPACA_preview.ALPACALogic()
         (
@@ -511,7 +489,7 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
         )
 
         ICPTransformNode = logic.convertMatrixToTransformNode(
-            vtkSimilarityTransform, ("Rigid Transformation Matrix " + run_counter)
+            vtkSimilarityTransform, ("Rigid Transformation Matrix")
         )
         sourceModelNode.SetAndObserveTransformNodeID(ICPTransformNode.GetID())
         slicer.vtkSlicerTransformLogic().hardenTransform(sourceModelNode)
@@ -591,30 +569,57 @@ class FastModelAlignTest(ScriptedLoadableModuleTest):
 
         import SampleData
         registerSampleData()
-        inputVolume = SampleData.downloadSample('FastModelAlign1')
+        SampleData.downloadSample('Partial photogrammetry models')
         self.delayDisplay('Loaded test data set')
 
-        inputScalarRange = inputVolume.GetImageData().GetScalarRange()
-        self.assertEqual(inputScalarRange[0], 0)
-        self.assertEqual(inputScalarRange[1], 695)
-
-        outputVolume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode")
-        threshold = 100
-
         # Test the module logic
+        try:
+            self.sourceModelNode.GetDisplayNode().SetVisibility(False)
+            if self.targetCloudNodeTest is not None:
+                slicer.mrmlScene.RemoveNode(self.targetCloudNodeTest)  # Remove targe cloud node created in the subsampling to avoid confusion
+                self.targetCloudNodeTest = None
+        except:
+            pass
 
+        sourcePath_test = slicer.app.cachePath + "/partial_photogram_model2.obj"
+        self.sourceModelNode_orig_test = slicer.util.loadModel(sourcePath_test)
+        self.sourceModelName_test = self.sourceModelNode_orig_test.GetName()
+
+        # Clone the original source mesh stored in the node sourceModelNode_orig
+        shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(
+            slicer.mrmlScene
+        )
+        itemIDToClone = shNode.GetItemByDataNode(self.sourceModelNode_orig_test)
+        clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(
+            shNode, itemIDToClone
+        )
+        self.sourceModelNode_test = shNode.GetItemDataNode(clonedItemID)
+        self.sourceModelNode_test.GetDisplayNode().SetVisibility(False)
+        self.sourceModelNode_test.SetName("Source model_test(rigidly registered)")  # Create a cloned source model node
+
+        targetPath_test = slicer.app.cachePath + "/partial_photogram_model1.obj"
+        self.targetModelNode_test = slicer.util.loadModel(targetPath_test)
         logic = FastModelAlignLogic()
 
-        # Test algorithm with non-inverted threshold
-        logic.process(inputVolume, outputVolume, threshold, True)
-        outputScalarRange = outputVolume.GetImageData().GetScalarRange()
-        self.assertEqual(outputScalarRange[0], inputScalarRange[0])
-        self.assertEqual(outputScalarRange[1], threshold)
+        self.parameterDictionary_test = {
+            "pointDensity": 1.00,
+            "normalSearchRadius": 2.00,
+            "FPFHNeighbors": int(100),
+            "FPFHSearchRadius": 5.00,
+            "distanceThreshold": 3.00,
+            "maxRANSAC": int(1000000),
+            "ICPDistanceThreshold": float(1.50)
+            }
 
-        # Test algorithm with inverted threshold
-        logic.process(inputVolume, outputVolume, threshold, False)
-        outputScalarRange = outputVolume.GetImageData().GetScalarRange()
-        self.assertEqual(outputScalarRange[0], inputScalarRange[0])
-        self.assertEqual(outputScalarRange[1], inputScalarRange[1])
+
+        self.sourcePoints_test, self.targetPoints_test, self.scalingTransformNode_test, self.ICPTransformNode_test = logic.ITKRegistration(self.sourceModelNode_test, self.targetModelNode_test, False, 
+            self.parameterDictionary_test, False)
+
+        scalingNodeName_test = self.sourceModelName_test + "_scaling_test"
+        rigidNodeName_test = self.sourceModelName_test + "_rigid_test"
+        self.scalingTransformNode_test.SetName(scalingNodeName_test)
+        self.ICPTransformNode_test.SetName(rigidNodeName_test)
+
+        slicer.mrmlScene.RemoveNode(self.sourceModelNode_test)
 
         self.delayDisplay('Test passed')
