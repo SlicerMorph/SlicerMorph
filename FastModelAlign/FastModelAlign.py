@@ -616,7 +616,7 @@ class FastModelAlignTest(ScriptedLoadableModuleTest):
             }
 
 
-        self.sourcePoints_test, self.targetPoints_test, self.scalingTransformNode_test, self.ICPTransformNode_test = logic.ITKRegistration(self.sourceModelNode_test, self.targetModelNode_test, False, 
+        self.sourcePoints_test, self.targetPoints_test, self.scalingTransformNode_test, self.ICPTransformNode_test = logic.ITKRegistration(self.sourceModelNode_test, self.targetModelNode_test, False,
             self.parameterDictionary_test, False)
 
         scalingNodeName_test = self.sourceModelName_test + "_scaling_test"
