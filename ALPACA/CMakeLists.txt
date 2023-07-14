@@ -4,7 +4,7 @@ set(MODULE_NAME ALPACA)
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}.py
-  ${MODULE_NAME}_preview.py
+  ${MODULE_NAME}_legacy.py
   )
 
 set(MODULE_PYTHON_RESOURCES

@@ -1,4 +1,4 @@
-ALPACA contains a small set of utilities from open3d
+ALPACA (legacy) contains a small set of utilities from open3d
 
 
 --------------------------------------------------------------------------------
