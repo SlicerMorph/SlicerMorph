@@ -9,6 +9,7 @@ from slicer.util import VTKObservationMixin
 
 import math
 import numpy as np
+import scipy.linalg as sp
 
 #
 # QuickAlign
@@ -172,65 +173,38 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         print("Error: Can not find 2 3d views to link.")
         return
 
-      v1 = layoutManager.threeDWidget(0).threeDView().mrmlViewNode()
-      v2 = layoutManager.threeDWidget(1).threeDView().mrmlViewNode()
-      c1 = slicer.modules.cameras.logic().GetViewActiveCameraNode(v1)
-      c2 = slicer.modules.cameras.logic().GetViewActiveCameraNode(v2)
+      layoutManager = slicer.app.layoutManager()
+      view1 = layoutManager.threeDWidget(0).threeDView().mrmlViewNode()
+      view2 = layoutManager.threeDWidget(1).threeDView().mrmlViewNode()
+      camera1 = slicer.modules.cameras.logic().GetViewActiveCameraNode(view1)
+      camera2 = slicer.modules.cameras.logic().GetViewActiveCameraNode(view2)
 
       #set up the views
       movingModel.GetDisplayNode().SetVisibility(True)
-      movingModel.GetDisplayNode().SetViewNodeIDs([v1.GetID()])
+      movingModel.GetDisplayNode().SetViewNodeIDs([view1.GetID()])
       templateModel.GetDisplayNode().SetVisibility(True)
-      templateModel.GetDisplayNode().SetViewNodeIDs([v2.GetID()])
+      templateModel.GetDisplayNode().SetViewNodeIDs([view2.GetID()])
 
-      c1Pos = np.array(c1.GetPosition())
-      c1View = np.array(c1.GetViewUp())
-      c1FocalPoint = np.array(c1.GetFocalPoint())
-      c1Angle = np.array(c1.GetViewAngle())
+      #link the views
+      view2.SetLinkedControl(True)
 
-      c2Pos = np.array(c2.GetPosition())
-      c2View = np.array(c2.GetViewUp())
-      c2FocalPoint = np.array(c2.GetFocalPoint())
-      c2Angle = np.array(c2.GetViewAngle())
+      #get transform matrices from cameras
+      transformMatrix1_vtk = camera1.GetCamera().GetViewTransformMatrix()
+      transformMatrix2_vtk = camera2.GetCamera().GetViewTransformMatrix()
+      transformMatrix1 = slicer.util.arrayFromVTKMatrix(transformMatrix1_vtk)
+      transformMatrix2 = slicer.util.arrayFromVTKMatrix(transformMatrix2_vtk)
 
-      # link the views
-      v2.SetLinkedControl(True)
+      #approximate mapping between transforms
+      u,s,v=sp.svd(np.dot(np.transpose(transformMatrix2),transformMatrix1), full_matrices=True)
+      alignmentMatrix=np.dot(np.transpose(v), np.transpose(u))
+      alignmentMatrix_vtk = slicer.util.vtkMatrixFromArray(alignmentMatrix)
 
-      c2Pos2 = np.array(c2.GetPosition())
-      c2View2 = np.array(c2.GetViewUp())
-      c2FocalPoint2 = np.array(c2.GetFocalPoint())
-      c2Angle2 = np.array(c2.GetViewAngle())
-
-      upAngle = self.angle(c1View, c2View) #column 2 (PA)
-      v_1 = c1Pos-c1FocalPoint
-      v_1=v_1/np.linalg.norm(v_1)
-      v_2 = c2Pos-c2FocalPoint
-      v_2=v_2/np.linalg.norm(v_2)
-      forwardAngle = self.angle(v_1, v_2) #column3 (IS)
-
-      #Apply rotation transform
+      #apply to moving node
       transformNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLinearTransformNode", "alignment transform")
-      align=vtk.vtkTransform()
-      align.RotateZ(vtk.vtkMath().DegreesFromRadians(forwardAngle))
-      align.RotateY(vtk.vtkMath().DegreesFromRadians(upAngle))
-      transformNode.SetMatrixTransformToParent(align.GetMatrix())
+      transformNode.SetMatrixTransformToParent(alignmentMatrix_vtk)
       movingModel.SetAndObserveTransformNodeID(transformNode.GetID())
 
-
-      #update camera, get new focal point, create translation transform from original to new focal point
-      for threeDViewIndex in range(layoutManager.threeDViewCount) :
-        view = layoutManager.threeDWidget(threeDViewIndex).threeDView()
-        view.resetFocalPoint()
-
-      #update focal points
-      c1FocalPoint = np.array(c1.GetFocalPoint())
-      c2FocalPoint = np.array(c2.GetFocalPoint())
-
-      translation = c1FocalPoint - c2FocalPoint
-      align.Translate(translation)
-      transformNode.SetMatrixTransformToParent(align.GetMatrix())
-
-      #update camera, get new focal point, create translation transform from original to new focal point
+      #update camera
       for threeDViewIndex in range(layoutManager.threeDViewCount) :
         view = layoutManager.threeDWidget(threeDViewIndex).threeDView()
         view.resetFocalPoint()
