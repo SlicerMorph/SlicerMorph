@@ -143,73 +143,34 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         Called just after the scene is closed.
         """
 
-    def dotproduct(self, v1, v2):
-      return sum((a*b) for a, b in zip(v1, v2))
-
-    def length(self, v):
-      return math.sqrt(self.dotproduct(v, v))
-
-    def angle(self, v1, v2):
-       dotProductResult = self.dotproduct(v1, v2)
-       v1Length = self.length(v1)
-       v2Length = self.length(v2)
-       return math.acos(dotProductResult / ( v1Length * v2Length))
-
     def onLinkButton(self):
         """
         Run processing when user clicks "Link" button.
         """
-        fixedModel = self.ui.inputSelector1.currentNode()
+        if not (hasattr(self, 'viewNode1') and hasattr(self, 'viewNode2')):
+          print("Error: Can not find 2 3d views to link. Please reinitialize views.")
+          return
+        camera1 = slicer.modules.cameras.logic().GetViewActiveCameraNode(self.viewNode1)
+        camera2 = slicer.modules.cameras.logic().GetViewActiveCameraNode(self.viewNode2)
+
+        #get alignment transform between cameras
+        logic = QuickAlignLogic()
+        self.alignmentTransform = logic.getCameraAlignmentTransform(camera1, camera2)
+
+        #apply to moving node
         movingModel = self.ui.inputSelector2.currentNode()
-        self.alignmentTransform = self.tieCameras(movingModel, fixedModel)
+        movingModel.SetAndObserveTransformNodeID(self.alignmentTransform.GetID())
+
+        #link and update views
+        self.viewNode2.SetLinkedControl(True)
+        layoutManager = slicer.app.layoutManager()
+        for threeDViewIndex in range(layoutManager.threeDViewCount) :
+          view = layoutManager.threeDWidget(threeDViewIndex).threeDView()
+          view.resetFocalPoint()
+
+        #set up for unlink action
         self.ui.unlinkButton.enabled = True
         self.ui.linkButton.enabled = False
-
-    def tieCameras(self, movingModel, templateModel):
-      #set layout manager to dual 3d view
-      layoutManager = slicer.app.layoutManager()
-      layoutManager.setLayout(701)
-      if layoutManager.threeDViewCount != 2:
-        print("Error: Can not find 2 3d views to link.")
-        return
-
-      layoutManager = slicer.app.layoutManager()
-      view1 = layoutManager.threeDWidget(0).threeDView().mrmlViewNode()
-      view2 = layoutManager.threeDWidget(1).threeDView().mrmlViewNode()
-      camera1 = slicer.modules.cameras.logic().GetViewActiveCameraNode(view1)
-      camera2 = slicer.modules.cameras.logic().GetViewActiveCameraNode(view2)
-
-      #set up the views
-      movingModel.GetDisplayNode().SetVisibility(True)
-      movingModel.GetDisplayNode().SetViewNodeIDs([view1.GetID()])
-      templateModel.GetDisplayNode().SetVisibility(True)
-      templateModel.GetDisplayNode().SetViewNodeIDs([view2.GetID()])
-
-      #link the views
-      view2.SetLinkedControl(True)
-
-      #get transform matrices from cameras
-      transformMatrix1_vtk = camera1.GetCamera().GetViewTransformMatrix()
-      transformMatrix2_vtk = camera2.GetCamera().GetViewTransformMatrix()
-      transformMatrix1 = slicer.util.arrayFromVTKMatrix(transformMatrix1_vtk)
-      transformMatrix2 = slicer.util.arrayFromVTKMatrix(transformMatrix2_vtk)
-
-      #approximate mapping between transforms
-      u,s,v=sp.svd(np.dot(np.transpose(transformMatrix2),transformMatrix1), full_matrices=True)
-      alignmentMatrix=np.dot(np.transpose(v), np.transpose(u))
-      alignmentMatrix_vtk = slicer.util.vtkMatrixFromArray(alignmentMatrix)
-
-      #apply to moving node
-      transformNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLinearTransformNode", "alignment transform")
-      transformNode.SetMatrixTransformToParent(alignmentMatrix_vtk)
-      movingModel.SetAndObserveTransformNodeID(transformNode.GetID())
-
-      #update camera
-      for threeDViewIndex in range(layoutManager.threeDViewCount) :
-        view = layoutManager.threeDWidget(threeDViewIndex).threeDView()
-        view.resetFocalPoint()
-
-      return transformNode
 
     def onUnlinkButton(self):
         """
@@ -245,16 +206,15 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         layoutManager = slicer.app.layoutManager()
         layoutManager.setLayout(customLayoutId1)
 
-        #link whatever is in the 3D views
-        viewNode1 = slicer.mrmlScene.GetFirstNodeByName("View1") #name = "View"+ singletonTag
-        viewNode2 = slicer.mrmlScene.GetFirstNodeByName("View2")
-        viewNode1.SetAxisLabelsVisible(False)
-        viewNode2.SetAxisLabelsVisible(False)
-        viewNode1.SetBoxVisible(False)
-        viewNode2.SetBoxVisible(False)
-        viewNode1.SetLinkedControl(True)
-        viewNode2.SetLinkedControl(True)
+        #set up 2 unlinked 3D views
+        self.viewNode1 = slicer.mrmlScene.GetFirstNodeByName("View1") #name = "View"+ singletonTag
+        self.viewNode2 = slicer.mrmlScene.GetFirstNodeByName("View2")
+        self.viewNode1.SetAxisLabelsVisible(False)
+        self.viewNode2.SetAxisLabelsVisible(False)
+        self.viewNode1.SetBoxVisible(False)
+        self.viewNode2.SetBoxVisible(False)
 
+        #set up selected nodes in views
         node1 = self.ui.inputSelector1.currentNode()
         node2 = self.ui.inputSelector2.currentNode()
         volRenLogic = slicer.modules.volumerendering.logic()
@@ -264,17 +224,16 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         displayNode2.GetVolumePropertyNode().Copy(volRenLogic.GetPresetByName("US-Fetal"))
         displayNode1.SetVisibility(True)
         displayNode2.SetVisibility(True)
-        displayNode1.SetViewNodeIDs([viewNode1.GetID()])
-        displayNode2.SetViewNodeIDs([viewNode2.GetID()])
-        viewNode1.SetLinkedControl(False)
-        viewNode2.SetLinkedControl(False)
+        displayNode1.SetViewNodeIDs([self.viewNode1.GetID()])
+        displayNode2.SetViewNodeIDs([self.viewNode2.GetID()])
+        self.viewNode1.SetLinkedControl(False)
+        self.viewNode2.SetLinkedControl(False)
         self.ui.linkButton.enabled = True
 
         #update camera
         for threeDViewIndex in range(layoutManager.threeDViewCount) :
           view = layoutManager.threeDWidget(threeDViewIndex).threeDView()
           view.resetFocalPoint()
-
 
 #
 # QuickAlignLogic
@@ -297,29 +256,21 @@ class QuickAlignLogic(ScriptedLoadableModuleLogic):
         ScriptedLoadableModuleLogic.__init__(self)
     @vtk.calldata_type(vtk.VTK_INT)
 
-    def linkNodes(self, inputNode1, inputNode2):
-        logging.info('Linking nodes')
-        if inputNode1.GetNumberOfControlPoints() != inputNode2.GetNumberOfControlPoints():
-          print("Error: point lists must have same number of points to link.")
-          return
-        self.node1 = inputNode1
-        self.node2 = inputNode2
-        self.updatingNodesActive = False
-        self.node1.SetFixedNumberOfControlPoints(True)
-        self.node2.SetFixedNumberOfControlPoints(True)
-        observerTag1 = inputNode1.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent, self.updateSelectPoints1)
-        observerTag2 = inputNode2.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent, self.updateSelectPoints2)
+    def getCameraAlignmentTransform(self, camera1, camera2):
+      #get transform matrices from cameras
+      transformMatrix1_vtk = camera1.GetCamera().GetViewTransformMatrix()
+      transformMatrix2_vtk = camera2.GetCamera().GetViewTransformMatrix()
+      transformMatrix1 = slicer.util.arrayFromVTKMatrix(transformMatrix1_vtk)
+      transformMatrix2 = slicer.util.arrayFromVTKMatrix(transformMatrix2_vtk)
 
-        return[observerTag1, observerTag2]
+      #approximate mapping between transforms
+      u,s,v=sp.svd(np.dot(np.transpose(transformMatrix2),transformMatrix1), full_matrices=True)
+      alignmentMatrix=np.dot(np.transpose(v), np.transpose(u))
+      alignmentMatrix_vtk = slicer.util.vtkMatrixFromArray(alignmentMatrix)
 
-    def unLinkNodes(self, inputNode1, inputNode2, observerTags):
-        logging.info('Unlinking nodes')
-        try:
-          inputNode1.RemoveObserver(observerTags[0])
-        except:
-          print(f"No tag found for {inputNode1.GetName()}")
-        try:
-          inputNode2.RemoveObserver(observerTags[1])
-        except:
-          print(f"No tag found for {inputNode2.GetName()}")
+      #apply to moving node
+      transformNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLinearTransformNode", "alignment transform")
+      transformNode.SetMatrixTransformToParent(alignmentMatrix_vtk)
+
+      return transformNode
 
