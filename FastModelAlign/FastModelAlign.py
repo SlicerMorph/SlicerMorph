@@ -94,12 +94,12 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         ScriptedLoadableModuleWidget.setup(self)
 
-        # Install required packages by running alpaca_preview setup
+        # Install required packages by running Alpaca setup
         try:
           from itk import Fpfh
           import cpdalp
         except ModuleNotFoundError:
-          slicer.util.selectModule(slicer.modules.alpaca_preview)
+          slicer.util.selectModule(slicer.modules.alpaca)
           slicer.util.selectModule(slicer.modules.fastmodelalign)
 
         # Load widget from .ui file (created by Qt Designer).
@@ -238,8 +238,8 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self.targetCloudNodeTest = None
         except:
             pass
-        import ALPACA_preview
-        logic = ALPACA_preview.ALPACALogic()
+        import ALPACA
+        logic = ALPACA.ALPACALogic()
         self.sourceModelNode_orig = self.ui.sourceModelSelector.currentNode()
         # self.sourceModelNode_orig.GetDisplayNode().SetVisibility(False)
         # Create a copy of sourceModelNode then clone it for ALPACA steps
@@ -442,8 +442,8 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
 
 
     def ITKRegistration(self, sourceModelNode, targetModelNode, skipScalingOption, parameterDictionary, usePoisson):
-        import ALPACA_preview
-        logic = ALPACA_preview.ALPACALogic()
+        import ALPACA
+        logic = ALPACA.ALPACALogic()
         (
             sourcePoints,
             targetPoints,

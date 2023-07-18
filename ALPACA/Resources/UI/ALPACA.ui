@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
- <class>ALPACA_preview</class>
- <widget class="qMRMLWidget" name="ALPACA_preview">
+ <class>ALPACA</class>
+ <widget class="qMRMLWidget" name="ALPACA">
   <property name="geometry">
    <rect>
     <x>0</x>

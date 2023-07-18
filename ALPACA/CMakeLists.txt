@@ -12,7 +12,7 @@ set(MODULE_PYTHON_RESOURCES
   Resources/Icons/switch_off.png
   Resources/Icons/switch_on.png
   Resources/UI/${MODULE_NAME}.ui
-  Resources/UI/${MODULE_NAME}_preview.ui
+  Resources/UI/${MODULE_NAME}_legacy.ui
   )
 
 #-----------------------------------------------------------------------------
