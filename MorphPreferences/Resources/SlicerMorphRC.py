@@ -169,6 +169,50 @@ for (shortcutKey, callback) in shortcuts:
         print(f"Couldn't set up {shortcutKey}")
 logging.info(f"  {len(shortcuts)} keyboard shortcuts installed")
 
+# set up undo/redo for markups
+logging.info("Set up undo/redo buttons for markups")
+slicer.mrmlScene.SetUndoOn()
+
+undoEnabledNodeClassNames = [
+  "vtkMRMLMarkupsFiducialNode",
+  "vtkMRMLMarkupsLineNode",
+  "vtkMRMLMarkupsAngleNode",
+  "vtkMRMLMarkupsCurveNode",
+  "vtkMRMLMarkupsClosedCurveNode",
+  "vtkMRMLMarkupsPlaneNode",
+  "vtkMRMLMarkupsROINode",
+  ]
+for className in undoEnabledNodeClassNames:
+  node = slicer.mrmlScene.CreateNodeByClass(className)
+  node.SetUndoEnabled(True)
+  slicer.mrmlScene.AddDefaultNode(node)
+
+def onRedo():
+  slicer.mrmlScene.Redo()
+
+def onUndo():
+  slicer.mrmlScene.Undo()
+
+redoShortcuts = []
+redoKeyBindings = qt.QKeySequence.keyBindings(qt.QKeySequence.Redo)
+for redoBinding in redoKeyBindings:
+  redoShortcut = qt.QShortcut(slicer.util.mainWindow())
+  redoShortcut.setKey(redoBinding)
+  redoShortcut.connect("activated()", onRedo)
+  redoShortcuts.append(redoShortcut)
+
+undoShortcuts = []
+undoKeyBindings = qt.QKeySequence.keyBindings(qt.QKeySequence.Undo)
+for undoBinding in undoKeyBindings:
+  undoShortcut = qt.QShortcut(slicer.util.mainWindow())
+  undoShortcut.setKey(undoBinding)
+  undoShortcut.connect("activated()", onUndo)
+  undoShortcuts.append(undoShortcut)
+
+toolBar = qt.QToolBar("Undo/Redo")
+toolBar.addAction(qt.QIcon(":/Icons/Medium/SlicerUndo.png"), "Undo", onUndo)
+toolBar.addAction(qt.QIcon(":/Icons/Medium/SlicerRedo.png"), "Redo", onRedo)
+slicer.util.mainWindow().addToolBar(toolBar)
+
 logging.info("Done customizing with SlicerMorphRC.py")
 logging.info("On first load of customization, restart Slicer to take effect.")
-
