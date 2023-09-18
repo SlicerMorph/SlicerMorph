@@ -11,6 +11,7 @@ set(MODULE_PYTHON_RESOURCES
   Resources/Icons/Mouse_CT.png
   Resources/Icons/VolrenRed_16bit.png
   Resources/Icons/VolrenRed_8bit.png
+  Resources/Icons/diceCT_16.png
   Resources/SlicerMorphRC.py
   Resources/SM_VolumePresets.py
   Resources/SM_presets.mrml
