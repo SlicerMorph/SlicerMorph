@@ -175,12 +175,6 @@ slicer.mrmlScene.SetUndoOn()
 
 undoEnabledNodeClassNames = [
   "vtkMRMLMarkupsFiducialNode",
-  "vtkMRMLMarkupsLineNode",
-  "vtkMRMLMarkupsAngleNode",
-  "vtkMRMLMarkupsCurveNode",
-  "vtkMRMLMarkupsClosedCurveNode",
-  "vtkMRMLMarkupsPlaneNode",
-  "vtkMRMLMarkupsROINode",
   ]
 for className in undoEnabledNodeClassNames:
   node = slicer.mrmlScene.CreateNodeByClass(className)
