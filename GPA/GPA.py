@@ -1217,7 +1217,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     if len(lmToExclude) != 0:
       self.LMExclusionList=lmToExclude.split(",")
       print("Excluded landmarks: ", self.LMExclusionList)
-      self.LMExclusionList=[np.int(x) for x in self.LMExclusionList]
+      self.LMExclusionList=[int(x) for x in self.LMExclusionList]
       lmNP=np.asarray(self.LMExclusionList)
     else:
       self.LMExclusionList=[]
