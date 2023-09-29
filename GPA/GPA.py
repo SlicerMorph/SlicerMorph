@@ -254,29 +254,32 @@ class LMData:
       return 0
 
 
-  def calcLMVariation(self, SampleScaleFactor, skipScalingCheckBox):
+  def calcLMVariation(self, SampleScaleFactor, BoasOption):
     i,j,k=self.lmOrig.shape
     varianceMat=np.zeros((i,j))
     for subject in range(k):
       tmp=pow((self.lmOrig[:,:,subject]-self.mShape),2)
       varianceMat=varianceMat+tmp
     # if GPA scaling has been skipped, don't apply image size scaling factor
-    if(skipScalingCheckBox):
-      varianceMat = np.sqrt(varianceMat/(k-1))
+    if(BoasOption):
+      varianceMat =np.sqrt(varianceMat/(k-1))
     else:
       varianceMat = SampleScaleFactor*np.sqrt(varianceMat/(k-1))
     return varianceMat
 
-  def doGpa(self,skipScalingCheckBox):
+  def doGpa(self,BoasOption):
     i,j,k=self.lmOrig.shape
     self.centriodSize=np.zeros(k)
-    for i in range(k):
-      self.centriodSize[i]=np.linalg.norm(self.lmOrig[:,:,i]-self.lmOrig[:,:,i].mean(axis=0))
-    if skipScalingCheckBox:
-      print("Skipping Scaling")
-      self.lm, self.mShape=gpa_lib.runGPANoScale(self.lmOrig)
-    else:
-      self.lm, self.mShape=gpa_lib.runGPA(self.lmOrig)
+    for subjectNum in range(k):
+      self.centriodSize[subjectNum]=np.linalg.norm(self.lmOrig[:,:,subjectNum]-self.lmOrig[:,:,subjectNum].mean(axis=0))
+    self.lm, self.mShape=gpa_lib.runGPA(self.lmOrig)
+    if BoasOption:
+      print("Calculating Boas coordinates")
+      for lmNum in range(i):
+        for dimNum in range(j):
+          for subjectNum in range(k):
+            self.lm[lmNum, dimNum, subjectNum] = self.centriodSize[subjectNum]*self.lm[lmNum, dimNum, subjectNum]
+      self.mShape=self.lm.mean(axis=2)
 
   def calcEigen(self):
     i, j, k = self.lmOrig.shape
@@ -462,11 +465,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.excludeLMText.setToolTip("No spaces. Separate numbers by commas.  Example:  51,52")
     inputLayout.addWidget(self.excludeLMText,4,2,1,2)
 
-    self.skipScalingCheckBox = qt.QCheckBox()
-    self.skipScalingCheckBox.setText("Skip Scaling during GPA")
-    self.skipScalingCheckBox.checked = 0
-    self.skipScalingCheckBox.setToolTip("If checked, GPA will skip scaling.")
-    inputLayout.addWidget(self.skipScalingCheckBox, 5,2)
+    self.BoasOptionCheckBox = qt.QCheckBox()
+    self.BoasOptionCheckBox.setText("Use Boas coordinates for GPA")
+    self.BoasOptionCheckBox.checked = 0
+    self.BoasOptionCheckBox.setToolTip("If checked, GPA will skip scaling.")
+    inputLayout.addWidget(self.BoasOptionCheckBox, 5,2)
 
     #Load Button
     self.loadButton = qt.QPushButton("Execute GPA + PCA")
@@ -1100,14 +1103,14 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       return
 
     # Try to load skip scaling and skip LM options from log file, if present
-    self.skipScalingOption = False
+    self.BoasOption = False
     self.LMExclusionList=[]
     logFilePath = os.path.join(self.resultsDirectory, 'analysis.log')
     try:
       with open(logFilePath) as f:
         for search in f:
-          if 'Scale=False' in search:
-            self.skipScalingOption = True
+          if 'Boas=False' in search:
+            self.BoasOption = True
           if 'ExcludedLM' in search:
             line = search.rstrip()
             header, skippedText = line.split('=')
@@ -1116,7 +1119,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     except:
       logging.debug('Log import failed: Cannot read scaling option from log file')
       logging.debug('Log import failed: Cannot read skipped landmarks from log file')
-    print("Skip Scale option: ", self.skipScalingOption)
+    print("Boas option: ", self.BoasOption)
     print("Skipped Landmarks: ", self.LMExclusionList)
 
     # Initialize variables
@@ -1187,7 +1190,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     # Set up layout
     self.assignLayoutDescription()
     # Apply zoom for morphospace if scaling not skipped
-    if(not self.skipScalingOption):
+    if(not self.BoasOption):
       cameras=slicer.mrmlScene.GetNodesByClass('vtkMRMLCameraNode')
       self.widgetZoomFactor = 2000*self.sampleSizeScaleFactor
       for camera in cameras:
@@ -1230,8 +1233,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     print('Loaded ' + str(shape[2]) + ' subjects with ' + str(shape[0]) + ' landmark points.')
 
     # Do GPA
-    self.skipScalingOption=self.skipScalingCheckBox.checked
-    self.LM.doGpa(self.skipScalingOption)
+    self.BoasOption=self.BoasOptionCheckBox.checked
+    self.LM.doGpa(self.BoasOption)
     self.LM.calcEigen()
     self.pcNumber=10
     self.updateList()
@@ -1299,7 +1302,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     # Set up layout
     self.assignLayoutDescription()
     # Apply zoom for morphospace if scaling not skipped
-    if(not self.skipScalingOption):
+    if(not self.BoasOption):
       cameras=slicer.mrmlScene.GetNodesByClass('vtkMRMLCameraNode')
       self.widgetZoomFactor = 2000*self.sampleSizeScaleFactor
       for camera in cameras:
@@ -1368,7 +1371,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     logFile.write("ExcludedLM=")
     exclusions = ",".join(map(str, self.LMExclusionList))
     logFile.write(exclusions + "\n")
-    logFile.write("Scale=" + str(not self.skipScalingOption) + "\n")
+    logFile.write("Boas=" + str(not self.BoasOption) + "\n")
     logFile.write("MeanShape=MeanShape.csv"+ "\n")
     logFile.write("eigenvalues=eigenvalues.csv" + "\n")
     logFile.write("eigenvectors=eigenvectors.csv" + "\n")
@@ -1550,7 +1553,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
   def plotDistributionGlyph(self, sliderScale):
     self.unplotDistributions()
-    varianceMat = self.LM.calcLMVariation(self.sampleSizeScaleFactor,self.skipScalingOption)
+    varianceMat = self.LM.calcLMVariation(self.sampleSizeScaleFactor, self.BoasOption)
     i,j,k=self.LM.lmOrig.shape
     pt=[0,0,0]
     #set up vtk point array for each landmark point
