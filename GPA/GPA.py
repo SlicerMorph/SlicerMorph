@@ -273,13 +273,6 @@ class LMData:
     for subjectNum in range(k):
       self.centriodSize[subjectNum]=np.linalg.norm(self.lmOrig[:,:,subjectNum]-self.lmOrig[:,:,subjectNum].mean(axis=0))
     self.lm, self.mShape=gpa_lib.runGPA(self.lmOrig)
-    if BoasOption:
-      print("Calculating Boas coordinates")
-      for lmNum in range(i):
-        for dimNum in range(j):
-          for subjectNum in range(k):
-            self.lm[lmNum, dimNum, subjectNum] = self.centriodSize[subjectNum]*self.lm[lmNum, dimNum, subjectNum]
-      self.mShape=self.lm.mean(axis=2)
 
   def calcEigen(self):
     i, j, k = self.lmOrig.shape
@@ -468,7 +461,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.BoasOptionCheckBox = qt.QCheckBox()
     self.BoasOptionCheckBox.setText("Use Boas coordinates for GPA")
     self.BoasOptionCheckBox.checked = 0
-    self.BoasOptionCheckBox.setToolTip("If checked, GPA will skip scaling.")
+    self.BoasOptionCheckBox.setToolTip("If checked, landmark configurations will be scaled to remove size.")
     inputLayout.addWidget(self.BoasOptionCheckBox, 5,2)
 
     #Load Button
@@ -1102,7 +1095,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       logging.debug('Result import failed: Missing file')
       return
 
-    # Try to load skip scaling and skip LM options from log file, if present
+    # Try to load Boas and skip LM options from log file, if present
     self.BoasOption = False
     self.LMExclusionList=[]
     logFilePath = os.path.join(self.resultsDirectory, 'analysis.log')
@@ -1291,6 +1284,16 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     filename=self.LM.closestSample(self.files)
     self.populateDistanceTable(self.files)
     print("Closest sample to mean:" + filename)
+
+    # If Boas option is selected, rescale landmark configurations
+    if(self.BoasOptionCheckBox.checked):
+      print("Calculating Boas adjustment")
+      i,j,k=self.lmOrig.shape
+      for lmNum in range(i):
+        for dimNum in range(j):
+         for subjectNum in range(k):
+            self.lm[lmNum, dimNum, subjectNum] = self.centriodSize[subjectNum]*self.lm[lmNum, dimNum, subjectNum]
+      self.mShape=self.lm.mean(axis=2)
 
     #Setup for scatter plots
     shape = self.LM.lm.shape
