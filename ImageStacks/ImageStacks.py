@@ -783,7 +783,7 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
     try:
       import nrrd
     except ImportError:
-      pip_install("pynrrd")
+      slicer.util.pip_install("pynrrd")
       import nrrd
 
     from nrrd.types import IndexOrder, NRRDFieldMap, NRRDFieldType, NRRDHeader
