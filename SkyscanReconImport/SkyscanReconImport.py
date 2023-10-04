@@ -128,7 +128,6 @@ class SkyscanReconImportWidget(ScriptedLoadableModuleWidget):
     #
     # input selector
     #
-
     # File dialog to select a file template for series
     self.inputFileSelector = ctk.ctkPathLineEdit()
     self.inputFileSelector.filters  = ctk.ctkPathLineEdit().Files
@@ -185,6 +184,14 @@ class SkyscanReconImportWidget(ScriptedLoadableModuleWidget):
     self.filepathBox = qt.QTextEdit()
     parametersBatchFormLayout.addRow("Enter paths to log files: ", self.filepathBox)
     
+    #
+    # Output selector
+    #
+    # File dialog to select output directory for images
+    self.outputFileSelector = ctk.ctkPathLineEdit()
+    self.outputFileSelector.filters  = ctk.ctkPathLineEdit().Dirs
+    self.outputFileSelector.setToolTip( "Select directory where images will be exported." )
+    parametersBatchFormLayout.addRow("Select output directory:", self.outputFileSelector)
     #
     # Encoding Selector
     #    
