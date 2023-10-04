@@ -101,12 +101,26 @@ class SkyscanReconImportWidget(ScriptedLoadableModuleWidget):
 
     # Instantiate and connect widgets ...
 
+    # Set up tabs to split workflow
+    tabsWidget = qt.QTabWidget()
+    singleTab = qt.QWidget()
+    singleTabLayout = qt.QFormLayout(singleTab)
+    batchTab = qt.QWidget()
+    batchTabLayout = qt.QFormLayout(batchTab)
+
+    tabsWidget.addTab(singleTab, "Single Image Import")
+    tabsWidget.addTab(batchTab, "Batch Import")
+    self.layout.addWidget(tabsWidget)
+    
+    # Single Image Import Tab
+
     #
     # Parameters Area
     #
     parametersCollapsibleButton = ctk.ctkCollapsibleButton()
     parametersCollapsibleButton.text = "Parameters"
-    self.layout.addWidget(parametersCollapsibleButton)
+    #self.layout.addWidget(parametersCollapsibleButton)
+    singleTabLayout.addRow(parametersCollapsibleButton)
 
     # Layout within the dummy collapsible button
     parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
@@ -122,21 +136,8 @@ class SkyscanReconImportWidget(ScriptedLoadableModuleWidget):
     parametersFormLayout.addRow("Select log file from image series:", self.inputFileSelector)
 
     #
-    # output volume selector
+    # Encoding Selector
     #
-    # self.outputSelector = slicer.qMRMLNodeComboBox()
-    # self.outputSelector.nodeTypes = ["vtkMRMLScalarVolumeNode"]
-    # self.outputSelector.selectNodeUponCreation = True
-    # self.outputSelector.addEnabled = True
-    # self.outputSelector.removeEnabled = True
-    # self.outputSelector.noneEnabled = True
-    # self.outputSelector.showHidden = False
-    # self.outputSelector.showChildNodeTypes = False
-    # self.outputSelector.renameEnabled = True
-    # self.outputSelector.setMRMLScene( slicer.mrmlScene )
-    # self.outputSelector.setToolTip( "Pick the output to the algorithm." )
-    # parametersFormLayout.addRow("Output Volume: ", self.outputSelector)
-
     self.defaultCodingButton = qt.QRadioButton("Default")
     self.defaultCodingButton.checked = True
     self.utf8CodingButton = qt.QRadioButton("Utf-8")
@@ -165,6 +166,47 @@ class SkyscanReconImportWidget(ScriptedLoadableModuleWidget):
 
     # Refresh Apply button state
     self.onSelect()
+
+    # Batch Import Tab
+
+    #
+    # Parameters Area
+    #
+    parametersBatchCollapsibleButton = ctk.ctkCollapsibleButton()
+    parametersBatchCollapsibleButton.text = "Parameters"
+    batchTabLayout.addRow(parametersBatchCollapsibleButton)
+
+    # Layout within the dummy collapsible button
+    parametersBatchFormLayout = qt.QFormLayout(parametersBatchCollapsibleButton)
+
+    #
+    # File path box
+    #
+    self.filepathBox = qt.QTextEdit()
+    parametersBatchFormLayout.addRow("Enter paths to log files: ", self.filepathBox)
+    
+    #
+    # Encoding Selector
+    #    
+    self.defaultCodingBatchButton = qt.QRadioButton("Default")
+    self.defaultCodingBatchButton.checked = True
+    self.utf8CodingBatchButton = qt.QRadioButton("Utf-8")
+    self.latin1CodingBatchButton = qt.QRadioButton("Latin-1")
+    self.encodingBatchSelector = qt.QVBoxLayout()
+    self.encodingBatchSelector.addWidget(self.defaultCodingBatchButton)
+    self.encodingBatchSelector.addWidget(self.utf8CodingBatchButton)
+    self.encodingBatchSelector.addWidget(self.latin1CodingBatchButton)
+    parametersBatchFormLayout.addRow("Select log file encoding type: ", self.encodingBatchSelector)
+    
+    #
+    # Apply Button
+    #
+    self.applyBatchButton = qt.QPushButton("Apply")
+    self.applyBatchButton.toolTip = "Run the algorithm."
+    self.applyBatchButton.enabled = False
+    parametersBatchFormLayout.addRow(self.applyBatchButton)
+
+    
 
   def cleanup(self):
     pass
