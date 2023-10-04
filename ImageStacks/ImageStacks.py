@@ -702,14 +702,14 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
       if inputSliceIndex < extent[4] or inputSliceIndex > extent[5]:
         # out of selected bounds
         continue
-      
+
       if isNrrd:
         sliceArray = self.loadNrrdSlice(path, inputSliceIndex * stepSize[2])
       else:
         reader = sitk.ImageFileReader()
         reader.SetFileName(path)
         image = reader.Execute()
-        
+
         sliceArray = sitk.GetArrayFromImage(image)
 
       if len(sliceArray.shape) == 3 and self.outputGrayscale:
@@ -744,7 +744,7 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
         message += f"{paths[0]} size is {firstArrayFullShape[0]} x {firstArrayFullShape[1]} ({firstArrayFullShape[2] if len(firstArrayFullShape)==3 else 1} scalar components)\n\n"
         message += f"{path} size is {currentArrayFullShape[0]} x {currentArrayFullShape[1]} ({currentArrayFullShape[2] if len(currentArrayFullShape)==3 else 1} scalar components)"
         raise ValueError(message)
-      
+
       volumeArray[sliceIndex] = sliceArray
       sliceIndex += 1
 
