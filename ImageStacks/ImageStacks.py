@@ -798,7 +798,7 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
     import bz2
 
     def read_data(header: NRRDHeader, fh: Optional[IO] = None, filename: Optional[str] = None,
-                  index_order: IndexOrder = 'F', extract_slice_range: Optional[List[int]] = None) -> npt.NDArray:
+                  index_order: IndexOrder = 'F', extract_slice_range: Optional[list[int]] = None) -> npt.NDArray:
         """Read data from file into :class:`numpy.ndarray`
 
         The two parameters :obj:`fh` and :obj:`filename` are optional depending on the parameters but it never hurts to
