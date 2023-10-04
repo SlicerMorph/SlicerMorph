@@ -246,13 +246,12 @@ class LMData:
       vectors = [name for name in eigenVectors.columns if 'PC ' in name]
       self.vec = eigenVectors[vectors].to_numpy()
       self.sortedEig = gpa_lib.pairEig(self.val, self.vec)
-      self.procdist=gpa_lib.procDist(self.lm, self.mShape)
+      self.procdist = outputData.proc_dist.to_numpy()
       self.procdist=self.procdist.reshape(-1,1)
       return 1
     except:
       print("Error loading results")
       return 0
-
 
   def calcLMVariation(self, SampleScaleFactor, BoasOption):
     i,j,k=self.lmOrig.shape
@@ -273,6 +272,14 @@ class LMData:
     for subjectNum in range(k):
       self.centriodSize[subjectNum]=np.linalg.norm(self.lmOrig[:,:,subjectNum]-self.lmOrig[:,:,subjectNum].mean(axis=0))
     self.lm, self.mShape=gpa_lib.runGPA(self.lmOrig)
+    self.procdist = gpa_lib.procDist(self.lm, self.mShape)
+    if BoasOption:
+      print("Calculating Boas coordinates")
+      for lmNum in range(i):
+        for dimNum in range(j):
+          for subjectNum in range(k):
+            self.lm[lmNum, dimNum, subjectNum] = self.centriodSize[subjectNum]*self.lm[lmNum, dimNum, subjectNum]
+      self.mShape=self.lm.mean(axis=2)
 
   def calcEigen(self):
     i, j, k = self.lmOrig.shape
@@ -332,9 +339,6 @@ class LMData:
     np.savetxt(outputFolder + os.sep + "MeanShape.csv", temp, delimiter=",", fmt='%s')
 
     percentVar = self.val / self.val.sum()
-    print("lm shape", self.lm.shape)
-    print("mShape shape", self.mShape.shape)
-    self.procdist = gpa_lib.procDist(self.lm, self.mShape)
     files = np.array(files)
     i = files.shape
     files = files.reshape(i[0], 1)
@@ -461,7 +465,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.BoasOptionCheckBox = qt.QCheckBox()
     self.BoasOptionCheckBox.setText("Use Boas coordinates for GPA")
     self.BoasOptionCheckBox.checked = 0
-    self.BoasOptionCheckBox.setToolTip("If checked, landmark configurations will be scaled to remove size.")
+    self.BoasOptionCheckBox.setToolTip("If checked, GPA will skip scaling.")
     inputLayout.addWidget(self.BoasOptionCheckBox, 5,2)
 
     #Load Button
@@ -1095,7 +1099,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       logging.debug('Result import failed: Missing file')
       return
 
-    # Try to load Boas and skip LM options from log file, if present
+    # Try to load skip scaling and skip LM options from log file, if present
     self.BoasOption = False
     self.LMExclusionList=[]
     logFilePath = os.path.join(self.resultsDirectory, 'analysis.log')
@@ -1284,16 +1288,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     filename=self.LM.closestSample(self.files)
     self.populateDistanceTable(self.files)
     print("Closest sample to mean:" + filename)
-
-    # If Boas option is selected, rescale landmark configurations
-    if(self.BoasOptionCheckBox.checked):
-      print("Calculating Boas adjustment")
-      i,j,k=self.lmOrig.shape
-      for lmNum in range(i):
-        for dimNum in range(j):
-         for subjectNum in range(k):
-            self.lm[lmNum, dimNum, subjectNum] = self.centriodSize[subjectNum]*self.lm[lmNum, dimNum, subjectNum]
-      self.mShape=self.lm.mean(axis=2)
 
     #Setup for scatter plots
     shape = self.LM.lm.shape
