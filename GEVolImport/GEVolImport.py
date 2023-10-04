@@ -1,3 +1,4 @@
+from ctypes import FormatError
 import os
 import unittest
 import logging
@@ -77,38 +78,78 @@ class GEVolImportWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.applyButton.enabled = bool(self.inputFileSelector.currentPath)
 
   def onApplyButton(self):
-    logic = GEVolImportLogic()
-    logic.generateNHDRHeader(self.inputFileSelector.currentPath)
+      with slicer.util.tryWithErrorDisplay(_("Failed to compute results."), waitCursor=True):
+          logic = GEVolImportLogic()
+          nhdrPathName = logic.generateNHDRHeader(self.inputFileSelector.currentPath)
+          slicer.util.loadVolume(nhdrPathName)
 
-#Import .pcr file pointing to a .vol file
 
 class PCRDataObject:
-  def __init__(self):
-    self.X  = "NULL"
-    self.Y = "NULL"
-    self.Z = "NULL"
-    self.VoxelSize = "NULL"
-    self.form = "NULL"
+    """Import .pcr file pointing to a .vol file"""
+    def __init__(self):
+        self.clear()
 
-  def ImportFromFile(self, pcrFilename):
-    #Import and parse .pcr file. File name is
-    lines = []
-    with open (pcrFilename) as in_file:
-      for line in in_file:
-        lines.append(line.strip("\n"))
-      for element in lines:
-        if(element.find("Volume_SizeX=")>=0):
-          self.X = int(element.split('=', 1)[1])
-        if(element.find("Volume_SizeY=")>=0):
-          self.Y = int(element.split('=', 1)[1])
-        if(element.find("Volume_SizeZ")>=0):
-          self.Z = int(element.split('=', 1)[1])
-        if(element.find("VoxelSizeRec=")>=0):
-          self.voxelSize = float(element.split('=', 1)[1])
-        if(element.find("Format=")>=0):
-          self.form = int(element.split('=')[1])
+    def clear(self):
+        self.dimensions  = [None, None, None]
+        self.spacing = None
+        self.scalarType = None
+
+    def load(self, filePath):
+        """Import and parse .vol or .pcr file."""
+
+        fileName, fileExtension = os.path.splitext(filePath)
+        if fileExtension.lower() == ".vol":
+            filePath = fileName + ".pcr"
+            if not os.path.isfile(filePath):
+                # pcr file is not found
+                raise FileNotFoundError(f"PCR file {filePath} was not found for VOL file")
+
+        # Verify that a vol file exists there
+        volPathName = fileName + ".vol"
+        if not os.path.exists(volPathName):
+            raise FileNotFoundError(f"VOL file {volPathName} was not found for PCR file")
+
+        # Parse
+        self.clear()
+        lines = []
+        with open (filePath) as in_file:
+            for line in in_file:
+                lines.append(line.strip("\n"))
+        for element in lines:
+            if(element.find("Volume_SizeX=")>=0):
+                self.dimensions[0] = int(element.split('=', 1)[1])
+            if(element.find("Volume_SizeY=")>=0):
+                self.dimensions[1] = int(element.split('=', 1)[1])
+            if(element.find("Volume_SizeZ")>=0):
+                self.dimensions[2] = int(element.split('=', 1)[1])
+            if(element.find("VoxelSizeRec=")>=0):
+                self.spacing = float(element.split('=', 1)[1])
+            if(element.find("Format=")>=0):
+                scalarTypeCode = int(element.split('=')[1])
+                if scalarTypeCode == 5:
+                    self.scalarType = vtk.VTK_UNSIGNED_SHORT
+                elif scalarTypeCode == 10:
+                    self.scalarType = vtk.VTK_FLOAT
+                elif scalarTypeCode == 1:
+                    self.scalarType = vtk.VTK_UNSIGNED_CHAR
+                else:
+                    raise FormatError(f"Unknown Format code: {scalarTypeCode}")
+
+        # Validate parsing results
+        if self.dimensions[0] is None:
+            raise FormatError("Volume_SizeX field is not found in file")
+        if self.dimensions[1] is None:
+            raise FormatError("Volume_SizeY field is not found in file")
+        if self.dimensions[2] is None:
+            raise FormatError("Volume_SizeZ field is not found in file")
+        if self.spacing is None:
+            raise FormatError("VoxelSizeRec field is not found in file")
+        if self.scalarType is None:
+            raise FormatError("Format field is not found in file")
+
 
 class GEVolImportLogic(ScriptedLoadableModuleLogic):
+
   def generateNHDRHeader(self, inputFile):
     """
     Generate entry of .nhdr file from the .pcr file.Information from .pcr file
@@ -117,54 +158,86 @@ class GEVolImportLogic(ScriptedLoadableModuleLogic):
     """
 
     logging.info('Processing started')
-    #initialize PCR object
+
+    # Parse PCR file
     imagePCRFile = PCRDataObject()
-    #import image parameters of PCR object
-    imagePCRFile.ImportFromFile(inputFile)
+    imagePCRFile.load(inputFile)
 
+    # Create NRRD header
     filePathName, fileExtension = os.path.splitext(inputFile)
-    #The directory of the .nhdr file
     nhdrPathName = filePathName + ".nhdr"
+    with open(nhdrPathName, "w") as headerFile:
+        headerFile.write("NRRD0004\n")
+        headerFile.write("# Complete NRRD file format specification at:\n")
+        headerFile.write("# http://teem.sourceforge.net/nrrd/format.html\n")
+        if imagePCRFile.scalarType == vtk.VTK_UNSIGNED_SHORT:
+          headerFile.write("type: ushort\n")
+        elif imagePCRFile.scalarType == vtk.VTK_FLOAT:
+          headerFile.write("type: float\n")
+        elif imagePCRFile.scalarType == vtk.VTK_UNSIGNED_CHAR:
+          headerFile.write("type: uchar\n")
+        headerFile.write("dimension: 3\n")
+        headerFile.write("space: left-posterior-superior\n")
+        headerFile.write(f"sizes: {imagePCRFile.dimensions[0]} {imagePCRFile.dimensions[1]} {imagePCRFile.dimensions[2]}\n")
+        volSpace = imagePCRFile.spacing
+        headerFile.write(f"space directions: ({volSpace},0.0,0.0) (0.0,{volSpace},0.0) (0.0,0.0,{volSpace})\n")
+        headerFile.write("kinds: domain domain domain\n")
+        headerFile.write("endian: little\n")
+        headerFile.write("encoding: raw\n")
+        headerFile.write("space origin: (0.0, 0.0, 0.0)\n")
+        volPathName = filePathName + ".vol"
+        volPathSplit = []
+        volPathSplit = volPathName.split('/')
+        volFileName = volPathSplit[len(volPathSplit)-1]
+        headerFile.write(f"data file: {volFileName}\n")
 
-    if fileExtension == ".pcr":
-      if imagePCRFile.form == 1 or imagePCRFile.form == 5 or imagePCRFile.form == 10:
-        with open(nhdrPathName, "w") as headerFile:
-          headerFile.write("NRRD0004\n")
-          headerFile.write("# Complete NRRD file format specification at:\n")
-          headerFile.write("# http://teem.sourceforge.net/nrrd/format.html\n")
-          if imagePCRFile.form == 5:
-            headerFile.write("type: ushort\n")
-          elif imagePCRFile.form == 10:
-            headerFile.write("type: float\n")
-          elif imagePCRFile.form == 1:
-            headerFile.write("type: uchar\n")
-          headerFile.write("dimension: 3\n")
-          headerFile.write("space: left-posterior-superior\n")
-          sizeX = imagePCRFile.X
-          sizeY = imagePCRFile.Y
-          sizeZ = imagePCRFile.Z
-          headerFile.write(f"sizes: {sizeX} {sizeY} {sizeZ}\n")
-          volSpace = imagePCRFile.voxelSize
-          headerFile.write(f"space directions: ({volSpace}, 0.0, 0.0) (0.0, {volSpace}, 0.0) (0.0, 0.0, {volSpace})\n")
-          headerFile.write("kinds: domain domain domain\n")
-          headerFile.write("endian: little\n")
-          headerFile.write("encoding: raw\n")
-          headerFile.write("space origin: (0.0, 0.0, 0.0)\n")
-          volPathName = filePathName + ".vol"
-          volPathSplit = []
-          volPathSplit = volPathName.split('/')
-          volFileName = volPathSplit[len(volPathSplit)-1]
-          headerFile.write(f"data file: {volFileName}\n")
-        # print(imagePCRFile.form)
-        print(f".nhdr file path is: {nhdrPathName}")
-        #Automatically loading .vol file using the generated .nhdr file.
-        if os.path.exists(volPathName):
-          slicer.util.loadVolume(nhdrPathName)
-          print(f"{volFileName} loaded\n")
-        else:
-          print(f"{volFileName} is not in the same directory\n")
-      else:
-        print("The format of this dataset is currently not supported by this module. Currently only float (format=10), unsigned 16 bit integer (format=5) and unsigned 8 bit integer (format=1) data types are supported. Please contact us with this dataset to enable this data type.")
-    else:
-      print("This is not a PCR file, please re-select a PCR file")
+        logging.debug(f".nhdr file path is: {nhdrPathName}")
 
+    return nhdrPathName
+
+#
+# Reader plugin
+# (identified by its special name <moduleName>FileReader)
+#
+
+class GEVolImportFileReader:
+
+    def __init__(self, parent):
+        self.parent = parent
+
+    def description(self):
+        return 'GE tome microCT image'
+
+    def fileType(self):
+        return 'GeVolMicroCT'
+
+    def extensions(self):
+        return ['GE tome microCT image (*.vol)', 'GE tome microCT image (*.pcr)']
+
+    def canLoadFileConfidence(self, filePath):
+        if not self.parent.supportedNameFilters(filePath):
+            return 0.0
+        try:
+            imagePCRFile = PCRDataObject()
+            imagePCRFile.load(filePath)
+        except Exception as e:
+            return 0.0
+
+        # This is recognized as a GE microCT file, so we return higher confidence than the default 0.5
+        return 0.9
+
+    def load(self, properties):
+        try:
+            filePath = properties['fileName']
+            logic = GEVolImportLogic()
+            nhdrPathName = logic.generateNHDRHeader(filePath)
+            loadedVolume = slicer.util.loadVolume(nhdrPathName)
+
+        except Exception as e:
+            logging.error('Failed to load file: ' + str(e))
+            import traceback
+            traceback.print_exc()
+            return False
+
+        self.parent.loadedNodes = [loadedVolume.GetID()]
+        return True

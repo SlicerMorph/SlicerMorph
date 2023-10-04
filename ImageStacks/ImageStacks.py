@@ -323,7 +323,9 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     """
     self.onClear()
     filePath = self.archetypeText.text
-    if filePath.find('%') == -1:
+    fileExtension = os.path.splitext(filePath)[1]
+    isNrrd = fileExtension.lower() == ".nhdr" or fileExtension.lower() == ".nrrd"
+    if filePath.find('%') == -1 and not isNrrd:
       # start searching for the first number before the file extension (the file extension itself
       # can contain numbers that should be ignored, such as .jp2)
       index = filePath.rfind(".") - 1
@@ -348,14 +350,17 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       archetypeFormat = filePath
     fileIndex = self.archetypeStartNumber
     filePaths = []
-    while True:
-      filePath = archetypeFormat % fileIndex
-      if os.path.exists(filePath):
-        filePaths.append(filePath)
-      else:
-        if fileIndex != 0:
-          break
-      fileIndex += 1
+    if "%" in archetypeFormat:
+      while True:
+        filePath = archetypeFormat % fileIndex
+        if os.path.exists(filePath):
+          filePaths.append(filePath)
+        else:
+          if fileIndex != 0:
+            break
+        fileIndex += 1
+    else:
+      filePaths = [ archetypeFormat ]
     self.setFilePaths(filePaths)
     self.archetypeText.text = archetypeFormat
 
@@ -577,21 +582,36 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
       return
 
     reader = sitk.ImageFileReader()
-    reader.SetFileName(self._filePaths[0])
-    image = reader.Execute()
-    sliceArray = sitk.GetArrayFromImage(image)
+    filePath = self._filePaths[0]
+    reader.SetFileName(filePath)
 
-    self.originalVolumeDimensions = [sliceArray.shape[1], sliceArray.shape[0], len(filePaths)]
-    self.originalVolumeNumberOfScalarComponents = sliceArray.shape[2] if len(sliceArray.shape) == 3 else 1
-    self.originalVolumeVoxelDataType = numpy.dtype(sliceArray.dtype)
+    fileName, fileExtension = os.path.splitext(filePath)
+    if fileExtension.lower() == ".nhdr" or fileExtension.lower() == ".nrrd":
+        self._filePaths[0]
+        reader.ReadImageInformation()
 
-    firstSliceSpacing = image.GetSpacing()
-    self.originalVolumeRecommendedSpacing = [firstSliceSpacing[1], firstSliceSpacing[0], 1.0]
+        self.originalVolumeDimensions = reader.GetSize()
+        self.originalVolumeNumberOfScalarComponents = reader.GetNumberOfComponents()
 
-    if firstSliceSpacing[0] == firstSliceSpacing[1]:
-      # If x and y spacing are the same then we assume that it is an isotropic volume
-      # and set z spacing to the same value
-      self.originalVolumeRecommendedSpacing[2] = firstSliceSpacing[0]
+        pixelType=reader.GetPixelID()
+        self.originalVolumeVoxelDataType = sitk.GetArrayFromImage(sitk.Image(1,1,1,pixelType)).dtype
+        self.originalVolumeRecommendedSpacing = reader.GetSpacing()
+
+    else:
+        image = reader.Execute()
+        sliceArray = sitk.GetArrayFromImage(image)
+
+        self.originalVolumeDimensions = [sliceArray.shape[1], sliceArray.shape[0], len(filePaths)]
+        self.originalVolumeNumberOfScalarComponents = sliceArray.shape[2] if len(sliceArray.shape) == 3 else 1
+        self.originalVolumeVoxelDataType = numpy.dtype(sliceArray.dtype)
+
+        firstSliceSpacing = image.GetSpacing()
+        self.originalVolumeRecommendedSpacing = [firstSliceSpacing[1], firstSliceSpacing[0], 1.0]
+
+        if firstSliceSpacing[0] == firstSliceSpacing[1]:
+          # If x and y spacing are the same then we assume that it is an isotropic volume
+          # and set z spacing to the same value
+          self.originalVolumeRecommendedSpacing[2] = firstSliceSpacing[0]
 
   def setOriginalVolumeSpacing(self, spacing):
     # Volume is in LPS, therefore we invert the first two axes
@@ -599,7 +619,7 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
 
   def outputVolumeGeometry(self):
     # spacing
-    spacingScale = numpy.array([1.0, 1.0, 1+self.sliceSkip])
+    spacingScale = numpy.array([1.0, 1.0, 1.0 + self.sliceSkip])
     if self.outputQuality == 'half':
       spacingScale *= 2.0
     elif self.outputQuality == 'preview':
@@ -634,7 +654,6 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
     ijkToRAS[0:3,3] = originRAS
 
     numberOfScalarComponents = 1 if self.outputGrayscale else self.originalVolumeNumberOfScalarComponents
-
     return ijkToRAS, extent, numberOfScalarComponents
 
   def loadVolume(self, outputNode=None, progressCallback=None):
@@ -655,7 +674,16 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
 
     stepSize = [int(outputSpacing[i] / originalVolumeSpacing[i]) for i in range(3)]
 
-    paths = self._filePaths[::stepSize[2]]
+    filePath = self._filePaths[0]
+    fileExtension = os.path.splitext(filePath)[1]
+    isNrrd = fileExtension.lower() == ".nhdr" or fileExtension.lower() == ".nrrd"
+    if isNrrd:
+      paths = ([filePath] * self.originalVolumeDimensions[2])
+    else:
+      paths = self._filePaths
+
+    # Keep every stepSize[2]'th slice
+    paths = paths[::stepSize[2]]
 
     if self.reverseSliceOrder:
       paths.reverse()
@@ -663,6 +691,7 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
     volumeArray = None
     sliceIndex = 0
     firstArrayFullShape = None
+
     for inputSliceIndex, path in enumerate(paths):
 
       if progressCallback:
@@ -673,14 +702,20 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
       if inputSliceIndex < extent[4] or inputSliceIndex > extent[5]:
         # out of selected bounds
         continue
-      reader = sitk.ImageFileReader()
-      reader.SetFileName(path)
-      image = reader.Execute()
-      sliceArray = sitk.GetArrayFromImage(image)
+      
+      if isNrrd:
+        sliceArray = self.loadNrrdSlice(path, inputSliceIndex * stepSize[2])
+      else:
+        reader = sitk.ImageFileReader()
+        reader.SetFileName(path)
+        image = reader.Execute()
+        
+        sliceArray = sitk.GetArrayFromImage(image)
+
       if len(sliceArray.shape) == 3 and self.outputGrayscale:
         # We convert to grayscale by simply taking the first component, which is appropriate for cases when grayscale image is stored as R=G=B,
         # but to convert real RGB images it could better to compute the mean or luminance.
-        sliceArray = sitk.GetArrayFromImage(image)[:,:,0]
+        sliceArray = sliceArray[:,:,0]
       currentArrayFullShape = sliceArray.shape
       if firstArrayFullShape is None:
         firstArrayFullShape = currentArrayFullShape
@@ -699,6 +734,7 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
         sliceArray = sliceArray[
                      extent[2] * stepSize[1]:(extent[3] + 1) * stepSize[1]:stepSize[1],
                      extent[0] * stepSize[0]:(extent[1] + 1) * stepSize[0]:stepSize[0]]
+
       if (sliceIndex > 0) and (volumeArray[sliceIndex].shape != sliceArray.shape):
         logging.debug("After downsampling, {} size is {} x {}\n\n{} size is {} x {} ({} scalar components)".format(
           paths[0], volumeArray[0].shape[0], volumeArray[0].shape[1],
@@ -708,6 +744,7 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
         message += f"{paths[0]} size is {firstArrayFullShape[0]} x {firstArrayFullShape[1]} ({firstArrayFullShape[2] if len(firstArrayFullShape)==3 else 1} scalar components)\n\n"
         message += f"{path} size is {currentArrayFullShape[0]} x {currentArrayFullShape[1]} ({currentArrayFullShape[2] if len(currentArrayFullShape)==3 else 1} scalar components)"
         raise ValueError(message)
+      
       volumeArray[sliceIndex] = sliceArray
       sliceIndex += 1
 
@@ -740,6 +777,234 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
     slicer.util.updateVolumeFromArray(outputNode, volumeArray)
     slicer.util.setSliceViewerLayers(background=outputNode, fit=True)
     return outputNode
+
+  def loadNrrdSlice(self, filename, sliceIndex):
+
+    try:
+      import nrrd
+    except ImportError:
+      slicer.util.pip_install("pynrrd")
+      import nrrd
+
+    from nrrd.types import IndexOrder, NRRDFieldMap, NRRDFieldType, NRRDHeader
+    from typing import Optional, IO, List
+    import nptyping as npt
+    from nrrd import NRRDError
+    from nrrd.reader import _NRRD_REQUIRED_FIELDS, _determine_datatype, _READ_CHUNKSIZE
+    import zlib
+    import numpy as np
+    import os
+    import io
+    import bz2
+
+    def read_data(header: NRRDHeader, fh: Optional[IO] = None, filename: Optional[str] = None,
+                  index_order: IndexOrder = 'F', extract_slice_range: Optional[List[int]] = None) -> npt.NDArray:
+        """Read data from file into :class:`numpy.ndarray`
+
+        The two parameters :obj:`fh` and :obj:`filename` are optional depending on the parameters but it never hurts to
+        specify both. The file handle (:obj:`fh`) is necessary if the header is attached with the NRRD data. However, if
+        the NRRD data is detached from the header, then the :obj:`filename` parameter is required to obtain the absolute
+        path to the data file.
+
+        See :ref:`background/how-to-use:reading nrrd files` for more information on reading NRRD files.
+
+        Parameters
+        ----------
+        header : :class:`dict` (:class:`str`, :obj:`Object`)
+            Parsed fields/values obtained from :meth:`read_header` function
+        fh : file-object, optional
+            File object pointing to first byte of data. Only necessary if data is attached to header.
+        filename : :class:`str`, optional
+            Filename of the header file. Only necessary if data is detached from the header. This is used to get the
+            absolute data path.
+        index_order : {'C', 'F'}, optional
+            Specifies the index order of the resulting data array. Either 'C' (C-order) where the dimensions are ordered
+            from slowest-varying to fastest-varying (e.g. (z, y, x)), or 'F' (Fortran-order) where the dimensions are
+            ordered from fastest-varying to slowest-varying (e.g. (x, y, z)).
+
+        Returns
+        -------
+        data : :class:`numpy.ndarray`
+            Data read from NRRD file
+
+        See Also
+        --------
+        :meth:`read`, :meth:`read_header`
+        """
+
+        if index_order not in ['F', 'C']:
+            raise NRRDError('Invalid index order')
+
+        # Check that the required fields are in the header
+        for field in _NRRD_REQUIRED_FIELDS:
+            if field not in header:
+                raise NRRDError(f'Header is missing required field: {field}')
+
+        if header['dimension'] != len(header['sizes']):
+            raise NRRDError(f'Number of elements in sizes does not match dimension. Dimension: {header["dimension"]}, '
+                            f'len(sizes): {len(header["sizes"])}')
+
+        # Determine the data type from the header
+        dtype = _determine_datatype(header)
+
+        # Determine the byte skip, line skip and the data file
+        # These all can be written with or without the space according to the NRRD spec, so we check them both
+        line_skip = header.get('lineskip', header.get('line skip', 0))
+        byte_skip = header.get('byteskip', header.get('byte skip', 0))
+        data_filename = header.get('datafile', header.get('data file', None))
+
+        # If the data file is separate from the header file, then open the data file to read from that instead
+        if data_filename is not None:
+            # If the pathname is relative, then append the current directory from the filename
+            if not os.path.isabs(data_filename):
+                if filename is None:
+                    raise NRRDError('Filename parameter must be specified when a relative data file path is given')
+
+                data_filename = os.path.join(os.path.dirname(filename), data_filename)
+
+            # Override the fh parameter with the data filename
+            # Note that this is opened without a "with" block, thus it must be closed manually in all circumstances
+            fh = open(data_filename, 'rb')
+
+        # Get the total number of data points by multiplying the size of each dimension together
+        total_data_points = header['sizes'].prod(dtype=np.int64)
+
+        # Skip the number of lines requested when line_skip >= 0
+        # Irrespective of the NRRD file having attached/detached header
+        # Lines are skipped before getting to the beginning of the data
+        if line_skip >= 0:
+            for _ in range(line_skip):
+                fh.readline()
+        else:
+            # Must close the file because if the file was opened above from detached filename, there is no "with" block to
+            # close it for us
+            fh.close()
+
+            raise NRRDError('Invalid lineskip, allowed values are greater than or equal to 0')
+
+        extract = extract_slice_range is not None
+        if extract:
+            frame_item_count = header['sizes'][0] * header['sizes'][1]
+            byte_offset_for_extract = int(extract_slice_range[0]) * int(frame_item_count) * int(dtype.itemsize)
+            extract_item_count = (extract_slice_range[1] - extract_slice_range[0]) * frame_item_count
+        else:
+            byte_offset_for_extract = 0
+            extract_item_count = total_data_points
+            # dtype.itemsize
+
+        # Skip the requested number of bytes or seek backward, and then parse the data using NumPy
+        if byte_skip < -1:
+            # Must close the file because if the file was opened above from detached filename, there is no "with" block to
+            # close it for us
+            fh.close()
+            raise NRRDError('Invalid byteskip, allowed values are greater than or equal to -1')
+        elif byte_skip >= 0:
+            fh.seek(byte_skip + byte_offset_for_extract, os.SEEK_CUR)
+        elif byte_skip == -1 and header['encoding'] not in ['gzip', 'gz', 'bzip2', 'bz2']:
+            fh.seek(-dtype.itemsize * total_data_points + byte_offset_for_extract, os.SEEK_END)
+        else:
+            # The only case left should be: byte_skip == -1 and header['encoding'] == 'gzip'
+            byte_skip = -dtype.itemsize * total_data_points + byte_offset_for_extract
+
+        # If a compression encoding is used, then byte skip AFTER decompressing
+        if header['encoding'] == 'raw':
+            if isinstance(fh, io.BytesIO):
+                raw_data = bytearray(fh.read(extract_item_count * dtype.itemsize))
+                data = np.frombuffer(raw_data, dtype)
+            else:
+                data = np.fromfile(fh, dtype, count = extract_item_count)
+        elif header['encoding'] in ['ASCII', 'ascii', 'text', 'txt']:
+
+            if extract:
+                # Must close the file because if the file was opened above from detached filename, there is no "with" block to
+                # close it for us
+                fh.close()
+
+                raise NRRDError(f'Slice extraction is not supported for ASCII data')
+
+            if isinstance(fh, io.BytesIO):
+                data = np.fromstring(fh.read(), dtype, sep=' ')
+            else:
+                data = np.fromfile(fh, dtype, sep=' ')
+        else:
+            # Handle compressed data now
+
+            if extract:
+                # Must close the file because if the file was opened above from detached filename, there is no "with" block to
+                # close it for us
+                fh.close()
+
+                raise NRRDError(f'Slice extraction is not supported for compressed data')
+
+            # Construct the decompression object based on encoding
+            if header['encoding'] in ['gzip', 'gz']:
+                decompobj = zlib.decompressobj(zlib.MAX_WBITS | 16)
+            elif header['encoding'] in ['bzip2', 'bz2']:
+                decompobj = bz2.BZ2Decompressor()
+            else:
+                # Must close the file because if the file was opened above from detached filename, there is no "with" block
+                # to close it for us
+                fh.close()
+
+                raise NRRDError(f'Unsupported encoding: {header["encoding"]}')
+
+            # Loop through the file and read a chunk at a time (see _READ_CHUNKSIZE why it is read in chunks)
+            decompressed_data = bytearray()
+
+            # Read all the remaining data from the file
+            # Obtain the length of the compressed data since we will be using it repeatedly, more efficient
+            compressed_data = fh.read()
+            compressed_data_len = len(compressed_data)
+            start_index = 0
+
+            # Loop through data and decompress it chunk by chunk
+            while start_index < compressed_data_len:
+                # Calculate the end index = start index plus chunk size
+                # Set to the string length to read the remaining chunk at the end
+                end_index = min(start_index + _READ_CHUNKSIZE, compressed_data_len)
+
+                # Decompress and append data
+                decompressed_data += decompobj.decompress(compressed_data[start_index:end_index])
+
+                # Update start index
+                start_index = end_index
+
+            # Delete the compressed data since we do not need it anymore
+            # This could potentially be using a lot of memory
+            del compressed_data
+
+            # Byte skip is applied AFTER the decompression. Skip first x bytes of the decompressed data and parse it using
+            # NumPy
+            data = np.frombuffer(decompressed_data[byte_skip:], dtype)
+
+        # Close the file, even if opened using "with" block, closing it manually does not hurt
+        fh.close()
+
+        if extract_item_count != data.size:
+            raise NRRDError(f'Size of the data does not equal the product of all the dimensions: '
+                            f'{total_data_points}-{data.size}={total_data_points - data.size}')
+
+        # In the NRRD header, the fields are specified in Fortran order, i.e, the first index is the one that changes
+        # fastest and last index changes slowest. This needs to be taken into consideration since numpy uses C-order
+        # indexing.
+
+        # The array shape from NRRD (x,y,z) needs to be reversed as numpy expects (z,y,x).
+        sizes = [header['sizes'][0], header['sizes'][1], extract_slice_range[1]-extract_slice_range[0]]
+        data = np.reshape(data, tuple(sizes[::-1]))
+
+        # Transpose data to enable Fortran indexing if requested.
+        if index_order == 'F':
+            data = data.T
+
+        return data
+
+    import nrrd
+    with open(filename, 'rb') as fh:
+        header = nrrd.read_header(fh)
+        sliceArray = read_data(header, fh, filename, index_order = "C", extract_slice_range = [sliceIndex, sliceIndex + 1])
+        sliceArray = sliceArray.squeeze()
+
+    return sliceArray
 
 
 class ImageStacksTest(ScriptedLoadableModuleTest):
