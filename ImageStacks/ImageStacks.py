@@ -161,7 +161,7 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # output ROI selector
     #
     self.outputROISelector = slicer.qMRMLNodeComboBox()
-    self.outputROISelector.nodeTypes = ["vtkMRMLAnnotationROINode", "vtkMRMLMarkupsROINode"]
+    self.outputROISelector.nodeTypes = ["vtkMRMLMarkupsROINode"]
     self.outputROISelector.showChildNodeTypes = False
     self.outputROISelector.showHidden = False
     self.outputROISelector.showChildNodeTypes = False
