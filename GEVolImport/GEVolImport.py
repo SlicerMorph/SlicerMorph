@@ -1,4 +1,3 @@
-from ctypes import FormatError
 import os
 import unittest
 import logging
@@ -133,19 +132,19 @@ class PCRDataObject:
                 elif scalarTypeCode == 1:
                     self.scalarType = vtk.VTK_UNSIGNED_CHAR
                 else:
-                    raise FormatError(f"Unknown Format code: {scalarTypeCode}")
+                    raise RuntimeError(f"Unknown Format code: {scalarTypeCode}")
 
         # Validate parsing results
         if self.dimensions[0] is None:
-            raise FormatError("Volume_SizeX field is not found in file")
+            raise RuntimeError("Volume_SizeX field is not found in file")
         if self.dimensions[1] is None:
-            raise FormatError("Volume_SizeY field is not found in file")
+            raise RuntimeError("Volume_SizeY field is not found in file")
         if self.dimensions[2] is None:
-            raise FormatError("Volume_SizeZ field is not found in file")
+            raise RuntimeError("Volume_SizeZ field is not found in file")
         if self.spacing is None:
-            raise FormatError("VoxelSizeRec field is not found in file")
+            raise RuntimeError("VoxelSizeRec field is not found in file")
         if self.scalarType is None:
-            raise FormatError("Format field is not found in file")
+            raise RuntimeError("Format field is not found in file")
 
 
 class GEVolImportLogic(ScriptedLoadableModuleLogic):
