@@ -164,7 +164,8 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
 
         if needInstall:
             progressDialog = slicer.util.createProgressDialog(
-                labelText="Installing ITK RANSAC, ITK FPFH. This may take a minute...",
+                windowTitle="Installing...",
+                labelText="Installing ALPACA Python packages. This may take a minute...",
                 maximum=0,
             )
             slicer.app.processEvents()
@@ -175,7 +176,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
                 slicer.util.pip_install(["itk_ransac==0.1.4"])
                 slicer.util.pip_install(f"cpdalp")
             except:
-                slicer.util.infoDisplay("Issue while installing the ITK pip packages")
+                slicer.util.infoDisplay("Issue while installing the ITK Python packages")
                 progressDialog.close()
             import itk
 
