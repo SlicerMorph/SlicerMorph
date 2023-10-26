@@ -191,10 +191,15 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
         except ModuleNotFoundError as e:
             print("Module Not found. Please restart Slicer to load packages.")
 
-        with slicer.util.MessageDialog("Loading ALPACA relevant Packages..."):
-            slicer.app.processEvents()
-            with slicer.util.WaitCursor():
-                fpfh = itk.Fpfh.PointFeature.MF3MF3.New()
+        progressDialog = slicer.util.createProgressDialog(
+            windowTitle="Importing...",
+            labelText="Importing ALPACA Python packages. This may take few seconds...",
+            maximum=0,
+        )
+        slicer.app.processEvents()
+        with slicer.util.WaitCursor():
+            fpfh = itk.Fpfh.PointFeature.MF3MF3.New()
+        progressDialog.close()
 
         # Load widget from .ui file (created by Qt Designer).
         uiWidget = slicer.util.loadUI(self.resourcePath("UI/ALPACA.ui"))
