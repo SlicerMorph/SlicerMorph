@@ -21,29 +21,6 @@ import math
 # ALPACA
 #
 
-itkInstalled = False
-try:
-    import itk
-
-    itkInstalled = True
-except:
-    itkInstalled = False
-    pass
-
-
-def initializeITK():
-    if not itkInstalled:
-        return
-
-    # For loading itk library beforehand to avoid delay while usage
-    import itk
-
-    fpfh = itk.Fpfh.PointFeature.MF3MF3.New()
-
-
-if platform.system() != "Darwin":
-    initializeITK()
-
 
 class ALPACA(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class, available at:
@@ -213,11 +190,10 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
         except ModuleNotFoundError as e:
             print("Module Not found. Please restart Slicer to load packages.")
 
-        # Needed to support Mac systems
-        if platform.system() == "Darwin":
-            with slicer.util.MessageDialog("Loading ALPACA relevant Packages..."):
-                with slicer.util.WaitCursor():
-                    fpfh = itk.Fpfh.PointFeature.MF3MF3.New()
+        with slicer.util.MessageDialog("Loading ALPACA relevant Packages..."):
+            slicer.app.processEvents()
+            with slicer.util.WaitCursor():
+                fpfh = itk.Fpfh.PointFeature.MF3MF3.New()
 
         # Load widget from .ui file (created by Qt Designer).
         uiWidget = slicer.util.loadUI(self.resourcePath("UI/ALPACA.ui"))
