@@ -26,12 +26,6 @@ warnings.simplefilter('ignore',InsecureRequestWarning)
 slicer.userNameDefault = "SlicerMorph@gmail.com"
 slicer.passwordDefault = ""
 
-# check for required python packages
-try:
-  import pandas
-except:
-  slicer.util.pip_install('pandas')
-  import pandas
 
 class MorphoSourceImport(ScriptedLoadableModule):
   """Uses ScriptedLoadableModule base class, available at:
@@ -402,6 +396,18 @@ class MorphoSourceImportLogic(ScriptedLoadableModuleLogic):
     """
     Run the query using the data dictionary
     """
+
+    try:
+      import pandas
+    except ModuleNotFoundError:
+      if slicer.util.confirmOkCancelDisplay(
+              "This module requires 'pandas' Python package. Click OK to install it now."):
+        slicer.util.pip_install("pandas")
+        import pandas
+    else:
+      class EmptyDataFrame: empty = True
+      return EmptyDataFrame()
+
     print('Beginning scraping for download links')
     download_list = self.findDownload(dictionary, session)
     if bool(download_list):
