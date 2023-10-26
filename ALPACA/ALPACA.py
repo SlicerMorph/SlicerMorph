@@ -21,29 +21,6 @@ import math
 # ALPACA
 #
 
-itkInstalled = False
-try:
-    import itk
-
-    itkInstalled = True
-except:
-    itkInstalled = False
-    pass
-
-
-def initializeITK():
-    if not itkInstalled:
-        return
-
-    # For loading itk library beforehand to avoid delay while usage
-    import itk
-
-    fpfh = itk.Fpfh.PointFeature.MF3MF3.New()
-
-
-if platform.system() != "Darwin":
-    initializeITK()
-
 
 class ALPACA(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class, available at:
@@ -187,7 +164,8 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
 
         if needInstall:
             progressDialog = slicer.util.createProgressDialog(
-                labelText="Installing ITK RANSAC, ITK FPFH. This may take a minute...",
+                windowTitle="Installing...",
+                labelText="Installing ALPACA Python packages. This may take a minute...",
                 maximum=0,
             )
             slicer.app.processEvents()
@@ -198,7 +176,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
                 slicer.util.pip_install(["itk_ransac==0.1.4"])
                 slicer.util.pip_install(f"cpdalp")
             except:
-                slicer.util.infoDisplay("Issue while installing the ITK pip packages")
+                slicer.util.infoDisplay("Issue while installing the ITK Python packages")
                 progressDialog.close()
             import itk
 
@@ -213,11 +191,15 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
         except ModuleNotFoundError as e:
             print("Module Not found. Please restart Slicer to load packages.")
 
-        # Needed to support Mac systems
-        if platform.system() == "Darwin":
-            with slicer.util.MessageDialog("Loading ALPACA relevant Packages..."):
-                with slicer.util.WaitCursor():
-                    fpfh = itk.Fpfh.PointFeature.MF3MF3.New()
+        progressDialog = slicer.util.createProgressDialog(
+            windowTitle="Importing...",
+            labelText="Importing ALPACA Python packages. This may take few seconds...",
+            maximum=0,
+        )
+        slicer.app.processEvents()
+        with slicer.util.WaitCursor():
+            fpfh = itk.Fpfh.PointFeature.MF3MF3.New()
+        progressDialog.close()
 
         # Load widget from .ui file (created by Qt Designer).
         uiWidget = slicer.util.loadUI(self.resourcePath("UI/ALPACA.ui"))
