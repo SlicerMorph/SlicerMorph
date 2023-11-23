@@ -63,7 +63,7 @@ def registerSampleData():
         checksums= [None, None],
         loadFiles=[True, True],
         fileNames=['partial_photogram_model1.obj', 'partial_photogram_model2.obj'],
-        nodeNames=['partial_photogram_model1', 'partial_photogram_model2'],
+        nodeNames=['large_model1', 'small_model2'],
         thumbnailFileName=os.path.join(iconsPath, 'FastModelAlign1.png'),
         loadFileType=['ModelFile', 'ModelFile']
 
