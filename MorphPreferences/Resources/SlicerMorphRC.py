@@ -226,6 +226,6 @@ def onNodeAdded(caller, event, calldata):
   GPUDisplayNode = isinstance(node, slicer.vtkMRMLGPURayCastVolumeRenderingDisplayNode)
   CPUDisplayNode = isinstance(node, slicer.vtkMRMLCPURayCastVolumeRenderingDisplayNode)
   if GPUDisplayNode or CPUDisplayNode:
-    qt.QTimer.singleShot(0, lambda: setVolumePropertyDiceCT(node))  
+    qt.QTimer.singleShot(0, lambda: setVolumePropertyDiceCT(node))
 
 slicer.mrmlScene.AddObserver(slicer.vtkMRMLScene.NodeAddedEvent, onNodeAdded)
