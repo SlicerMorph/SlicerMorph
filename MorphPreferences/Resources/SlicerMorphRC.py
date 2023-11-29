@@ -210,3 +210,22 @@ slicer.util.mainWindow().addToolBar(toolBar)
 
 logging.info("Done customizing with SlicerMorphRC.py")
 logging.info("On first load of customization, restart Slicer to take effect.")
+
+# Add default rendering preset for DiceCT volumes
+def setVolumePropertyDiceCT(node):
+  if node.GetDisplayableNode() is not None:
+    scalarRange = node.GetDisplayableNode().GetImageData().GetScalarRange()
+    scalarSize = scalarRange[1] - scalarRange[0]
+    if scalarSize > 30000:
+      volRenLogic = slicer.modules.volumerendering.logic()
+      node.GetVolumePropertyNode().Copy(volRenLogic.GetPresetByName("diceCT_16"))
+
+@vtk.calldata_type(vtk.VTK_OBJECT)
+def onNodeAdded(caller, event, calldata):
+  node = calldata
+  GPUDisplayNode = isinstance(node, slicer.vtkMRMLGPURayCastVolumeRenderingDisplayNode)
+  CPUDisplayNode = isinstance(node, slicer.vtkMRMLCPURayCastVolumeRenderingDisplayNode)
+  if GPUDisplayNode or CPUDisplayNode:
+    qt.QTimer.singleShot(0, lambda: setVolumePropertyDiceCT(node))  
+
+slicer.mrmlScene.AddObserver(slicer.vtkMRMLScene.NodeAddedEvent, onNodeAdded)
