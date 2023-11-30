@@ -66,7 +66,7 @@ def getResourceScriptPath(scriptName):
 
 class ClickableLabel(qt.QLabel):
     def __init__(self, parent=None):
-        super(ClickableLabel, self).__init__(parent)
+        super().__init__(parent)
 
     def mousePressEvent(self, event):
         if event.button() == qt.Qt.RightButton:
@@ -85,7 +85,7 @@ class ClickableLabel(qt.QLabel):
             webbrowser.open(url)  # Open the URL in the browser
 
 
-class MSQuery(object):
+class MSQuery:
     def __init__(self, query: str, media_type: str, taxonomy_gbif: str,
                  openDownloadsOnly: bool, media_tag: str = None, per_page: int = 20):
         # Attempt to import pandas, and install if not present

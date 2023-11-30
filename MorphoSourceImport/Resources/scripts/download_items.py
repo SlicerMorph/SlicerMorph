@@ -22,7 +22,7 @@ def download_file(url, path, api_key, chunk_size, progress_update_func, total_kb
             progress_update_func(1, total_kb)  # Update progress for each chunk
 
 
-class MSDownload(object):
+class MSDownload:
     def __init__(self, config_dict: dict):
         self.config_dict = config_dict
         self.DownloadConfig = DownloadConfig  # to be set when items are to be downloaded

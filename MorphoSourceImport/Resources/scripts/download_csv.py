@@ -28,7 +28,7 @@ def unlist_cell(cell):
     return cell
 
 
-class DownloadMSRecords(object):
+class DownloadMSRecords:
     def __init__(self, query: str, media_type: str, taxonomy_gbif: str, path: str,
                  openDownloadsOnly: bool, media_tag: str = None, per_page: int = 100):
 
