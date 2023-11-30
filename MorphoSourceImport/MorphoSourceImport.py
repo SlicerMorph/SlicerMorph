@@ -170,7 +170,6 @@ class MSQuery(object):
             self.current_results = self.pages[page]['search_results']
             self.current_page = page
 
-
     def extract_dataframe(self):
         # Ensure that there are current results to process
         if self.current_results is None:
