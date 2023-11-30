@@ -24,7 +24,6 @@ def download_file(url, path, api_key, chunk_size, progress_update_func, total_kb
 
 class MSDownload(object):
     def __init__(self, config_dict: dict):
-
         self.config_dict = config_dict
         self.DownloadConfig = DownloadConfig  # to be set when items are to be downloaded
         self.current_download_config: Optional[DownloadConfig] = None  # for storing Download config object
