@@ -278,21 +278,10 @@ class MorphoSourceImport(ScriptedLoadableModule):
         ScriptedLoadableModule.__init__(self, parent)
         self.parent.title = "MorphoSourceImport"
         self.parent.categories = ["SlicerMorph.Input and Output"]
-        self.parent.dependencies = []  # TODO: add here list of module names that this module requires
+        self.parent.dependencies = []
         self.parent.contributors = ["Murat Maga (UW), Sara Rolfe (SCRI), Oshane Thomas(SCRI)"]
-        # TODO: Finish the Readme file (OT 10.30.23)
-        self.parent.helpText = """
-This module provides a streamlined interface for querying MorphoSource database to search and retrieve dataset. 
-For more information see  <a href=“https://github.com/SlicerMorph/Tutorials/tree/master/MorphoSourceImport”> 
-the tutorial </A>.
-"""
-        # TODO: Add updated acknowledgement (OT 10.30.23)
-        self.parent.acknowledgementText = """ 
-This module was developed by Oshane Thomas for SlicerMorph with input from Julie Winchester (MorphoSource) 
-and John Bradley (Imageomics Institute). The development of the module was supported by NSF/OAC grant, 
-"HDR Institute: Imageomics: A New Frontier of Biological Information Powered by Knowledge-Guided 
-Machine Learnings" (Award #2118240).
-"""
+        self.parent.helpText = """This module provides a streamlined interface for querying MorphoSource database to search and retrieve dataset. For more information see  <a href=“https://github.com/SlicerMorph/Tutorials/tree/master/MorphoSourceImport”> the tutorial </A>."""
+        self.parent.acknowledgementText = """This module was developed by Oshane Thomas for SlicerMorph with input from Julie Winchester (MorphoSource) and John Bradley (Imageomics Institute). The development of the module was supported by NSF/OAC grant, "HDR Institute: Imageomics: A New Frontier of Biological Information Powered by Knowledge-Guided Machine Learnings" (Award #2118240)."""
 
 
 #
