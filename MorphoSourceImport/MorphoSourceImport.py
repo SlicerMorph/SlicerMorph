@@ -1,104 +1,298 @@
-import SimpleITK as sitk
-import sitkUtils
-import os
-import unittest
-import vtk, qt, ctk, slicer
-from slicer.ScriptedLoadableModule import *
+import json
 import logging
-import numpy as np
-import string
-import requests
 import math
+import os
+import string
+import sys
+import unittest
 import warnings
-from requests.packages.urllib3.exceptions import InsecureRequestWarning
 import zipfile
-import io
+from collections import OrderedDict
+from typing import Optional
+
+import webbrowser
+import requests
+import threading
+import concurrent.futures
+
+import ctk
+import numpy as np
+import qt
+import slicer
+import vtk
+from slicer.ScriptedLoadableModule import *
+
+warnings.filterwarnings("ignore", "DataFrame.applymap has been deprecated")
+
 
 #
 # MorphoSourceImport
 #
-#define global variable for default login
-base_url = "https://www.morphosource.org/api/v1/find/"
-end_url = "&sort=specimen.element,taxonomy_names.ht_order"
-base_specimen_page_url ='https://www.morphosource.org/Detail/SpecimenDetail/show/specimen_id'
 
-warnings.simplefilter('ignore',InsecureRequestWarning)
-slicer.userNameDefault = "SlicerMorph@gmail.com"
-slicer.passwordDefault = ""
+def unlist_cell(cell):
+    """If the cell is a list, return the items separated by semicolons.
+    If the cell is empty or None, return an empty string. Otherwise, return the cell unchanged."""
+    if isinstance(cell, list):
+        return " ; ".join(map(str, cell))
+    elif cell is None or cell == []:
+        return ""
+    return cell
+
+
+def download_thumbnails(urls):
+    thumbnails = []
+    for url in urls:
+        try:
+            response = requests.get(url)
+            response.raise_for_status()  # Raises an HTTPError for bad requests
+
+            # Append the image content to the list
+            thumbnails.append(response.content)
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching the thumbnail from {url}: {e}")
+            thumbnails.append(None)  # Append None for any failed download
+
+    return thumbnails
+
+
+def getResourceScriptPath(scriptName):
+    # Get the path of the module
+    modulePath = os.path.dirname(slicer.modules.morphosourceimport.path)
+
+    # Construct the path to the resource script
+    resourceScriptPath = os.path.join(modulePath, 'Resources', 'Scripts', scriptName)
+    return resourceScriptPath
+
+
+class ClickableLabel(qt.QLabel):
+    def __init__(self, parent=None):
+        super(ClickableLabel, self).__init__(parent)
+
+    def mousePressEvent(self, event):
+        if event.button() == qt.Qt.RightButton:
+            # Handle left button click
+            self.showContextMenu(event.pos())
+        else:
+            # For other mouse events, call the default QLabel event handler
+            qt.QLabel.mousePressEvent(self, event)
+
+    def showContextMenu(self, position):
+        menu = qt.QMenu()
+        openAction = menu.addAction("Open in Browser")
+        action = menu.exec_(self.mapToGlobal(position))
+        if action == openAction:
+            url = self.objectName  # Directly use the URL string
+            webbrowser.open(url)  # Open the URL in the browser
+
+
+class MSQuery(object):
+    def __init__(self, query: str, media_type: str, taxonomy_gbif: str,
+                 openDownloadsOnly: bool, media_tag: str = None, per_page: int = 20):
+        # Attempt to import pandas, and install if not present
+        try:
+            import pandas as pd
+        except ImportError:
+            slicer.util.pip_install('pandas')
+            import pandas as pd
+
+        # Attempt to import morphosource, and install if not present
+        try:
+            import morphosource as ms
+            from morphosource import search_media, DownloadVisibility
+            from morphosource.search import SearchResults
+            from bs4 import BeautifulSoup
+        except ImportError:
+            slicer.util.pip_install('morphosource==1.0.0')
+            import morphosource as ms
+            from morphosource import search_media, DownloadVisibility
+            from morphosource.search import SearchResults
+            slicer.util.pip_install('bs4')
+            from bs4 import BeautifulSoup
+
+        self.bs = BeautifulSoup
+        self.pd = pd
+        self.ms = ms
+        self.search_media = search_media
+        self.SearchResults = SearchResults
+
+        self.query = query
+        self.taxonomy_gbif = taxonomy_gbif
+        self.media_type = media_type
+        self.media_tag = media_tag
+        self.per_page = per_page
+
+        # set initial download visibility
+        if openDownloadsOnly:
+            self.visibility = DownloadVisibility.OPEN
+        else:
+            self.visibility = DownloadVisibility.RESTRICTED
+
+        self.pages = OrderedDict()
+        self.total_count = None
+        self.total_pages = None
+        self.current_page = None
+        self.current_results = None
+
+        # Run initial query which stores
+        self.run_search(1)
+
+    def run_search(self, page: int) -> None:
+        # Check if the page has already been fetched
+        if page not in self.pages:
+            search_results = self.search_media(query=self.query,
+                                               taxonomy_gbif=self.taxonomy_gbif,
+                                               media_type=self.media_type,
+                                               visibility=self.visibility,
+                                               media_tag=self.media_tag,
+                                               per_page=self.per_page,
+                                               page=page)
+
+            self.current_results = search_results
+            self.current_page = page
+
+            if self.total_pages is None and self.total_count is None:
+                self.total_pages = int(self.current_results.pages['total_pages'])
+                self.total_count = int(self.current_results.pages['total_count'])
+
+            if self.total_count == 0:
+                return
+
+            thumbnail_urls, web_urls = self.get_urls_for_page(search_results)
+
+            # Store the search results in the ordered dictionary
+            self.pages[page] = {'search_results': search_results,
+                                'checked_items': [],
+                                'thumbnails': download_thumbnails(thumbnail_urls),
+                                'web_urls': web_urls,
+                                'sizes': [self.extract_file_details(url) for url in web_urls]}
+        else:
+            # Set the current results to the already fetched page
+            self.current_results = self.pages[page]['search_results']
+            self.current_page = page
+
+
+    def extract_dataframe(self):
+        # Ensure that there are current results to process
+        if self.current_results is None:
+            raise ValueError("No current results to extract. Run a search first.")
+
+        # Extracting the 'data' dictionaries from each item in search_results
+        search_results_data = [item.data for item in self.current_results.items]
+
+        # Converting the list of dictionaries to a pandas DataFrame
+        search_results_df = self.pd.DataFrame(search_results_data).applymap(unlist_cell)
+
+        search_results_df = self.revise_df(search_results_df)
+
+        search_results_df['File size'] = self.pages[1]['sizes']
+
+        return search_results_df
+
+    def extract_file_details(self, url):
+        # Send a GET request to the URL
+        response = requests.get(url)
+
+        # Check if the request was successful
+        if response.status_code == 200:
+            # Parse the HTML content
+            soup = self.bs(response.text, "html.parser")
+
+            # Find file format and file size
+            # file_format = soup.find('div', text='File format(s)').find_next_sibling('div').text.strip()
+            file_size = soup.find('div', text='File size').find_next_sibling('div').text.strip()
+
+            return file_size  # [file_format, file_size]
+        else:
+            print("Failed to retrieve the webpage")
+            return 'NA'  # [None, None]
+
+    def revise_df(self, df):
+
+        revised_df = df[['id', 'title', 'media_type', 'physical_object_id',
+                         'part', 'side', 'date_modified',
+                         'physical_object_taxonomy_name', 'physical_object_taxonomy_gbif',
+                         'x_pixel_spacing', 'y_pixel_spacing', 'z_pixel_spacing']]
+
+        revised_colnames = ['Media ID', 'Title', 'Media Type', 'Object ID',
+                            'Part', 'Side', 'Date Modified',
+                            'Taxonomy Name', 'Taxonomy GBIF',
+                            'X Pixel Spacing', 'Y Pixel Spacing', 'Z Pixel Spacing']
+
+        revised_df.columns = revised_colnames
+
+        return revised_df
+
+    def get_urls_for_page(self, search_results):
+        thumbnail_urls = []
+        web_urls = []
+        for media in search_results.items:
+            thumbnail_urls.append(media.get_thumbnail_url())
+            web_urls.append(media.get_website_url())
+
+        return thumbnail_urls, web_urls
+
+    def get_dataframe_with_updated_index(self, page_number):
+        """
+        Updates the index of the current DataFrame based on the page number
+        and the number of records per page.
+        """
+        if self.current_results is None:
+            raise ValueError("No current results to extract. Run a search first.")
+
+        # Calculate the start index for the current page
+        start_index = (page_number - 1) * self.per_page
+
+        # Extracting the 'data' dictionaries from each item in search_results
+        search_results_data = [item.data for item in self.current_results.items]
+
+        # Converting the list of dictionaries to a pandas DataFrame
+        search_results_df = self.pd.DataFrame(search_results_data)
+
+        # Update the DataFrame index to reflect the current page
+        search_results_df.index = range(start_index, start_index + len(search_results_df))
+
+        # Apply the unlist_cell function to each cell in the DataFrame
+        search_results_df = search_results_df.applymap(unlist_cell)
+
+        search_results_df = self.revise_df(search_results_df)
+
+        search_results_df['File size'] = self.pages[page_number]['sizes']
+
+        return search_results_df
+
+    def get_all_checked_items(self):
+        """Fetches checked items from all pages and returns them as a list of strings."""
+        all_checked_items = []
+        for page in self.pages.values():
+            checked_items = page.get('checked_items', [])
+            all_checked_items.extend(checked_items)
+        return all_checked_items
 
 
 class MorphoSourceImport(ScriptedLoadableModule):
-  """Uses ScriptedLoadableModule base class, available at:
-  https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
-  """
+    """Uses ScriptedLoadableModule base class, available at:
+    https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
+    """
 
-  def __init__(self, parent):
-    ScriptedLoadableModule.__init__(self, parent)
-    self.parent.title = "MorphoSourceImport" # TODO make this more human readable by adding spaces
-    self.parent.categories = ["SlicerMorph.Input and Output"]
-    self.parent.dependencies = []
-    self.parent.contributors = ["Murat Maga (UW), Sara Rolfe (UW), Arthur Porto(SCRI)"] # replace with "Firstname Lastname (Organization)"
-    self.parent.helpText = """
-This module provides a keyword search to query and load 3D models from the MorphoSource database into the 3D Slicer scene.
-<p>For more information about usage and limitations see <a href="https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/MorphoSourceImport"> online documentation.</a>
+    def __init__(self, parent):
+        ScriptedLoadableModule.__init__(self, parent)
+        self.parent.title = "MorphoSourceImport"
+        self.parent.categories = ["SlicerMorph.Input and Output"]
+        self.parent.dependencies = []  # TODO: add here list of module names that this module requires
+        self.parent.contributors = ["Murat Maga (UW), Sara Rolfe (SCRI), Oshane Thomas(SCRI)"]
+        # TODO: Finish the Readme file (OT 10.30.23)
+        self.parent.helpText = """
+This module provides a streamlined interface for querying MorphoSource database to search and retrieve dataset. 
+For more information see  <a href=“https://github.com/SlicerMorph/Tutorials/tree/master/MorphoSourceImport”> 
+the tutorial </A>.
 """
-    self.parent.acknowledgementText = """
-      This module was developed by Sara Rolfe and Arthur Porto with guidance from Julie Winchester for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections"
-      awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839).
-      https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false"""
-
-    # Additional initialization step after application startup is complete
-    slicer.app.connect("startupCompleted()", registerSampleData)
-
-
-#
-# Register sample data sets in Sample Data module
-#
-
-def registerSampleData():
-  """
-  Add data sets to Sample Data module.
-  """
-  # It is always recommended to provide sample data for users to make it easy to try the module,
-  # but if no sample data is available then this method (and associated startupCompeted signal connection) can be removed.
-
-  import SampleData
-  iconsPath = os.path.join(os.path.dirname(__file__), 'Resources/Icons')
-
-  # To ensure that the source code repository remains small (can be downloaded and installed quickly)
-  # it is recommended to store data sets that are larger than a few MB in a Github release.
-
-  # TemplateKey1
-  SampleData.SampleDataLogic.registerCustomSampleDataSource(
-    # Category and sample name displayed in Sample Data module
-    category='TemplateKey',
-    sampleName='TemplateKey1',
-    # Thumbnail should have size of approximately 260x280 pixels and stored in Resources/Icons folder.
-    # It can be created by Screen Capture module, "Capture all views" option enabled, "Number of images" set to "Single".
-    thumbnailFileName=os.path.join(iconsPath, 'TemplateKey1.png'),
-    # Download URL and target file name
-    uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
-    fileNames='TemplateKey1.nrrd',
-    # Checksum to ensure file integrity. Can be computed by this command:
-    #  import hashlib; print(hashlib.sha256(open(filename, "rb").read()).hexdigest())
-    checksums = 'SHA256:998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95',
-    # This node name will be used when the data set is loaded
-    nodeNames='TemplateKey1'
-  )
-
-  # TemplateKey2
-  SampleData.SampleDataLogic.registerCustomSampleDataSource(
-    # Category and sample name displayed in Sample Data module
-    category='TemplateKey',
-    sampleName='TemplateKey2',
-    thumbnailFileName=os.path.join(iconsPath, 'TemplateKey2.png'),
-    # Download URL and target file name
-    uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
-    fileNames='TemplateKey2.nrrd',
-    checksums = 'SHA256:1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97',
-    # This node name will be used when the data set is loaded
-    nodeNames='TemplateKey2'
-  )
+        # TODO: Add updated acknowledgement (OT 10.30.23)
+        self.parent.acknowledgementText = """ 
+This module was developed by Oshane Thomas for SlicerMorph with input from Julie Winchester (MorphoSource) 
+and John Bradley (Imageomics Institute). The development of the module was supported by NSF/OAC grant, 
+"HDR Institute: Imageomics: A New Frontier of Biological Information Powered by Knowledge-Guided 
+Machine Learnings" (Award #2118240).
+"""
 
 
 #
@@ -106,465 +300,875 @@ def registerSampleData():
 #
 
 class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
-  """Uses ScriptedLoadableModuleWidget base class, available at:
-  https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
-  """
-  def setup(self):
-    ScriptedLoadableModuleWidget.setup(self)
+    def __init__(self, parent=None) -> None:
+        ScriptedLoadableModuleWidget.__init__(self, parent)
 
-    self.specimen_pages = []
+        self.startSearchButton = None
+        self.all_pages = None
+        self.searchProcess = None
+        self.searchProgressBar = None
+        self.downloadInProgress = None
+        self.total_downloads = None
+        self.completed_downloads = None
+        # self.stopDownloadButton = None
+        self.progressBar = None
+        self.selectDownloadFolderButton = None
+        self.downloadFolderPathInput = None
+        self.downloadButton = None
+        self.intendedUseStatementInput = None
+        self.setAPIKeyButton = None
+        self.toggleAPIKeyVisibilityButton = None
+        self.apiKeyInput = None
+        self.pageNavigationLayout = None
+        self.pageNumberEdit = None
+        self.nextPageButton = None
+        self.previousPageButton = None
+        self.resultsTable = None
+        self.submitQueryButton = None
+        self.openDatasetsCheckbox = None
+        self.ctImageSeriesRadioButton = None
+        self.meshRadioButton = None
+        self.taxonInput = None
+        self.mediaTag = None
+        self.elementInput = None
+        self.usageCategoryCheckboxes = None
 
-    # Instantiate and connect widgets ...
-    #
-    # Input/Export Area
-    #
-    IOCollapsibleButton = ctk.ctkCollapsibleButton()
-    IOCollapsibleButton.text = "MorphoSource"
-    self.layout.addWidget(IOCollapsibleButton)
+        self.downloadProcess = None  # Add this line to store the subprocess reference
+        self.logic = MorphoSourceImportLogic()
 
-    # Layout within the dummy collapsible button
-    #IOFormLayout = qt.QFormLayout(IOCollapsibleButton)
-    IOFormLayout= qt.QFormLayout(IOCollapsibleButton)
+    def setup(self) -> None:
+        ScriptedLoadableModuleWidget.setup(self)
 
-    #
-    # Username input
-    #
-    self.userNameInput = qt.QLineEdit()
-    self.userNameInput.setText(slicer.userNameDefault)
-    self.userNameInput.setToolTip( "Input MorphoSource account username" )
-    IOFormLayout.addRow("MorphoSource Username: ", self.userNameInput)
+        self.load_dependencies()
 
-    #
-    # Password input
-    #
+        parametersCollapsibleButton = ctk.ctkCollapsibleButton()
+        parametersCollapsibleButton.text = "MorphoSource Query Parameters"
+        self.layout.addWidget(parametersCollapsibleButton)
 
-    self.passwordInput = qt.QLineEdit()
-    self.passwordInput.setEchoMode(qt.QLineEdit().Password)
-    self.passwordInput.setText(slicer.passwordDefault)
-    self.passwordInput.setToolTip( "Input MorphoSource account password" )
-    IOFormLayout.addRow("MorphoSource Password: ", self.passwordInput)
+        parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
 
-    #
-    # Login button
-    #
-    self.loginButton = qt.QPushButton("Log in")
-    self.loginButton.toolTip = "Log into the Morphosource database"
-    self.loginButton.enabled = False
-    IOFormLayout.addRow(self.loginButton)
+        self.elementInput = qt.QLineEdit()
+        self.elementInput.setPlaceholderText("Input your search query, e.g., 'Skull')")
+        parametersFormLayout.addRow("Query Keyword:", self.elementInput)
 
-    #
-    # Query parameter area
-    #
-    parametersCollapsibleButton = ctk.ctkCollapsibleButton()
-    parametersCollapsibleButton.text = "Query parameters"
-    self.layout.addWidget(parametersCollapsibleButton)
+        # Create a new QLineEdit for the "Taxon" category input
+        self.taxonInput = qt.QLineEdit()
+        self.taxonInput.setPlaceholderText("Enter taxon for search query (optional) e.g., 'Primates'")
+        parametersFormLayout.addRow("Taxon:", self.taxonInput)
 
-    # Layout within the dummy collapsible button
-    parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
+        self.mediaTag = qt.QLineEdit()
+        self.mediaTag.setPlaceholderText("Enter a media tag (optional), e.g., 'Pleistocene' ")
+        parametersFormLayout.addRow("Media Tag: ", self.mediaTag)
 
-    #
-    # Username input
-    #
-    self.orderInput = qt.QLineEdit()
-    self.orderInput.setToolTip( "Input the the specimen order, eg: 'Carnivora' " )
-    parametersFormLayout.addRow("Query order: ", self.orderInput)
+        # Change checkboxes to radio buttons
+        self.meshRadioButton = qt.QRadioButton("Mesh")
+        self.ctImageSeriesRadioButton = qt.QRadioButton("CT Image Series")
 
-    #
-    # Username input
-    #
-    self.elementInput = qt.QLineEdit()
-    self.elementInput.setToolTip( "Input the speciment element, eg: 'Skull' " )
-    parametersFormLayout.addRow("Query element: ", self.elementInput)
+        # Arrange radio buttons in a horizontal layout
+        dataTypeLayout = qt.QHBoxLayout()
+        dataTypeLayout.addWidget(self.meshRadioButton)
+        dataTypeLayout.addWidget(self.ctImageSeriesRadioButton)
 
-    #
+        # Create the Open Datasets Only checkbox
+        self.openDatasetsCheckbox = qt.QCheckBox("Open Access Datasets Only")
 
-    # Submit query Button
-    #
-    self.submitQueryButton = qt.QPushButton("Submit query")
-    self.submitQueryButton.toolTip = "Query the MorphoSource database for 3D models. This may take a few minutes."
-    self.submitQueryButton.enabled = False
-    parametersFormLayout.addRow(self.submitQueryButton)
+        # Add to the layout
+        dataTypeLayout = qt.QHBoxLayout()
+        dataTypeLayout.addWidget(self.meshRadioButton)
+        dataTypeLayout.addWidget(self.ctImageSeriesRadioButton)
+        dataTypeLayout.addStretch(6)  # Add stretch before the separator
+        dataTypeLayout.addWidget(self.openDatasetsCheckbox)
 
-    #
-    # Query results area
-    #
-    resultsCollapsibleButton = ctk.ctkCollapsibleButton()
-    resultsCollapsibleButton.text = "Query results:"
-    resultsCollapsibleButton.collapsed = False
-    self.layout.addWidget(resultsCollapsibleButton)
-    resultsFormLayout = qt.QFormLayout(resultsCollapsibleButton)
+        # Add the horizontal layout to the form layout
+        parametersFormLayout.addRow("Data Types:", dataTypeLayout)
 
-    self.resultsModel = qt.QStandardItemModel()
-    self.resultsTable = qt.QTableView()
-    self.resultsTable.horizontalHeader().stretchLastSection = True
-    self.resultsTable.horizontalHeader().visible = False
-    self.resultsTable.verticalHeader().visible = True
-    self.resultsTable.setSelectionBehavior(qt.QAbstractItemView().SelectRows)
-    self.resultsTable.setModel(self.resultsModel)
-    resultsFormLayout.addRow(self.resultsTable)
+        self.openDatasetsCheckbox.toggled.connect(self.logic.setOpenDatasetsOnly)
 
-    self.openSpecimenPageButton = qt.QPushButton("Open specimen page")
-    self.openSpecimenPageButton.toolTip = "Open the MorphoSource page for the selected specimen"
-    self.openSpecimenPageButton.enabled = False
-    resultsFormLayout.addRow(self.openSpecimenPageButton)
+        # Folder selection button and text field
+        self.downloadFolderPathInput = qt.QLineEdit()
+        self.downloadFolderPathInput.setReadOnly(True)  # Make the field read-only
+        self.selectDownloadFolderButton = qt.QPushButton("Select Download Folder")
+        self.selectDownloadFolderButton.clicked.connect(self.onSelectDownloadFolder)
 
-    self.loadResultsButton = qt.QPushButton("Load selected models")
-    self.loadResultsButton.toolTip = "Load the selected models into the scene."
-    self.loadResultsButton.enabled = False
-    resultsFormLayout.addRow(self.loadResultsButton)
+        # Layout for download folder selection
+        downloadFolderLayout = qt.QHBoxLayout()
+        downloadFolderLayout.addWidget(self.downloadFolderPathInput)
+        downloadFolderLayout.addWidget(self.selectDownloadFolderButton)
 
+        # Add the layout to the widget
+        parametersFormLayout.addRow(downloadFolderLayout)
 
-    # connections
-    self.loginButton.connect('clicked(bool)', self.onLogin)
-    self.userNameInput.connect('textChanged(const QString &)', self.onLoginStringChanged)
-    self.passwordInput.connect('textChanged(const QString &)', self.onLoginStringChanged)
-    self.orderInput.connect('textChanged(const QString &)', self.onQueryStringChanged)
-    self.elementInput.connect('textChanged(const QString &)', self.onQueryStringChanged)
-    self.submitQueryButton.connect('clicked(bool)', self.onSubmitQuery)
-    self.resultsTable.selectionModel().connect('selectionChanged(QItemSelection,QItemSelection)', self.onSelectionChanged)
-    self.openSpecimenPageButton.connect('clicked(bool)', self.onOpenSpecimenPage)
-    self.loadResultsButton.connect('clicked(bool)', self.onLoadResults)
+        self.submitQueryButton = qt.QPushButton("Submit Query")
+        self.submitQueryButton.toolTip = "Query the MorphoSource database for 3D models. This may take a few minutes."
+        self.submitQueryButton.enabled = False
+        parametersFormLayout.addRow(self.submitQueryButton)
 
-    # Add vertical spacer
-    self.layout.addStretch(1)
+        # Connections
+        self.elementInput.connect('textChanged(const QString &)', self.onQueryStringChanged)
+        self.mediaTag.connect('textChanged(const QString &)', self.onQueryStringChanged)
 
-    # Refresh Apply button state
-    self.onLoginStringChanged()
-    self.onQueryStringChanged()
+        self.meshRadioButton.toggled.connect(self.onQueryStringChanged)
+        self.ctImageSeriesRadioButton.toggled.connect(self.onQueryStringChanged)
 
-  def cleanup(self):
-    pass
+        self.submitQueryButton.connect('clicked(bool)', self.onSubmitQuery)
 
-  def onLoginStringChanged(self):
-    self.loginButton.enabled = bool(self.userNameInput.text != "") and bool(self.passwordInput.text != "")
+        spacer = qt.QSpacerItem(0, 0, qt.QSizePolicy.Minimum, qt.QSizePolicy.Expanding)
+        self.layout.addItem(spacer)
 
-  def onQueryStringChanged(self):
-    if hasattr(self, 'session'):
-      self.submitQueryButton.enabled = bool(self.orderInput.text != "") and bool(self.elementInput.text != "")
+        # Add table to layout
+        self.createBasicTable(rowHeight=30)
 
-  def onLogin(self):
-    logic = MorphoSourceImportLogic()
-    self.session = logic.runLogin(self.userNameInput.text, self.passwordInput.text)
-    # Allow query submission if parameters not empty
-    self.submitQueryButton.enabled = bool(self.orderInput.text != "") and bool(self.elementInput.text != "")
+        # Add page navigation buttons below the results table
+        self.previousPageButton = qt.QPushButton("Previous Page")
+        self.nextPageButton = qt.QPushButton("Next Page")
+        self.nextPageButton.setToolTip("Go to the next page of results.")
+        self.nextPageButton.enabled = False  # Disable the button initially
+        self.pageNumberEdit = qt.QLineEdit("1")  # Start at page 1
+        # Set initial UI element for page display as "1/1" for a new search
+        self.pageNumberEdit.setText("1 / 1")  # Set as "1/1" initially
+        self.pageNumberEdit.setValidator(qt.QIntValidator(1, 10000))  # Assume a max of 10000 pages for now
+        self.pageNumberEdit.setMaximumWidth(200)  # Set a fixed width that's just enough for 4 digits
+        self.pageNumberEdit.setAlignment(qt.Qt.AlignCenter)  # Center the text inside QLineEdit
 
-  def onSubmitQuery(self):
-      self.resultsTable.model().clear() # clear result from any previous run
-      if hasattr(self, 'session'):
-        queryDictionary =  {
-          "order": self.orderInput.text,
-          "element": self.elementInput.text
+        self.pageNavigationLayout = qt.QHBoxLayout()
+        self.pageNavigationLayout.addWidget(self.previousPageButton)
+        self.pageNavigationLayout.addWidget(self.pageNumberEdit)
+        self.pageNavigationLayout.addWidget(self.nextPageButton)
+        self.layout.addLayout(self.pageNavigationLayout)
+
+        # Disable the previous page button initially
+        self.previousPageButton.setEnabled(False)
+
+        # Connect the buttons to their respective slot functions
+        self.previousPageButton.clicked.connect(self.onPreviousPageClicked)
+        self.nextPageButton.clicked.connect(self.onNextPageClicked)
+        self.pageNumberEdit.editingFinished.connect(self.onPageNumberChanged)
+
+        # Create a new button for starting the search
+        self.startSearchButton = qt.QPushButton("Download Query Results")
+        self.startSearchButton.toolTip = "Click to download all query results as .csv"
+        self.startSearchButton.setEnabled(False)
+
+        # Layout to add the button
+        layout = qt.QVBoxLayout()
+        layout.addWidget(self.startSearchButton)
+        self.layout.addLayout(layout)
+
+        # Connect the button to the method
+        self.startSearchButton.connect('clicked(bool)', self.startSearchProcess)
+
+        # Existing API Key input field setup
+        self.apiKeyInput = qt.QLineEdit()
+        self.apiKeyInput.setPlaceholderText("Enter your public API key here")
+        self.apiKeyInput.setEchoMode(qt.QLineEdit.Password)  # Start with hidden API key
+
+        # Add a button to toggle the visibility of the API key
+        self.toggleAPIKeyVisibilityButton = qt.QPushButton("Show")
+        self.toggleAPIKeyVisibilityButton.setCheckable(True)  # Make it checkable
+        self.toggleAPIKeyVisibilityButton.setToolTip("Toggle API key visibility")
+
+        # Arrange API key input and toggle button in a horizontal layout
+        apiKeyLayout = qt.QHBoxLayout()
+        apiKeyLayout.addWidget(self.apiKeyInput)
+        apiKeyLayout.addWidget(self.toggleAPIKeyVisibilityButton)
+        apiKeyWidget = qt.QWidget()
+        apiKeyWidget.setLayout(apiKeyLayout)
+        self.layout.addWidget(apiKeyWidget)
+
+        # Connections for the API Key and its visibility toggle
+        self.toggleAPIKeyVisibilityButton.clicked.connect(self.toggleAPIKeyVisibility)
+
+        # Add button for setting the API key
+        self.setAPIKeyButton = qt.QPushButton("Set API Key")
+        self.setAPIKeyButton.setToolTip("Set the API key for MorphoSource.")
+        self.setAPIKeyButton.clicked.connect(self.onSetAPIKey)  # Connect the button to the respective method
+        self.layout.addWidget(self.setAPIKeyButton)
+
+        # add text field for entering intended usage
+        self.intendedUseStatementInput = qt.QTextEdit()
+        self.intendedUseStatementInput.setPlaceholderText("Enter your intended use statement here...")
+
+        # Set the maximum height to make the QTextEdit box smaller
+        self.intendedUseStatementInput.setMaximumHeight(60)  # You can adjust the value 100 to your preference
+        self.layout.addWidget(self.intendedUseStatementInput)
+        self.intendedUseStatementInput.textChanged.connect(self.checkDownloadButtonState)
+
+        # Collapsible button for Usage Categories
+        usageCategoryCollapsibleButton = ctk.ctkCollapsibleButton()
+        usageCategoryCollapsibleButton.text = "Choose (at least one) appropriate usage categories"
+        self.layout.addWidget(usageCategoryCollapsibleButton)
+
+        # Grid layout for usage categories
+        usageCategoryLayout = qt.QGridLayout(usageCategoryCollapsibleButton)
+
+        # List of usage categories
+        usageCategories = [
+            "Completing Class Assignment(s) (Grades K-6)",
+            "Completing Class Assignment(s) (Grades 7-12)",
+            "Completing Class Assignment(s) (University or Post-Secondary)",
+            "Completing Class Assignment(s) (Post-Graduate)",
+            "Educator Resource (Grades K-6)",
+            "Educator Resource (Grades 7-12)",
+            "Educator Resource (University or Post-Secondary)",
+            "Educator Resource (Post-Graduate)",
+            "Public Outreach (Museums, Documentaries, Etc)",
+            "Art",
+            "Personal Interest",
+            "3D Printing",
+            "Commercial Use"
+        ]
+
+        # Create checkboxes for each category and add them to the grid layout
+        self.usageCategoryCheckboxes = {}
+        for i, category in enumerate(usageCategories):
+            checkbox = qt.QCheckBox(category)
+
+            # Set a smaller font size using a style sheet
+            checkbox.setStyleSheet("QCheckBox { font-size: 9pt; }")  # Adjust the font size as needed
+
+            col = i % 2  # Determine the column (0 or 1)
+            row = i // 2  # Determine the row
+            usageCategoryLayout.addWidget(checkbox, row, col)
+            self.usageCategoryCheckboxes[category] = checkbox
+
+        for checkbox in self.usageCategoryCheckboxes.values():
+            checkbox.stateChanged.connect(self.checkDownloadButtonState)
+
+        # Load saved settings and update the input fields
+        savedApiKey = self.logic.loadSetting('apiKey', '')
+        self.apiKeyInput.text = savedApiKey
+
+        savedDownloadFolder = self.logic.loadSetting('downloadFolder', '')
+        self.downloadFolderPathInput.text = savedDownloadFolder
+
+        # Add download button below the table
+        self.downloadButton = qt.QPushButton("Download Checked Items")
+        self.downloadButton.clicked.connect(self.downloadCheckedItems)
+        self.downloadButton.setEnabled(False)  # Initially disabled
+        self.layout.addWidget(self.downloadButton)
+
+        # Create the progress bar
+        self.progressBar = qt.QProgressBar()
+        self.progressBar.setRange(0, 100)  # Assuming 0-100% progress
+        self.progressBar.setVisible(False)  # Initially hidden
+        self.layout.addWidget(self.progressBar)
+
+        # Create stop download button
+        # self.stopDownloadButton = qt.QPushButton("Stop Download")
+        # self.stopDownloadButton.clicked.connect(self.stopDownload)
+        # self.layout.addWidget(self.stopDownloadButton)
+
+        self.layout.addStretch(1)
+        self.onQueryStringChanged()
+
+    def cleanup(self) -> None:
+        pass
+
+    def set_title(self) -> None:  # Unused: Not within slicer style guidelines
+        moduleNameLabel = qt.QLabel("MorphoSource Import")
+        moduleNameLabel.setAlignment(qt.Qt.AlignCenter)
+        moduleNameLabel.setStyleSheet("font-weight: bold; font-size: 18px; padding: 10px;")
+        self.layout.addWidget(moduleNameLabel)
+
+    def createBasicTable(self, rowHeight) -> None:
+        # Table for search results
+        self.resultsTable = qt.QTableWidget()
+
+        # Adjust this based on your row height
+        self.resultsTable.setMinimumHeight(rowHeight * 10)
+
+        # Adjust the size policy to expand
+        sizePolicy = qt.QSizePolicy(qt.QSizePolicy.Expanding, qt.QSizePolicy.Expanding)
+        self.resultsTable.setSizePolicy(sizePolicy)
+
+        # Add the results table to the layout
+        self.layout.addWidget(self.resultsTable)
+
+    def onQueryStringChanged(self):
+        selectedRadio = self.meshRadioButton.isChecked() or \
+                        self.ctImageSeriesRadioButton.isChecked()
+
+        # Check only the elementInput for activation.
+        self.submitQueryButton.enabled = bool(self.elementInput.text) and selectedRadio
+
+    def onSubmitQuery(self):
+
+        selectedDataType = None
+        if self.meshRadioButton.isChecked():
+            selectedDataType = "Mesh"
+        elif self.ctImageSeriesRadioButton.isChecked():
+            selectedDataType = "CT Image Series"
+
+        tagText = self.mediaTag.text if self.mediaTag.text.strip() else None
+
+        # Check if there is text in the taxon input and add it to the dictionary
+        taxonText = self.taxonInput.text if self.taxonInput.text.strip() else None
+
+        queryDictionary = {
+            "query": self.elementInput.text,
+            "mediaTag": tagText,
+            "mediaType": selectedDataType,
+            "taxon": taxonText  # Add the taxon text to the query dictionary
         }
-        logic = MorphoSourceImportLogic()
 
-        self.result_dataframe = logic.runQuery(queryDictionary, self.session)
-        if not self.result_dataframe.empty:
-          self.populateTable()
-          self.loadResultsButton.enabled = True
-      else:
-        print("Error: No session exists. Please log-in first.")
+        # Note: This overwrites and creates a new MSQuery Object
+        self.logic.runNewQuery(queryDictionary)
 
+        if self.logic.msq.total_count == 0:
+            self.resultsTable.clearContents()
+            self.checkDownloadButtonState()
+            self.startSearchButton.setEnabled(False)
+            slicer.util.infoDisplay("Your search did not return any results.", windowTitle="No Results Found")
+            return
 
-  def populateTable(self):
-    self.resultsTable.horizontalHeader().visible = True
-    self.resultsModel.setHorizontalHeaderLabels(self.result_dataframe.columns)
-    [rowCount,columnCount]=self.result_dataframe.shape
-    for i in range(rowCount):
-      for j in range(columnCount):
-        item = qt.QStandardItem()
-        item.setText(self.result_dataframe.iloc[i,j])
-        self.resultsModel.setItem(i, j, item)
+        else:
+            page_one_results_df = self.logic.msq.extract_dataframe()
 
-  def onSelectionChanged(self, selection, oldSelection):
-    self.openSpecimenPageButton.enabled = len(self.resultsTable.selectionModel().selectedRows()) == 1
+            # Update the table with search results
+            self.updateResultsTable(page_one_results_df,
+                                    self.logic.msq.pages[1]['thumbnails'],
+                                    self.logic.msq.pages[1]['web_urls'])
 
-  def onOpenSpecimenPage(self):
-    selection = self.resultsTable.selectionModel().selectedRows()
-    row = selection[0].row()
-    specimen_id = self.result_dataframe.iloc[row].specimen_id
-    url = base_specimen_page_url + '/' + specimen_id
-    specimen_page = slicer.qSlicerWebWidget()
-    geometry = slicer.util.mainWindow().geometry
-    geometry.setLeft(geometry.left() + 50)
-    geometry.setTop(geometry.top() + 50)
-    geometry.setWidth(1080)
-    geometry.setHeight(990)
-    specimen_page.setGeometry(geometry)
-    specimen_page.url = url
-    specimen_page.show()
-    self.specimen_pages.append(specimen_page)
+            self.startSearchButton.setEnabled(True)
 
-  def onLoadResults(self):
-    selection = self.resultsTable.selectionModel().selectedRows()
-    selectionList = []
-    for i in range(len(selection)):
-      selectionList.append(selection[i].row())
-    selectedResults = self.result_dataframe.iloc[selectionList]
-    logic = MorphoSourceImportLogic()
-    logic.runImport(selectedResults, self.session)
+            self.pageNumberEdit.setText(f"1 / {self.logic.msq.total_pages}")
 
-class LogDataObject:
-  """This class i
-     """
-  def __init__(self):
-    self.FileType = "NULL"
-    self.X  = "NULL"
-    self.Y = "NULL"
-    self.Z = "NULL"
-    self.Resolution = "NULL"
-    self.Prefix = "NULL"
-    self.SequenceStart = "NULL"
-    self.SeqenceEnd = "NULL"
+            self.checkPageButtonsState()
+
+            return
+
+    def startSearchProcess(self):
+        # Prepare query dictionary
+        selectedDataType = None
+        if self.meshRadioButton.isChecked():
+            selectedDataType = "Mesh"
+        elif self.ctImageSeriesRadioButton.isChecked():
+            selectedDataType = "CT Image Series"
+
+        tagText = self.mediaTag.text if self.mediaTag.text.strip() else None
+
+        # Check if there is text in the taxon input and add it to the dictionary
+        taxonText = self.taxonInput.text if self.taxonInput.text.strip() else None
+
+        queryDictionary = {
+            "query": self.elementInput.text,
+            "mediaTag": tagText,
+            "mediaType": selectedDataType,
+            "visibility": self.logic.openDatasetsOnly,  # add visibility
+            "taxon": taxonText,  # Add the taxon text to the query dictionary
+            'download_folder': self.logic.download_folder
+        }
+
+        self.searchProcess = qt.QProcess()
+        self.searchProcess.readyReadStandardOutput.connect(self.onSearchProcessReadyRead)
+        self.searchProcess.errorOccurred.connect(self.onSearchProcessError)
+
+        # Prepare the command to start the download process
+        command = sys.executable
+        # scriptPath = __file__  # Path to the current script
+        scriptPath = getResourceScriptPath('download_csv.py')
+
+        query_json_dict = json.dumps(queryDictionary)  # Convert config to JSON string
+        args = [scriptPath, query_json_dict]
+
+        self.startDownload()
+        # Start the download process
+        self.searchProcess.start(command, args)
+
+        # Assume progressBar is a member of the class and is a QProgressBar
+        self.searchProgressBar = slicer.util.createProgressDialog()
+
+    def onSearchProcessReadyRead(self):
+        # Read the standard output of the search process
+        output = self.searchProcess.readAllStandardOutput().data().decode("utf-8")
+
+        # Split the output by newlines to get individual lines
+        lines = output.split('\n')
+
+        # Iterate through each line
+        for line in lines:
+            if line.startswith("PROGRESS:"):
+                # Extract the progress value after the "PROGRESS:" prefix
+                try:
+                    progress_value = float(line.split(':')[1])
+                    self.updateSearchProgressBar(progress_value)
+                except ValueError as e:
+                    # Handle any errors during conversion
+                    print(f"Error converting progress to float: {e}")
+            elif line.startswith("{"):  # Assuming JSON data starts with '{'
+                self.all_pages = json.loads(line)
+                # Process the final data
+            else:
+                print('output:', line)
+
+    def updateSearchProgressBar(self, value):
+        # Update the progress bar in the Slicer GUI
+        self.searchProgressBar.setValue(value)
+
+    def onSearchProcessError(self, error):
+        if error == qt.QProcess.FailedToStart:
+            print("Process failed to start.")
+        elif error == qt.QProcess.Crashed:
+            print("Process crashed.")
+        elif error == qt.QProcess.Timedout:
+            print("Process timeout.")
+        elif error == qt.QProcess.WriteError:
+            print("Process write error.")
+        elif error == qt.QProcess.ReadError:
+            print("Process read error.")
+        else:
+            print("An unknown error occurred.")
+
+    # Method to populate the QTableWidget
+    def updateResultsTable(self, df, thumbnails, web_urls):
+        currentPage = self.logic.msq.current_page
+        checkedItems = self.logic.msq.pages.get(currentPage, {}).get('checked_items', [])
+
+        start_index = (currentPage - 1) * self.logic.msq.per_page
+
+        self.resultsTable.clearContents()
+        self.resultsTable.setRowCount(df.shape[0])
+        self.resultsTable.setColumnCount(df.shape[1] + 2)  # +2 for the checkbox and thumbnail columns
+
+        headers = ["D", "Image"] + [str(col).capitalize() for col in df.columns]
+        self.resultsTable.setHorizontalHeaderLabels(headers)
+        self.resultsTable.setVerticalHeaderLabels([str(i + 1) for i in df.index])
+
+        # Set font size for table items
+        font = qt.QFont()
+        font.setPointSize(12)  # Adjust this size as needed
+        self.resultsTable.setFont(font)
+
+        # Set stylesheet for the header view to match the font size
+        header = self.resultsTable.horizontalHeader()
+        header.setStyleSheet(
+            "QHeaderView::section { font-size: 12pt; }")  # Match the font size with the table's row text
+
+        for row_index, row_data in df.iterrows():
+            adjusted_row_index = row_index - start_index
+            itemId = str(row_data.iloc[0])
+
+            # Set up the checkbox
+            checkbox = qt.QCheckBox()
+            checkbox.stateChanged.connect(self.checkDownloadButtonState)
+            checkbox.setChecked(itemId in checkedItems)
+            checkbox.stateChanged.connect(lambda state, row=adjusted_row_index: self.onCheckboxStateChanged(state, row))
+            self.resultsTable.setCellWidget(adjusted_row_index, 0, self.createCenteredWidget(checkbox))
+
+            # Handle thumbnail display
+            # print('currentPage:', currentPage, '| row_index:', row_index, '| adjusted_row_index:', adjusted_row_index)
+            thumbnail = thumbnails[adjusted_row_index]
+            web_url = web_urls[adjusted_row_index]
+            label = ClickableLabel()
+            label.setObjectName(web_url)
+            if thumbnail:
+                pixmap = qt.QPixmap()
+                pixmap.loadFromData(thumbnail)
+                scaledPixmap = pixmap.scaled(50, 50, qt.Qt.KeepAspectRatio)
+                label.setPixmap(scaledPixmap)
+                rowHeight = scaledPixmap.height()
+                self.resultsTable.setRowHeight(adjusted_row_index, rowHeight)
+            else:
+                label.setText("No Image")
+            self.resultsTable.setCellWidget(adjusted_row_index, 1, label)
+
+            # Add a hidden QTableWidgetItem to store item ID
+            itemIDWidget = qt.QTableWidgetItem(itemId)
+            self.resultsTable.setItem(adjusted_row_index, 2, itemIDWidget)
+
+            # Populate other columns
+            for col_index, item in enumerate(row_data):
+                cellItem = qt.QTableWidgetItem(str(item))
+                cellItem.setFlags(cellItem.flags() ^ qt.Qt.ItemIsEditable)
+                self.resultsTable.setItem(adjusted_row_index, col_index + 2, cellItem)
+
+            self.resultsTable.setColumnWidth(0, 50)  # Width for the checkbox column
+            self.resultsTable.setColumnWidth(1, 50)  # Width for the thumbnail column
+
+    def createCenteredWidget(self, widget):
+        cell_widget = qt.QWidget()
+        layout = qt.QHBoxLayout(cell_widget)
+        layout.addWidget(widget)
+        layout.setAlignment(qt.Qt.AlignCenter)
+        layout.setContentsMargins(0, 0, 0, 0)
+        cell_widget.setLayout(layout)
+        return cell_widget
+
+    def connectCheckboxSignal(self, checkbox, row):
+        def on_state_changed(state):
+            self.onCheckboxStateChanged(state, row)
+
+        checkbox.stateChanged.connect(on_state_changed)
+
+    def onCheckboxStateChanged(self, state, row):
+        currentPage = self.logic.msq.current_page
+
+        # Retrieve the item ID from the hidden QTableWidgetItem
+        itemId = self.resultsTable.item(row, 2).text()
+
+        # Add or remove the item from the checked_items list
+        if state == qt.Qt.Checked:
+            if itemId not in self.logic.msq.pages[currentPage]['checked_items']:
+                self.logic.msq.pages[currentPage]['checked_items'].append(itemId)
+        elif state == qt.Qt.Unchecked:
+            if itemId in self.logic.msq.pages[currentPage]['checked_items']:
+                self.logic.msq.pages[currentPage]['checked_items'].remove(itemId)
+
+    def onPreviousPageClicked(self):
+        # Extract the current page number from the text
+        current_page_text = self.pageNumberEdit.text.split('/')[0]
+        current_page = int(current_page_text)
+
+        # Decrement the current page number
+        current_page -= 1
+
+        # Update the pageNumberEdit text with the new page number and total pages
+        if self.logic.msq:
+            self.pageNumberEdit.setText(f"{current_page} / {self.logic.msq.total_pages}")
+
+            # Call the method to update the results for the new page number
+            self.updateResultsForPage(current_page)
+
+    def onNextPageClicked(self):
+        # Extract the current page number from the text
+        current_page_text = self.pageNumberEdit.text.split('/')[0].strip()
+        current_page = int(current_page_text)
+
+        # Increment the current page number
+        current_page += 1
+
+        # Update the pageNumberEdit text with the new page number and total pages
+        if self.logic.msq:
+            self.pageNumberEdit.setText(f"{current_page} / {self.logic.msq.total_pages}")
+
+            # Call the method to update the results for the new page number
+            self.updateResultsForPage(current_page)
+
+    def onPageNumberChanged(self):
+        if self.logic.msq:
+            current_page = int(self.pageNumberEdit.text.split('/')[0].strip())
+            self.updateResultsForPage(current_page)
+
+    def checkPageButtonsState(self):
+        """
+        Enable or disable the previous and next page buttons based on the current page and the total pages available.
+        """
+        if self.logic.msq:  # Ensure the MSQuery object exists
+            total_pages = self.logic.msq.total_pages
+            current_page_text = self.pageNumberEdit.text.split('/')[0].strip()  # Split the text and take the first part
+            current_page = int(current_page_text)  # Convert the current page number to an integer
+
+            # Disable the next page button if there's only one page or we're on the last page
+            self.nextPageButton.setEnabled(current_page < total_pages)
+
+            # Disable the previous page button if we're on the first page
+            self.previousPageButton.setEnabled(current_page > 1)
+
+    def updateResultsForPage(self, page_number):
+
+        # Call the logic to update the results for the specified page
+        self.logic.runQueryForPage(page_number)
+
+        if self.logic.msq.total_count == 0:
+            self.resultsTable.clearContents()
+            self.checkDownloadButtonState()
+            self.startSearchButton.setEnabled(False)
+            slicer.util.infoDisplay("Your search did not return any results.", windowTitle="No Results Found")
+            return
+
+        else:
+            # Extract the data for the new page
+            results_df = self.logic.msq.get_dataframe_with_updated_index(page_number)
+
+            # Update the results table with the new data
+            self.updateResultsTable(results_df, self.logic.msq.pages[page_number]['thumbnails'],
+                                    self.logic.msq.pages[page_number]['web_urls'])
+
+            # Check if total_pages is available and update the pageNumberEdit
+            if self.logic.msq and self.logic.msq.total_pages is not None:
+                self.pageNumberEdit.setText(f"{page_number} / {self.logic.msq.total_pages}")
+            else:
+                self.pageNumberEdit.setText(f"{page_number} / 1")  # Default to "1" if total_pages is not known
+
+            self.checkPageButtonsState()
+
+            # Enable or disable the previous and next buttons as necessaryssss
+            self.previousPageButton.setEnabled(page_number > 1)
+            self.nextPageButton.setEnabled(page_number < self.logic.msq.total_pages)
+
+            return
+
+    def checkDownloadButtonState(self):
+        try:
+            apiKey = self.apiKeyInput.text.strip()
+
+            intendedUseStatement = self.intendedUseStatementInput.toPlainText().strip()
+
+            # Check if at least one usage category is selected
+            atLeastOneCategorySelected = any(checkbox.isChecked() for checkbox in self.usageCategoryCheckboxes.values())
+
+            # Check if a download folder is chosen
+            downloadFolderChosen = bool(self.downloadFolderPathInput.text)
+
+            # Check if any items have been checked across all pages
+            anyItemsChecked = any(self.logic.msq.pages[page]['checked_items'] for page in self.logic.msq.pages)
+
+            # Conditions to enable the download button
+            enableDownloadButton = (
+                    apiKey and
+                    len(intendedUseStatement) >= 50 and
+                    atLeastOneCategorySelected and
+                    downloadFolderChosen and
+                    anyItemsChecked
+            )
+
+            self.downloadButton.setEnabled(enableDownloadButton)
+
+        except Exception as e:
+            print("Error occurred:", str(e))
+
+    def onSetAPIKey(self):
+        apiKey = self.apiKeyInput.text.strip()
+        if apiKey:  # If there is a non-empty apiKey
+            # Here, you would typically save or use this apiKey for API requests.
+            self.logic.setAPIKey(apiKey)  # This assumes you have a setAPIKey method in your logic class.
+            self.checkDownloadButtonState()  # Check the state of checkboxes in the table after setting API key.
+        else:
+            # Optionally, show a warning if the entered key seems empty
+            qt.QMessageBox.warning(self, "Invalid API Key", "Please enter a valid API key.")
+
+    def toggleAPIKeyVisibility(self, checked):
+        if checked:
+            self.apiKeyInput.setEchoMode(qt.QLineEdit.Normal)
+            self.toggleAPIKeyVisibilityButton.setText("Hide")
+        else:
+            self.apiKeyInput.setEchoMode(qt.QLineEdit.Password)
+            self.toggleAPIKeyVisibilityButton.setText("Show")
+
+    def onSelectDownloadFolder(self):
+        folderPath = qt.QFileDialog.getExistingDirectory()
+        if folderPath:
+            self.downloadFolderPathInput.setText(folderPath)
+            self.logic.set_download_folder(folderPath)
+            self.checkDownloadButtonState()
+
+    def prepareDownloadConfig(self):
+        # Set the intended use statement
+
+        intendedUseStatement = self.intendedUseStatementInput.toPlainText().strip()
+
+        # Check the length of the intended use statement
+        if len(intendedUseStatement) < 50:
+            msgBox = qt.QMessageBox()
+            msgBox.setIcon(qt.QMessageBox.Warning)
+            msgBox.setWindowTitle("Invalid Usage Statement")
+            msgBox.setText("Please enter a usage statement of at least 50 characters before downloading.")
+            msgBox.setStandardButtons(qt.QMessageBox.Ok)
+            msgBox.exec_()
+            return
+
+        # Initialize a list to hold the checked categories
+        checkedCategories = []
+
+        # Iterate through the checkboxes and collect the checked ones
+        for category, checkbox in self.usageCategoryCheckboxes.items():
+            if checkbox.isChecked():
+                checkedCategories.append(category)
+
+        _config_dict = {'usage_statement': intendedUseStatement, 'usage_categories': checkedCategories,
+                        'api_key': self.apiKeyInput.text, 'checked_items': self.logic.msq.get_all_checked_items(),
+                        'download_folder': self.logic.download_folder}
+
+        self.total_downloads = len(self.logic.msq.get_all_checked_items())
+        self.completed_downloads = 0
+
+        return _config_dict
+
+    def downloadCheckedItems(self):
+        _config_dict = self.prepareDownloadConfig()
+
+        # Disable buttons
+        self.disableButtons()
+
+        # Initialize QProcess
+        self.downloadProcess = qt.QProcess()
+
+        self.downloadProcess.started.connect(self.onDownloadStarted)
+        self.downloadProcess.readyReadStandardOutput.connect(self.onDownloadOutput)
+        self.downloadProcess.readyReadStandardError.connect(self.onDownloadError)
+        self.downloadProcess.finished.connect(self.onDownloadFinished)
+
+        # Prepare the command to start the download process
+        command = sys.executable
+        scriptPath = getResourceScriptPath('download_items.py')
+
+        config_json_dict = json.dumps(_config_dict)  # Convert config to JSON string
+        args = [scriptPath, config_json_dict]
+
+        self.startDownload()
+        # Start the download process
+        self.downloadProcess.start(command, args)
+
+        # Show progress bar and update UI
+        self.progressBar.setVisible(True)
+        # self.stopDownloadButton.setEnabled(True)
+
+    def disableButtons(self):
+        # Disable buttons during download
+        self.submitQueryButton.setEnabled(False)
+        self.setAPIKeyButton.setEnabled(False)
+        self.selectDownloadFolderButton.setEnabled(False)
+        self.downloadButton.setEnabled(False)
+
+    def enableButtons(self):
+        # Enable buttons after download
+        self.submitQueryButton.setEnabled(True)
+        self.setAPIKeyButton.setEnabled(True)
+        self.selectDownloadFolderButton.setEnabled(True)
+        self.downloadButton.setEnabled(True)
+
+    def stopDownload(self):
+        if self.downloadProcess is not None and self.downloadProcess.state() != qt.QProcess.NotRunning:
+            self.downloadProcess.terminate()  # Or use kill() if terminate() is not effective
+            # Update UI accordingly
+
+    def onDownloadStarted(self):
+        print("Download process started.")
+
+    def updateProgressBar(self, progress, downloaded_mb=None, total_mb=None):
+        # Convert floating-point progress to an integer percentage
+        percentage = int(float(progress))
+        self.progressBar.setValue(percentage)
+
+        # Format the text to display on the progress bar
+        if downloaded_mb is not None and total_mb is not None:
+            progress_text = f"{percentage}% ({downloaded_mb:.2f} MB / {total_mb:.2f} MB)"
+        else:
+            progress_text = f"{percentage}%"
+
+        self.progressBar.setFormat(progress_text)
+
+    def onDownloadOutput(self):
+        output = self.downloadProcess.readAllStandardOutput().data().decode("utf-8", errors='ignore').strip()
+        output_lines = output.split('\n')
+
+        for line in output_lines:
+            if "Download Progress" in line:
+                # Extract the progress value and update the progress bar for each line
+                progress_parts = line.split(',')
+                progress_value = progress_parts[0].split(': ')[1].strip().rstrip('%')
+                downloaded_mb = float(progress_parts[1].strip().split(' ')[0])
+                total_mb = float(progress_parts[1].strip().split(' ')[3])
+
+                self.updateProgressBar(progress_value, downloaded_mb, total_mb)
+
+    def onDownloadError(self):
+        error = self.downloadProcess.readAllStandardError().data().decode("utf-8").strip()
+        print("Download Error:", error)
+
+    def onDownloadFinished(self, exitCode):
+        # Handle completion of the download process
+        self.progressBar.setVisible(False)
+        self.enableButtons()
+        print(f"Download process finished with exit code {exitCode}")
+
+    def startDownload(self):
+        # Call this method when the download starts
+        self.downloadInProgress = True
+
+    def terminateDownload(self):
+        # Implement this method to terminate the download
+        self.downloadInProgress = False
+        self.downloadProcess.terminate()
+
+    def load_dependencies(self):
+        # Attempt to import morphosource, and install if not present
+        try:
+            import pandas as pd
+            import morphosource as ms
+            from morphosource import DownloadConfig
+            from morphosource.download import download_media_bundle, get_download_media_zip_url
+            from bs4 import BeautifulSoup
+
+        except ImportError:
+            dependencyDialog = slicer.util.createProgressDialog(
+                windowTitle="Installing...",
+                labelText="Installing and Loading Required Python packages. This may take a minute...",
+                maximum=0,
+            )
+            slicer.app.processEvents()
+
+            slicer.util.pip_install('pandas')
+            slicer.util.pip_install('morphosource==1.0.0')
+            slicer.util.pip_install('bs4')
+
+            import pandas as pd
+            import morphosource as ms
+            from morphosource import DownloadConfig
+            from morphosource.download import download_media_bundle, get_download_media_zip_url
+            from bs4 import BeautifulSoup
+
+            dependencyDialog.close()
+
 
 #
 # MorphoSourceImportLogic
 #
 class MorphoSourceImportLogic(ScriptedLoadableModuleLogic):
-  """This class should implement all the actual
-  computation done by your module.  The interface
-  should be such that other python code can import
-  this class and make use of the functionality without
-  requiring an instance of the Widget.
-  Uses ScriptedLoadableModuleLogic base class, available at:
-  https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
-  """
+    def __init__(self) -> None:
+        ScriptedLoadableModuleLogic.__init__(self)
 
-  def runImport(self, dataFrame, session):
-    for index in dataFrame.index:
-      print('Downloading file for specimen ID ' + dataFrame['specimen_id'][index])
-      try:
-        response = session.get(dataFrame['download_link'][index])
-        zip_file = zipfile.ZipFile(io.BytesIO(response.content))
-        extensions = ('.stl','.ply', '.obj')
-        destFolderPath = slicer.mrmlScene.GetCacheManager().GetRemoteCacheDirectory()
-        for file in zip_file.namelist():
-          if file.endswith(extensions):
-            modelPath = os.path.join(destFolderPath,file)
-            if os.path.isfile(modelPath):
-              slicer.util.loadModel(modelPath)
-              print("Found file in cache, reusing")
-            else:
-              model=[zip_file.extract(file,destFolderPath)  ]
-              slicer.util.loadModel(model[0])
-      except:
-        print('Error downloading file. Please confirm login information is correct.')
+        self.download_folder = None
+        self.api_key = None
+        self.msq: Optional[MSQuery] = None
 
-  def process_json(self,response_json, session):
-    #Initializing the database
-    database=[]
-    #Finding the surface files and querying for the corresponding specimen information
-    for result in response_json['results']:
-      for media in result['medium.media']:
-        if media['mimetype'] in ['application/ply','application/obj','application/stl']:
-          #Querying for specimen information (accessed through a separate query)
-          file_id=result['specimen.specimen_id']
-          query_id = f"{base_url}specimens?q=specimen.specimen_id:{file_id}{end_url}"
-          response = session.get(query_id).json()
-          taxa = response['results'][0]['taxonomy_name'][0]['names'][0]
+        # self.api_key = None
+        self.openDatasetsOnly = False
 
-          #Generating the database
-          database.append({'order': taxa['ht_order'], 'genus': taxa['genus'], 'species': taxa['species'],
-            'filetype': media['mimetype'][-3:], 'filesize': media['filesize'],
-            'element': media['element'], 'download_link': media['download'],
-            'media_file_id': media['media_file_id'], 'specimen_id': result['specimen.specimen_id'], 'project_id': result['project.project_id']})
-    return database
+        # Load settings when the module logic is initialized
+        self.download_folder = self.loadSetting('downloadFolder', '')
+        self.api_key = self.loadSetting('apiKey', '')
 
-  def findDownload(self, query, session):
+    def runNewQuery(self, dictionary) -> None:
+        """
+        Run the query using the data dictionary
+        """
 
-    #Initial query in which we get the total number of items in the database
-    query_string=f"{base_url}media?q=taxonomy_names.ht_order:{query['order']} AND specimen.element:{query['element']}{end_url}&limit=1"
-    response = session.get(query_string)
-    totalResults = response.json()['totalResults']
-    page_number = math.ceil(totalResults/1000) #current page limit is 25
+        self.msq = MSQuery(query=dictionary['query'], media_type=dictionary['mediaType'],
+                           taxonomy_gbif=dictionary['taxon'],
+                           openDownloadsOnly=self.openDatasetsOnly, media_tag=dictionary['mediaTag'])
 
-    #Initializing database as a list
-    database=[]
-    error_count=0
+    def runQueryForPage(self, page_number) -> None:
+        # Ensure the MSQuery object exists and has performed the initial query
+        if not self.msq:
+            raise RuntimeError("Query has not been run. Cannot fetch page.")
 
-    #Iterating through resulting pages
-    for page in range(page_number):
-      sub_query = session.get(f"{query_string[:-1]}{str(page)}")
-      try:
-        decoded_json = sub_query.json()
-        database = database + self.process_json(decoded_json,session)
-      except:
-        error_count += 1
-        print(f'A total of {error_count} pages could not be decoded')
-    return database
+        # Run the search for the specified page
+        self.msq.run_search(page_number)
 
-  def runQuery(self, dictionary, session):
-    """
-    Run the query using the data dictionary
-    """
+    def setAPIKey(self, api_key: str) -> None:
+        """
+        Set the API key for MorphoSource.
+        """
+        self.api_key = api_key
+        self.saveSetting('apiKey', api_key)
 
-    try:
-      import pandas
-    except ModuleNotFoundError:
-      if slicer.util.confirmOkCancelDisplay(
-              "This module requires 'pandas' Python package. Click OK to install it now."):
-        slicer.util.pip_install("pandas")
-        import pandas
-    else:
-      class EmptyDataFrame: empty = True
-      return EmptyDataFrame()
+    def setOpenDatasetsOnly(self, state: bool) -> None:
+        """ Set the flag for querying open datasets only.
 
-    print('Beginning scraping for download links')
-    download_list = self.findDownload(dictionary, session)
-    if bool(download_list):
-      validResults = self.checkValidResults(pandas.DataFrame(download_list))
-      return validResults
-    else:
-      print(f"No download links found for query")
-      return pandas.DataFrame()
+        Args:
+            state (bool): State of the checkbox, True if checked, False otherwise.
+        """
+        self.openDatasetsOnly = state
 
-  def checkValidResults(self, dataFrame):
-    # only return meshes with a download link
-    downloadInfo=dataFrame.download_link
-    validFileIndexes=[]
-    for i in range(downloadInfo.size):
-      if 'http' in downloadInfo[i]:
-        validFileIndexes.append(i)
-    return dataFrame.iloc[validFileIndexes].reset_index(drop=True)
+    def set_download_folder(self, folder_path: str) -> None:
+        self.download_folder = folder_path
+        self.saveSetting('downloadFolder', folder_path)
 
+    def saveSetting(self, settingName, value):
+        settings = qt.QSettings()
+        settings.setValue(f'MorphoSourceImport/{settingName}', value)
 
-  def runLogin(self, username, password):
-    session_requests = requests.session()
-    login_url = 'http://www.morphosource.org/LoginReg/login'
-    headers = {'Content-Type': 'application/x-www-form-urlencoded'}
-    data = 'username=' + username +'&password=' + password
-    login_result = session_requests.post(login_url, params= data, verify= False)
-    print("Attempting log in: ", login_result.ok)
-    return session_requests
-
-  def takeScreenshot(self,name,description,type=-1):
-    # show the message even if not taking a screen shot
-    slicer.util.delayDisplay('Take screenshot: '+description+'.\nResult is available in the Annotations module.', 3000)
-
-    lm = slicer.app.layoutManager()
-    # switch on the type to get the requested window
-    widget = 0
-    if type == slicer.qMRMLScreenShotDialog.FullLayout:
-      # full layout
-      widget = lm.viewport()
-    elif type == slicer.qMRMLScreenShotDialog.ThreeD:
-      # just the 3D window
-      widget = lm.threeDWidget(0).threeDView()
-    elif type == slicer.qMRMLScreenShotDialog.Red:
-      # red slice window
-      widget = lm.sliceWidget("Red")
-    elif type == slicer.qMRMLScreenShotDialog.Yellow:
-      # yellow slice window
-      widget = lm.sliceWidget("Yellow")
-    elif type == slicer.qMRMLScreenShotDialog.Green:
-      # green slice window
-      widget = lm.sliceWidget("Green")
-    else:
-      # default to using the full window
-      widget = slicer.util.mainWindow()
-      # reset the type so that the node is set correctly
-      type = slicer.qMRMLScreenShotDialog.FullLayout
-
-    # grab and convert to vtk image data
-    qimage = ctk.ctkWidgetsUtils.grabWidget(widget)
-    imageData = vtk.vtkImageData()
-    slicer.qMRMLUtils().qImageToVtkImageData(qimage,imageData)
-
-    annotationLogic = slicer.modules.annotations.logic()
-    annotationLogic.CreateSnapShot(name, description, type, 1, imageData)
-
-  def process(self, inputVolume, outputVolume, imageThreshold, invert=False, showResult=True):
-    """
-    Run the processing algorithm.
-    Can be used without GUI widget.
-    :param inputVolume: volume to be thresholded
-    :param outputVolume: thresholding result
-    :param imageThreshold: values above/below this threshold will be set to 0
-    :param invert: if True then values above the threshold will be set to 0, otherwise values below are set to 0
-    :param showResult: show output volume in slice viewers
-    """
-
-    if not inputVolume or not outputVolume:
-      raise ValueError("Input or output volume is invalid")
-
-    import time
-    startTime = time.time()
-    logging.info('Processing started')
-
-    # Compute the thresholded output volume using the "Threshold Scalar Volume" CLI module
-    cliParams = {
-      'InputVolume': inputVolume.GetID(),
-      'OutputVolume': outputVolume.GetID(),
-      'ThresholdValue' : imageThreshold,
-      'ThresholdType' : 'Above' if invert else 'Below'
-      }
-    cliNode = slicer.cli.run(slicer.modules.thresholdscalarvolume, None, cliParams, wait_for_completion=True, update_display=showResult)
-    # We don't need the CLI module node anymore, remove it to not clutter the scene with it
-    slicer.mrmlScene.RemoveNode(cliNode)
-
-    stopTime = time.time()
-    logging.info(f'Processing completed in {stopTime-startTime:.2f} seconds')
-
-
-class MorphoSourceImportTest(ScriptedLoadableModuleTest):
-  """
-  This is the test case for your scripted module.
-  Uses ScriptedLoadableModuleTest base class, available at:
-  https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
-  """
-
-  def setUp(self):
-    """ Do whatever is needed to reset the state - typically a scene clear will be enough.
-    """
-    slicer.mrmlScene.Clear(0)
-
-  def runTest(self):
-    """Run as few or as many tests as needed here.
-    """
-    self.setUp()
-    self.test_MorphoSourceImport1()
-
-  def test_MorphoSourceImport1(self):
-    """ Ideally you should have several levels of tests.  At the lowest level
-    tests should exercise the functionality of the logic with different inputs
-    (both valid and invalid).  At higher levels your tests should emulate the
-    way the user would interact with your code and confirm that it still works
-    the way you intended.
-    One of the most important features of the tests is that it should alert other
-    developers when their changes will have an impact on the behavior of your
-    module.  For example, if a developer removes a feature that you depend on,
-    your test should break so they know that the feature is needed.
-    """
-
-    self.delayDisplay("Starting the test")
-
-    # Get/create input data
-
-    import SampleData
-    registerSampleData()
-    inputVolume = SampleData.downloadSample('TemplateKey1')
-    self.delayDisplay('Loaded test data set')
-
-    inputScalarRange = inputVolume.GetImageData().GetScalarRange()
-    self.assertEqual(inputScalarRange[0], 0)
-    self.assertEqual(inputScalarRange[1], 695)
-
-    outputVolume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode")
-    threshold = 100
-
-    # Test the module logic
-
-    logic = MorphoSourceImportLogic()
-
-    # Test algorithm with non-inverted threshold
-    logic.process(inputVolume, outputVolume, threshold, True)
-    outputScalarRange = outputVolume.GetImageData().GetScalarRange()
-    self.assertEqual(outputScalarRange[0], inputScalarRange[0])
-    self.assertEqual(outputScalarRange[1], threshold)
-
-    # Test algorithm with inverted threshold
-    logic.process(inputVolume, outputVolume, threshold, False)
-    outputScalarRange = outputVolume.GetImageData().GetScalarRange()
-    self.assertEqual(outputScalarRange[0], inputScalarRange[0])
-    self.assertEqual(outputScalarRange[1], inputScalarRange[1])
-
-    self.delayDisplay('Test passed')
+    def loadSetting(self, settingName, defaultValue):
+        settings = qt.QSettings()
+        return settings.value(f'MorphoSourceImport/{settingName}', defaultValue)
