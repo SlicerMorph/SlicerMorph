@@ -29,12 +29,12 @@ class HiResScreenCapture(ScriptedLoadableModule):
         self.parent.helpText = """
 The "High Resolution Screen Capture" module allows users to capture and save high-quality screenshots from the Slicer
 application. Users specify the filename, output folder, and desired resolution, with the module ensuring all inputs are
- valid and the filename ends with .png. See more information in 
+ valid and the filename ends with .png. See more information in
  <a href="https://github.com/oothomas/SlicerMorph/tree/master/HiResScreenCapture">module documentation</a>.
 """
         # TODO: replace with organization, grant and thanks
-        self.parent.acknowledgementText = """This file was originally developed by Jean-Christophe Fillion-Robin, 
-        Kitware Inc., Andras Lasso, PerkLab, and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 
+        self.parent.acknowledgementText = """This file was originally developed by Jean-Christophe Fillion-Robin,
+        Kitware Inc., Andras Lasso, PerkLab, and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant
         3P41RR013218-12S1. We would also like to thank Steve Pieper for developing the export function used here."""
 
 
@@ -166,7 +166,7 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
     def applyButtonClicked(self) -> None:
         selectedThreeDWidgetIndex = self.threeDViewComboBox.currentData
         self.logic.setThreeDViewIndex(selectedThreeDWidgetIndex)
-        
+
         # Set the resolution in the logic class
         self.logic.setResolution([self.resolutionXSpinBox.value, self.resolutionYSpinBox.value])
 
@@ -208,7 +208,7 @@ class HiResScreenCaptureLogic(ScriptedLoadableModuleLogic):
 
     def setThreeDViewIndex(self, index: int) -> None:
         self.threeDViewIndex = index
-        
+
     def runScreenCapture(self) -> None:
         if self.resolution and self.outputPath:
             vtk.vtkGraphicsFactory()
