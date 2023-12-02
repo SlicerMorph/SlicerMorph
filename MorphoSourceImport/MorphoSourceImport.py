@@ -1,3 +1,4 @@
+import time
 import json
 import logging
 import math
@@ -29,6 +30,7 @@ warnings.filterwarnings("ignore", "DataFrame.applymap has been deprecated")
 # MorphoSourceImport
 #
 
+
 def unlist_cell(cell):
     """If the cell is a list, return the items separated by semicolons.
     If the cell is empty or None, return an empty string. Otherwise, return the cell unchanged."""
@@ -39,18 +41,31 @@ def unlist_cell(cell):
     return cell
 
 
-def download_thumbnails(urls):
-    thumbnails = []
-    for url in urls:
-        try:
-            response = requests.get(url)
-            response.raise_for_status()  # Raises an HTTPError for bad requests
+def download_thumbnail(url):
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  # Raises an HTTPError for bad requests
+        return response.content
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching the thumbnail from {url}: {e}")
+        return None
 
-            # Append the image content to the list
-            thumbnails.append(response.content)
-        except requests.exceptions.RequestException as e:
-            print(f"Error fetching the thumbnail from {url}: {e}")
-            thumbnails.append(None)  # Append None for any failed download
+
+def download_thumbnails(urls):
+    # Initialize an empty list with the same length as urls
+    thumbnails = [None] * len(urls)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
+        # Map each URL to the download_thumbnail function and store the future objects
+        futures = [executor.submit(download_thumbnail, url) for url in urls]
+
+        # Iterate over the futures in the order they were created
+        for i, future in enumerate(futures):
+            try:
+                # Store the result in the corresponding position
+                thumbnails[i] = future.result()
+            except Exception as e:
+                print(f"Error downloading thumbnail from {urls[i]}: {e}")
 
     return thumbnails
 
@@ -98,20 +113,24 @@ class MSQuery:
         # Attempt to import morphosource, and install if not present
         try:
             import morphosource as ms
-            from morphosource import search_media, DownloadVisibility
+            from morphosource import search_media, get_media, DownloadVisibility
             from morphosource.search import SearchResults
+            from morphosource.exceptions import MetadataMissingError
             from bs4 import BeautifulSoup
         except ImportError:
             slicer.util.pip_install('morphosource==1.0.0')
             import morphosource as ms
-            from morphosource import search_media, DownloadVisibility
+            from morphosource import search_media, get_media, DownloadVisibility
             from morphosource.search import SearchResults
+            from morphosource.exceptions import MetadataMissingError
             slicer.util.pip_install('bs4')
             from bs4 import BeautifulSoup
 
         self.bs = BeautifulSoup
+        self.MetadataMissingError = MetadataMissingError
         self.pd = pd
         self.ms = ms
+        self.get_media = get_media
         self.search_media = search_media
         self.SearchResults = SearchResults
 
@@ -137,6 +156,7 @@ class MSQuery:
         self.run_search(1)
 
     def run_search(self, page: int) -> None:
+        start_time = time.time()  # Start timing
         # Check if the page has already been fetched
         if page not in self.pages:
             search_results = self.search_media(query=self.query,
@@ -147,28 +167,77 @@ class MSQuery:
                                                per_page=self.per_page,
                                                page=page)
 
-            self.current_results = search_results
-            self.current_page = page
-
             if self.total_pages is None and self.total_count is None:
-                self.total_pages = int(self.current_results.pages['total_pages'])
-                self.total_count = int(self.current_results.pages['total_count'])
+                self.total_pages = int(search_results.pages['total_pages'])
+                self.total_count = int(search_results.pages['total_count'])
 
             if self.total_count == 0:
                 return
 
             thumbnail_urls, web_urls = self.get_urls_for_page(search_results)
 
+            # run_search method took 9.65217113494873 seconds to execute w/ calculate_file_sizes
+            file_sizes, successful_indices = self.calculate_file_sizes(search_results)
+
+            # Filter search_results.items to include only successful media items
+            search_results.items = [search_results.items[i] for i in successful_indices]
+
+            # Filter thumbnail_urls and web_urls to include only successful media items
+            thumbnail_urls = [thumbnail_urls[i] for i in successful_indices]
+            web_urls = [web_urls[i] for i in successful_indices]
+
+            thumbnails = download_thumbnails(thumbnail_urls)  # parallel requests to api, 6 workers
+
             # Store the search results in the ordered dictionary
             self.pages[page] = {'search_results': search_results,
                                 'checked_items': [],
-                                'thumbnails': download_thumbnails(thumbnail_urls),
+                                'thumbnails': thumbnails,
                                 'web_urls': web_urls,
-                                'sizes': [self.extract_file_details(url) for url in web_urls]}
+                                'sizes': file_sizes,
+                                'num_records': len(search_results.items)}
+
+            self.current_results = search_results
+            self.current_page = page
+
         else:
             # Set the current results to the already fetched page
             self.current_results = self.pages[page]['search_results']
             self.current_page = page
+
+        end_time = time.time()  # End timing
+        elapsed_time = end_time - start_time
+        print(f"run_search method took {elapsed_time} seconds to execute.")
+
+    def get_file_size(self, media):
+        try:
+            size_mb = (media.get_file_metadata().file_size / 1024) / 1024
+            return f"{size_mb:.2f} MB"
+        except self.MetadataMissingError as e:
+            print(f"Error: {e}, {media.id} excluded")
+            raise  # Reraise the exception to handle it in calculate_file_sizes
+
+    def calculate_file_sizes(self, search_results):
+        with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
+            # Create a future for each file size calculation and store the future objects
+            futures = {executor.submit(self.get_file_size, media): i for i, media in enumerate(search_results.items)}
+
+            # Initialize a list to store file sizes
+            file_sizes = []
+
+            # Initialize a list to keep track of successful indices
+            successful_indices = []
+
+            # Iterate over the futures and process results
+            for future in concurrent.futures.as_completed(futures):
+                media_index = futures[future]
+                try:
+                    size = future.result()  # This will raise an exception if get_file_size encountered an error
+                    file_sizes.append(size)
+                    successful_indices.append(media_index)
+                except Exception as e:
+                    print(f"Error getting file size for media item at index {media_index}: {e}")
+
+        return file_sizes, successful_indices
 
     def extract_dataframe(self):
         # Ensure that there are current results to process
@@ -197,13 +266,12 @@ class MSQuery:
             soup = self.bs(response.text, "html.parser")
 
             # Find file format and file size
-            # file_format = soup.find('div', text='File format(s)').find_next_sibling('div').text.strip()
             file_size = soup.find('div', text='File size').find_next_sibling('div').text.strip()
 
-            return file_size  # [file_format, file_size]
+            return file_size
         else:
             print("Failed to retrieve the webpage")
-            return 'NA'  # [None, None]
+            return 'NA'
 
     def revise_df(self, df):
 
@@ -239,7 +307,12 @@ class MSQuery:
             raise ValueError("No current results to extract. Run a search first.")
 
         # Calculate the start index for the current page
-        start_index = (page_number - 1) * self.per_page
+        # Assuming page_number is the current page you're interested in
+        # Get all 'num_records' values up to the current page
+        num_records_values = [self.pages[i]['num_records'] for i in range(1, page_number)]
+
+        # Sum up the values and add 1 to get the start_index
+        start_index = sum(num_records_values)
 
         # Extracting the 'data' dictionaries from each item in search_results
         search_results_data = [item.data for item in self.current_results.items]
@@ -1085,7 +1158,7 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
                 maximum=0,
             )
             slicer.app.processEvents()
-
+            slicer.util.pip_install('git+https://github.com/Imageomics/pyMorphoSource.git@file-size')
             slicer.util.pip_install('pandas')
             slicer.util.pip_install('morphosource==1.0.0')
             slicer.util.pip_install('bs4')
