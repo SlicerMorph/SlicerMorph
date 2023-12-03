@@ -20,7 +20,7 @@ class HiResScreenCapture(ScriptedLoadableModule):
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
         self.parent.title = "HiResScreenCapture"  # TODO: make this more human readable by adding spaces
-        self.parent.categories = ["SlicerMorph.Input and Output"]  # TODO: set categories (folders where the module
+        self.parent.categories = ["SlicerMorph.SlicerMorph Utilities"]  # TODO: set categories (folders where the module
         # shows up in the module selector)
         self.parent.dependencies = []  # TODO: add here list of module names that this module requires
         self.parent.contributors = ["Murat Maga (UW), Oshane Thomas(SCRI)"]  # TODO: replace with "Firstname Lastname
@@ -29,13 +29,10 @@ class HiResScreenCapture(ScriptedLoadableModule):
         self.parent.helpText = """
 The "High Resolution Screen Capture" module allows users to capture and save high-quality screenshots from the Slicer
 application. Users specify the filename, output folder, and desired resolution, with the module ensuring all inputs are
- valid and the filename ends with .png. See more information in
- <a href="https://github.com/oothomas/SlicerMorph/tree/master/HiResScreenCapture">module documentation</a>.
+ valid and the filename ends with PNG.
 """
         # TODO: replace with organization, grant and thanks
-        self.parent.acknowledgementText = """This file was originally developed by Jean-Christophe Fillion-Robin,
-        Kitware Inc., Andras Lasso, PerkLab, and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant
-        3P41RR013218-12S1. We would also like to thank Steve Pieper for developing the export function used here."""
+        self.parent.acknowledgementText = """This module was developed by Oshane Thomas for SlicerMorph using the original script by Steve pieper. The development of the module was supported by NSF/OAC grant, HDR Institute: Imageomics: A New Frontier of Biological Information Powered by Knowledge-Guided Machine Learnings" (Award #2118240)."""
 
 
 #
