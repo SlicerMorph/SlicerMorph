@@ -25,12 +25,9 @@ class FastModelAlign(ScriptedLoadableModule):
         self.parent.contributors = ["Chi Zhang (SCRI), Murat Maga (UW)"]  # TODO: replace with "Firstname Lastname (Organization)"
         # TODO: update with short description of the module and a link to online module documentation
         self.parent.helpText = """This module uses ALPACA libraries to do rigid and affine transforms of 3D Models quickly via pointcloud registration. 
-See the usage tutorial at <a href="https://github.com/SlicerMorph/Tutorials/tree/master/FastModelAlign">module documentation</a>.
-"""
+See the usage tutorial at <a href="https://github.com/SlicerMorph/Tutorials/tree/master/FastModelAlign">module documentation</a>."""
         # TODO: replace with organization, grant and thanks
-        self.parent.acknowledgementText = """
-The development of the module was supported by NSF/OAC grant, HDR Institute: Imageomics: A New Frontier of Biological Information Powered by Knowledge-Guided Machine Learnings" (Award #2118240).
-"""
+        self.parent.acknowledgementText = """The development of the module was supported by NSF/OAC grant, HDR Institute: Imageomics: A New Frontier of Biological Information Powered by Knowledge-Guided Machine Learnings" (Award #2118240)."""
 
         # Additional initialization step after application startup is complete
         slicer.app.connect("startupCompleted()", registerSampleData)
