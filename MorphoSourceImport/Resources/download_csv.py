@@ -182,6 +182,8 @@ class DownloadMSRecords:
 
 
 if __name__ == "__main__":
+
+    print('Downloading Query Results', flush=True)
     # Extract command line arguments
     query_dict = sys.argv[1]  # Assuming JSON string as the first argument
 
