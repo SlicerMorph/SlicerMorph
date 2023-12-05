@@ -86,7 +86,7 @@ def getResourceScriptPath(scriptName):
     modulePath = os.path.dirname(slicer.modules.morphosourceimport.path)
 
     # Construct the path to the resource script
-    resourceScriptPath = os.path.join(modulePath, 'Resources', 'Scripts', scriptName)
+    resourceScriptPath = os.path.join(modulePath, 'Resources', scriptName)
     return resourceScriptPath
 
 
