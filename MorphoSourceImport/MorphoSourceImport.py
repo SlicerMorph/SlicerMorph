@@ -365,7 +365,7 @@ class MorphoSourceImport(ScriptedLoadableModule):
         self.parent.dependencies = []
         self.parent.contributors = ["Murat Maga (UW), Sara Rolfe (SCRI), Oshane Thomas(SCRI)"]
         self.parent.helpText = """This module provides a streamlined interface for querying MorphoSource database to search and retrieve dataset. For more information see  <a href=https://github.com/SlicerMorph/Tutorials/tree/master/MorphoSourceImport> the tutorial </A>."""
-        self.parent.acknowledgementText = """This module was developed by Oshane Thomas for SlicerMorph with input from Julie Winchester (MorphoSource) and John Bradley (Imageomics Institute). The development of the module was supported by NSF/OAC grant, "HDR Institute: Imageomics: A New Frontier of Biological Information Powered by Knowledge-Guided Machine Learnings" (Award #2118240)."""
+        self.parent.acknowledgementText = """This module was developed by Oshane Thomas for SlicerMorph with input from Julie Winchester (MorphoSource) and is based on the pyMorphoSource package by John Bradley (Imageomics Institute). The development of the module was supported by NSF/OAC grant, "HDR Institute: Imageomics: A New Frontier of Biological Information Powered by Knowledge-Guided Machine Learnings" (Award #2118240). A previous version of this module was developed by Arthur Porto (UFL) and Sara Rolfe (SCRI) with funding from NSF/DBI ABI-1759883"""
 
 
 #
