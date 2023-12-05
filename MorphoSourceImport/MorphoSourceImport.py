@@ -1,13 +1,10 @@
 import time
 import json
 import logging
-import math
 import os
 import string
 import sys
-import unittest
 import warnings
-import zipfile
 from collections import OrderedDict
 from typing import Optional
 
@@ -89,7 +86,7 @@ def getResourceScriptPath(scriptName):
     modulePath = os.path.dirname(slicer.modules.morphosourceimport.path)
 
     # Construct the path to the resource script
-    resourceScriptPath = os.path.join(modulePath, 'Resources', scriptName)
+    resourceScriptPath = os.path.join(modulePath, 'Resources', 'Scripts', scriptName)
     return resourceScriptPath
 
 
@@ -147,7 +144,7 @@ class MSQuery:
 
             # Install the required packages
             slicer.util.pip_install('morphosource==' + morphosourceVersion)
-            
+
             import morphosource as ms
             from morphosource import search_media, get_media, DownloadVisibility
             from morphosource.search import SearchResults
@@ -367,7 +364,7 @@ class MorphoSourceImport(ScriptedLoadableModule):
         self.parent.categories = ["SlicerMorph.Input and Output"]
         self.parent.dependencies = []
         self.parent.contributors = ["Murat Maga (UW), Sara Rolfe (SCRI), Oshane Thomas(SCRI)"]
-        self.parent.helpText = """This module provides a streamlined interface for querying MorphoSource database to search and retrieve dataset. For more information see  <a href=“https://github.com/SlicerMorph/Tutorials/tree/master/MorphoSourceImport”> the tutorial </A>."""
+        self.parent.helpText = """This module provides a streamlined interface for querying MorphoSource database to search and retrieve dataset. For more information see  <a href=https://github.com/SlicerMorph/Tutorials/tree/master/MorphoSourceImport> the tutorial </A>."""
         self.parent.acknowledgementText = """This module was developed by Oshane Thomas for SlicerMorph with input from Julie Winchester (MorphoSource) and John Bradley (Imageomics Institute). The development of the module was supported by NSF/OAC grant, "HDR Institute: Imageomics: A New Frontier of Biological Information Powered by Knowledge-Guided Machine Learnings" (Award #2118240)."""
 
 
@@ -1179,7 +1176,7 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
             # Show a dialog indicating that installation is in progress
             dependencyDialog = slicer.util.createProgressDialog(
                 windowTitle="Installing...",
-                labelText="Installing and Loading Required Python packages and Restarting Slicer",
+                labelText="Installing and Loading Required Python packages",
                 maximum=0,
             )
             slicer.app.processEvents()
@@ -1193,8 +1190,13 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
             # Close the installation dialog
             dependencyDialog.close()
 
-            # Restart 3D Slicer
-            slicer.util.restart()
+            # Ask user to restart 3D Slicer
+            restart = slicer.util.confirmYesNoDisplay(
+                "MorphoSourceImport has been installed. To apply changes, a restart of 3D Slicer is necessary. "
+                "Would you like to restart now? Click 'YES' to restart immediately or 'NO' if you wish to save your work first and restart manually later.")
+
+            if restart:
+                slicer.util.restart()
 
 
 #
