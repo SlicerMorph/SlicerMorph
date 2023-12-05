@@ -1,13 +1,10 @@
 import time
 import json
 import logging
-import math
 import os
 import string
 import sys
-import unittest
 import warnings
-import zipfile
 from collections import OrderedDict
 from typing import Optional
 
@@ -23,12 +20,26 @@ import slicer
 import vtk
 from slicer.ScriptedLoadableModule import *
 
-warnings.filterwarnings("ignore", "DataFrame.applymap has been deprecated")
+try:
+    from importlib.metadata import version
+except ImportError:
+    from importlib_metadata import version
 
+warnings.filterwarnings("ignore", "DataFrame.applymap has been deprecated")
 
 #
 # MorphoSourceImport
 #
+
+morphosourceVersion = "1.1.0"
+
+
+def is_correct_version_installed(package, desired_version):
+    try:
+        installed_version = version(package)
+        return installed_version == desired_version
+    except Exception:
+        return False
 
 
 def unlist_cell(cell):
@@ -75,7 +86,7 @@ def getResourceScriptPath(scriptName):
     modulePath = os.path.dirname(slicer.modules.morphosourceimport.path)
 
     # Construct the path to the resource script
-    resourceScriptPath = os.path.join(modulePath, 'Resources', 'Scripts', scriptName)
+    resourceScriptPath = os.path.join(modulePath, 'Resources', scriptName)
     return resourceScriptPath
 
 
@@ -116,17 +127,35 @@ class MSQuery:
             from morphosource import search_media, get_media, DownloadVisibility
             from morphosource.search import SearchResults
             from morphosource.exceptions import MetadataMissingError
-            from bs4 import BeautifulSoup
+
+            # Check if MorphoSource is installed and at the correct version
+            if is_correct_version_installed('morphosource', '1.1.0'):
+                print("MorphoSource is already installed and at the correct version.")
+            else:
+                raise ImportError("MorphoSource is not installed or not the correct version.")
         except ImportError:
-            slicer.util.pip_install('morphosource==1.0.0')
+            # Show a dialog indicating that installation is in progress
+            dependencyDialog = slicer.util.createProgressDialog(
+                windowTitle="Installing...",
+                labelText="Installing and Loading Required Python packages and Restarting Slicer",
+                maximum=0,
+            )
+            slicer.app.processEvents()
+
+            # Install the required packages
+            slicer.util.pip_install('morphosource==' + morphosourceVersion)
+
             import morphosource as ms
             from morphosource import search_media, get_media, DownloadVisibility
             from morphosource.search import SearchResults
             from morphosource.exceptions import MetadataMissingError
-            slicer.util.pip_install('bs4')
-            from bs4 import BeautifulSoup
 
-        self.bs = BeautifulSoup
+            # Close the installation dialog
+            dependencyDialog.close()
+
+            # Restart 3D Slicer
+            slicer.util.restart()
+
         self.MetadataMissingError = MetadataMissingError
         self.pd = pd
         self.ms = ms
@@ -256,23 +285,6 @@ class MSQuery:
 
         return search_results_df
 
-    def extract_file_details(self, url):
-        # Send a GET request to the URL
-        response = requests.get(url)
-
-        # Check if the request was successful
-        if response.status_code == 200:
-            # Parse the HTML content
-            soup = self.bs(response.text, "html.parser")
-
-            # Find file format and file size
-            file_size = soup.find('div', text='File size').find_next_sibling('div').text.strip()
-
-            return file_size
-        else:
-            print("Failed to retrieve the webpage")
-            return 'NA'
-
     def revise_df(self, df):
 
         revised_df = df[['id', 'title', 'media_type', 'physical_object_id',
@@ -352,8 +364,8 @@ class MorphoSourceImport(ScriptedLoadableModule):
         self.parent.categories = ["SlicerMorph.Input and Output"]
         self.parent.dependencies = []
         self.parent.contributors = ["Murat Maga (UW), Sara Rolfe (SCRI), Oshane Thomas(SCRI)"]
-        self.parent.helpText = """This module provides a streamlined interface for querying MorphoSource database to search and retrieve dataset. For more information see  <a href=“https://github.com/SlicerMorph/Tutorials/tree/master/MorphoSourceImport”> the tutorial </A>."""
-        self.parent.acknowledgementText = """This module was developed by Oshane Thomas for SlicerMorph with input from Julie Winchester (MorphoSource) and John Bradley (Imageomics Institute). The development of the module was supported by NSF/OAC grant, "HDR Institute: Imageomics: A New Frontier of Biological Information Powered by Knowledge-Guided Machine Learnings" (Award #2118240)."""
+        self.parent.helpText = """This module provides a streamlined interface for querying MorphoSource database to search and retrieve dataset. For more information see  <a href=https://github.com/SlicerMorph/Tutorials/tree/master/MorphoSourceImport> the tutorial </A>."""
+        self.parent.acknowledgementText = """This module was developed by Oshane Thomas for SlicerMorph with input from Julie Winchester (MorphoSource) and is based on the pyMorphoSource package by John Bradley (Imageomics Institute). The development of the module was supported by NSF/OAC grant, "HDR Institute: Imageomics: A New Frontier of Biological Information Powered by Knowledge-Guided Machine Learnings" (Award #2118240). A previous version of this module was developed by Arthur Porto (UFL) and Sara Rolfe (SCRI) with funding from NSF/DBI ABI-1759883"""
 
 
 #
@@ -1143,33 +1155,48 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
         self.downloadProcess.terminate()
 
     def load_dependencies(self):
-        # Attempt to import morphosource, and install if not present
+        # Attempt to import pandas, and install if not present
         try:
             import pandas as pd
-            import morphosource as ms
-            from morphosource import DownloadConfig
-            from morphosource.download import download_media_bundle, get_download_media_zip_url
-            from bs4 import BeautifulSoup
-
         except ImportError:
+            slicer.util.pip_install('pandas')
+            import pandas as pd
+
+        # Attempt to import morphosource, and install if not present
+        try:
+            from morphosource import search_media, get_media, DownloadVisibility
+            from morphosource.search import SearchResults
+
+            # Check if MorphoSource is installed and at the correct version
+            if is_correct_version_installed('morphosource', '1.1.0'):
+                print("MorphoSource is already installed and at the correct version.")
+            else:
+                raise ImportError("MorphoSource is not installed or not the correct version.")
+        except ImportError:
+            # Show a dialog indicating that installation is in progress
             dependencyDialog = slicer.util.createProgressDialog(
                 windowTitle="Installing...",
-                labelText="Installing and Loading Required Python packages. This may take a minute...",
+                labelText="Installing and Loading Required Python packages",
                 maximum=0,
             )
             slicer.app.processEvents()
-            slicer.util.pip_install('git+https://github.com/Imageomics/pyMorphoSource.git@file-size')
-            slicer.util.pip_install('pandas')
-            slicer.util.pip_install('morphosource==1.0.0')
-            slicer.util.pip_install('bs4')
 
-            import pandas as pd
-            import morphosource as ms
-            from morphosource import DownloadConfig
-            from morphosource.download import download_media_bundle, get_download_media_zip_url
-            from bs4 import BeautifulSoup
+            # Install the required packages
+            slicer.util.pip_install('morphosource==' + morphosourceVersion)
 
+            from morphosource import search_media, get_media, DownloadVisibility
+            from morphosource.search import SearchResults
+
+            # Close the installation dialog
             dependencyDialog.close()
+
+            # Ask user to restart 3D Slicer
+            restart = slicer.util.confirmYesNoDisplay(
+                "MorphoSourceImport has been installed. To apply changes, a restart of 3D Slicer is necessary. "
+                "Would you like to restart now? Click 'YES' to restart immediately or 'NO' if you wish to save your work first and restart manually later.")
+
+            if restart:
+                slicer.util.restart()
 
 
 #
