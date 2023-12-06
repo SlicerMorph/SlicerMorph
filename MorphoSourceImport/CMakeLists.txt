@@ -9,6 +9,8 @@ set(MODULE_PYTHON_SCRIPTS
 set(MODULE_PYTHON_RESOURCES
   Resources/Icons/${MODULE_NAME}.png
   Resources/UI/${MODULE_NAME}.ui
+  Resources/download_items.py
+  Resources/download_csv.py
   )
 
 #-----------------------------------------------------------------------------
