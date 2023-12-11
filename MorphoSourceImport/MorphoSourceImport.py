@@ -383,7 +383,6 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
         self.downloadInProgress = None
         self.total_downloads = None
         self.completed_downloads = None
-        # self.stopDownloadButton = None
         self.progressBar = None
         self.selectDownloadFolderButton = None
         self.downloadFolderPathInput = None
@@ -626,11 +625,6 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
         self.progressBar.setVisible(False)  # Initially hidden
         self.layout.addWidget(self.progressBar)
 
-        # Create stop download button
-        # self.stopDownloadButton = qt.QPushButton("Stop Download")
-        # self.stopDownloadButton.clicked.connect(self.stopDownload)
-        # self.layout.addWidget(self.stopDownloadButton)
-
         self.layout.addStretch(1)
         self.onQueryStringChanged()
 
@@ -676,6 +670,8 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
 
         # Check if there is text in the taxon input and add it to the dictionary
         taxonText = self.taxonInput.text if self.taxonInput.text.strip() else None
+
+        # taxonText = taxonText[0].upper() + taxonText[1:]  # Make first character uppercase
 
         queryDictionary = {
             "query": self.elementInput.text,
@@ -738,7 +734,6 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
 
         # Prepare the command to start the download process
         command = sys.executable
-        # scriptPath = __file__  # Path to the current script
         scriptPath = getResourceScriptPath('download_csv.py')
 
         query_json_dict = json.dumps(queryDictionary)  # Convert config to JSON string
@@ -768,6 +763,10 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
                 except ValueError as e:
                     # Handle any errors during conversion
                     print(f"Error converting progress to float: {e}")
+
+            elif line.startswith("Completed"):  # Completion Statement
+                print(line)
+
             elif line.startswith("{"):  # Assuming JSON data starts with '{'
                 self.all_pages = json.loads(line)
                 # Process the final data
@@ -803,7 +802,7 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
         self.resultsTable.setRowCount(df.shape[0])
         self.resultsTable.setColumnCount(df.shape[1] + 2)  # +2 for the checkbox and thumbnail columns
 
-        headers = ["D", "Image"] + [str(col).capitalize() for col in df.columns]
+        headers = [" ", "Image"] + [str(col).capitalize() for col in df.columns]
         self.resultsTable.setHorizontalHeaderLabels(headers)
         self.resultsTable.setVerticalHeaderLabels([str(i + 1) for i in df.index])
 
@@ -1084,7 +1083,6 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
 
         # Show progress bar and update UI
         self.progressBar.setVisible(True)
-        # self.stopDownloadButton.setEnabled(True)
 
     def disableButtons(self):
         # Disable buttons during download
@@ -1103,7 +1101,6 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
     def stopDownload(self):
         if self.downloadProcess is not None and self.downloadProcess.state() != qt.QProcess.NotRunning:
             self.downloadProcess.terminate()  # Or use kill() if terminate() is not effective
-            # Update UI accordingly
 
     def onDownloadStarted(self):
         print("Download process started.")
@@ -1134,6 +1131,12 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
                 total_mb = float(progress_parts[1].strip().split(' ')[3])
 
                 self.updateProgressBar(progress_value, downloaded_mb, total_mb)
+
+            elif "Completed" in line:
+                print(line)
+
+            else:
+                continue
 
     def onDownloadError(self):
         error = self.downloadProcess.readAllStandardError().data().decode("utf-8").strip()

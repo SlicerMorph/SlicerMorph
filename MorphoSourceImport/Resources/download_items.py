@@ -1,11 +1,11 @@
 import json
 import os
 import sys
+import time
 
 import requests
 import threading
 import concurrent.futures
-
 
 import morphosource as ms
 from morphosource import DownloadConfig
@@ -37,6 +37,7 @@ class MSDownload:
         self.total_chunks = None
         self.completed_chunks = None
         self.total_mb = None
+        self.chunk_size = (1 * 1024) * 1024
 
         self.configure_download()
 
@@ -47,7 +48,7 @@ class MSDownload:
                                                   download_config=self.current_download_config)
             response = requests.head(url, headers={"Authorization": self.current_download_config.api_key})
             size = int(response.headers.get('content-length', 0))
-            total_chunks += size // 128 + 1
+            total_chunks += size // self.chunk_size + 1
         return total_chunks
 
     def configure_download(self):
@@ -59,13 +60,13 @@ class MSDownload:
         self.download_folder = self.config_dict['download_folder']
         self.total_items = len(self.items_to_download)
         self.total_chunks = self.calculate_total_chunks()
-        total_kb = self.total_chunks * 128 / 1024  # Calculate total data in kilobytes
+        total_kb = self.total_chunks * self.chunk_size / 1024  # Calculate total data in kilobytes
         self.total_mb = total_kb / 1024  # Convert total data to megabytes
 
     def update_progress(self, chunks, total_kb):
         self.completed_chunks += chunks
         progress = self.completed_chunks / self.total_chunks
-        downloaded_kb = self.completed_chunks * 128 / 1024  # Calculate downloaded data in kilobytes
+        downloaded_kb = self.completed_chunks * self.chunk_size / 1024  # Calculate downloaded data in kilobytes
         downloaded_mb = downloaded_kb / 1024  # Convert downloaded data to megabytes
         print(f"Download Progress: {progress * 100:.2f}%, {downloaded_mb:.2f} MB "
               f"of {self.total_mb:.2f} MB downloaded", flush=True)
@@ -73,6 +74,10 @@ class MSDownload:
     def downloadItems(self):
         # Logic to download items
         self.completed_chunks = 0
+        self.completed_downloads = 0
+
+        start_time = time.time()  # Start timing
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
             futures = []
             for media_id in self.items_to_download:
@@ -81,11 +86,17 @@ class MSDownload:
                 download_url = self.get_download_media_zip_url(media_id=media_id,
                                                                download_config=self.current_download_config)
                 futures.append(executor.submit(download_file, download_url, full_file_path,
-                                               self.current_download_config.api_key, 128,
+                                               self.current_download_config.api_key, self.chunk_size,
                                                self.update_progress, self.total_mb))
+                self.completed_downloads += 1
             concurrent.futures.wait(futures)
 
-        print(f"Completed downloading {self.completed_downloads} of {len(self.items_to_download)} items.", flush=True)
+        end_time = time.time()  # End timing
+
+        duration = end_time - start_time  # Calculate duration
+        print(
+            f"Completed downloading {self.completed_downloads} of {len(self.items_to_download)} items in {duration:.2f} seconds.",
+            flush=True)
 
 
 if __name__ == "__main__":
