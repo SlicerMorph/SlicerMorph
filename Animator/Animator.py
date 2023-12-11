@@ -42,7 +42,7 @@ class CameraRotationAction(AnimatorAction):
   def defaultAction(self):
     layoutManager = slicer.app.layoutManager()
     threeDView = layoutManager.threeDWidget(0).threeDView()
-    animatedCamera = threeDView.interactorStyle().GetCameraNode()
+    animatedCamera = threeDView.cameraNode()
     referenceCamera = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLCameraNode')
     referenceCamera.SetName('referenceCamera')
     referenceCamera.GetCamera().DeepCopy(animatedCamera.GetCamera())
@@ -143,14 +143,18 @@ class ROIAction(AnimatorAction):
   def defaultAction(self):
     volumeRenderingNode = slicer.mrmlScene.GetFirstNodeByName('VolumeRendering')
     if not volumeRenderingNode:
-      logging.error("Need to set up volume rendering before using this action")
+      msg = "Need to set up volume rendering before using this action"
+      logging.error(msg)
+      raise RuntimeError
       return None
-    animatedROI = volumeRenderingNode.GetROINode()
+    slicer.modules.volumeRenderingNode = volumeRenderingNode
+    animatedROI = volumeRenderingNode.GetMarkupsROINode()
     if not animatedROI:
-      logging.error("Need to set up volume rendering cropping ROI before using this action")
+      msg = "Need to set up volume rendering cropping ROI before using this action"
+      logging.error(msg)
+      raise RuntimeError
       return None
     volumeRenderingNode.SetCroppingEnabled(True)
-
     startROIID = None
     endROIID = None
     if False:
@@ -1205,6 +1209,8 @@ class AnimatorTest(ScriptedLoadableModuleTest):
     volumeRenderingNode = slicer.mrmlScene.GetFirstNodeByName('VolumeRendering')
     volumeRenderingNode.SetVisibility(1)
     volumeRenderingNode.SetShading(False)
+    volumeRenderingLogic = slicer.modules.volumerendering.logic()
+    animatedROI = volumeRenderingLogic.CreateROINode(volumeRenderingNode)
     slicer.util.mainWindow().moduleSelector().selectModule('Animator')
 
     self.delayDisplay('Volume rendering on')
@@ -1223,6 +1229,7 @@ class AnimatorTest(ScriptedLoadableModuleTest):
     #
     actionInstance = slicer.modules.animatorActionPlugins["CameraRotationAction"]()
     cameraRotationAction = actionInstance.defaultAction()
+    cameraRotationAction['endTime'] = 5
     logic.addAction(animationNode, cameraRotationAction)
 
     #
@@ -1230,6 +1237,31 @@ class AnimatorTest(ScriptedLoadableModuleTest):
     #
     actionInstance = slicer.modules.animatorActionPlugins["ROIAction"]()
     roiAction = actionInstance.defaultAction()
+    startROI = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsROINode')
+    startROI.SetName('Start ROI')
+    endROI = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsROINode')
+    endROI.SetName('End ROI')
+    for roi in [startROI, endROI]:
+      for index in range(roi.GetNumberOfDisplayNodes()):
+        roi.GetNthDisplayNode(index).SetVisibility(False)
+    startROIID = startROI.GetID()
+    endROIID = endROI.GetID()
+
+    start = [0.,]*3
+    animatedROI.GetXYZ(start)
+    startROI.SetXYZ(start)
+    endROI.SetXYZ(start)
+    animatedROI.GetRadiusXYZ(start)
+    startROI.SetRadiusXYZ(start)
+    end = [0.,]*3
+    for i in range(3):
+      end[i] = start[i] / 2.
+      endROI.SetRadiusXYZ(end)
+
+    roiAction['endTime'] = 4
+    roiAction['startROIID'] = startROIID
+    roiAction['endROIID'] = endROIID
+    roiAction['awimatedROIID'] =  animatedROI.GetID(),
     logic.addAction(animationNode, roiAction)
 
     #
