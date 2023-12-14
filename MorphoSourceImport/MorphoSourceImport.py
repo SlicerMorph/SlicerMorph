@@ -764,9 +764,6 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
                     # Handle any errors during conversion
                     print(f"Error converting progress to float: {e}")
 
-            elif line.startswith("Completed"):  # Completion Statement
-                print(line)
-
             elif line.startswith("{"):  # Assuming JSON data starts with '{'
                 self.all_pages = json.loads(line)
                 # Process the final data
@@ -1051,10 +1048,42 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
                         'api_key': self.apiKeyInput.text, 'checked_items': self.logic.msq.get_all_checked_items(),
                         'download_folder': self.logic.download_folder}
 
-        self.total_downloads = len(self.logic.msq.get_all_checked_items())
+        # Create a new list for items to be downloaded after checking for existing files
+        itemsToDownload = []
+
+        # Iterate through the items to be downloaded and check if they exist
+        for item in self.logic.msq.get_all_checked_items():
+            filename = f"media_{item}.zip"
+            filePath = os.path.join(self.logic.download_folder, filename)  # Construct the file path
+            if os.path.exists(filePath):  # Check if file exists
+                # Ask the user whether to overwrite or skip the file
+                userChoice = self.promptUserForFileOverwrite(filename)
+                if userChoice == 'overwrite':
+                    itemsToDownload.append(item)  # Add to download list if user chooses to overwrite
+            else:
+                itemsToDownload.append(item)  # File does not exist, add to download list
+
+        # Update the config dictionary with the revised list of items to download
+        _config_dict['checked_items'] = itemsToDownload
+
+        self.total_downloads = len(itemsToDownload)
         self.completed_downloads = 0
 
         return _config_dict
+
+    def promptUserForFileOverwrite(self, fileName):
+        msgBox = qt.QMessageBox()
+        msgBox.setIcon(qt.QMessageBox.Question)
+        msgBox.setWindowTitle("File Exists")
+        msgBox.setText(f"The file '{fileName}' already exists. Do you want to overwrite it?")
+        overwriteButton = msgBox.addButton("Overwrite", qt.QMessageBox.AcceptRole)
+        skipButton = msgBox.addButton("Skip", qt.QMessageBox.RejectRole)
+        msgBox.exec_()
+
+        if msgBox.clickedButton() == overwriteButton:
+            return 'overwrite'
+        else:
+            return 'skip'
 
     def downloadCheckedItems(self):
         _config_dict = self.prepareDownloadConfig()
