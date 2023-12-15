@@ -92,7 +92,8 @@ def getResourceScriptPath(scriptName):
 
 class ClickableLabel(qt.QLabel):
     def __init__(self, parent=None):
-        super().__init__(parent)
+        super(ClickableLabel, self).__init__(parent)
+        self.originalPixmap = None
 
     def mousePressEvent(self, event):
         if event.button() == qt.Qt.RightButton:
@@ -648,6 +649,12 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
         sizePolicy = qt.QSizePolicy(qt.QSizePolicy.Expanding, qt.QSizePolicy.Expanding)
         self.resultsTable.setSizePolicy(sizePolicy)
 
+        # Enable interactive resizing of columns
+        self.resultsTable.horizontalHeader().setSectionResizeMode(qt.QHeaderView.Interactive)
+
+        # Connect the sectionResized signal to your onColumnResized method
+        self.resultsTable.horizontalHeader().sectionResized.connect(self.onColumnResized)
+
         # Add the results table to the layout
         self.layout.addWidget(self.resultsTable)
 
@@ -788,7 +795,6 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
         else:
             print("An unknown error occurred.")
 
-    # Method to populate the QTableWidget
     def updateResultsTable(self, df, thumbnails, web_urls):
         currentPage = self.logic.msq.current_page
         checkedItems = self.logic.msq.pages.get(currentPage, {}).get('checked_items', [])
@@ -825,15 +831,17 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
             self.resultsTable.setCellWidget(adjusted_row_index, 0, self.createCenteredWidget(checkbox))
 
             # Handle thumbnail display
-            # print('currentPage:', currentPage, '| row_index:', row_index, '| adjusted_row_index:', adjusted_row_index)
             thumbnail = thumbnails[adjusted_row_index]
             web_url = web_urls[adjusted_row_index]
             label = ClickableLabel()
             label.setObjectName(web_url)
+
             if thumbnail:
                 pixmap = qt.QPixmap()
                 pixmap.loadFromData(thumbnail)
-                scaledPixmap = pixmap.scaled(50, 50, qt.Qt.KeepAspectRatio)
+                label.originalPixmap = pixmap  # Store the original pixmap
+                scaledPixmap = pixmap.scaled(self.resultsTable.columnWidth(1), self.resultsTable.columnWidth(1),
+                                             qt.Qt.KeepAspectRatio)
                 label.setPixmap(scaledPixmap)
                 rowHeight = scaledPixmap.height()
                 self.resultsTable.setRowHeight(adjusted_row_index, rowHeight)
@@ -853,6 +861,16 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
 
             self.resultsTable.setColumnWidth(0, 50)  # Width for the checkbox column
             self.resultsTable.setColumnWidth(1, 50)  # Width for the thumbnail column
+
+    def onColumnResized(self, column, oldWidth, newWidth):
+        if column == 1:  # Assuming column 1 is where thumbnails are displayed
+            for row in range(self.resultsTable.rowCount):
+                label = self.resultsTable.cellWidget(row, 1)
+                if label and label.originalPixmap:  # Check for the existence of a pixmap
+                    # Rescale the pixmap based on the new column width
+                    scaledPixmap = label.originalPixmap.scaled(newWidth, newWidth, qt.Qt.KeepAspectRatio)
+                    label.setPixmap(scaledPixmap)
+                    self.resultsTable.setRowHeight(row, scaledPixmap.height())
 
     def createCenteredWidget(self, widget):
         cell_widget = qt.QWidget()
