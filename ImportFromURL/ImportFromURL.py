@@ -172,16 +172,28 @@ class ImportFromURLLogic(ScriptedLoadableModuleLogic):
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
   def runImport(self, url, fileNames, nodeNames):
+    loadFileProperties={}
     filename, extension = os.path.splitext(fileNames)
     if(extension in ['.zip']):
       fileTypes = 'ZipFile'
     elif(extension in ['.mrb'] ):
       fileTypes = 'SceneFile'
     elif(extension in ['.dcm', '.nrrd', '.nii', '.mhd', '.mha', '.hdr', '.img', '.bmp', '.jpg', '.jpeg', '.png', '.tif', '.tiff']):
-      fileTypes = 'VolumeFile'
+      if '.seg' in filename:
+        fileTypes = 'SegmentationFile'
+      else:
+        fileTypes = 'VolumeFile'
+        if '-label' in filename:
+          loadFileProperties["labelmap"] = True
     elif(extension == '.gz'):
       subfilename, subextension = os.path.splitext(filename)
       if subextension == '.nii':
+        if '.seg' in filename:
+          fileTypes = 'SegmentationFile'
+        else:
+          fileTypes = 'VolumeFile'
+          if '-label' in filename:
+            loadFileProperties["labelmap"] = True
         fileTypes = 'VolumeFile'
       else:
         logging.debug('Could not download data. Not a supported file type.')
@@ -198,6 +210,7 @@ class ImportFromURLLogic(ScriptedLoadableModuleLogic):
     fileNames= fileNames,
     loadFileTypes=fileTypes,
     loadFiles = True,
+    loadFileProperties = loadFileProperties,
     uris= url)
 
     # Check if download from URL returned a node collection. If not, then file was downloaded but not imported.
