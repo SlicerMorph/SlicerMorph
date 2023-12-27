@@ -90,6 +90,52 @@ def getResourceScriptPath(scriptName):
     return resourceScriptPath
 
 
+class CloseApplicationEventFilter(qt.QObject):
+    def __init__(self, morphoSourceImportWidget, parent=None):
+        super(CloseApplicationEventFilter, self).__init__(parent)
+        self.morphoSourceImportWidget = morphoSourceImportWidget
+
+    def eventFilter(self, obj, event):
+        if event.type() == qt.QEvent.Close:
+            if self.morphoSourceImportWidget.downloadInProgress:
+                userChoice = qt.QMessageBox.question(
+                    slicer.util.mainWindow(), "Download in Progress",
+                    "A download is currently in progress. Would you like to stop the download and close the application?",
+                    qt.QMessageBox.Yes | qt.QMessageBox.No, qt.QMessageBox.No
+                )
+                if userChoice == qt.QMessageBox.Yes:
+                    self.morphoSourceImportWidget.terminateDownload()
+                    slicer.util.mainWindow().close()  # Force the main window to close
+                    return True
+                else:
+                    event.ignore()
+                    return True
+            else:
+                return False  # Allow the default handler to manage the event
+        return False
+
+
+class CustomTableWidget(qt.QTableWidget):
+    def __init__(self, parent=None):
+        super(CustomTableWidget, self).__init__(parent)
+
+    def contextMenuEvent(self, event):
+        menu = qt.QMenu(self)
+        openAction = menu.addAction("Open in browser")
+        action = menu.exec_(self.mapToGlobal(event.pos()))
+        if action == openAction:
+            self.openUrlAtPosition(event.pos())
+
+    def openUrlAtPosition(self, pos):
+        row = self.rowAt(pos.y())
+        if row >= 0:
+            item = self.item(row, 2)  # Assuming column 2 has the URL
+            if item:
+                url = item.data(qt.Qt.UserRole)
+                if url:
+                    webbrowser.open(url)  # Open the URL in the browser
+
+
 class ClickableLabel(qt.QLabel):
     def __init__(self, parent=None):
         super(ClickableLabel, self).__init__(parent)
@@ -280,20 +326,20 @@ class MSQuery:
         # Converting the list of dictionaries to a pandas DataFrame
         search_results_df = self.pd.DataFrame(search_results_data).applymap(unlist_cell)
 
-        search_results_df = self.revise_df(search_results_df)
-
-        search_results_df['File size'] = self.pages[1]['sizes']
+        search_results_df = self.revise_df(search_results_df, 1)
 
         return search_results_df
 
-    def revise_df(self, df):
+    def revise_df(self, df, page_number):
 
-        revised_df = df[['id', 'title', 'media_type', 'physical_object_id',
+        df['File size'] = self.pages[page_number]['sizes']
+
+        revised_df = df[['id', 'title', 'media_type', 'File size', 'physical_object_id',
                          'part', 'side', 'date_modified',
                          'physical_object_taxonomy_name', 'physical_object_taxonomy_gbif',
                          'x_pixel_spacing', 'y_pixel_spacing', 'z_pixel_spacing']]
 
-        revised_colnames = ['Media ID', 'Title', 'Media Type', 'Object ID',
+        revised_colnames = ['Media ID', 'Title', 'Media Type', 'File size', 'Object ID',
                             'Part', 'Side', 'Date Modified',
                             'Taxonomy Name', 'Taxonomy GBIF',
                             'X Pixel Spacing', 'Y Pixel Spacing', 'Z Pixel Spacing']
@@ -339,9 +385,7 @@ class MSQuery:
         # Apply the unlist_cell function to each cell in the DataFrame
         search_results_df = search_results_df.applymap(unlist_cell)
 
-        search_results_df = self.revise_df(search_results_df)
-
-        search_results_df['File size'] = self.pages[page_number]['sizes']
+        search_results_df = self.revise_df(search_results_df, page_number)
 
         return search_results_df
 
@@ -377,6 +421,8 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
     def __init__(self, parent=None) -> None:
         ScriptedLoadableModuleWidget.__init__(self, parent)
 
+        self.SearchInProgress = None
+        self.event_filter = None
         self.startSearchButton = None
         self.all_pages = None
         self.searchProcess = None
@@ -434,7 +480,7 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
         parametersFormLayout.addRow("Media Tag: ", self.mediaTag)
 
         # Change checkboxes to radio buttons
-        self.meshRadioButton = qt.QRadioButton("Mesh")
+        self.meshRadioButton = qt.QRadioButton("Surface Models")
         self.ctImageSeriesRadioButton = qt.QRadioButton("CT Image Series")
 
         # Arrange radio buttons in a horizontal layout
@@ -588,7 +634,8 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
             "Art",
             "Personal Interest",
             "3D Printing",
-            "Commercial Use"
+            "Commercial Use",
+            "Research"
         ]
 
         # Create checkboxes for each category and add them to the grid layout
@@ -629,6 +676,9 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
         self.layout.addStretch(1)
         self.onQueryStringChanged()
 
+        self.event_filter = CloseApplicationEventFilter(self)
+        slicer.util.mainWindow().installEventFilter(self.event_filter)
+
     def cleanup(self) -> None:
         pass
 
@@ -640,12 +690,21 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
 
     def createBasicTable(self, rowHeight) -> None:
         # Table for search results
-        self.resultsTable = qt.QTableWidget()
+        # Use the custom table widget
+        self.resultsTable = CustomTableWidget()
+
+        # Enable selection of multiple cells
+        self.resultsTable.setSelectionBehavior(qt.QTableWidget.SelectItems)
+        self.resultsTable.setSelectionMode(qt.QTableWidget.ExtendedSelection)
+
+        # Connect custom context menu
+        self.resultsTable.setContextMenuPolicy(qt.Qt.CustomContextMenu)
+        self.resultsTable.customContextMenuRequested.connect(self.onTableContextMenu)
 
         # Adjust this based on your row height
-        self.resultsTable.setMinimumHeight(rowHeight * 10)
+        self.resultsTable.setMinimumHeight(rowHeight * 16)
 
-        # Adjust the size policy to expand
+        # Adjust the size policy to expand both vertically and horizontally
         sizePolicy = qt.QSizePolicy(qt.QSizePolicy.Expanding, qt.QSizePolicy.Expanding)
         self.resultsTable.setSizePolicy(sizePolicy)
 
@@ -657,6 +716,57 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
 
         # Add the results table to the layout
         self.layout.addWidget(self.resultsTable)
+
+    def onTableContextMenu(self, position):
+        selectedRanges = self.resultsTable.selectedRanges()
+        if not selectedRanges:
+            return
+
+        # Create a context menu
+        menu = qt.QMenu(self.resultsTable)
+
+        # Check if the selection is within the same row
+        singleRowSelected = len(selectedRanges) == 1 and selectedRanges[0].rowCount() == 1
+
+        # Create and add 'Copy' action
+        copyAction = qt.QAction("Copy", self.resultsTable)
+        copyAction.triggered.connect(self.copySelectedCells)
+        menu.addAction(copyAction)
+
+        # Add 'Open in Browser' action if only one row is selected
+        if singleRowSelected:
+            openInBrowserAction = qt.QAction("Open in Browser", self.resultsTable)
+            openInBrowserAction.triggered.connect(self.openUrlInBrowser)
+            menu.addAction(openInBrowserAction)
+
+        # Show the context menu at the current cursor position
+        menu.exec_(self.resultsTable.viewport().mapToGlobal(position))
+
+    def openUrlInBrowser(self):
+        selectedItems = self.resultsTable.selectedItems()
+        if selectedItems:
+            firstSelectedItem = selectedItems[0]
+            url = firstSelectedItem.data(qt.Qt.UserRole)
+            if url:
+                webbrowser.open(url)
+
+    def copySelectedCells(self):
+        selectedRanges = self.resultsTable.selectedRanges()
+        if not selectedRanges:
+            return
+
+        textToCopy = ""
+        for selectionRange in selectedRanges:  # Changed variable name from 'range' to 'selectionRange'
+            for row in range(selectionRange.topRow(), selectionRange.bottomRow() + 1):
+                rowText = []
+                for col in range(selectionRange.leftColumn(), selectionRange.rightColumn() + 1):
+                    item = self.resultsTable.item(row, col)
+                    if item is not None:
+                        rowText.append(item.text())
+                textToCopy += "\t".join(rowText) + "\n"
+
+        clipboard = qt.QApplication.clipboard()
+        clipboard.setText(textToCopy)
 
     def onQueryStringChanged(self):
         selectedRadio = self.meshRadioButton.isChecked() or \
@@ -746,12 +856,16 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
         query_json_dict = json.dumps(queryDictionary)  # Convert config to JSON string
         args = [scriptPath, query_json_dict]
 
-        self.startDownload()
+        self.startSearch()
         # Start the download process
         self.searchProcess.start(command, args)
 
         # Assume progressBar is a member of the class and is a QProgressBar
         self.searchProgressBar = slicer.util.createProgressDialog()
+
+    def startSearch(self):
+        # Call this method when the download starts
+        self.SearchInProgress = True
 
     def onSearchProcessReadyRead(self):
         # Read the standard output of the search process
@@ -811,17 +925,17 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
 
         # Set font size for table items
         font = qt.QFont()
-        font.setPointSize(12)  # Adjust this size as needed
+        font.setPointSize(12)
         self.resultsTable.setFont(font)
 
-        # Set stylesheet for the header view to match the font size
+        # Set stylesheet for the header view
         header = self.resultsTable.horizontalHeader()
-        header.setStyleSheet(
-            "QHeaderView::section { font-size: 12pt; }")  # Match the font size with the table's row text
+        header.setStyleSheet("QHeaderView::section { font-size: 12pt; }")
 
         for row_index, row_data in df.iterrows():
             adjusted_row_index = row_index - start_index
             itemId = str(row_data.iloc[0])
+            web_url = web_urls[adjusted_row_index]  # Get the web URL for the row
 
             # Set up the checkbox
             checkbox = qt.QCheckBox()
@@ -832,14 +946,13 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
 
             # Handle thumbnail display
             thumbnail = thumbnails[adjusted_row_index]
-            web_url = web_urls[adjusted_row_index]
             label = ClickableLabel()
             label.setObjectName(web_url)
 
             if thumbnail:
                 pixmap = qt.QPixmap()
                 pixmap.loadFromData(thumbnail)
-                label.originalPixmap = pixmap  # Store the original pixmap
+                label.originalPixmap = pixmap
                 scaledPixmap = pixmap.scaled(self.resultsTable.columnWidth(1), self.resultsTable.columnWidth(1),
                                              qt.Qt.KeepAspectRatio)
                 label.setPixmap(scaledPixmap)
@@ -849,14 +962,11 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
                 label.setText("No Image")
             self.resultsTable.setCellWidget(adjusted_row_index, 1, label)
 
-            # Add a hidden QTableWidgetItem to store item ID
-            itemIDWidget = qt.QTableWidgetItem(itemId)
-            self.resultsTable.setItem(adjusted_row_index, 2, itemIDWidget)
-
-            # Populate other columns
+            # Store the web URL in each QTableWidgetItem of the row
             for col_index, item in enumerate(row_data):
                 cellItem = qt.QTableWidgetItem(str(item))
                 cellItem.setFlags(cellItem.flags() ^ qt.Qt.ItemIsEditable)
+                cellItem.setData(qt.Qt.UserRole, web_url)  # Store the URL in the UserRole data role
                 self.resultsTable.setItem(adjusted_row_index, col_index + 2, cellItem)
 
             self.resultsTable.setColumnWidth(0, 50)  # Width for the checkbox column
@@ -1069,15 +1179,21 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
         # Create a new list for items to be downloaded after checking for existing files
         itemsToDownload = []
 
-        # Iterate through the items to be downloaded and check if they exist
+        # Iterate through the items to be downloaded and check if they exist or are partially downloaded
         for item in self.logic.msq.get_all_checked_items():
             filename = f"media_{item}.zip"
+            partial_filename = f"partial_media_{item}.zip"
             filePath = os.path.join(self.logic.download_folder, filename)  # Construct the file path
-            if os.path.exists(filePath):  # Check if file exists
-                # Ask the user whether to overwrite or skip the file
+            partial_filePath = os.path.join(self.logic.download_folder, partial_filename)  # Partial file path
+
+            if os.path.exists(filePath):  # Check if fully downloaded file exists
                 userChoice = self.promptUserForFileOverwrite(filename)
                 if userChoice == 'overwrite':
-                    itemsToDownload.append(item)  # Add to download list if user chooses to overwrite
+                    itemsToDownload.append(item)
+            elif os.path.exists(partial_filePath):  # Check if partially downloaded file exists
+                userChoice = self.promptUserForFileOverwrite(partial_filename)
+                if userChoice == 'overwrite':
+                    itemsToDownload.append(item)
             else:
                 itemsToDownload.append(item)  # File does not exist, add to download list
 
@@ -1145,10 +1261,6 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
         self.selectDownloadFolderButton.setEnabled(True)
         self.downloadButton.setEnabled(True)
 
-    def stopDownload(self):
-        if self.downloadProcess is not None and self.downloadProcess.state() != qt.QProcess.NotRunning:
-            self.downloadProcess.terminate()  # Or use kill() if terminate() is not effective
-
     def onDownloadStarted(self):
         print("Download process started.")
 
@@ -1182,6 +1294,9 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
             elif "Completed" in line:
                 print(line)
 
+            elif "[Debug]" in line:
+                print(line)
+
             else:
                 continue
 
@@ -1193,6 +1308,7 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
         # Handle completion of the download process
         self.progressBar.setVisible(False)
         self.enableButtons()
+        self.downloadInProgress = False
         print(f"Download process finished with exit code {exitCode}")
 
     def startDownload(self):

@@ -1,4 +1,5 @@
 import time
+import datetime
 import json
 import sys
 import os
@@ -160,6 +161,10 @@ class DownloadMSRecords:
                 except Exception as e:
                     print(f"Error in Page Download: {e}", flush=True)
 
+    def format_for_filename(self, text):
+        """Format the text to be suitable for use in a filename."""
+        return text.replace(" ", "_").replace("/", "_").replace("\\", "_")
+
     def combine_and_save_dataframes(self):
         # Initialize an empty list to store individual DataFrames
         all_dfs = []
@@ -172,8 +177,18 @@ class DownloadMSRecords:
         # Concatenate all DataFrames into a single DataFrame
         combined_df = pd.concat(all_dfs, ignore_index=False)
 
+        # Format search query and taxonomy for filename
+        formatted_query = self.format_for_filename(self.query)
+        formatted_taxonomy = self.format_for_filename(self.taxonomy_gbif)
+
+        # Generate a more readable timestamp
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+        # Construct the filename
+        filename = f"{formatted_query}_{formatted_taxonomy}_{timestamp}.csv"
+
         # Define the file path for saving the DataFrame
-        save_path = os.path.join(self.path, "search_results_data.csv")
+        save_path = os.path.join(self.path, filename)
 
         # Save the DataFrame to a CSV file
         combined_df.to_csv(save_path, index=True)
