@@ -92,7 +92,7 @@ def getResourceScriptPath(scriptName):
 
 class CloseApplicationEventFilter(qt.QObject):
     def __init__(self, morphoSourceImportWidget, parent=None):
-        super(CloseApplicationEventFilter, self).__init__(parent)
+        super().__init__(parent)
         self.morphoSourceImportWidget = morphoSourceImportWidget
 
     def eventFilter(self, obj, event):
@@ -117,7 +117,7 @@ class CloseApplicationEventFilter(qt.QObject):
 
 class CustomTableWidget(qt.QTableWidget):
     def __init__(self, parent=None):
-        super(CustomTableWidget, self).__init__(parent)
+        super().__init__(parent)
 
     def contextMenuEvent(self, event):
         menu = qt.QMenu(self)
@@ -138,7 +138,7 @@ class CustomTableWidget(qt.QTableWidget):
 
 class ClickableLabel(qt.QLabel):
     def __init__(self, parent=None):
-        super(ClickableLabel, self).__init__(parent)
+        super().__init__(parent)
         self.originalPixmap = None
 
     def mousePressEvent(self, event):

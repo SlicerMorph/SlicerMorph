@@ -56,7 +56,7 @@ class MSDownload:
         self.configure_download()
 
     def calculate_total_size(self):
-        
+
         sizes = {}
         total_size = 0
         for media_id in self.items_to_download:
