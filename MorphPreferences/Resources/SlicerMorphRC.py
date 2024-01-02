@@ -54,7 +54,7 @@ qt.QSettings().setValue("Modules/HomeModule", "Data")
 # set volume rendering modes
 #
 settings = slicer.app.settings()
-settings.setValue("VolumeRendering/RenderingMethod", "vtkMRMLCPURayCastVolumeRenderingDisplayNode")
+settings.setValue("VolumeRendering/RenderingMethod", "vtkMRMLGPURayCastVolumeRenderingDisplayNode")
 settings.setValue("VolumeRendering/DefaultQuality", "Normal")
 
 #
