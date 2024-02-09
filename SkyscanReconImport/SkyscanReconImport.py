@@ -186,14 +186,13 @@ class SkyscanReconImportWidget(ScriptedLoadableModuleWidget):
         self.batchModeTabLayout.addWidget(qt.QLabel("Downsampled NRRD Output:"))
         self.batchModeTabLayout.addWidget(self.downsampledOutputSelector)
 
-        # Downsample Ratio Selection
+        # Downsample Ratio Selection with Checkboxes
         self.downsampleRatioGroup = qt.QGroupBox("Downsample Ratio")
-        self.downsampleRatioLayout = qt.QVBoxLayout()
-        self.halfResRadioButton = qt.QRadioButton("1/2 Resolution")
-        self.quarterResRadioButton = qt.QRadioButton("1/4 Resolution")
-        self.halfResRadioButton.setChecked(True)  # Default selection
-        self.downsampleRatioLayout.addWidget(self.halfResRadioButton)
-        self.downsampleRatioLayout.addWidget(self.quarterResRadioButton)
+        self.downsampleRatioLayout = qt.QHBoxLayout()  # Use QHBoxLayout for horizontal layout
+        self.halfResCheckBox = qt.QCheckBox("1/2 Resolution")
+        self.quarterResCheckBox = qt.QCheckBox("1/4 Resolution")
+        self.downsampleRatioLayout.addWidget(self.halfResCheckBox)
+        self.downsampleRatioLayout.addWidget(self.quarterResCheckBox)
         self.downsampleRatioGroup.setLayout(self.downsampleRatioLayout)
         self.batchModeTabLayout.addWidget(self.downsampleRatioGroup)
 
@@ -230,18 +229,16 @@ class SkyscanReconImportWidget(ScriptedLoadableModuleWidget):
 
     def getDownsampleRatio(self):
         """
-      Returns the downsampling ratio based on the selected radio button.
+        Returns the downsampling ratio selection as a tuple of booleans.
 
-      Returns:
-          int: 2 if "1/2 Resolution" is selected, 4 if "1/4 Resolution" is selected.
-      """
-        if self.halfResRadioButton.isChecked():
-            return 2
-        elif self.quarterResRadioButton.isChecked():
-            return 4
-        else:
-            # Default return value in case none is selected, or add additional handling as needed
-            return 2  # Assuming 1/2 resolution as the default behavior
+        Returns:
+            tuple: (isHalfResChecked, isQuarterResChecked)
+                - isHalfResChecked (bool): True if "1/2 Resolution" is checked, False otherwise.
+                - isQuarterResChecked (bool): True if "1/4 Resolution" is checked, False otherwise.
+        """
+        isHalfResChecked = self.halfResCheckBox.isChecked()
+        isQuarterResChecked = self.quarterResCheckBox.isChecked()
+        return [isHalfResChecked, isQuarterResChecked]
 
     @staticmethod
     def find_rec_log_files(main_folder):
@@ -287,20 +284,12 @@ class SkyscanReconImportWidget(ScriptedLoadableModuleWidget):
             return
 
         # Check if downsample ratio is selected (this is optional as default value is set)
-        downsampleRatio = self.getDownsampleRatio()
+        downsampleRatios = self.getDownsampleRatio()
 
         # Proceed with batch processing logic here, utilizing the specified parameters
         self.startBatchProcessing(logFilesList=selectedLogFiles, fullResOutputPath=fullResOutputPath,
-                                  downsampledOutputPath=downsampledOutputPath, downsampleRatio=downsampleRatio)
+                                  downsampledOutputPath=downsampledOutputPath, downsampleRatio=downsampleRatios)
 
-    # def getLogFiles(self):
-    #     """Retrieve all log file paths from the QListWidget."""
-    #     logFiles = []
-    #     for index in range(self.logFilesList.count):
-    #         logFiles.append(self.logFilesList.item(index).text())
-    #     return logFiles
-
-    # Placeholder for the batch processing logic
     @staticmethod
     def startBatchProcessing(logFilesList, fullResOutputPath, downsampledOutputPath, downsampleRatio):
         progress = slicer.util.createProgressDialog(windowTitle="Batch Processing",
@@ -315,8 +304,8 @@ class SkyscanReconImportWidget(ScriptedLoadableModuleWidget):
             # Assuming 'logic.run' processes the log and 'logic.saveVolumes' saves the volumes
             # Update these calls as necessary according to your actual logic's methods and parameters
             logic.run(logFile, 'utf8')  # Placeholder for your processing logic
-            logic.saveVolumes(logic.prefix_list[i], fullResOutputPath, downsampledOutputPath,
-                              downsampleRatio)  # Placeholder for saving logic
+            logic.saveVolumes(logic.prefix_list[i], fullResOutputPath,
+                              downsampledOutputPath, downsampleRatio)  # Placeholder for saving logic
 
             progress.setValue(i + 1)  # Update the progress value
 
@@ -569,47 +558,52 @@ class SkyscanReconImportLogic(ScriptedLoadableModuleLogic):
         fullRespath = os.path.join(fullRespath, node_name + ".nrrd")
         slicer.util.exportNode(volumeNode, fullRespath, {"useCompression": 0})
 
-        # Create a new ROI node and ensure it's not visible
-        roiNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsROINode")
-        roiDisplayNode = roiNode.GetDisplayNode()
-        if roiDisplayNode:
-            roiDisplayNode.SetVisibility(False)  # Hide in 3D view
+        # Function to crop and save volume at specified resolution
+        def cropAndSave(downsampleRatio, suffix):
+            # Create a new ROI node and ensure it's not visible
+            roiNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsROINode")
+            roiDisplayNode = roiNode.GetDisplayNode()
+            if roiDisplayNode:
+                roiDisplayNode.SetVisibility(False)  # Hide in 3D view
 
-        # Set the new markup ROI to the dimensions of the volume loaded
-        cropVolumeParameters = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLCropVolumeParametersNode")
-        cropVolumeParameters.SetInputVolumeNodeID(volumeNode.GetID())
-        cropVolumeParameters.SetROINodeID(roiNode.GetID())
-        slicer.modules.cropvolume.logic().SnapROIToVoxelGrid(cropVolumeParameters)
-        slicer.modules.cropvolume.logic().FitROIToInputVolume(cropVolumeParameters)
-        slicer.mrmlScene.RemoveNode(cropVolumeParameters)
+            # Set the new markup ROI to the dimensions of the volume loaded
+            cropVolumeParameters = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLCropVolumeParametersNode")
+            cropVolumeParameters.SetInputVolumeNodeID(volumeNode.GetID())
+            cropVolumeParameters.SetROINodeID(roiNode.GetID())
+            slicer.modules.cropvolume.logic().SnapROIToVoxelGrid(cropVolumeParameters)
+            slicer.modules.cropvolume.logic().FitROIToInputVolume(cropVolumeParameters)
+            slicer.mrmlScene.RemoveNode(cropVolumeParameters)
 
-        # Set the cropping parameters
-        cropVolumeLogic = slicer.modules.cropvolume.logic()
-        cropVolumeParameterNode = slicer.vtkMRMLCropVolumeParametersNode()
-        cropVolumeParameterNode.SetIsotropicResampling(True)
-        cropVolumeParameterNode.SetSpacingScalingConst(resolution)
-        cropVolumeParameterNode.SetROINodeID(roiNode.GetID())
-        cropVolumeParameterNode.SetInputVolumeNodeID(volumeNode.GetID())
+            # Set the cropping parameters
+            cropVolumeLogic = slicer.modules.cropvolume.logic()
+            cropVolumeParameterNode = slicer.vtkMRMLCropVolumeParametersNode()
+            cropVolumeParameterNode.SetIsotropicResampling(True)
+            cropVolumeParameterNode.SetSpacingScalingConst(downsampleRatio)
+            cropVolumeParameterNode.SetROINodeID(roiNode.GetID())
+            cropVolumeParameterNode.SetInputVolumeNodeID(volumeNode.GetID())
 
-        # Do the cropping
-        cropVolumeLogic.Apply(cropVolumeParameterNode)
+            # Do the cropping
+            cropVolumeLogic.Apply(cropVolumeParameterNode)
 
-        # Create the cropped volume
-        croppedVolume = slicer.mrmlScene.GetNodeByID(cropVolumeParameterNode.GetOutputVolumeNodeID())
+            # Create the cropped volume
+            croppedVolume = slicer.mrmlScene.GetNodeByID(cropVolumeParameterNode.GetOutputVolumeNodeID())
 
-        # Determine file path for the downsampled volume
-        if resolution == 2:
-            dsResPath = os.path.join(dsResPath, node_name + "-ds2.nrrd")
-        else:
-            dsResPath = os.path.join(dsResPath, node_name + "-ds4.nrrd")
+            # Save the downsampled volume
+            dsPath = os.path.join(dsResPath, f"{node_name}{suffix}.nrrd")
+            slicer.util.exportNode(croppedVolume, dsPath, {"useCompression": 0})
 
-        # Save the downsampled volume
-        slicer.util.exportNode(croppedVolume, dsResPath, {"useCompression": 0})
+            # Cleanup: Remove temporary nodes
+            slicer.mrmlScene.RemoveNode(croppedVolume)
+            slicer.mrmlScene.RemoveNode(roiNode)
 
-        # Cleanup: Remove temporary nodes
-        slicer.mrmlScene.RemoveNode(croppedVolume)
+        # Check and create downsampled volumes based on resolution flags
+        if resolution[0]:  # If 1/2 resolution is selected
+            cropAndSave(2, "-ds2")
+        if resolution[1]:  # If 1/4 resolution is selected
+            cropAndSave(4, "-ds4")
+
+        # Cleanup: Remove the original volume node as it's no longer needed
         slicer.mrmlScene.RemoveNode(volumeNode)
-        slicer.mrmlScene.RemoveNode(roiNode)
 
 
 class SkyscanReconImportTest(ScriptedLoadableModuleTest):
