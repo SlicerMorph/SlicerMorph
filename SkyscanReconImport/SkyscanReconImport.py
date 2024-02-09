@@ -1,13 +1,9 @@
-import SimpleITK as sitk
-import sitkUtils
 import os
 import glob
-import unittest
 import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
 import logging
 import numpy as np
-import string
 
 
 #
@@ -172,7 +168,7 @@ class SkyscanReconImportWidget(ScriptedLoadableModuleWidget):
         self.findFilesButton.toolTip = "Search for log files in the specified directory."
         self.batchModeTabLayout.addWidget(self.findFilesButton)
 
-        # List widget to display found log files
+        # Modify the List widget to display found log files with checkboxes
         self.logFilesList = qt.QListWidget()
         self.batchModeTabLayout.addWidget(self.logFilesList)
 
@@ -206,20 +202,31 @@ class SkyscanReconImportWidget(ScriptedLoadableModuleWidget):
         self.startBatchProcessingButton.toolTip = "Start the batch processing with the specified settings."
         self.batchModeTabLayout.addWidget(self.startBatchProcessingButton)
 
-        # Connect button click to action
+        # Connections
         self.findFilesButton.clicked.connect(self.onFindFilesButtonClicked)
-
-        # Connect button click to the batch processing action
         self.startBatchProcessingButton.clicked.connect(self.onStartBatchProcessingClicked)
 
     def onFindFilesButtonClicked(self):
         mainDirectory = self.directorySelector.currentPath
         if mainDirectory:
             logFiles = self.find_rec_log_files(mainDirectory)
-            self.logFilesList.clear()
-            self.logFilesList.addItems(logFiles)
+            self.logFilesList.clear()  # Clear existing items before adding new ones
+            for logFile in logFiles:
+                # Create a QListWidgetItem for each log file
+                item = qt.QListWidgetItem(logFile)
+                item.setFlags(item.flags() | qt.Qt.ItemIsUserCheckable)  # Add checkbox feature
+                item.setCheckState(qt.Qt.Unchecked)  # Set the checkbox to unchecked, or qt.Qt.Checked for checked
+                self.logFilesList.addItem(item)  # Add the item with a checkbox to the list
         else:
             slicer.util.errorDisplay("Please select a valid directory.")
+
+    def getSelectedLogFiles(self):
+        selectedLogFiles = []
+        for index in range(self.logFilesList.count):
+            item = self.logFilesList.item(index)
+            if item.checkState() == qt.Qt.Checked:
+                selectedLogFiles.append(item.text())
+        return selectedLogFiles
 
     def getDownsampleRatio(self):
         """
@@ -265,7 +272,10 @@ class SkyscanReconImportWidget(ScriptedLoadableModuleWidget):
 
     def onStartBatchProcessingClicked(self):
         # Check if log files list is populated
-        if self.logFilesList.count == 0:
+
+        selectedLogFiles = self.getSelectedLogFiles()
+
+        if len(selectedLogFiles) == 0:
             slicer.util.errorDisplay("No log files found. Please find log files before starting batch processing.")
             return
 
@@ -280,18 +290,19 @@ class SkyscanReconImportWidget(ScriptedLoadableModuleWidget):
         downsampleRatio = self.getDownsampleRatio()
 
         # Proceed with batch processing logic here, utilizing the specified parameters
-        self.startBatchProcessing(logFilesList=self.getLogFiles(), fullResOutputPath=fullResOutputPath,
+        self.startBatchProcessing(logFilesList=selectedLogFiles, fullResOutputPath=fullResOutputPath,
                                   downsampledOutputPath=downsampledOutputPath, downsampleRatio=downsampleRatio)
 
-    def getLogFiles(self):
-        """Retrieve all log file paths from the QListWidget."""
-        logFiles = []
-        for index in range(self.logFilesList.count):
-            logFiles.append(self.logFilesList.item(index).text())
-        return logFiles
+    # def getLogFiles(self):
+    #     """Retrieve all log file paths from the QListWidget."""
+    #     logFiles = []
+    #     for index in range(self.logFilesList.count):
+    #         logFiles.append(self.logFilesList.item(index).text())
+    #     return logFiles
 
     # Placeholder for the batch processing logic
-    def startBatchProcessing(self, logFilesList, fullResOutputPath, downsampledOutputPath, downsampleRatio):
+    @staticmethod
+    def startBatchProcessing(logFilesList, fullResOutputPath, downsampledOutputPath, downsampleRatio):
         progress = slicer.util.createProgressDialog(windowTitle="Batch Processing",
                                                     labelText="Starting batch processing...", maximum=len(logFilesList))
         progress.setValue(0)  # Initialize progress at 0
@@ -579,9 +590,9 @@ class SkyscanReconImportLogic(ScriptedLoadableModuleLogic):
         croppedVolume = slicer.mrmlScene.GetNodeByID(cropVolumeParameterNode.GetOutputVolumeNodeID())
 
         if resolution == 2:
-            dsResPath = os.path.join(dsResPath, node_name + "-18um.nrrd")
+            dsResPath = os.path.join(dsResPath, node_name + "-ds2.nrrd")
         else:
-            dsResPath = os.path.join(dsResPath, node_name + "-36um.nrrd")
+            dsResPath = os.path.join(dsResPath, node_name + "-ds4.nrrd")
 
         slicer.util.exportNode(croppedVolume, dsResPath, {"useCompression": 0})
         slicer.mrmlScene.RemoveNode(croppedVolume)
