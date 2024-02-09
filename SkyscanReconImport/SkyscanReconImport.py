@@ -561,40 +561,52 @@ class SkyscanReconImportLogic(ScriptedLoadableModuleLogic):
         stopTime = time.time()
         logging.info(f'Processing completed in {stopTime - startTime:.2f} seconds')
 
-    def saveVolumes(self, node_name, fullRespath, dsResPath, resolution):
+    @staticmethod
+    def saveVolumes(node_name, fullRespath, dsResPath, resolution):
         volumeNode = slicer.util.getNode(node_name)
 
+        # Save the full resolution volume
         fullRespath = os.path.join(fullRespath, node_name + ".nrrd")
-
         slicer.util.exportNode(volumeNode, fullRespath, {"useCompression": 0})
+
+        # Create a new ROI node and ensure it's not visible
         roiNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsROINode")
-        # set the new markup ROI to the dimensions of the volume holaded
+        roiDisplayNode = roiNode.GetDisplayNode()
+        if roiDisplayNode:
+            roiDisplayNode.SetVisibility(False)  # Hide in 3D view
+
+        # Set the new markup ROI to the dimensions of the volume loaded
         cropVolumeParameters = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLCropVolumeParametersNode")
         cropVolumeParameters.SetInputVolumeNodeID(volumeNode.GetID())
         cropVolumeParameters.SetROINodeID(roiNode.GetID())
-        slicer.modules.cropvolume.logic().SnapROIToVoxelGrid(
-            cropVolumeParameters)  # optional (rotates the ROI to match the volume axis directions)
+        slicer.modules.cropvolume.logic().SnapROIToVoxelGrid(cropVolumeParameters)
         slicer.modules.cropvolume.logic().FitROIToInputVolume(cropVolumeParameters)
         slicer.mrmlScene.RemoveNode(cropVolumeParameters)
-        # set the cropping parameters
+
+        # Set the cropping parameters
         cropVolumeLogic = slicer.modules.cropvolume.logic()
         cropVolumeParameterNode = slicer.vtkMRMLCropVolumeParametersNode()
         cropVolumeParameterNode.SetIsotropicResampling(True)
-        # set the output resolution to 2mms
         cropVolumeParameterNode.SetSpacingScalingConst(resolution)
         cropVolumeParameterNode.SetROINodeID(roiNode.GetID())
         cropVolumeParameterNode.SetInputVolumeNodeID(volumeNode.GetID())
-        # do the cropping
+
+        # Do the cropping
         cropVolumeLogic.Apply(cropVolumeParameterNode)
-        # create the cropped volume
+
+        # Create the cropped volume
         croppedVolume = slicer.mrmlScene.GetNodeByID(cropVolumeParameterNode.GetOutputVolumeNodeID())
 
+        # Determine file path for the downsampled volume
         if resolution == 2:
             dsResPath = os.path.join(dsResPath, node_name + "-ds2.nrrd")
         else:
             dsResPath = os.path.join(dsResPath, node_name + "-ds4.nrrd")
 
+        # Save the downsampled volume
         slicer.util.exportNode(croppedVolume, dsResPath, {"useCompression": 0})
+
+        # Cleanup: Remove temporary nodes
         slicer.mrmlScene.RemoveNode(croppedVolume)
         slicer.mrmlScene.RemoveNode(volumeNode)
         slicer.mrmlScene.RemoveNode(roiNode)
