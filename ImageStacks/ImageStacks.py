@@ -469,7 +469,7 @@ class ImageStacksFileDialog:
   @staticmethod
   def pathsFromMimeData(mimeData):
     filesToAdd = []
-    acceptedFileExtensions = ['jpg', 'jpeg', 'tif', 'tiff', 'png', 'bmp', 'jp2', 'nrrd']
+    acceptedFileExtensions = ['jpg', 'jpeg', 'tif', 'tiff', 'png', 'bmp', 'jp2', 'nrrd', 'nhdr']
     if mimeData.hasFormat('text/uri-list'):
       urls = mimeData.urls()
       for url in urls:
