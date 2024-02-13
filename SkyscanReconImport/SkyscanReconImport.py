@@ -244,7 +244,7 @@ class SkyscanReconImportWidget(ScriptedLoadableModuleWidget):
     def find_rec_log_files(main_folder):
         log_files = []
         # First pass to determine the total number of directories (optional for precise progress)
-        total_dirs = sum([len(dirs) for r, dirs, f in os.walk(main_folder)])
+        total_dirs = sum(len(dirs) for r, dirs, f in os.walk(main_folder))
         progress = slicer.util.createProgressDialog(windowTitle="Searching Log Files",
                                                     labelText="Searching for log files...", maximum=total_dirs)
 
