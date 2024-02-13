@@ -293,26 +293,29 @@ class SkyscanReconImportWidget(ScriptedLoadableModuleWidget):
     @staticmethod
     def startBatchProcessing(logFilesList, fullResOutputPath, downsampledOutputPath, downsampleRatio):
         progress = slicer.util.createProgressDialog(windowTitle="Batch Processing",
-                                                    labelText="Starting batch processing...", maximum=len(logFilesList))
+                                                labelText="Starting batch processing...", maximum=len(logFilesList))
         progress.setValue(0)  # Initialize progress at 0
         logic = SkyscanReconImportLogic()
 
         for i, logFile in enumerate(logFilesList):
-            progress.labelText = f"Processing {os.path.basename(logFile)} ({i + 1}/{len(logFilesList)})"
-            slicer.app.processEvents()  # Update the progress dialog to reflect the new label text
+            try:
+                progress.labelText = f"Processing {os.path.basename(logFile)} ({i + 1}/{len(logFilesList)})"
+                slicer.app.processEvents()  # Update the progress dialog to reflect the new label text
 
-            # Assuming 'logic.run' processes the log and 'logic.saveVolumes' saves the volumes
-            # Update these calls as necessary according to your actual logic's methods and parameters
-            logic.run(logFile, 'utf8')  # Placeholder for your processing logic
-            logic.saveVolumes(logic.prefix_list[i], fullResOutputPath,
-                              downsampledOutputPath, downsampleRatio)  # Placeholder for saving logic
+                # Assuming 'logic.run' processes the log and 'logic.saveVolumes' saves the volumes
+                # Update these calls as necessary according to your actual logic's methods and parameters
+                logic.run(logFile, 'utf8')  # Placeholder for your processing logic
+                logic.saveVolumes(logic.prefix_list[i], fullResOutputPath,
+                                  downsampledOutputPath, downsampleRatio)  # Placeholder for saving logic
 
-            progress.setValue(i + 1)  # Update the progress value
+            except Exception as e:
+                print(f"Error processing {logFile}: {e}")  # Print the error message
 
-            if progress.wasCanceled:
-                break  # Allow the user to cancel the operation
+            finally:
+                progress.setValue(i + 1)  # Update the progress value regardless of success or failure
 
-        progress.close()  # Close the progress dialog once processing is complete
+                if progress.wasCanceled:
+                    break  # Allow the user to cancel the operation
 
     def cleanup(self):
         pass
