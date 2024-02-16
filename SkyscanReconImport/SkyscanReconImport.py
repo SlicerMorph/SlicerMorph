@@ -34,7 +34,7 @@ User needs to be point out to the *_Rec.log file found in the reconstruction fol
 """  # replace with organization, grant and thanks.
 
         # Additional initialization step after application startup is complete
-        slicer.app.connect("startupCompleted()", registerSampleData)
+        #slicer.app.connect("startupCompleted()", registerSampleData)
 
 
 
