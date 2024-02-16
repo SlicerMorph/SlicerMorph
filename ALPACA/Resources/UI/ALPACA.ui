@@ -161,30 +161,36 @@
            </widget>
           </item>
           <item row="4" column="0">
-           <widget class="QLabel" name="skipScalingLabel">
+           <widget class="QLabel" name="scalingLabel">
             <property name="text">
-             <string>Skip scaling</string>
+             <string>Scaling</string>
             </property>
            </widget>
           </item>
           <item row="4" column="1">
-           <widget class="QCheckBox" name="skipScalingCheckBox">
+           <widget class="QCheckBox" name="scalingCheckBox">
             <property name="toolTip">
              <string>If checked, ALPACA will skip scaling during alignment (Not recommended).</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
             </property>
            </widget>
           </item>
           <item row="5" column="0">
-           <widget class="QLabel" name="skipProjectionLabel">
+           <widget class="QLabel" name="projectionLabel">
             <property name="text">
-             <string>Skip projection</string>
+             <string>Projection</string>
             </property>
            </widget>
           </item>
           <item row="5" column="1">
-           <widget class="QCheckBox" name="skipProjectionCheckBox">
+           <widget class="QCheckBox" name="projectionCheckBox">
             <property name="toolTip">
              <string>If checked, ALPACA will skip landmark projection towards the target surface.</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
             </property>
            </widget>
           </item>
@@ -215,7 +221,7 @@
             <property name="singleStep" stdset="0">
              <double>0.100000000000000</double>
             </property>
-            <property name="maximum">
+            <property name="maximum" stdset="0">
              <double>2.000000000000000</double>
             </property>
             <property name="value" stdset="0">
@@ -440,10 +446,7 @@
             <property name="toolTip">
              <string>Select the source model</string>
             </property>
-            <property name="filters">
-             <set>ctkPathLineEdit::Files</set>
-            </property>
-            <property name="nameFilters">
+            <property name="nameFilters" stdset="0">
              <stringlist>
               <string>*.ply *.obj *.vtk</string>
              </stringlist>
@@ -462,10 +465,7 @@
             <property name="toolTip">
              <string>Select the source landmarks</string>
             </property>
-            <property name="filters">
-             <set>ctkPathLineEdit::Files|ctkPathLineEdit::NoDot|ctkPathLineEdit::NoDotDot|ctkPathLineEdit::Readable</set>
-            </property>
-            <property name="nameFilters">
+            <property name="nameFilters" stdset="0">
              <stringlist>
               <string>*.fcsv *.json *.mrk.json</string>
              </stringlist>
@@ -484,9 +484,6 @@
             <property name="toolTip">
              <string>Select the directory of models to be landmarked</string>
             </property>
-            <property name="filters">
-             <set>ctkPathLineEdit::Dirs|ctkPathLineEdit::Drives</set>
-            </property>
            </widget>
           </item>
           <item row="5" column="0">
@@ -500,9 +497,6 @@
            <widget class="ctkPathLineEdit" name="landmarkOutputSelector" native="true">
             <property name="toolTip">
              <string>Select the output directory where the landmarks will be saved</string>
-            </property>
-            <property name="filters">
-             <set>ctkPathLineEdit::Dirs|ctkPathLineEdit::Drives</set>
             </property>
            </widget>
           </item>
@@ -678,20 +672,20 @@
            </widget>
           </item>
           <item row="0" column="1">
-           <widget class="ctkSliderWidget" name="normalSearchRadiusSlider">
+           <widget class="ctkSliderWidget" name="normalSearchRadiusSlider" native="true">
             <property name="toolTip">
              <string>Set size of the neighborhood radius used when computing normals</string>
             </property>
-            <property name="decimals">
+            <property name="decimals" stdset="0">
              <number>0</number>
             </property>
-            <property name="minimum">
-             <double>0.1000000000000000</double>
+            <property name="minimum" stdset="0">
+             <double>0.100000000000000</double>
             </property>
-            <property name="maximum">
-		    <double>10.000000000000000</double>
+            <property name="maximum" stdset="0">
+             <double>10.000000000000000</double>
             </property>
-            <property name="value">
+            <property name="value" stdset="0">
              <double>2.000000000000000</double>
             </property>
            </widget>
@@ -757,13 +751,13 @@
             <property name="decimals" stdset="0">
              <number>0</number>
             </property>
-            <property name="maximum">
+            <property name="maximum" stdset="0">
              <double>10000000.000000000000000</double>
             </property>
             <property name="singleStep" stdset="0">
-             <double>1000.00000000000000</double>
+             <double>1000.000000000000000</double>
             </property>
-            <property name="value">
+            <property name="value" stdset="0">
              <double>1000000.000000000000000</double>
             </property>
            </widget>
@@ -816,20 +810,20 @@
            </widget>
           </item>
           <item row="6" column="1">
-           <widget class="ctkSliderWidget" name="FPFHNeighborsSlider">
+           <widget class="ctkSliderWidget" name="FPFHNeighborsSlider" native="true">
             <property name="toolTip">
              <string>Set size of the max neighborhood points used when computing FPFH</string>
             </property>
-            <property name="decimals">
+            <property name="decimals" stdset="0">
              <number>0</number>
             </property>
-            <property name="minimum">
+            <property name="minimum" stdset="0">
              <double>10.000000000000000</double>
             </property>
-            <property name="maximum">
-		    <double>200.000000000000000</double>
+            <property name="maximum" stdset="0">
+             <double>200.000000000000000</double>
             </property>
-            <property name="value">
+            <property name="value" stdset="0">
              <double>100.000000000000000</double>
             </property>
            </widget>
@@ -867,14 +861,14 @@
             <property name="decimals" stdset="0">
              <number>1</number>
             </property>
-            <property name="minimum">
+            <property name="minimum" stdset="0">
              <double>0.010000000000000</double>
             </property>
-            <property name="maximum">
+            <property name="maximum" stdset="0">
              <double>20.000000000000000</double>
             </property>
-            <property name="singleStep">
-             <double>0.0500000000000000</double>
+            <property name="singleStep" stdset="0">
+             <double>0.050000000000000</double>
             </property>
             <property name="value" stdset="0">
              <double>2.000000000000000</double>
@@ -896,14 +890,14 @@
             <property name="decimals" stdset="0">
              <number>1</number>
             </property>
-            <property name="minimum">
+            <property name="minimum" stdset="0">
              <double>0.010000000000000</double>
             </property>
-            <property name="maximum">
+            <property name="maximum" stdset="0">
              <double>20.000000000000000</double>
             </property>
-            <property name="singleStep">
-             <double>0.0500000000000000</double>
+            <property name="singleStep" stdset="0">
+             <double>0.050000000000000</double>
             </property>
             <property name="value" stdset="0">
              <double>2.000000000000000</double>
@@ -988,15 +982,12 @@
             <property name="toolTip">
              <string>Select the directory of containing the compiled BCPD</string>
             </property>
-            <property name="filters">
-             <set>ctkPathLineEdit::Dirs</set>
-            </property>
            </widget>
           </item>
          </layout>
         </widget>
-	   </item>
-	   <item>
+       </item>
+       <item>
         <widget class="ctkCollapsibleButton" name="outputFormatWidget" native="true">
          <property name="sizePolicy">
           <sizepolicy hsizetype="Minimum" vsizetype="MinimumExpanding">
@@ -1027,7 +1018,7 @@
             </property>
            </widget>
           </item>
-          <item row="0" column="2">
+          <item row="0" column="1">
            <widget class="QRadioButton" name="FCSVFileFormatSelector">
             <property name="enabled">
              <bool>true</bool>
@@ -1074,9 +1065,6 @@
             <property name="toolTip">
              <string>Select directory containing models for template selection</string>
             </property>
-            <property name="filters">
-             <set>ctkPathLineEdit::Dirs</set>
-            </property>
            </widget>
           </item>
           <item row="1" column="0">
@@ -1105,10 +1093,7 @@
             <property name="toolTip">
              <string>The default reference model for downsampling point clouds with matching points will be the first specimen. Users can also manually select a reference model here </string>
             </property>
-            <property name="filters">
-             <set>ctkPathLineEdit::Files</set>
-            </property>
-            <property name="nameFilters">
+            <property name="nameFilters" stdset="0">
              <stringlist>
               <string>*.ply</string>
               <string>*.obj</string>
@@ -1129,9 +1114,6 @@
            <widget class="ctkPathLineEdit" name="kmeansOutputSelector" native="true">
             <property name="toolTip">
              <string>Specify the output directory for the kmeans multi-template selection output</string>
-            </property>
-            <property name="filters">
-             <set>ctkPathLineEdit::Dirs</set>
             </property>
            </widget>
           </item>
