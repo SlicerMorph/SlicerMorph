@@ -89,7 +89,7 @@ This module was developed by Sara Rolfe and Murat Maga for SlicerMorph. SlicerMo
       loadFileType='ZipFile',
       customDownloader=self.downloadSampleDataInFolder,
 )
-    SampleData.SampleDataLogic.registerCustomSampleDataSource(
+      SampleData.SampleDataLogic.registerCustomSampleDataSource(
       sampleName='Auto3dgm sample',
       category='SlicerMorph',
       uris='https://toothandclaw.github.io/files/samples.zip',
@@ -97,6 +97,17 @@ This module was developed by Sara Rolfe and Murat Maga for SlicerMorph. SlicerMo
       loadFiles=False,
       fileNames='samples.zip',
       thumbnailFileName=os.path.join(iconsPath, 'auto3dgm_thumbnail.png'),
+      loadFileType='ZipFile',
+      customDownloader=self.downloadSampleDataInFolder,
+)
+    SampleData.SampleDataLogic.registerCustomSampleDataSource(
+      sampleName='Large Apes Skull LMs',
+      category='SlicerMorph',
+      uris='https://raw.githubusercontent.com/SlicerMorph/SampleData/master/large_apes_manual_LMs.zip',
+      checksums=None,
+      loadFiles=False,
+      fileNames='large_apes_manual_LMs.zip',
+      thumbnailFileName=os.path.join(iconsPath, 'pointcloud.png'),
       loadFileType='ZipFile',
       customDownloader=self.downloadSampleDataInFolder,
 )
