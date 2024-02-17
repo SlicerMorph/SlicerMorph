@@ -89,7 +89,7 @@ This module was developed by Sara Rolfe and Murat Maga for SlicerMorph. SlicerMo
       loadFileType='ZipFile',
       customDownloader=self.downloadSampleDataInFolder,
 )
-      SampleData.SampleDataLogic.registerCustomSampleDataSource(
+    SampleData.SampleDataLogic.registerCustomSampleDataSource(
       sampleName='Auto3dgm sample',
       category='SlicerMorph',
       uris='https://toothandclaw.github.io/files/samples.zip',
