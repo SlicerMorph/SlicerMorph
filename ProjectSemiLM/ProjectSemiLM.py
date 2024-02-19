@@ -38,57 +38,12 @@ class ProjectSemiLM(ScriptedLoadableModule):
       """ # replace with organization, grant and thanks.
 
     # Additional initialization step after application startup is complete
-    slicer.app.connect("startupCompleted()", registerSampleData)
+    #slicer.app.connect("startupCompleted()", registerSampleData)
 
 
 #
 # Register sample data sets in Sample Data module
 #
-
-def registerSampleData():
-  """
-  Add data sets to Sample Data module.
-  """
-  # It is always recommended to provide sample data for users to make it easy to try the module,
-  # but if no sample data is available then this method (and associated startupCompeted signal connection) can be removed.
-
-  import SampleData
-  iconsPath = os.path.join(os.path.dirname(__file__), 'Resources/Icons')
-
-  # To ensure that the source code repository remains small (can be downloaded and installed quickly)
-  # it is recommended to store data sets that are larger than a few MB in a Github release.
-
-  # TemplateKey1
-  SampleData.SampleDataLogic.registerCustomSampleDataSource(
-    # Category and sample name displayed in Sample Data module
-    category='TemplateKey',
-    sampleName='TemplateKey1',
-    # Thumbnail should have size of approximately 260x280 pixels and stored in Resources/Icons folder.
-    # It can be created by Screen Capture module, "Capture all views" option enabled, "Number of images" set to "Single".
-    thumbnailFileName=os.path.join(iconsPath, 'TemplateKey1.png'),
-    # Download URL and target file name
-    uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
-    fileNames='TemplateKey1.nrrd',
-    # Checksum to ensure file integrity. Can be computed by this command:
-    #  import hashlib; print(hashlib.sha256(open(filename, "rb").read()).hexdigest())
-    checksums = 'SHA256:998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95',
-    # This node name will be used when the data set is loaded
-    nodeNames='TemplateKey1'
-  )
-
-  # TemplateKey2
-  SampleData.SampleDataLogic.registerCustomSampleDataSource(
-    # Category and sample name displayed in Sample Data module
-    category='TemplateKey',
-    sampleName='TemplateKey2',
-    thumbnailFileName=os.path.join(iconsPath, 'TemplateKey2.png'),
-    # Download URL and target file name
-    uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
-    fileNames='TemplateKey2.nrrd',
-    checksums = 'SHA256:1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97',
-    # This node name will be used when the data set is loaded
-    nodeNames='TemplateKey2'
-  )
 
 
 #
