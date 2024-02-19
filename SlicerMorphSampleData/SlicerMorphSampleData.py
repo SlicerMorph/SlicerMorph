@@ -101,6 +101,17 @@ This module was developed by Sara Rolfe and Murat Maga for SlicerMorph. SlicerMo
       customDownloader=self.downloadSampleDataInFolder,
 )
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
+      sampleName='Large Apes Skull LMs',
+      category='SlicerMorph',
+      uris='https://raw.githubusercontent.com/SlicerMorph/SampleData/master/large_apes_manual_LMs.zip',
+      checksums=None,
+      loadFiles=False,
+      fileNames='large_apes_manual_LMs.zip',
+      thumbnailFileName=os.path.join(iconsPath, 'pointcloud.png'),
+      loadFileType='ZipFile',
+      customDownloader=self.downloadSampleDataInFolder,
+)
+    SampleData.SampleDataLogic.registerCustomSampleDataSource(
       sampleName='Gorilla patch semi-landmarks',
       category='SlicerMorph',
       uris='https://github.com/SlicerMorph/SampleData/blob/0c1e14bee7a4ea85614ba677b45bc693120a5bba/Gorilla%20patch%20semi-landmarks.zip?raw=true',
