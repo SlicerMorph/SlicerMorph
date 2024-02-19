@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>730</width>
-    <height>743</height>
+    <height>828</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
@@ -170,7 +170,7 @@
           <item row="4" column="1">
            <widget class="QCheckBox" name="scalingCheckBox">
             <property name="toolTip">
-             <string>If checked, ALPACA will skip scaling during alignment (Not recommended).</string>
+             <string>If checked, ALPACA will include scaling in alignment (recommended).</string>
             </property>
             <property name="checked">
              <bool>true</bool>
@@ -187,7 +187,7 @@
           <item row="5" column="1">
            <widget class="QCheckBox" name="projectionCheckBox">
             <property name="toolTip">
-             <string>If checked, ALPACA will skip landmark projection towards the target surface.</string>
+             <string>If checked, ALPACA will include landmark projection towards the target surface.</string>
             </property>
             <property name="checked">
              <bool>true</bool>
@@ -501,30 +501,36 @@
            </widget>
           </item>
           <item row="6" column="0">
-           <widget class="QLabel" name="skipScalingMultiCheckBoxLabel">
+           <widget class="QLabel" name="scalingMultiCheckBoxLabel">
             <property name="text">
-             <string>Skip scaling</string>
+             <string>Scaling</string>
             </property>
            </widget>
           </item>
           <item row="6" column="1">
-           <widget class="QCheckBox" name="skipScalingMultiCheckBox">
+           <widget class="QCheckBox" name="scalingMultiCheckBox">
             <property name="toolTip">
-             <string>If checked, ALPACA will skip scaling during the alignment.</string>
+             <string>If checked, ALPACA will include scaling during the alignment.</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
             </property>
            </widget>
           </item>
           <item row="7" column="0">
-           <widget class="QLabel" name="skipProjectionCheckBoxMultiLabel">
+           <widget class="QLabel" name="projectionCheckBoxMultiLabel">
             <property name="text">
-             <string>Skip projection</string>
+             <string>Projection</string>
             </property>
            </widget>
           </item>
           <item row="7" column="1">
-           <widget class="QCheckBox" name="skipProjectionCheckBoxMulti">
+           <widget class="QCheckBox" name="projectionCheckBoxMulti">
             <property name="toolTip">
-             <string>If checked, ALPACA will skip final refinement step placing landmarks on the target surface.</string>
+             <string>If checked, ALPACA will include final refinement step placing landmarks on the target surface.</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
             </property>
            </widget>
           </item>

@@ -470,7 +470,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
             self.sourceFeatures,
             self.targetFeatures,
             self.voxelSize,
-            self.scaling,
+            self.scalingFactor,
         ) = logic.runSubsample(
             self.sourceModelNode_clone,
             self.targetModelNode,
@@ -576,11 +576,11 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
             self.sourceFeatures,
             self.targetFeatures,
             self.voxelSize,
-            self.scaling,
+            self.scalingFactor,
         ) = logic.runSubsample(
             self.sourceModelNode,
             self.targetModelNode,
-            self.ui.skipScalingCheckBox.checked,
+            self.ui.scalingCheckBox.checked,
             self.parameterDictionary,
             self.ui.poissonSubsampleCheckBox.checked,
         )
@@ -650,7 +650,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
         print("-----------------------------------------------------------")
         print("Performing Deformable Registration ")
         self.sourceLandmarks, self.sourceLMNode = logic.loadAndScaleFiducials(
-            self.ui.sourceLandmarkSetSelector.currentNode(), self.scaling, scene=True
+            self.ui.sourceLandmarkSetSelector.currentNode(), self.scalingFactor, scene=True
         )
         self.sourceLandmarks = logic.transform_numpy_points(
             self.sourceLandmarks, self.transformMatrix
@@ -1584,7 +1584,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             sourceFeatures,
             targetFeatures,
             voxelSize,
-            scaling,
+            scalingFactor,
         ) = self.runSubsample(
             sourceModelNode, targetModelNode, scalingOption, parameters, usePoisson
         )
@@ -1599,7 +1599,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         )
         # Rigid
         sourceLandmarks, sourceLMNode = self.loadAndScaleFiducials(
-            sourceLandmarkFile, scaling
+            sourceLandmarkFile, scalingFactor
         )
         sourceLandmarks = self.transform_numpy_points(
             sourceLandmarks, SimilarityTransform
@@ -1986,11 +1986,13 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         )
         maximumDistance = inlier_value
         if not scalingOption:
+            print("Rigid Reg, no scaling")
             TransformType = itk.VersorRigid3DTransform[itk.D]
             RegistrationEstimatorType = itk.Ransac.LandmarkRegistrationEstimator[
                 6, TransformType
             ]
         else:
+            print("NonRigid Reg, with scaling")
             TransformType = itk.Similarity3DTransform[itk.D]
             RegistrationEstimatorType = itk.Ransac.LandmarkRegistrationEstimator[
                 6, TransformType
@@ -2786,7 +2788,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
 
         if scalingOption is False:
             scalingFactor = 1
-            print("Scaling factor is ", scalingFactor)
+        print("Scaling factor is ", scalingFactor)
         points_as_numpy = points_as_numpy * scalingFactor
         self.set_numpy_points_in_vtk(vtk_meshes[1], points_as_numpy)
 
@@ -2840,9 +2842,9 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
 
         target_down = fixedMeshPoints
         source_down = movingMeshPoints
-        return source_down, target_down, source_fpfh, target_fpfh, voxel_size, scaling
+        return source_down, target_down, source_fpfh, target_fpfh, voxel_size, scalingFactor
 
-    def loadAndScaleFiducials(self, fiducial, scaling, scene=False):
+    def loadAndScaleFiducials(self, fiducial, scalingFactor, scene=False):
         if not scene:
             sourceLandmarkNode = slicer.util.loadMarkups(fiducial)
         else:
@@ -2861,7 +2863,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         for i in range(sourceLandmarkNode.GetNumberOfControlPoints()):
             sourceLandmarkNode.GetNthControlPointPosition(i, point)
             sourceLandmarks[i, :] = point
-        sourceLandmarks = sourceLandmarks * scaling
+        sourceLandmarks = sourceLandmarks * scalingFactor
         slicer.util.updateMarkupsControlPointsFromArray(
             sourceLandmarkNode, sourceLandmarks
         )
@@ -3144,7 +3146,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
                 sourceFeatures,
                 targetFeatures,
                 voxelSize,
-                scaling,
+                scalingFactor,
             ) = self.runSubsample(
                 sourceModelNode,
                 targetModelNode,
@@ -3194,7 +3196,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
               sourceArray[i, :] = point
               subjectFiducial.SetNthControlPointLocked(i, 1)
 
-            sourceArray = sourceArray * (1/scaling)
+            sourceArray = sourceArray * (1/scalingFactor)
 
             slicer.util.updateMarkupsControlPointsFromArray(subjectFiducial, sourceArray)
 
@@ -3224,7 +3226,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             inputFilePaths, LMExclusionList, extension
         )
         shape = LM.lmOrig.shape
-        scalingOption = False
+        scalingOption = True
         try:
             LM.doGpa(scalingOption)
         except ValueError:
