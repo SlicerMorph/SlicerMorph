@@ -268,7 +268,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
         self.ui.landmarkOutputSelector.connect(
             "validInputChanged(bool)", self.onSelectMultiProcess
         )
-        self.ui.skipScalingMultiCheckBox.connect(
+        self.ui.scalingMultiCheckBox.connect(
             "toggled(bool)", self.onSelectMultiProcess
         )
         self.ui.replicateAnalysisCheckBox.connect(
@@ -385,9 +385,9 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
 
     def onSelect(self):
         # Enable run ALPACA button
-        self.ui.skipScalingMultiCheckBox.checked = self.ui.skipScalingCheckBox.checked
-        self.ui.skipProjectionCheckBoxMulti.checked = (
-            self.ui.skipProjectionCheckBox.checked
+        self.ui.scalingMultiCheckBox.checked = self.ui.scalingCheckBox.checked
+        self.ui.projectionCheckBoxMulti.checked = (
+            self.ui.projectionCheckBox.checked
         )
         self.ui.subsampleButton.enabled = bool(
             self.ui.sourceModelSelector.currentNode()
@@ -470,11 +470,11 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
             self.sourceFeatures,
             self.targetFeatures,
             self.voxelSize,
-            self.scaling,
+            self.scalingFactor,
         ) = logic.runSubsample(
             self.sourceModelNode_clone,
             self.targetModelNode,
-            self.ui.skipScalingCheckBox.checked,
+            self.ui.scalingCheckBox.checked,
             self.parameterDictionary,
             self.ui.poissonSubsampleCheckBox.checked,
         )
@@ -576,11 +576,11 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
             self.sourceFeatures,
             self.targetFeatures,
             self.voxelSize,
-            self.scaling,
+            self.scalingFactor,
         ) = logic.runSubsample(
             self.sourceModelNode,
             self.targetModelNode,
-            self.ui.skipScalingCheckBox.checked,
+            self.ui.scalingCheckBox.checked,
             self.parameterDictionary,
             self.ui.poissonSubsampleCheckBox.checked,
         )
@@ -612,7 +612,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
             self.sourceFeatures,
             self.targetFeatures,
             self.voxelSize,
-            self.ui.skipScalingCheckBox.checked,
+            self.ui.scalingCheckBox.checked,
             self.parameterDictionary,
         )
 
@@ -650,7 +650,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
         print("-----------------------------------------------------------")
         print("Performing Deformable Registration ")
         self.sourceLandmarks, self.sourceLMNode = logic.loadAndScaleFiducials(
-            self.ui.sourceLandmarkSetSelector.currentNode(), self.scaling, scene=True
+            self.ui.sourceLandmarkSetSelector.currentNode(), self.scalingFactor, scene=True
         )
         self.sourceLandmarks = logic.transform_numpy_points(
             self.sourceLandmarks, self.transformMatrix
@@ -691,7 +691,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
         self.outputPoints.GetDisplayNode().SetPointLabelsVisibility(False)
         slicer.mrmlScene.RemoveNode(self.inputPoints)
         #
-        if self.ui.skipProjectionCheckBox.checked:
+        if not self.ui.projectionCheckBox.checked:
             logic.propagateLandmarkTypes(self.sourceLMNode, self.outputPoints)
         else:
             print(":: Projecting landmarks to external surface")
@@ -736,7 +736,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
         folderNode.SetItemParent(nonProjectLMItem, newFolder)
         folderNode.SetItemParent(warpedSourceItem, newFolder)
         # Add projected points if they have been created
-        if not self.ui.skipProjectionCheckBox.isChecked():
+        if self.ui.projectionCheckBox.isChecked():
             finalLMItem = folderNode.GetItemByDataNode(self.projectedLandmarks)
             folderNode.SetItemParent(finalLMItem, newFolder)
         #
@@ -783,7 +783,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
                 manualLMs[i, :] = point
             # Source LM numpy array
             point2 = [0, 0, 0]
-            if not self.ui.skipProjectionCheckBox.isChecked():
+            if self.ui.projectionCheckBox.isChecked():
                 finalLMs = np.zeros(
                     shape=(self.projectedLandmarks.GetNumberOfControlPoints(), 3)
                 )
@@ -926,7 +926,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
 
     def onApplyLandmarkMulti(self):
         logic = ALPACALogic()
-        if self.ui.skipProjectionCheckBoxMulti.checked != 0:
+        if self.ui.projectionCheckBoxMulti.checked is False:
             projectionFactor = 0
         else:
             projectionFactor = self.ui.projectionFactorSlider.value / 100
@@ -936,7 +936,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
                 self.ui.sourceFiducialMultiSelector.currentPath,
                 self.ui.targetModelMultiSelector.currentPath,
                 self.ui.landmarkOutputSelector.currentPath,
-                self.ui.skipScalingMultiCheckBox.checked,
+                self.ui.scalingMultiCheckBox.checked,
                 projectionFactor,
                 self.ui.JSONFileFormatSelector.checked,
                 self.parameterDictionary,
@@ -955,7 +955,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
                         self.ui.sourceFiducialMultiSelector.currentPath,
                         self.ui.targetModelMultiSelector.currentPath,
                         datedOutputFolder,
-                        self.ui.skipScalingMultiCheckBox.checked,
+                        self.ui.scalingMultiCheckBox.checked,
                         projectionFactor,
                         self.ui.JSONFileFormatSelector.checked,
                         self.parameterDictionary,
@@ -1459,7 +1459,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         sourceLandmarkPath,
         targetModelDirectory,
         outputDirectory,
-        skipScaling,
+        scalingOption,
         projectionFactor,
         useJSONFormat,
         parameters,
@@ -1525,7 +1525,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
                                 sourceLandmarkFile,
                                 targetFilePath,
                                 outputFilePath,
-                                skipScaling,
+                                scalingOption,
                                 projectionFactor,
                                 parameters,
                             )
@@ -1546,7 +1546,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
                         sourceLandmarkPath,
                         targetFilePath,
                         outputFilePath,
-                        skipScaling,
+                        scalingOption,
                         projectionFactor,
                         parameters,
                     )
@@ -1557,7 +1557,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             "SourceLandmarks": sourceLMList,
             "Target": TargetModelList,
             "Output": outputDirectory,
-            "Skip scaling ?": bool(skipScaling),
+            "Scaling ?": bool(scalingOption),
         }
         extras.update(parameters)
         parameterFile = os.path.join(outputDirectory, "advancedParameters.txt")
@@ -1569,7 +1569,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         sourceLandmarkFile,
         targetFilePath,
         outputFilePath,
-        skipScaling,
+        scalingOption,
         projectionFactor,
         parameters,
         usePoisson=False,
@@ -1584,9 +1584,9 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             sourceFeatures,
             targetFeatures,
             voxelSize,
-            scaling,
+            scalingFactor,
         ) = self.runSubsample(
-            sourceModelNode, targetModelNode, skipScaling, parameters, usePoisson
+            sourceModelNode, targetModelNode, scalingOption, parameters, usePoisson
         )
         SimilarityTransform, similarityFlag = self.estimateTransform(
             sourcePoints,
@@ -1594,12 +1594,12 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             sourceFeatures,
             targetFeatures,
             voxelSize,
-            skipScaling,
+            scalingOption,
             parameters,
         )
         # Rigid
         sourceLandmarks, sourceLMNode = self.loadAndScaleFiducials(
-            sourceLandmarkFile, scaling
+            sourceLandmarkFile, scalingFactor
         )
         sourceLandmarks = self.transform_numpy_points(
             sourceLandmarks, SimilarityTransform
@@ -1918,7 +1918,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         number_of_iterations,
         number_of_ransac_points,
         inlier_value,
-        skip_scaling,
+        scalingOption,
         check_edge_length,
         correspondence_distance,
     ):
@@ -1985,12 +1985,14 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             itk.MultiThreaderBase.ThreaderTypeFromString("POOL")
         )
         maximumDistance = inlier_value
-        if skip_scaling:
+        if not scalingOption:
+            print("Rigid Reg, no scaling")
             TransformType = itk.VersorRigid3DTransform[itk.D]
             RegistrationEstimatorType = itk.Ransac.LandmarkRegistrationEstimator[
                 6, TransformType
             ]
         else:
+            print("NonRigid Reg, with scaling")
             TransformType = itk.Similarity3DTransform[itk.D]
             RegistrationEstimatorType = itk.Ransac.LandmarkRegistrationEstimator[
                 6, TransformType
@@ -2441,7 +2443,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         sourceFeatures,
         targetFeatures,
         voxelSize,
-        skipScaling,
+        scalingOption,
         parameters,
     ):
         import itk
@@ -2489,7 +2491,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
                 number_of_iterations=parameters["maxRANSAC"],
                 number_of_ransac_points=3,
                 inlier_value=float(parameters["distanceThreshold"]) * voxelSize,
-                skip_scaling=True,
+                scalingOption=False,
                 check_edge_length=True,
                 correspondence_distance=0.9,
             )
@@ -2532,7 +2534,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
 
         print("Best Fitness without Scaling ", best_fitness, " RMSE is ", best_rmse)
 
-        if not skipScaling:
+        if scalingOption:
             maxAttempts = 10
             attempt = 0
 
@@ -2549,7 +2551,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
                     number_of_iterations=ransac_iterations,
                     number_of_ransac_points=ransac_points,
                     inlier_value=float(parameters["distanceThreshold"]) * voxelSize,
-                    skip_scaling=False,
+                    scalingOption=True,
                     check_edge_length=False,
                     correspondence_distance=correspondence_distance,
                 )
@@ -2746,7 +2748,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         self,
         sourceModel,
         targetModel,
-        skipScaling,
+        scalingOption,
         parameters,
         usePoissonSubsample=False,
     ):
@@ -2778,16 +2780,16 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         print("Scale length are  ", fixedlength, movinglength)
         print("Voxel Size is ", voxel_size)
 
-        scaling = fixedlength / movinglength
+        scalingFactor = fixedlength / movinglength
 
         points = vtk_meshes[1].GetPoints()
         pointdata = points.GetData()
         points_as_numpy = numpy_support.vtk_to_numpy(pointdata)
 
-        if skipScaling != 0:
-            scaling = 1
-            print("Scaling factor is ", scaling)
-        points_as_numpy = points_as_numpy * scaling
+        if scalingOption is False:
+            scalingFactor = 1
+        print("Scaling factor is ", scalingFactor)
+        points_as_numpy = points_as_numpy * scalingFactor
         self.set_numpy_points_in_vtk(vtk_meshes[1], points_as_numpy)
 
         sourceFullMesh_vtk = vtk_meshes[1]
@@ -2840,9 +2842,9 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
 
         target_down = fixedMeshPoints
         source_down = movingMeshPoints
-        return source_down, target_down, source_fpfh, target_fpfh, voxel_size, scaling
+        return source_down, target_down, source_fpfh, target_fpfh, voxel_size, scalingFactor
 
-    def loadAndScaleFiducials(self, fiducial, scaling, scene=False):
+    def loadAndScaleFiducials(self, fiducial, scalingFactor, scene=False):
         if not scene:
             sourceLandmarkNode = slicer.util.loadMarkups(fiducial)
         else:
@@ -2861,7 +2863,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         for i in range(sourceLandmarkNode.GetNumberOfControlPoints()):
             sourceLandmarkNode.GetNthControlPointPosition(i, point)
             sourceLandmarks[i, :] = point
-        sourceLandmarks = sourceLandmarks * scaling
+        sourceLandmarks = sourceLandmarks * scalingFactor
         slicer.util.updateMarkupsControlPointsFromArray(
             sourceLandmarkNode, sourceLandmarks
         )
@@ -3137,18 +3139,18 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             sourceModelNode = slicer.util.loadModel(sourceFilePath)
             sourceModelNode.GetDisplayNode().SetVisibility(False)
             rootName = os.path.splitext(file)[0]
-            skipScalingOption = False
+            scalingOption = True
             (
                 sourcePoints,
                 targetPoints,
                 sourceFeatures,
                 targetFeatures,
                 voxelSize,
-                scaling,
+                scalingFactor,
             ) = self.runSubsample(
                 sourceModelNode,
                 targetModelNode,
-                skipScalingOption,
+                scalingOption,
                 parameterDictionary,
                 usePoisson,
             )
@@ -3158,7 +3160,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
                 sourceFeatures,
                 targetFeatures,
                 voxelSize,
-                skipScalingOption,
+                scalingOption,
                 parameterDictionary,
             )
 
@@ -3194,7 +3196,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
               sourceArray[i, :] = point
               subjectFiducial.SetNthControlPointLocked(i, 1)
 
-            sourceArray = sourceArray * (1/scaling)
+            sourceArray = sourceArray * (1/scalingFactor)
 
             slicer.util.updateMarkupsControlPointsFromArray(subjectFiducial, sourceArray)
 
@@ -3224,9 +3226,9 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             inputFilePaths, LMExclusionList, extension
         )
         shape = LM.lmOrig.shape
-        skipScalingOption = 0
+        scalingOption = True
         try:
-            LM.doGpa(skipScalingOption)
+            LM.doGpa(scalingOption)
         except ValueError:
             print(
                 "Point clouds may not have been generated correctly. Please re-run the point cloud generation step."
