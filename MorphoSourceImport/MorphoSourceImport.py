@@ -481,7 +481,7 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
 
         # Change checkboxes to radio buttons
         self.meshRadioButton = qt.QRadioButton("Surface Models")
-        self.ctImageSeriesRadioButton = qt.QRadioButton("CT Image Series")
+        self.ctImageSeriesRadioButton = qt.QRadioButton("Volumetric Image Series")
 
         # Arrange radio buttons in a horizontal layout
         dataTypeLayout = qt.QHBoxLayout()
@@ -781,7 +781,7 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
         if self.meshRadioButton.isChecked():
             selectedDataType = "Mesh"
         elif self.ctImageSeriesRadioButton.isChecked():
-            selectedDataType = "CT Image Series"
+            selectedDataType = "Volumetric Image Series"
 
         tagText = self.mediaTag.text if self.mediaTag.text.strip() else None
 
@@ -829,7 +829,7 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
         if self.meshRadioButton.isChecked():
             selectedDataType = "Mesh"
         elif self.ctImageSeriesRadioButton.isChecked():
-            selectedDataType = "CT Image Series"
+            selectedDataType = "Volumetric Image Series"
 
         tagText = self.mediaTag.text if self.mediaTag.text.strip() else None
 
