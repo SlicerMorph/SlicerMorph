@@ -446,6 +446,9 @@
             <property name="toolTip">
              <string>Select the source model</string>
             </property>
+            <property name="filters">
+             <set>ctkPathLineEdit::Files</set>
+            </property>
             <property name="nameFilters" stdset="0">
              <stringlist>
               <string>*.ply *.obj *.vtk</string>
@@ -464,6 +467,9 @@
            <widget class="ctkPathLineEdit" name="sourceFiducialMultiSelector" native="true">
             <property name="toolTip">
              <string>Select the source landmarks</string>
+            </property>
+            <property name="filters">
+             <set>ctkPathLineEdit::Files</set>
             </property>
             <property name="nameFilters" stdset="0">
              <stringlist>
@@ -484,6 +490,9 @@
             <property name="toolTip">
              <string>Select the directory of models to be landmarked</string>
             </property>
+            <property name="filters">
+             <set>ctkPathLineEdit::Dirs</set>
+            </property>
            </widget>
           </item>
           <item row="5" column="0">
@@ -497,6 +506,9 @@
            <widget class="ctkPathLineEdit" name="landmarkOutputSelector" native="true">
             <property name="toolTip">
              <string>Select the output directory where the landmarks will be saved</string>
+            </property>
+            <property name="filters">
+             <set>ctkPathLineEdit::Dirs</set>
             </property>
            </widget>
           </item>
@@ -988,6 +1000,9 @@
             <property name="toolTip">
              <string>Select the directory of containing the compiled BCPD</string>
             </property>
+            <property name="filters">
+             <set>ctkPathLineEdit::Dirs</set>
+            </property>
            </widget>
           </item>
          </layout>
@@ -1071,6 +1086,9 @@
             <property name="toolTip">
              <string>Select directory containing models for template selection</string>
             </property>
+            <property name="filters">
+             <set>ctkPathLineEdit::Dirs</set>
+            </property>
            </widget>
           </item>
           <item row="1" column="0">
@@ -1099,6 +1117,9 @@
             <property name="toolTip">
              <string>The default reference model for downsampling point clouds with matching points will be the first specimen. Users can also manually select a reference model here </string>
             </property>
+            <property name="filters">
+             <set>ctkPathLineEdit::Files</set>
+            </property>
             <property name="nameFilters" stdset="0">
              <stringlist>
               <string>*.ply</string>
@@ -1120,6 +1141,9 @@
            <widget class="ctkPathLineEdit" name="kmeansOutputSelector" native="true">
             <property name="toolTip">
              <string>Specify the output directory for the kmeans multi-template selection output</string>
+            </property>
+            <property name="filters">
+             <set>ctkPathLineEdit::Dirs</set>
             </property>
            </widget>
           </item>
