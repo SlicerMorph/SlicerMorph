@@ -83,7 +83,7 @@ We  recommend that the user manually install the following extensions that provi
 - [**RawImageGuess:** A module that enables the user to import proprietary imaging formats by specifying data type, image dimensions and endianness.](https://github.com/acetylsalicyl/SlicerRawImageGuess)
 
 ## SlicerMorph Tutorials
-[We have step-by-step module specific tutorials that is useful for people starting with Slicer and SlicerMorph.](https://github.com/SlicerMorph/Tutorials)
+[We have step-by-step module specific tutorials that is useful for people starting with Slicer and SlicerMorph.](https://github.com/SlicerMorph/Tutorials) 
 
 ## 3D Morphometrics and Image Analysis Short Course materials
 
