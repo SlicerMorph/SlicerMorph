@@ -160,6 +160,7 @@ class ImportFromURLLogic(ScriptedLoadableModuleLogic):
       logging.debug('Could not download data. Not a supported file type.')
 
     sampleDataLogic = SampleData.SampleDataLogic()
+    url=self.processUrl(url)
     loadedNodes = sampleDataLogic.downloadFromURL(
     nodeNames= nodeNames,
     fileNames= fileNames,
@@ -174,6 +175,17 @@ class ImportFromURLLogic(ScriptedLoadableModuleLogic):
     elif fileTypes == 'VolumeFile':
       self.autoRenderVolume(loadedNodes[0])
 
+  def processUrl(self, url):
+    # Apply DropBox and GitHub specific URL fixes if needed
+    if "www.dropbox.com" in url:
+      url=url.replace("www.dropbox.com", "dl.dropbox.com")
+      url=url.split('?')[0]
+    if "github.com" in url:
+      url=url.replace("github.com", "raw.githubusercontent.com")
+      url=url.replace("/blob", "")
+      url=url.split('?')[0]
+    return url
+    
   def autoRenderVolume(self, volumeNode):
     print("Auto-render node: "+volumeNode.GetName())
     volRenLogic = slicer.modules.volumerendering.logic()
