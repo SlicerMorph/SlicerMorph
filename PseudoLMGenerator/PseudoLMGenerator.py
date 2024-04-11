@@ -280,8 +280,8 @@ class PseudoLMGeneratorWidget(ScriptedLoadableModuleWidget):
     self.sphericalSemiLandmarks = logic.runCleaningFast(self.projectedLM, self.templateNode, spacingPercentage)
 
     # update visualization
-    for i in range(self.sphericalSemiLandmarks.GetNumberOfFiducials()):
-      self.sphericalSemiLandmarks.SetNthFiducialLocked(i,True)
+    for i in range(self.sphericalSemiLandmarks.GetNumberOfControlPoints()):
+      self.sphericalSemiLandmarks.SetNthControlPointLocked(i,True)
 
     self.sphericalSemiLandmarks.GetDisplayNode().SetPointLabelsVisibility(False)
     green=[0,1,0]
@@ -291,7 +291,7 @@ class PseudoLMGeneratorWidget(ScriptedLoadableModuleWidget):
     self.projectedLM.SetDisplayVisibility(False)
 
     #confirm number of cleaned points is in the expected range
-    self.subsampleInfo.insertPlainText(f'After filtering there are {self.sphericalSemiLandmarks.GetNumberOfFiducials()} semi-landmark points. \n')
+    self.subsampleInfo.insertPlainText(f'After filtering there are {self.sphericalSemiLandmarks.GetNumberOfControlPoints()} semi-landmark points. \n')
 
     if self.planeSelector.currentNode() is not None:
       print("Symmetrizing points")
@@ -319,10 +319,9 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
 
   def runCleaningPointCloud(self, projectedLM, sphere, spacingPercentage):
     # Convert projected surface points to a VTK array for transform
-    p=[0,0,0]
     targetPoints = vtk.vtkPoints()
-    for i in range(projectedLM.GetNumberOfFiducials()):
-      projectedLM.GetMarkupPoint(0,i,p)
+    for i in range(projectedLM.GetNumberOfControlPoints()):
+      p = projectedLM.GetNthControlPointPosition(i)
       targetPoints.InsertNextPoint(p)
       print("inserting vtk point: ", p)
 
@@ -344,7 +343,7 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
     sphereSampleLMNode.CreateDefaultDisplayNodes()
     for i in range(outputPoints.GetNumberOfPoints()):
       point = outputPoints.GetPoint(i)
-      sphereSampleLMNode.AddFiducialFromArray(point)
+      sphereSampleLMNode.AddControlPoint(point)
       print("inserting fiducial point: ", p)
 
     landmarkTypeSemi=True
@@ -353,10 +352,9 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
 
   def runCleaningFast(self, projectedLM, sphere, spacingPercentage):
     # Convert projected surface points to a VTK array for transform
-    p=[0,0,0]
     targetPoints = vtk.vtkPoints()
-    for i in range(projectedLM.GetNumberOfFiducials()):
-      projectedLM.GetMarkupPoint(0,i,p)
+    for i in range(projectedLM.GetNumberOfControlPoints()):
+      p = projectedLM.GetNthControlPointPosition(i)
       targetPoints.InsertNextPoint(p)
 
     templateData = sphere.GetPolyData()
@@ -375,7 +373,7 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
     sphereSampleLMNode.CreateDefaultDisplayNodes()
     for i in range(cleanPolyData.GetNumberOfPoints()):
       point = cleanPolyData.GetPoint(i)
-      sphereSampleLMNode.AddFiducialFromArray(point)
+      sphereSampleLMNode.AddControlPoint(point)
 
     landmarkTypeSemi=True
     self.setAllLandmarksType(sphereSampleLMNode, landmarkTypeSemi)
@@ -383,10 +381,9 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
 
   def runCleaning(self, projectedLM, sphere, spacingPercentage):
     # Convert projected surface points to a VTK array for transform
-    p=[0,0,0]
     targetPoints = vtk.vtkPoints()
-    for i in range(projectedLM.GetNumberOfFiducials()):
-      projectedLM.GetMarkupPoint(0,i,p)
+    for i in range(projectedLM.GetNumberOfControlPoints()):
+      p = projectedLM.GetNthControlPointPosition(i)
       targetPoints.InsertNextPoint(p)
 
     # Set up a transform between the sphere and the points projected to the surface
@@ -415,7 +412,7 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
     sphereSampleLMNode.CreateDefaultDisplayNodes()
     for i in range(cleanPolyData.GetNumberOfPoints()):
       point = cleanPolyData.GetPoint(i)
-      sphereSampleLMNode.AddFiducialFromArray(point)
+      sphereSampleLMNode.AddControlPoint(point)
 
     landmarkTypeSemi=True
     self.setAllLandmarksType(sphereSampleLMNode, landmarkTypeSemi)
@@ -431,14 +428,14 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
     if(isOriginalGeometry):
       for i in range(projectedPoints.GetNumberOfPoints()):
         point = projectedPoints.GetPoint(i)
-        projectedLMNode.AddFiducialFromArray(point)
+        projectedLMNode.AddControlPoint(point)
       return projectedLMNode
     else:
       #project landmarks from model to model external surface
       projectedPointsExternal = self.projectPointsPolydata(model, model, projectedPoints, maxProjection)
       for i in range(projectedPointsExternal.GetNumberOfPoints()):
         point = projectedPointsExternal.GetPoint(i)
-        projectedLMNode.AddFiducialFromArray(point)
+        projectedLMNode.AddControlPoint(point)
       return projectedLMNode
 
   def projectPointsPolydata(self, sourcePolydata, targetPolydata, originalPoints, rayLength):
@@ -511,7 +508,7 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
     semiLMNode.CreateDefaultDisplayNodes()
     for i in range(spherePolyData.GetNumberOfPoints()):
       point = spherePolyData.GetPoint(i)
-      semiLMNode.AddFiducialFromArray(point)
+      semiLMNode.AddControlPoint(point)
 
     return semiLMNode
 
@@ -722,7 +719,7 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
     pointPolyData = vtk.vtkPolyData()
     pointPolyData.SetPoints(pointsVTK)
     model = modelNode.GetPolyData()
-    for i in range(landmarkNode.GetNumberOfFiducials()):
+    for i in range(landmarkNode.GetNumberOfControlPoints()):
       pointsVTK.InsertNextPoint(landmarkNode.GetNthControlPointPositionVector(i))
     geometryFilter = vtk.vtkVertexGlyphFilter()
     geometryFilter.SetInputData(pointPolyData)
@@ -777,16 +774,16 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
       projectedPoint = projectedPoints.GetPoint(i)
       distance = vtk.vtkMath().Distance2BetweenPoints(clippedPoint, projectedPoint)
       if distance > spatialConstraint:
-        clippedLMNode.AddFiducialFromArray(clippedPoint, 'n_'+str(i))
-        projectedLMNode.AddFiducialFromArray(projectedPoint, 'i_'+str(i))
-        totalLMNode.AddFiducialFromArray(clippedPoint, 'n_'+str(i))
-        totalLMNode.AddFiducialFromArray(projectedPoint, 'i_'+str(i))
+        clippedLMNode.AddControlPoint(clippedPoint, 'n_'+str(i))
+        projectedLMNode.AddControlPoint(projectedPoint, 'i_'+str(i))
+        totalLMNode.AddControlPoint(clippedPoint, 'n_'+str(i))
+        totalLMNode.AddControlPoint(projectedPoint, 'i_'+str(i))
       else:
         mergedPoint[0] = (clippedPoint[0]+projectedPoint[0])/2
         mergedPoint[1] = (clippedPoint[1]+projectedPoint[1])/2
         mergedPoint[2] = (clippedPoint[2]+projectedPoint[2])/2
-        totalLMNode.AddFiducialFromArray(mergedPoint, 'm_'+str(i))
-        midlineLMNode.AddFiducialFromArray(mergedPoint, 'm_'+str(i))
+        totalLMNode.AddControlPoint(mergedPoint, 'm_'+str(i))
+        midlineLMNode.AddControlPoint(mergedPoint, 'm_'+str(i))
 
     # set pseudo landmarks created to type II
     landmarkTypeSemi=True
