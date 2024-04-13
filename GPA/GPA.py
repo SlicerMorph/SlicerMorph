@@ -403,30 +403,52 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     fileViewerLayout.addRow(self.clearButton)
     self.clearButton.connect('clicked(bool)', self.onClearButton)
 
+    #Load covariates option
+    loadCovariatesCollapsibleButton = ctk.ctkCollapsibleButton()
+    loadCovariatesLayout = qt.QGridLayout(loadCovariatesCollapsibleButton)
+    loadCovariatesCollapsibleButton.text = "Load optional covariates table"
+    loadCovariatesCollapsibleButton.collapsed = True
+    inputLayout.addWidget(loadCovariatesCollapsibleButton,3,1,1,3)
+
+    #Select covariates table
+    self.covariatesText, covariatesLabel, self.covariatesButton=self.textIn('Covariates Table','', '')
+    loadCovariatesLayout.addWidget(self.covariatesText,2,2)
+    loadCovariatesLayout.addWidget(covariatesLabel,2,1)
+    loadCovariatesLayout.addWidget(self.covariatesButton,2,3)
+    self.covariatesButton.connect('clicked(bool)', self.onSelectCovariatesTable)
+
+    #Load covariates button
+    self.loadCovariatesTableButton = qt.QPushButton("Load Covariates Table from File")
+    self.loadCovariatesTableButton.checkable = True
+    loadCovariatesLayout.addWidget(self.loadCovariatesTableButton,5,1,1,3)
+    self.loadCovariatesTableButton.toolTip = "Select covariates table in CSV format from file."
+    self.loadCovariatesTableButton.enabled = False
+    self.loadCovariatesTableButton.connect('clicked(bool)', self.onLoadCovariatesTable)
+
     # Select output directory
     self.outText, outLabel, self.outbutton=self.textIn('Select output directory: ','', '')
-    inputLayout.addWidget(self.outText,3,2)
-    inputLayout.addWidget(outLabel,3,1)
-    inputLayout.addWidget(self.outbutton,3,3)
+    inputLayout.addWidget(self.outText,4,2)
+    inputLayout.addWidget(outLabel,4,1)
+    inputLayout.addWidget(self.outbutton,4,3)
     self.outbutton.connect('clicked(bool)', self.onSelectOutputDirectory)
 
     self.excludeLMLabel=qt.QLabel('Exclude landmarks')
-    inputLayout.addWidget(self.excludeLMLabel,4,1)
+    inputLayout.addWidget(self.excludeLMLabel,5,1)
 
     self.excludeLMText=qt.QLineEdit()
     self.excludeLMText.setToolTip("No spaces. Separate numbers by commas.  Example:  51,52")
-    inputLayout.addWidget(self.excludeLMText,4,2,1,2)
+    inputLayout.addWidget(self.excludeLMText,5,2,1,2)
 
     self.BoasOptionCheckBox = qt.QCheckBox()
     self.BoasOptionCheckBox.setText("Use Boas coordinates for GPA")
     self.BoasOptionCheckBox.checked = 0
     self.BoasOptionCheckBox.setToolTip("If checked, GPA will skip scaling.")
-    inputLayout.addWidget(self.BoasOptionCheckBox, 5,2)
+    inputLayout.addWidget(self.BoasOptionCheckBox, 6,2)
 
     #Load Button
     self.loadButton = qt.QPushButton("Execute GPA + PCA")
     self.loadButton.checkable = True
-    inputLayout.addWidget(self.loadButton,6,1,1,3)
+    inputLayout.addWidget(self.loadButton,7,1,1,3)
     self.loadButton.toolTip = "Push to start the program. Make sure you have filled in all the data."
     self.loadButton.enabled = False
     self.loadButton.connect('clicked(bool)', self.onLoad)
@@ -434,7 +456,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     #Open Results
     self.openResultsButton = qt.QPushButton("View output files")
     self.openResultsButton.checkable = True
-    inputLayout.addWidget(self.openResultsButton,7,1,1,3)
+    inputLayout.addWidget(self.openResultsButton,8,1,1,3)
     self.openResultsButton.toolTip = "Push to open the folder where the GPA + PCA results are stored"
     self.openResultsButton.enabled = False
     self.openResultsButton.connect('clicked(bool)', self.onOpenResults)
@@ -566,25 +588,25 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     plotLayout.addWidget(Ylabel,2,1)
     plotLayout.addWidget(self.YcomboBox,2,2,1,3)
 
-    self.factorNameLabel=qt.QLabel('Factor Name:')
-    plotLayout.addWidget(self.factorNameLabel,3,1)
-    self.factorName=qt.QLineEdit()
-    self.factorName.setToolTip("Enter factor name")
-    self.factorName.connect('textChanged(const QString &)', self.factorStringChanged)
-    plotLayout.addWidget(self.factorName,3,2)
+    # self.factorNameLabel=qt.QLabel('Factor Name:')
+    # plotLayout.addWidget(self.factorNameLabel,3,1)
+    # self.factorName=qt.QLineEdit()
+    # self.factorName.setToolTip("Enter factor name")
+    # self.factorName.connect('textChanged(const QString &)', self.factorStringChanged)
+    # plotLayout.addWidget(self.factorName,3,2)
 
-    self.inputFactorButton = qt.QPushButton("Add factor data")
-    self.inputFactorButton.checkable = True
-    self.inputFactorButton.toolTip = "Open table to input factor data"
-    plotLayout.addWidget(self.inputFactorButton,3,4)
-    self.inputFactorButton.enabled = False
-    self.inputFactorButton.connect('clicked(bool)', self.enterFactors)
+    # self.inputFactorButton = qt.QPushButton("Add factor data")
+    # self.inputFactorButton.checkable = True
+    # self.inputFactorButton.toolTip = "Open table to input factor data"
+    # plotLayout.addWidget(self.inputFactorButton,3,4)
+    # self.inputFactorButton.enabled = False
+    # self.inputFactorButton.connect('clicked(bool)', self.enterFactors)
 
     self.selectFactor=qt.QComboBox()
     self.selectFactor.addItem("No factor data")
     selectFactorLabel=qt.QLabel("Select factor: ")
     plotLayout.addWidget(selectFactorLabel,4,1)
-    plotLayout.addWidget(self.selectFactor,4,2,)
+    plotLayout.addWidget(self.selectFactor,4,2)
 
     self.plotButton = qt.QPushButton("Scatter Plot")
     self.plotButton.checkable = True
@@ -884,35 +906,35 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveTableID(tableNode.GetID())
     slicer.app.applicationLogic().PropagateTableSelection()
 
-  def enterFactors(self):
-    sortedArray = np.zeros(len(self.files), dtype={'names':('filename', 'procdist'),'formats':('U50','f8')})
-    sortedArray['filename']=self.files
+  # def enterFactors(self):
+    # sortedArray = np.zeros(len(self.files), dtype={'names':('filename', 'procdist'),'formats':('U50','f8')})
+    # sortedArray['filename']=self.files
 
-    #check for an existing factor table, if so remove
-    if hasattr(self, 'factorTableNode'):
-      GPANodeCollection.RemoveItem(self.factorTableNode)
-      slicer.mrmlScene.RemoveNode(self.factorTableNode)
+    ##check for an existing factor table, if so remove
+    # if hasattr(self, 'factorTableNode'):
+      # GPANodeCollection.RemoveItem(self.factorTableNode)
+      # slicer.mrmlScene.RemoveNode(self.factorTableNode)
 
-    self.factorTableNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTableNode', 'Factor Table')
-    GPANodeCollection.AddItem(self.factorTableNode)
-    col1=self.factorTableNode.AddColumn()
-    col1.SetName('ID')
-    for i in range(len(self.files)):
-      self.factorTableNode.AddEmptyRow()
-      self.factorTableNode.SetCellText(i,0,sortedArray['filename'][i])
+    # self.factorTableNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTableNode', 'Factor Table')
+    # GPANodeCollection.AddItem(self.factorTableNode)
+    # col1=self.factorTableNode.AddColumn()
+    # col1.SetName('ID')
+    # for i in range(len(self.files)):
+      # self.factorTableNode.AddEmptyRow()
+      # self.factorTableNode.SetCellText(i,0,sortedArray['filename'][i])
 
-    col2=self.factorTableNode.AddColumn()
-    col2.SetName(self.factorName.text)
-    self.selectFactor.addItem(self.factorName.text)
+    # col2=self.factorTableNode.AddColumn()
+    # col2.SetName(self.factorName.text)
+    # self.selectFactor.addItem(self.factorName.text)
 
-    #add table to new layout
-    slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveTableID(self.factorTableNode.GetID())
-    slicer.app.applicationLogic().PropagateTableSelection()
-    self.factorTableNode.GetTable().Modified()
+    ##add table to new layout
+    # slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveTableID(self.factorTableNode.GetID())
+    # slicer.app.applicationLogic().PropagateTableSelection()
+    # self.factorTableNode.GetTable().Modified()
 
-    #reset text field for names
-    self.factorName.setText("")
-    self.inputFactorButton.enabled = False
+    ##reset text field for names
+    # self.factorName.setText("")
+    # self.inputFactorButton.enabled = False
 
   def reset(self):
     # delete the two data objects
@@ -1021,6 +1043,49 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.loadButton.enabled = bool (filePathsExist and self.outputDirectory)
     except AttributeError:
       self.loadButton.enabled = False
+
+  def onSelectCovariatesTable(self):
+    dialog = qt.QFileDialog()
+    filter = "csv(*.csv)"
+    self.covariateTableFile = qt.QFileDialog.getOpenFileName(dialog, "", "", filter)
+    if self.covariateTableFile:
+      self.covariatesText.setText(self.covariateTableFile)
+      self.loadCovariatesTableButton.enabled = True
+    else:
+     self.covariatesText.setText("")
+     self.loadCovariatesTableButton.enabled = False
+
+  def onLoadCovariatesTable(self):
+    numberOfInputFiles = len(self.inputFilePaths)
+    if numberOfInputFiles<1:
+      logging.debug('No input files are selected')
+      return
+    try:
+      self.factorTableNode = slicer.util.loadTable(self.covariateTableFile)
+    except AttributeError:
+      logging.debug('Covariate table import failed')
+      return
+    #check for at least one covariate factor
+    numberOfColumns = self.factorTableNode.GetTable().GetNumberOfColumns()
+    if numberOfColumns<2:
+      logging.debug('Covariate table import failed, covariate table must have at least one factor column')
+      slicer.mrmlScene.RemoveNode(self.factorTableNode)
+      return
+    indexColumn = self.factorTableNode.GetTable().GetColumn(0)
+    #check for same number of covariate rows and input filenames
+    if indexColumn.GetNumberOfTuples() != numberOfInputFiles:
+      logging.debug('Covariate table import failed, covariate table row number does not match number of input files')
+      slicer.mrmlScene.RemoveNode(self.factorTableNode)
+      return
+    #check that input filenames match factor row names
+    for i, inputFile in enumerate(self.inputFilePaths):
+      if indexColumn.GetValue(i) != inputFile:
+        logging.debug('Covariate table import failed, covariate filenames do not match input files')
+        slicer.mrmlScene.RemoveNode(self.factorTableNode)
+        return
+    for i in range(1,numberOfColumns):
+      self.selectFactor.addItem(self.factorTableNode.GetTable().GetColumnName(i))
+    GPANodeCollection.AddItem(self.factorTableNode)
 
   def onSelectResultsDirectory(self):
     self.resultsDirectory=qt.QFileDialog().getExistingDirectory()
@@ -1344,7 +1409,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     factorIndex = self.selectFactor.currentIndex
     if (factorIndex > 0) and hasattr(self, 'factorTableNode'):
-      factorCol = self.factorTableNode.GetTable().GetColumn(1)
+      factorCol = self.factorTableNode.GetTable().GetColumn(factorIndex)
       factorArray=[]
       for i in range(factorCol.GetNumberOfTuples()):
         factorArray.append(factorCol.GetValue(i).rstrip())
