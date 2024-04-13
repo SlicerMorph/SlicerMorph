@@ -1085,7 +1085,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         return
     for i in range(1,numberOfColumns):
       self.selectFactor.addItem(self.factorTableNode.GetTable().GetColumnName(i))
-    GPANodeCollection.AddItem(self.factorTableNode)
+    #GPANodeCollection.AddItem(self.factorTableNode)
 
   def onSelectResultsDirectory(self):
     self.resultsDirectory=qt.QFileDialog().getExistingDirectory()
@@ -1298,6 +1298,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     try:
       os.makedirs(self.outputFolder)
       self.LM.writeOutData(self.outputFolder, self.files)
+      # covariate table
+      if hasattr(self, 'factorTableNode'):
+        slicer.util.saveNode(self.factorTableNode, self.outputFolder + os.sep + "CovariateTable.csv")
       self.writeAnalysisLogFile(self.LM_dir_name, self.outputFolder, self.files)
       self.openResultsButton.enabled = True
     except:
