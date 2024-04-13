@@ -257,6 +257,10 @@ class QuickAlignLogic(ScriptedLoadableModuleLogic):
     @vtk.calldata_type(vtk.VTK_INT)
 
     def getCameraAlignmentTransform(self, camera1, camera2):
+      #get translation
+      c1FocalPoint = np.array(camera1.GetFocalPoint())
+      c2FocalPoint = np.array(camera2.GetFocalPoint())
+      translation = c1FocalPoint - c2FocalPoint
       #get transform matrices from cameras
       transformMatrix1_vtk = camera1.GetCamera().GetViewTransformMatrix()
       transformMatrix2_vtk = camera2.GetCamera().GetViewTransformMatrix()
@@ -267,10 +271,13 @@ class QuickAlignLogic(ScriptedLoadableModuleLogic):
       u,s,v=sp.svd(np.dot(np.transpose(transformMatrix2),transformMatrix1), full_matrices=True)
       alignmentMatrix=np.dot(np.transpose(v), np.transpose(u))
       alignmentMatrix_vtk = slicer.util.vtkMatrixFromArray(alignmentMatrix)
+      alignmentTransform = vtk.vtkTransform()
+      alignmentTransform.SetMatrix(alignmentMatrix_vtk)
+      alignmentTransform.Translate(translation)
 
-      #apply to moving node
+      #apply to transform node
       transformNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLinearTransformNode", "alignment transform")
-      transformNode.SetMatrixTransformToParent(alignmentMatrix_vtk)
+      transformNode.SetMatrixTransformToParent(alignmentTransform.GetMatrix())
 
       return transformNode
 
