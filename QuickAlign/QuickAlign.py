@@ -23,11 +23,11 @@ class QuickAlign(ScriptedLoadableModule):
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
         self.parent.title = "QuickAlign"
-        self.parent.categories = ["Testing.TestCases"]
+        self.parent.categories = ["SlicerMorph.SlicerMorph Utilities"]
         self.parent.dependencies = []
         self.parent.contributors = ["Sara Rolfe (SCRI), Murat Maga (SCRI, UW)"]
         self.parent.helpText = """
-        This is test module to link two markup nodes for joint editing.
+        This module temporarily links two objects for joint viewing. Volumes and models are supported.
         """
         # TODO: replace with organization, grant and thanks
         self.parent.acknowledgementText = """
