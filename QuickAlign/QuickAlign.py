@@ -143,6 +143,13 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         Called just after the scene is closed.
         """
 
+    def update3DViews(self):
+        #update cameras
+        layoutManager = slicer.app.layoutManager()
+        for threeDViewIndex in range(layoutManager.threeDViewCount) :
+          view = layoutManager.threeDWidget(threeDViewIndex).threeDView()
+          view.resetFocalPoint()
+
     def onLinkButton(self):
         """
         Run processing when user clicks "Link" button.
@@ -163,33 +170,26 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         #link and update views
         self.viewNode2.SetLinkedControl(True)
         layoutManager = slicer.app.layoutManager()
-        for threeDViewIndex in range(layoutManager.threeDViewCount) :
-          view = layoutManager.threeDWidget(threeDViewIndex).threeDView()
-          view.resetFocalPoint()
+        self.update3DViews()
 
         #set up for unlink action
         self.ui.unlinkButton.enabled = True
         self.ui.linkButton.enabled = False
+        self.ui.initializeViewButton.enabled = False
 
     def onUnlinkButton(self):
         """
         Run processing when user clicks "Unlink" button.
         """
-        slicer.mrmlScene.RemoveNode(self.centerView1Transform)
-        slicer.mrmlScene.RemoveNode(self.centerView2Transform)
-        slicer.mrmlScene.RemoveNode(self.alignmentTransform)
+        self.cleanUpTransformNodes()
         self.ui.unlinkButton.enabled = False
-        self.ui.linkButton.enabled = bool(self.ui.inputSelector1.currentNode and self.ui.inputSelector2.currentNode)
+        self.ui.linkButton.enabled = False
         # unlink the views
         layoutManager = slicer.app.layoutManager()
         v1 = layoutManager.threeDWidget(0).threeDView().mrmlViewNode()
         v1.SetLinkedControl(False)
-        #update camera
-        layoutManager = slicer.app.layoutManager()
-        for threeDViewIndex in range(layoutManager.threeDViewCount) :
-          view = layoutManager.threeDWidget(threeDViewIndex).threeDView()
-          view.resetFocalPoint()
-          camera=slicer.modules.cameras.logic().GetViewActiveCameraNode(view.mrmlViewNode())
+        self.update3DViews()
+        self.ui.initializeViewButton.enabled = True
 
     def addLayoutButton(self, layoutID, buttonAction, toolTip, imageFileName, layoutDiscription):
         layoutManager = slicer.app.layoutManager()
@@ -230,13 +230,20 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if viewList[i] == 'vtkMRMLViewNode2':
           currentNode.SetAndObserveTransformNodeID(self.centerView2Transform.GetID())
 
-      #update camera
-      for threeDViewIndex in range(layoutManager.threeDViewCount) :
-        view = layoutManager.threeDWidget(threeDViewIndex).threeDView()
-        view.resetFocalPoint()
-        camera=slicer.modules.cameras.logic().GetViewActiveCameraNode(view.mrmlViewNode())
+      #update views
+      self.update3DViews()
+
+    def cleanUpTransformNodes(self):
+        # remove alignment transforms from previous runs
+        if hasattr(self, 'centerView1Transform'):
+          slicer.mrmlScene.RemoveNode(self.centerView1Transform)
+        if hasattr(self, 'centerView2Transform'):
+          slicer.mrmlScene.RemoveNode(self.centerView2Transform)
+        if hasattr(self, 'alignmentTransform'):
+          slicer.mrmlScene.RemoveNode(self.alignmentTransform)
 
     def onInitializeViewButton(self):
+        self.cleanUpTransformNodes()
         customLayoutId1=701
         layoutManager = slicer.app.layoutManager()
         layoutManager.setLayout(customLayoutId1)
@@ -270,11 +277,8 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.viewNode2.SetLinkedControl(False)
         self.ui.linkButton.enabled = True
 
-        #update camera
-        for threeDViewIndex in range(layoutManager.threeDViewCount) :
-          view = layoutManager.threeDWidget(threeDViewIndex).threeDView()
-          view.resetFocalPoint()
-          camera=slicer.modules.cameras.logic().GetViewActiveCameraNode(view.mrmlViewNode())
+        #update views
+        self.update3DViews()
 
         #translate all nodes to origin
         self.centerViews(nodeList, viewList)
