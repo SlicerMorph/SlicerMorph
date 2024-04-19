@@ -185,7 +185,7 @@ class ImportFromURLLogic(ScriptedLoadableModuleLogic):
       url=url.replace("/blob", "")
       url=url.split('?')[0]
     return url
-    
+
   def autoRenderVolume(self, volumeNode):
     print("Auto-render node: "+volumeNode.GetName())
     volRenLogic = slicer.modules.volumerendering.logic()
