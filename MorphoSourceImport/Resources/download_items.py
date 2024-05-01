@@ -117,7 +117,7 @@ class MSDownload:
         start_time = time.time()
 
         try:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
                 futures = []
                 for media_id in self.items_to_download:
                     partial_filename = f"partial_media_{media_id}.zip"
@@ -138,7 +138,8 @@ class MSDownload:
         for media_id in self.items_to_download:
             partial_filename = f"partial_media_{media_id}.zip"
             full_partial_path = os.path.join(self.download_folder, partial_filename)
-            if file_exists_and_size(full_partial_path) >= self.sizes[media_id]:
+            if (file_exists_and_size(full_partial_path) == self.sizes[media_id]+1 or
+                    file_exists_and_size(full_partial_path) == self.sizes[media_id]-1):
                 print(f"[Debug] Media ID: {media_id}, Downloaded Bytes: {file_exists_and_size(full_partial_path)}, "
                       f"Total Bytes: {self.sizes[media_id]}")
                 final_filename = f"media_{media_id}.zip"
