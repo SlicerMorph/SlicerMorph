@@ -1,4 +1,4 @@
-# HighResScreenCapture Module for SlicerMorph
+# HiResScreenCapture Module for SlicerMorph
 ![HRSCScreenCap.png](HRSCScreenCap.png)
 This module is a part of the SlicerMorph extension for 3D Slicer, designed to capture high-resolution screenshots of 3D views within the application.
 
