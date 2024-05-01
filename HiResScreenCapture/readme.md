@@ -28,4 +28,4 @@ This module is a part of the SlicerMorph extension for 3D Slicer, designed to ca
 By following these steps, you can easily access and use the High Resolution Screen Capture module within the SlicerMorph module in 3D Slicer.
 
 **Disclaimer:**
-    - The current version of HighResScreenCapture will export all visible objects within the selected render window with Markup labels and anotations being the only exception, we hope to incorpoate these annotations in the next version.
+    - The current version of HighResScreenCapture will export all visible objects within the selected render window with Markup labels and annotations being the only exception, we hope to incorporate these annotations in the next version.
