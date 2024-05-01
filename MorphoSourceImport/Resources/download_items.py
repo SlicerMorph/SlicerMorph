@@ -68,7 +68,7 @@ class MSDownload:
         self.configure_download()
 
     def calculate_total_size(self):
-        
+
         sizes = {}
         total_size = 0
         for media_id in self.items_to_download:
@@ -138,8 +138,11 @@ class MSDownload:
         for media_id in self.items_to_download:
             partial_filename = f"partial_media_{media_id}.zip"
             full_partial_path = os.path.join(self.download_folder, partial_filename)
-            if ((file_exists_and_size(full_partial_path)+1 == self.sizes[media_id]) or
-                    (file_exists_and_size(full_partial_path)-1 == self.sizes[media_id])):
+
+            if abs(file_exists_and_size(full_partial_path) - self.sizes[media_id]) <= 1:
+                # if ((file_exists_and_size(full_partial_path) == self.sizes[media_id]) or
+                #         (file_exists_and_size(full_partial_path) + 1 == self.sizes[media_id]) or
+                #         (file_exists_and_size(full_partial_path) - 1 == self.sizes[media_id])):
                 print(f"[Debug] Media ID: {media_id}, Downloaded Bytes: {file_exists_and_size(full_partial_path)}, "
                       f"Total Bytes: {self.sizes[media_id]}")
                 final_filename = f"media_{media_id}.zip"
@@ -153,7 +156,9 @@ class MSDownload:
         end_time = time.time()
         duration = end_time - start_time
         status_message = "Completed" if download_completed_successfully else "Terminated"
-        print(f"{status_message} downloading {self.completed_downloads} of {len(self.items_to_download)} items in {duration:.2f} seconds.", flush=True)
+        print(
+            f"{status_message} downloading {self.completed_downloads} of {len(self.items_to_download)} items in {duration:.2f} seconds.",
+            flush=True)
 
 
 if __name__ == "__main__":
