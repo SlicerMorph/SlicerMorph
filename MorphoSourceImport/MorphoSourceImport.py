@@ -1,8 +1,6 @@
 import time
 import json
-import logging
 import os
-import string
 import sys
 import warnings
 from collections import OrderedDict
@@ -10,14 +8,11 @@ from typing import Optional
 
 import webbrowser
 import requests
-import threading
 import concurrent.futures
 
 import ctk
-import numpy as np
 import qt
 import slicer
-import vtk
 from slicer.ScriptedLoadableModule import *
 
 try:
@@ -92,7 +87,7 @@ def getResourceScriptPath(scriptName):
 
 class CloseApplicationEventFilter(qt.QObject):
     def __init__(self, morphoSourceImportWidget, parent=None):
-        super().__init__(parent)
+        super(CloseApplicationEventFilter, self).__init__(parent)
         self.morphoSourceImportWidget = morphoSourceImportWidget
 
     def eventFilter(self, obj, event):
@@ -117,7 +112,7 @@ class CloseApplicationEventFilter(qt.QObject):
 
 class CustomTableWidget(qt.QTableWidget):
     def __init__(self, parent=None):
-        super().__init__(parent)
+        super(CustomTableWidget, self).__init__(parent)
 
     def contextMenuEvent(self, event):
         menu = qt.QMenu(self)
@@ -138,7 +133,7 @@ class CustomTableWidget(qt.QTableWidget):
 
 class ClickableLabel(qt.QLabel):
     def __init__(self, parent=None):
-        super().__init__(parent)
+        super(ClickableLabel, self).__init__(parent)
         self.originalPixmap = None
 
     def mousePressEvent(self, event):
