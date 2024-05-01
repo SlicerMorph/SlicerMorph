@@ -1,11 +1,33 @@
-import logging
 import os
-from typing import Annotated, Optional
 
 import qt, ctk
 import slicer
 import vtk
 from slicer.ScriptedLoadableModule import *
+
+
+def isActorVisible(camera, actor):
+    # Create a list to store the frustum planes
+    frustumPlanes = [0.0] * 24
+
+    # Get the frustum planes from the camera
+    camera.GetFrustumPlanes(1.0, frustumPlanes)
+
+    # Create a vtkPlanes object using the frustum planes
+    planes = vtk.vtkPlanes()
+    planes.SetFrustumPlanes(frustumPlanes)
+
+    # Get the bounds of the actor
+    bounds = actor.GetBounds()
+
+    # Check if the bounding box is within the view frustum
+    for i in range(0, 6):
+        plane = vtk.vtkPlane()
+        planes.GetPlane(i, plane)
+        if plane.EvaluateFunction(bounds[:3]) * plane.EvaluateFunction(bounds[3:]) > 0:
+            # If the product is positive, then one of the box's corners is outside this plane
+            return False
+    return True
 
 
 #
@@ -20,7 +42,7 @@ class HiResScreenCapture(ScriptedLoadableModule):
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
         self.parent.title = "HiResScreenCapture"  # TODO: make this more human readable by adding spaces
-        self.parent.categories = ["Testing.TestCases"]  # TODO: set categories (folders where the module
+        self.parent.categories = ["SlicerMorph.Input and Output"]  # TODO: set categories (folders where the module
         # shows up in the module selector)
         self.parent.dependencies = []  # TODO: add here list of module names that this module requires
         self.parent.contributors = ["Murat Maga (UW), Oshane Thomas(SCRI)"]  # TODO: replace with "Firstname Lastname
@@ -29,10 +51,13 @@ class HiResScreenCapture(ScriptedLoadableModule):
         self.parent.helpText = """
 The "High Resolution Screen Capture" module allows users to capture and save high-quality screenshots from the Slicer
 application. Users specify the filename, output folder, and desired resolution, with the module ensuring all inputs are
- valid and the filename ends with PNG.
+ valid and the filename ends with .png. See more information in 
+ <a href="https://github.com/oothomas/SlicerMorph/tree/master/HiResScreenCapture">module documentation</a>.
 """
         # TODO: replace with organization, grant and thanks
-        self.parent.acknowledgementText = """This module was developed by Oshane Thomas for SlicerMorph using the original script by Steve pieper. The development of the module was supported by NSF/OAC grant, HDR Institute: Imageomics: A New Frontier of Biological Information Powered by Knowledge-Guided Machine Learnings" (Award #2118240)."""
+        self.parent.acknowledgementText = """This file was originally developed by Jean-Christophe Fillion-Robin, 
+        Kitware Inc., Andras Lasso, PerkLab, and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 
+        3P41RR013218-12S1. We would also like to thank Steve Pieper for developing the export function used here."""
 
 
 #
@@ -49,6 +74,13 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         Called when the user opens the module the first time and the widget is initialized.
         """
         ScriptedLoadableModuleWidget.__init__(self, parent)
+        self.applyButton = None
+        self.threeDViewComboBox = None
+        self.resolutionYSpinBox = None
+        self.resolutionXSpinBox = None
+        self.selectOutputDirButton = None
+        self.outputDirLineEdit = None
+        self.filenameLineEdit = None
         self.logic = None
 
     def setup(self) -> None:
@@ -57,10 +89,10 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         """
         ScriptedLoadableModuleWidget.setup(self)
 
-        moduleNameLabel = qt.QLabel("High Resolution Screen Capture")
-        moduleNameLabel.setAlignment(qt.Qt.AlignCenter)
-        moduleNameLabel.setStyleSheet("font-weight: bold; font-size: 18px; padding: 10px;")
-        self.layout.addWidget(moduleNameLabel)
+        # moduleNameLabel = qt.QLabel("High Resolution Screen Capture")
+        # moduleNameLabel.setAlignment(qt.Qt.AlignCenter)
+        # moduleNameLabel.setStyleSheet("font-weight: bold; font-size: 18px; padding: 10px;")
+        # self.layout.addWidget(moduleNameLabel)
 
         parametersCollapsibleButton = ctk.ctkCollapsibleButton()
         parametersCollapsibleButton.text = "Screen Capture Settings"
@@ -218,23 +250,58 @@ class HiResScreenCaptureLogic(ScriptedLoadableModuleLogic):
             rw.SetSize(self.resolution[0], self.resolution[1])
 
             lm = slicer.app.layoutManager()
-            ren3d = lm.threeDWidget(self.threeDViewIndex).threeDView().renderWindow().GetRenderers().GetFirstRenderer()
 
-            # ren3d = lm.threeDWidget(self.threeDViewIndex).threeDView().renderWindow().GetRenderers().GetItemAsObject(0)
+            threeDViewWidget = lm.threeDWidget(self.threeDViewIndex)
+            threeDView = threeDViewWidget.threeDView()
 
-            actors = ren3d.GetActors()
-            for index in range(actors.GetNumberOfItems()):
-                ren.AddActor(actors.GetItemAsObject(index))
+            renderers = threeDView.renderWindow().GetRenderers()
+            ren3d = renderers.GetFirstRenderer()
 
-            lights = ren3d.GetLights()
-            for index in range(lights.GetNumberOfItems()):
-                ren.AddLight(lights.GetItemAsObject(index))
-
-            volumes = ren3d.GetVolumes()
-            for index in range(volumes.GetNumberOfItems()):
-                ren.AddVolume(volumes.GetItemAsObject(index))
+            # Set the background color of the off-screen renderer to match the original
+            backgroundColor = ren3d.GetBackground()
+            ren.SetBackground(backgroundColor)
 
             camera = ren3d.GetActiveCamera()
+
+            while ren3d:
+
+                actors = ren3d.GetActors()
+                for index in range(actors.GetNumberOfItems()):
+                    actor = actors.GetItemAsObject(index)
+
+                    actor_class_name = actor.GetClassName()  # Get the class name using VTK's method
+                    # Alternatively, use Python's type function: actor_type = type(actor).__name__
+                    print("Actor index:", index, "Class name:", actor_class_name)
+
+                    property = actor.GetProperty()
+                    # print("Actor Property:", property)
+                    representation = property.GetRepresentation()
+
+                    # vtkProperty defines three representation types:
+                    # vtkProperty.VTK_POINTS, vtkProperty.VTK_WIREFRAME, vtkProperty.VTK_SURFACE
+                    if representation == vtk.VTK_POINTS:
+                        print("Actor index:", index, "is represented as points.")
+                    elif representation == vtk.VTK_WIREFRAME:
+                        print("Actor index:", index, "is represented as wireframe.")
+                    elif representation == vtk.VTK_SURFACE:
+                        print("Actor index:", index, "is represented as a surface.")
+                    else:
+                        print("Actor index:", index, "has an unknown representation.")
+
+                    print("Actor index:", index, "Visibility -", actor.GetVisibility(), "|", isActorVisible(camera, actor))
+                    if actor.GetVisibility():  # and isActorVisible(camera, actor):
+                        ren.AddActor(actor)  # Add only visible actors
+
+                lights = ren3d.GetLights()
+                for index in range(lights.GetNumberOfItems()):
+                    ren.AddLight(lights.GetItemAsObject(index))
+
+                volumes = ren3d.GetVolumes()
+                for index in range(volumes.GetNumberOfItems()):
+                    ren.AddVolume(volumes.GetItemAsObject(index))
+
+                ren3d = renderers.GetNextItem()
+
             ren.SetActiveCamera(camera)
 
             rw.AddRenderer(ren)
