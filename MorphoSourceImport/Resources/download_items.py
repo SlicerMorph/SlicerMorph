@@ -139,7 +139,7 @@ class MSDownload:
             partial_filename = f"partial_media_{media_id}.zip"
             full_partial_path = os.path.join(self.download_folder, partial_filename)
 
-            if abs(file_exists_and_size(full_partial_path) - self.sizes[media_id]) <= 1:
+            if abs(file_exists_and_size(full_partial_path) - self.sizes[media_id]) <= 2:
                 # if ((file_exists_and_size(full_partial_path) == self.sizes[media_id]) or
                 #         (file_exists_and_size(full_partial_path) + 1 == self.sizes[media_id]) or
                 #         (file_exists_and_size(full_partial_path) - 1 == self.sizes[media_id])):
