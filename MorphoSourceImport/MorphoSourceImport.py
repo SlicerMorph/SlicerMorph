@@ -1,8 +1,6 @@
 import time
 import json
-import logging
 import os
-import string
 import sys
 import warnings
 from collections import OrderedDict
@@ -10,14 +8,11 @@ from typing import Optional
 
 import webbrowser
 import requests
-import threading
 import concurrent.futures
 
 import ctk
-import numpy as np
 import qt
 import slicer
-import vtk
 from slicer.ScriptedLoadableModule import *
 
 try:
