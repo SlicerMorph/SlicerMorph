@@ -3,6 +3,8 @@ import os
 import qt, ctk
 import slicer
 import vtk
+
+import ScreenCapture
 from slicer.ScriptedLoadableModule import *
 
 
@@ -240,82 +242,108 @@ class HiResScreenCaptureLogic(ScriptedLoadableModuleLogic):
 
     def runScreenCapture(self) -> None:
         if self.resolution and self.outputPath:
-            vtk.vtkGraphicsFactory()
-            gf = vtk.vtkGraphicsFactory()
-            gf.SetOffScreenOnlyMode(1)
-            gf.SetUseMesaClasses(1)
-            rw = vtk.vtkRenderWindow()
-            rw.SetOffScreenRendering(1)
-            ren = vtk.vtkRenderer()
-            rw.SetSize(self.resolution[0], self.resolution[1])
+            # Switch to a layout that has a window that is not in the main window
+            layoutManager = slicer.app.layoutManager()
+            originalLayout = layoutManager.layout
+            layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutDualMonitorFourUpView)
 
-            lm = slicer.app.layoutManager()
+            # Maximize the 3D view within this layout
+            viewLogic = slicer.app.applicationLogic().GetViewLogicByLayoutName("1+")
+            viewNode = viewLogic.GetViewNode()
+            layoutManager.addMaximizedViewNode(viewNode)
 
-            threeDViewWidget = lm.threeDWidget(self.threeDViewIndex)
-            threeDView = threeDViewWidget.threeDView()
+            # Resize the view
+            viewWidget = layoutManager.viewWidget(viewNode)
+            # Parent of the view widget is the frame, parent of the frame is the docking widget
+            layoutDockingWidget = viewWidget.parent().parent()
+            originalSize = layoutDockingWidget.size
+            layoutDockingWidget.resize(self.resolution[0], self.resolution[1])
+            # Capture the view
 
-            renderers = threeDView.renderWindow().GetRenderers()
-            ren3d = renderers.GetFirstRenderer()
+            cap = ScreenCapture.ScreenCaptureLogic()
+            cap.captureImageFromView(viewWidget.threeDView(), self.outputPath)
+            # Restore original size and layout
+            layoutDockingWidget.resize(originalSize)
+            layoutManager.setLayout(originalLayout)
 
-            # Set the background color of the off-screen renderer to match the original
-            backgroundColor = ren3d.GetBackground()
-            ren.SetBackground(backgroundColor)
-
-            camera = ren3d.GetActiveCamera()
-
-            while ren3d:
-
-                actors = ren3d.GetActors()
-                for index in range(actors.GetNumberOfItems()):
-                    actor = actors.GetItemAsObject(index)
-
-                    actor_class_name = actor.GetClassName()  # Get the class name using VTK's method
-                    # Alternatively, use Python's type function: actor_type = type(actor).__name__
-                    print("Actor index:", index, "Class name:", actor_class_name)
-
-                    property = actor.GetProperty()
-                    # print("Actor Property:", property)
-                    representation = property.GetRepresentation()
-
-                    # vtkProperty defines three representation types:
-                    # vtkProperty.VTK_POINTS, vtkProperty.VTK_WIREFRAME, vtkProperty.VTK_SURFACE
-                    if representation == vtk.VTK_POINTS:
-                        print("Actor index:", index, "is represented as points.")
-                    elif representation == vtk.VTK_WIREFRAME:
-                        print("Actor index:", index, "is represented as wireframe.")
-                    elif representation == vtk.VTK_SURFACE:
-                        print("Actor index:", index, "is represented as a surface.")
-                    else:
-                        print("Actor index:", index, "has an unknown representation.")
-
-                    print("Actor index:", index, "Visibility -", actor.GetVisibility(), "|", isActorVisible(camera, actor))
-                    if actor.GetVisibility():  # and isActorVisible(camera, actor):
-                        ren.AddActor(actor)  # Add only visible actors
-
-                lights = ren3d.GetLights()
-                for index in range(lights.GetNumberOfItems()):
-                    ren.AddLight(lights.GetItemAsObject(index))
-
-                volumes = ren3d.GetVolumes()
-                for index in range(volumes.GetNumberOfItems()):
-                    ren.AddVolume(volumes.GetItemAsObject(index))
-
-                ren3d = renderers.GetNextItem()
-
-            ren.SetActiveCamera(camera)
-
-            rw.AddRenderer(ren)
-            rw.Render()
-
-            wti = vtk.vtkWindowToImageFilter()
-            wti.SetInput(rw)
-            wti.Update()
-            writer = vtk.vtkPNGWriter()
-            writer.SetInputConnection(wti.GetOutputPort())
-            writer.SetFileName(self.outputPath)
-            writer.Update()
-            writer.Write()
-            i = wti.GetOutput()
+    # def runScreenCapture(self) -> None:
+    #     if self.resolution and self.outputPath:
+    #         vtk.vtkGraphicsFactory()
+    #         gf = vtk.vtkGraphicsFactory()
+    #         gf.SetOffScreenOnlyMode(1)
+    #         gf.SetUseMesaClasses(1)
+    #         rw = vtk.vtkRenderWindow()
+    #         rw.SetOffScreenRendering(1)
+    #         ren = vtk.vtkRenderer()
+    #         rw.SetSize(self.resolution[0], self.resolution[1])
+    #
+    #         lm = slicer.app.layoutManager()
+    #
+    #         threeDViewWidget = lm.threeDWidget(self.threeDViewIndex)
+    #         threeDView = threeDViewWidget.threeDView()
+    #
+    #         renderers = threeDView.renderWindow().GetRenderers()
+    #         ren3d = renderers.GetFirstRenderer()
+    #
+    #         # Set the background color of the off-screen renderer to match the original
+    #         backgroundColor = ren3d.GetBackground()
+    #         ren.SetBackground(backgroundColor)
+    #
+    #         camera = ren3d.GetActiveCamera()
+    #
+    #         while ren3d:
+    #
+    #             actors = ren3d.GetActors()
+    #             for index in range(actors.GetNumberOfItems()):
+    #                 actor = actors.GetItemAsObject(index)
+    #
+    #                 actor_class_name = actor.GetClassName()  # Get the class name using VTK's method
+    #                 # Alternatively, use Python's type function: actor_type = type(actor).__name__
+    #                 print("Actor index:", index, "Class name:", actor_class_name)
+    #
+    #                 property = actor.GetProperty()
+    #                 # print("Actor Property:", property)
+    #                 representation = property.GetRepresentation()
+    #
+    #                 # vtkProperty defines three representation types:
+    #                 # vtkProperty.VTK_POINTS, vtkProperty.VTK_WIREFRAME, vtkProperty.VTK_SURFACE
+    #                 if representation == vtk.VTK_POINTS:
+    #                     print("Actor index:", index, "is represented as points.")
+    #                 elif representation == vtk.VTK_WIREFRAME:
+    #                     print("Actor index:", index, "is represented as wireframe.")
+    #                 elif representation == vtk.VTK_SURFACE:
+    #                     print("Actor index:", index, "is represented as a surface.")
+    #                 else:
+    #                     print("Actor index:", index, "has an unknown representation.")
+    #
+    #                 print("Actor index:", index, "Visibility -", actor.GetVisibility(), "|", isActorVisible(camera, actor))
+    #                 if actor.GetVisibility():  # and isActorVisible(camera, actor):
+    #                     ren.AddActor(actor)  # Add only visible actors
+    #
+    #             lights = ren3d.GetLights()
+    #             for index in range(lights.GetNumberOfItems()):
+    #                 ren.AddLight(lights.GetItemAsObject(index))
+    #
+    #             volumes = ren3d.GetVolumes()
+    #             for index in range(volumes.GetNumberOfItems()):
+    #                 ren.AddVolume(volumes.GetItemAsObject(index))
+    #
+    #             ren3d = renderers.GetNextItem()
+    #
+    #         ren.SetActiveCamera(camera)
+    #
+    #         rw.AddRenderer(ren)
+    #         rw.Render()
+    #
+    #         wti = vtk.vtkWindowToImageFilter()
+    #         wti.SetInput(rw)
+    #         wti.Update()
+    #         writer = vtk.vtkPNGWriter()
+    #         writer.SetInputConnection(wti.GetOutputPort())
+    #         writer.SetFileName(self.outputPath)
+    #         writer.Update()
+    #         writer.Write()
+    #         i = wti.GetOutput()
 
         #
 # HiResScreenCaptureTest
