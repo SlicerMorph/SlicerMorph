@@ -242,72 +242,29 @@ class HiResScreenCaptureLogic(ScriptedLoadableModuleLogic):
 
     def runScreenCapture(self) -> None:
         if self.resolution and self.outputPath:
+            # Switch to a layout that has a window that is not in the main window
             layoutManager = slicer.app.layoutManager()
             originalLayout = layoutManager.layout
-            originalViewNode = layoutManager.threeDWidget(self.threeDViewIndex).mrmlViewNode()
-            originalCamera = slicer.modules.cameras.logic().GetViewActiveCameraNode(originalViewNode)
-
-            # Debugging: Print original camera settings
-            print("Original Camera Settings:")
-            print("Position:", originalCamera.GetPosition())
-            print("Focal Point:", originalCamera.GetFocalPoint())
-            print("View Up:", originalCamera.GetViewUp())
-
             layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutDualMonitorFourUpView)
-            viewNode = layoutManager.threeDWidget(0).mrmlViewNode()
+
+            # Maximize the 3D view within this layout
+            viewLogic = slicer.app.applicationLogic().GetViewLogicByLayoutName("1+")
+            viewNode = viewLogic.GetViewNode()
             layoutManager.addMaximizedViewNode(viewNode)
-            newCamera = slicer.modules.cameras.logic().GetViewActiveCameraNode(viewNode)
 
-            # Set and debug new camera settings
-            newCamera.SetPosition(originalCamera.GetPosition())
-            newCamera.SetFocalPoint(originalCamera.GetFocalPoint())
-            newCamera.SetViewUp(originalCamera.GetViewUp())
-            print("New Camera Settings Applied")
-
-            # Resize and capture the view
-            viewWidget = layoutManager.threeDWidget(0)
+            # Resize the view
+            viewWidget = layoutManager.viewWidget(viewNode)
+            # Parent of the view widget is the frame, parent of the frame is the docking widget
             layoutDockingWidget = viewWidget.parent().parent()
-            originalSize = layoutDockingWidget.size()
+            originalSize = layoutDockingWidget.size
             layoutDockingWidget.resize(self.resolution[0], self.resolution[1])
-
-            # Force a redraw
-            layoutManager.threeDWidget(0).threeDView().scheduleRender()
 
             # Capture the view
             cap = ScreenCapture.ScreenCaptureLogic()
             cap.captureImageFromView(viewWidget.threeDView(), self.outputPath)
-
             # Restore original size and layout
-            layoutDockingWidget.resize(originalSize.width(), originalSize.height())
+            layoutDockingWidget.resize(originalSize)
             layoutManager.setLayout(originalLayout)
-
-            print("Capture Completed")
-
-    # def runScreenCapture(self) -> None:
-    #     if self.resolution and self.outputPath:
-    #         # Switch to a layout that has a window that is not in the main window
-    #         layoutManager = slicer.app.layoutManager()
-    #         originalLayout = layoutManager.layout
-    #         layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutDualMonitorFourUpView)
-    #
-    #         # Maximize the 3D view within this layout
-    #         viewLogic = slicer.app.applicationLogic().GetViewLogicByLayoutName("1+")
-    #         viewNode = viewLogic.GetViewNode()
-    #         layoutManager.addMaximizedViewNode(viewNode)
-    #
-    #         # Resize the view
-    #         viewWidget = layoutManager.viewWidget(viewNode)
-    #         # Parent of the view widget is the frame, parent of the frame is the docking widget
-    #         layoutDockingWidget = viewWidget.parent().parent()
-    #         originalSize = layoutDockingWidget.size
-    #         layoutDockingWidget.resize(self.resolution[0], self.resolution[1])
-    #
-    #         # Capture the view
-    #         cap = ScreenCapture.ScreenCaptureLogic()
-    #         cap.captureImageFromView(viewWidget.threeDView(), self.outputPath)
-    #         # Restore original size and layout
-    #         layoutDockingWidget.resize(originalSize)
-    #         layoutManager.setLayout(originalLayout)
 
     # def runScreenCapture(self) -> None:
     #     if self.resolution and self.outputPath:
