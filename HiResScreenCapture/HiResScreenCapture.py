@@ -76,11 +76,11 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         Called when the user opens the module the first time and the widget is initialized.
         """
         ScriptedLoadableModuleWidget.__init__(self, parent)
-        self.applyButton = None
-        self.threeDViewComboBox = None
-        self.resolutionYSpinBox = None
-        self.resolutionXSpinBox = None
+        self.resolutionButtons = {}
+        self.resolutionMapping = {}  # Dictionary to map buttons to resolution factors
         self.selectOutputDirButton = None
+        self.applyButton = None
+        self.resolutionYSpinBox = None
         self.outputDirLineEdit = None
         self.filenameLineEdit = None
         self.logic = None
@@ -91,10 +91,8 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         """
         ScriptedLoadableModuleWidget.setup(self)
 
-        # moduleNameLabel = qt.QLabel("High Resolution Screen Capture")
-        # moduleNameLabel.setAlignment(qt.Qt.AlignCenter)
-        # moduleNameLabel.setStyleSheet("font-weight: bold; font-size: 18px; padding: 10px;")
-        # self.layout.addWidget(moduleNameLabel)
+        # Ensure layout alignment is set to top
+        self.layout.setAlignment(qt.Qt.AlignTop)
 
         parametersCollapsibleButton = ctk.ctkCollapsibleButton()
         parametersCollapsibleButton.text = "Screen Capture Settings"
@@ -117,28 +115,19 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         directoryHBox.addWidget(self.selectOutputDirButton)
         parametersFormLayout.addRow("Output Folder:", directoryHBox)
 
-        # Resolution input fields
-        self.resolutionXSpinBox = qt.QSpinBox()
-        self.resolutionXSpinBox.setMinimum(1)
-        self.resolutionXSpinBox.setMaximum(5000)  # You can change this max value
-        self.resolutionXSpinBox.setValue(1920)  # Default value
-        parametersFormLayout.addRow("X Dimension:", self.resolutionXSpinBox)
+        # Resolution selection
+        resolutionGroupBox = qt.QGroupBox("Resolution Selection (Magnification):")
+        resolutionLayout = qt.QHBoxLayout()  # Changed to QHBoxLayout for horizontal tiling
+        resolutionGroupBox.setLayout(resolutionLayout)
 
-        self.resolutionYSpinBox = qt.QSpinBox()
-        self.resolutionYSpinBox.setMinimum(1)
-        self.resolutionYSpinBox.setMaximum(5000)  # You can change this max value
-        self.resolutionYSpinBox.setValue(1080)  # Default value
-        parametersFormLayout.addRow("Y Dimension:", self.resolutionYSpinBox)
-
-        # Add a combo box for selecting the 3D view
-        self.threeDViewComboBox = qt.QComboBox()
-        threeDViewCount = slicer.app.layoutManager().threeDViewCount
-        for i in range(threeDViewCount):
-            self.threeDViewComboBox.addItem("3D View #" + str(i + 1), i)
-        parametersFormLayout.addRow("3D View:", self.threeDViewComboBox)
-
-        spacer = qt.QSpacerItem(0, 0, qt.QSizePolicy.Minimum, qt.QSizePolicy.Expanding)
-        self.layout.addItem(spacer)
+        for resolution in ["1X", "2X", "4X", "8X", "12X", "16X", "20X"]:
+            radioButton = qt.QRadioButton(resolution)
+            radioButton.toggled.connect(self.onResolutionChange)
+            radioButton.toggled.connect(self.updateApplyButtonState)  # Ensure state update affects the Apply button
+            resolutionLayout.addWidget(radioButton)
+            self.resolutionButtons[resolution] = radioButton
+            self.resolutionMapping[radioButton] = int(resolution[:-1])  # Store resolution factor in the dictionary
+        parametersFormLayout.addRow(resolutionGroupBox)
 
         # Apply button
         self.applyButton = qt.QPushButton("Export Screenshot")
@@ -151,11 +140,6 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         # Connect signals
         self.filenameLineEdit.textChanged.connect(self.updateApplyButtonState)
         self.outputDirLineEdit.textChanged.connect(self.updateApplyButtonState)
-        self.resolutionXSpinBox.valueChanged.connect(self.updateApplyButtonState)
-        self.resolutionYSpinBox.valueChanged.connect(self.updateApplyButtonState)
-
-        # Connect the update method to the layoutChanged signal
-        slicer.app.layoutManager().layoutChanged.connect(self.updateThreeDViewComboBox)
 
         # Set initial state for the apply button
         self.updateApplyButtonState()
@@ -164,7 +148,7 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         """
         Called when the application closes and the module widget is destroyed.
         """
-        slicer.app.layoutManager().layoutChanged.disconnect(self.updateThreeDViewComboBox)
+        return
 
     def selectOutputDirectory(self) -> None:
         """
@@ -174,33 +158,24 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         if selectedDir:
             self.outputDirLineEdit.setText(selectedDir)
 
+    def onResolutionChange(self):
+        for button, factor in self.resolutionMapping.items():
+            if button.isChecked():
+                self.logic.setResolutionFactor(factor)
+                break
+
     def updateApplyButtonState(self) -> None:
         # Check conditions for enabling the button
-        isFilenameSet = bool(self.filenameLineEdit.text.strip()) and self.filenameLineEdit.text.strip().endswith(
-            '.png')
+        isFilenameSet = bool(self.filenameLineEdit.text.strip()) and self.filenameLineEdit.text.strip().endswith('.png')
         isOutputFolderSet = bool(self.outputDirLineEdit.text.strip())
-        isXResolutionSet = bool(self.resolutionXSpinBox.value)
-        isYResolutionSet = bool(self.resolutionYSpinBox.value)
+
+        # Check if any resolution radio button is selected
+        isResolutionSelected = any(button.isChecked() for button in self.resolutionMapping.keys())
 
         # Enable or disable the button based on the conditions
-        self.applyButton.setEnabled(isFilenameSet and isOutputFolderSet and isXResolutionSet and isYResolutionSet)
-
-    def updateThreeDViewComboBox(self):
-        """
-        Update the items in the threeDViewComboBox with the current 3D views.
-        """
-        self.threeDViewComboBox.clear()
-        threeDViewCount = slicer.app.layoutManager().threeDViewCount
-        for i in range(threeDViewCount):
-            self.threeDViewComboBox.addItem("3D View #" + str(i + 1), i)
+        self.applyButton.setEnabled(isFilenameSet and isOutputFolderSet and isResolutionSelected)
 
     def applyButtonClicked(self) -> None:
-        selectedThreeDWidgetIndex = self.threeDViewComboBox.currentData
-        self.logic.setThreeDViewIndex(selectedThreeDWidgetIndex)
-
-        # Set the resolution in the logic class
-        self.logic.setResolution([self.resolutionXSpinBox.value, self.resolutionYSpinBox.value])
-
         outputPath = os.path.join(self.outputDirLineEdit.text, self.filenameLineEdit.text)
         self.logic.setOutputPath(outputPath)
         self.logic.runScreenCapture()
@@ -225,44 +200,20 @@ class HiResScreenCaptureLogic(ScriptedLoadableModuleLogic):
         Called when the logic class is instantiated. Can be used for initializing member variables.
         """
         ScriptedLoadableModuleLogic.__init__(self)
-
-        self.threeDViewIndex = 0
-        self.resolution = None
+        self.resolutionFactor = None
         self.outputPath = None
 
-    def setResolution(self, resolution: list) -> None:
-
-        self.resolution = resolution
+    def setResolutionFactor(self, resolutionFactor: int) -> None:
+        self.resolutionFactor = resolutionFactor
 
     def setOutputPath(self, outputPath: str) -> None:
         self.outputPath = outputPath
 
-    def setThreeDViewIndex(self, index: int) -> None:
-        self.threeDViewIndex = index
-
-    @staticmethod
-    def adjustMarkupSize(viewWidget, scaleFactor):
-        # Retrieve the markup display node
-        markupsNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLMarkupsDisplayNode")
-        if markupsNode:
-            # You can access specific properties of viewWidget if needed to further refine scaling
-            # For example, you could adjust based on the widget's size or other relevant properties
-            widgetSize = viewWidget.size
-            scaleAdjustment = max(widgetSize.width(), widgetSize.height()) / 1  # Example scaling factor
-
-            # Adjust size based on a scaling factor combined with widget dimensions
-            originalMarkupSize = markupsNode.GetTextScale()
-            newScale = originalMarkupSize * scaleFactor * scaleAdjustment
-            markupsNode.SetTextScale(newScale)
-            print(f"Adjusted markup text scale to: {newScale}")
-
-            return originalMarkupSize
-
     def runScreenCapture(self) -> None:
-        if self.resolution and self.outputPath:
+        if self.resolutionFactor and self.outputPath:
             layoutManager = slicer.app.layoutManager()
             originalLayout = layoutManager.layout
-            originalViewNode = layoutManager.threeDWidget(self.threeDViewIndex).mrmlViewNode()
+            originalViewNode = layoutManager.threeDWidget(0).mrmlViewNode()
             originalCamera = slicer.modules.cameras.logic().GetViewActiveCameraNode(originalViewNode)
 
             # Debugging: Print original camera settings
@@ -270,6 +221,9 @@ class HiResScreenCaptureLogic(ScriptedLoadableModuleLogic):
             print("Position:", originalCamera.GetPosition())
             print("Focal Point:", originalCamera.GetFocalPoint())
             print("View Up:", originalCamera.GetViewUp())
+            # Get original background colors
+            originalBackgroundColor1 = originalViewNode.GetBackgroundColor()
+            originalBackgroundColor2 = originalViewNode.GetBackgroundColor2()
 
             # Set the layout to include the necessary view
             layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutDualMonitorFourUpView)
@@ -282,6 +236,11 @@ class HiResScreenCaptureLogic(ScriptedLoadableModuleLogic):
             newCamera.SetPosition(originalCamera.GetPosition())
             newCamera.SetFocalPoint(originalCamera.GetFocalPoint())
             newCamera.SetViewUp(originalCamera.GetViewUp())
+
+            # Set new view's background to match the original
+            viewNode.SetBackgroundColor(originalBackgroundColor1)
+            viewNode.SetBackgroundColor2(originalBackgroundColor2)  # Ensure uniform background
+
             print("New Camera Settings Applied")
 
             # Ensure volume rendering is visible in the new view
@@ -296,10 +255,13 @@ class HiResScreenCaptureLogic(ScriptedLoadableModuleLogic):
             viewWidget = layoutManager.viewWidget(viewNode)
             layoutDockingWidget = viewWidget.parent().parent()
             originalSize = layoutDockingWidget.size
-            layoutDockingWidget.resize(self.resolution[0], self.resolution[1])
+            layoutDockingWidget.resize(originalSize.width() * self.resolutionFactor,
+                                       originalSize.height() * self.resolutionFactor)
 
             # Force a redraw
             viewWidget.threeDView().forceRender()
+
+            # newCamera.GetCamera().Dolly(1.001)
 
             # Capture the view
             cap = ScreenCapture.ScreenCaptureLogic()
@@ -307,9 +269,9 @@ class HiResScreenCaptureLogic(ScriptedLoadableModuleLogic):
 
             # Restore original size and layout
             layoutDockingWidget.resize(originalSize.width(), originalSize.height())
-            layoutManager.setLayout(originalLayout)
+            # layoutManager.setLayout(originalLayout)
 
-            # Optionally, reset volume rendering visibility if needed
+            # reset volume rendering visibility
             if displayNode:
                 displayNode.SetVisibility(True)
                 displayNode.SetViewNodeIDs([originalViewNode.GetID()])
@@ -322,8 +284,6 @@ class HiResScreenCaptureLogic(ScriptedLoadableModuleLogic):
             viewNode = allViewNodes.GetNextItemAsObject()
             while viewNode:
                 if viewNode.GetID() != originalViewNode.GetID():
-                    # viewNode.SetVisibility(False)  # Make the view node invisible
-                    # Optionally, remove the node from the scene if you want to delete it
                     slicer.mrmlScene.RemoveNode(viewNode)
                 viewNode = allViewNodes.GetNextItemAsObject()
 
