@@ -227,8 +227,9 @@ class HiResScreenCaptureLogic(ScriptedLoadableModuleLogic):
 
             # Set the layout to include the necessary view
             layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutDualMonitorFourUpView)
-            viewLogic = slicer.app.applicationLogic().GetViewLogicByLayoutName("1+")
-            viewNode = viewLogic.GetViewNode()
+            viewNode = layoutManager.threeDWidget(0).mrmlViewNode()
+            # viewLogic = slicer.app.applicationLogic().GetViewLogicByLayoutName("1+")
+            # viewNode = viewLogic.GetViewNode()
             layoutManager.addMaximizedViewNode(viewNode)
             newCamera = slicer.modules.cameras.logic().GetViewActiveCameraNode(viewNode)
 
