@@ -358,6 +358,22 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     ScriptedLoadableModuleWidget.setup(self)
     # Initialize zoom factor for widget
     self.widgetZoomFactor = 0
+    # Import pandas if needed
+    try:
+      import pandas
+    except:
+      progressDialog = slicer.util.createProgressDialog(
+          windowTitle="Installing...",
+          labelText="Installing Pandas Python package...",
+          maximum=0,
+      )
+      slicer.app.processEvents()
+      try:
+        slicer.util.pip_install(["pandas"])
+        progressDialog.close()
+      except:
+        slicer.util.infoDisplay("Issue while installing Pandas Python package. Please install manually.")
+        progressDialog.close()
 
     # Set up tabs to split workflow
     tabsWidget = qt.QTabWidget()
