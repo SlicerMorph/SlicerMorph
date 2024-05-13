@@ -224,6 +224,7 @@ class HiResScreenCaptureLogic(ScriptedLoadableModuleLogic):
         self.currentScaleFactor = None
         self.resolutionFactor = None
         self.outputPath = None
+        self.initial_layout = None
 
     def setResolutionFactor(self, resolutionFactor: int) -> None:
         self.resolutionFactor = resolutionFactor
@@ -233,6 +234,69 @@ class HiResScreenCaptureLogic(ScriptedLoadableModuleLogic):
 
     def setOutputPath(self, outputPath: str) -> None:
         self.outputPath = outputPath
+
+    def setInitialLayout(self, layout) -> None:
+        self.initial_layout = layout
+
+    @staticmethod
+    def setupCustom3DView():
+        # Define the custom layout XML for dual monitor with two 3D views
+        customDual3DLayoutXML = """
+        <layout type="horizontal">
+            <item>
+                <view class="vtkMRMLViewNode" singletontag="1">
+                    <property name="viewlabel" action="default">1L</property>  <!-- Left Monitor -->
+                </view>
+            </item>
+            <item>
+                <view class="vtkMRMLViewNode" singletontag="2">
+                    <property name="viewlabel" action="default">1R</property>  <!-- Right Monitor -->
+                </view>
+            </item>
+        </layout>
+        """
+
+        # Register the custom layout
+        customDual3DLayoutId = 501  # Ensure this ID is unique in your application
+        layoutNode = slicer.app.layoutManager().layoutLogic().GetLayoutNode()
+        layoutNode.AddLayoutDescription(customDual3DLayoutId, customDual3DLayoutXML)
+
+        # Set the layout to the new custom dual 3D only layout
+        layoutManager = slicer.app.layoutManager()
+        layoutManager.setLayout(customDual3DLayoutId)
+
+    @staticmethod
+    def get3DViewNodeByTag(tag):
+        """
+        Retrieves a 3D view node by its singleton tag.
+        """
+        viewNode = slicer.mrmlScene.GetSingletonNode(tag, "vtkMRMLViewNode")
+        if not viewNode:
+            print(f"No view node found with tag {tag}")
+        return viewNode
+
+    @staticmethod
+    def undockAndViewNode(tag):
+        """
+        Undocks and hides/shows the view widget associated with a specific view node singleton tag.
+        """
+        layoutManager = slicer.app.layoutManager()
+        # Find the 3D widget by its associated view node tag
+        for i in range(layoutManager.threeDViewCount):
+            threeDWidget = layoutManager.threeDWidget(i)
+            viewNode = threeDWidget.mrmlViewNode()
+            if viewNode.GetSingletonTag() == tag:
+                # Undock the widget (if your application supports floating/detaching widgets)
+                # This typically requires interaction with the widget's parent or the windowing system
+                if hasattr(threeDWidget, 'setFloating'):
+                    threeDWidget.setFloating(True)  # PyQt/PySide dependent
+
+                # Manage visibility
+                threeDWidget.setVisible(False)  # Make the widget invisible
+                print(f"Widget for tag {tag} has been undocked and hidden.")
+                return
+
+        print(f"No widget found with tag {tag}.")
 
     def runScreenCapture(self) -> None:
         if self.resolutionFactor and self.outputPath:
@@ -251,9 +315,13 @@ class HiResScreenCaptureLogic(ScriptedLoadableModuleLogic):
             originalBackgroundColor2 = originalViewNode.GetBackgroundColor2()
 
             # Set the layout to include the necessary view
-            layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutDualMonitorFourUpView)
-            viewLogic = slicer.app.applicationLogic().GetViewLogicByLayoutName("1+")
-            viewNode = viewLogic.GetViewNode()
+            # layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutDualMonitorFourUpView)
+            # viewLogic = slicer.app.applicationLogic().GetViewLogicByLayoutName("1+")
+            # viewNode = viewLogic.GetViewNode()
+            # layoutManager.addMaximizedViewNode(viewNode)
+
+            self.setupCustom3DView()
+            viewNode = self.get3DViewNodeByTag("2")
             layoutManager.addMaximizedViewNode(viewNode)
 
             # Set and debug new camera settings
@@ -287,9 +355,8 @@ class HiResScreenCaptureLogic(ScriptedLoadableModuleLogic):
                                        originalSize.height() * self.resolutionFactor)
 
             # Force a redraw
+            newCamera.GetCamera().Dolly(1.003)
             viewWidget.threeDView().forceRender()
-
-            # newCamera.GetCamera().Dolly(1.001)
 
             # Capture the view
             cap = ScreenCapture.ScreenCaptureLogic()
@@ -314,9 +381,6 @@ class HiResScreenCaptureLogic(ScriptedLoadableModuleLogic):
                 if viewNode.GetID() != originalViewNode.GetID():
                     slicer.mrmlScene.RemoveNode(viewNode)
                 viewNode = allViewNodes.GetNextItemAsObject()
-
-            # Refresh the layout to reflect changes
-            layoutManager.layout = originalLayout
 
     # def runScreenCapture(self) -> None:
     #     if self.resolution and self.outputPath:
