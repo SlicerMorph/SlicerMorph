@@ -77,6 +77,7 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         """
         ScriptedLoadableModuleWidget.__init__(self, parent)
         self.resolutionButtons = {}
+        self.scaleFactorMapping = {}
         self.resolutionMapping = {}  # Dictionary to map buttons to resolution factors
         self.selectOutputDirButton = None
         self.applyButton = None
@@ -84,6 +85,16 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         self.outputDirLineEdit = None
         self.filenameLineEdit = None
         self.logic = None
+
+        self.resolutionScaleFactors = {
+            "1X": 0.05,
+            "2X": 0.1,
+            "4X": 0.3,
+            "8X": 0.6,
+            "12X": 1.0,
+            "16X": 1.4,
+            "20X": 1.8
+        }
 
     def setup(self) -> None:
         """
@@ -164,6 +175,16 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
                 self.logic.setResolutionFactor(factor)
                 break
 
+        # Set Scale factor for markups
+        for radioButton in self.resolutionButtons.values():
+            if radioButton.isChecked():
+                resolutionKey = radioButton.text  # Get the text of the radio button, e.g., "2X"
+                self.logic.setCurrentScalFactor(
+                    self.resolutionScaleFactors.get(resolutionKey, 0.01))  # Default to 1.0 if not found
+                print("Resolution changed to:", resolutionKey, "Scale factor set to:",
+                      self.resolutionScaleFactors.get(resolutionKey, 0.01))
+                break
+
     def updateApplyButtonState(self) -> None:
         # Check conditions for enabling the button
         isFilenameSet = bool(self.filenameLineEdit.text.strip()) and self.filenameLineEdit.text.strip().endswith('.png')
@@ -200,11 +221,15 @@ class HiResScreenCaptureLogic(ScriptedLoadableModuleLogic):
         Called when the logic class is instantiated. Can be used for initializing member variables.
         """
         ScriptedLoadableModuleLogic.__init__(self)
+        self.currentScaleFactor = None
         self.resolutionFactor = None
         self.outputPath = None
 
     def setResolutionFactor(self, resolutionFactor: int) -> None:
         self.resolutionFactor = resolutionFactor
+
+    def setCurrentScalFactor(self, scaleFactor: int) -> None:
+        self.currentScaleFactor = scaleFactor
 
     def setOutputPath(self, outputPath: str) -> None:
         self.outputPath = outputPath
@@ -227,13 +252,12 @@ class HiResScreenCaptureLogic(ScriptedLoadableModuleLogic):
 
             # Set the layout to include the necessary view
             layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutDualMonitorFourUpView)
-            # viewNode = layoutManager.threeDWidget(0).mrmlViewNode()
             viewLogic = slicer.app.applicationLogic().GetViewLogicByLayoutName("1+")
             viewNode = viewLogic.GetViewNode()
             layoutManager.addMaximizedViewNode(viewNode)
-            newCamera = slicer.modules.cameras.logic().GetViewActiveCameraNode(viewNode)
 
             # Set and debug new camera settings
+            newCamera = slicer.modules.cameras.logic().GetViewActiveCameraNode(viewNode)
             newCamera.SetPosition(originalCamera.GetPosition())
             newCamera.SetFocalPoint(originalCamera.GetFocalPoint())
             newCamera.SetViewUp(originalCamera.GetViewUp())
@@ -241,6 +265,9 @@ class HiResScreenCaptureLogic(ScriptedLoadableModuleLogic):
             # Set new view's background to match the original
             viewNode.SetBackgroundColor(originalBackgroundColor1)
             viewNode.SetBackgroundColor2(originalBackgroundColor2)  # Ensure uniform background
+
+            # Base multiplier might need tuning based on your specific needs
+            viewNode.SetScreenScaleFactor(self.currentScaleFactor)
 
             print("New Camera Settings Applied")
 
@@ -270,7 +297,7 @@ class HiResScreenCaptureLogic(ScriptedLoadableModuleLogic):
 
             # Restore original size and layout
             layoutDockingWidget.resize(originalSize.width(), originalSize.height())
-            # layoutManager.setLayout(originalLayout)
+            layoutManager.setLayout(originalLayout)
 
             # reset volume rendering visibility
             if displayNode:
@@ -440,7 +467,7 @@ class HiResScreenCaptureLogic(ScriptedLoadableModuleLogic):
     #         writer.Write()
     #         i = wti.GetOutput()
 
-        #
+    #
 # HiResScreenCaptureTest
 #
 
