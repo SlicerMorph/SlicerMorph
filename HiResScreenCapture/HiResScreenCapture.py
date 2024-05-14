@@ -87,13 +87,13 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         self.logic = None
 
         self.resolutionScaleFactors = {
-            "1X": 0.05,
-            "2X": 0.1,
-            "4X": 0.3,
-            "8X": 0.6,
-            "12X": 1.0,
-            "16X": 1.4,
-            "20X": 1.8
+            "1X": 1.,
+            "2X": 2.,
+            "4X": 4.,
+            "8X": 8.,
+            "12X": 12.,
+            "16X": 16.,
+            "20X": 20.,
         }
 
     def setup(self) -> None:
@@ -301,86 +301,114 @@ class HiResScreenCaptureLogic(ScriptedLoadableModuleLogic):
     def runScreenCapture(self) -> None:
         if self.resolutionFactor and self.outputPath:
             layoutManager = slicer.app.layoutManager()
-            originalLayout = layoutManager.layout
-            originalViewNode = layoutManager.threeDWidget(0).mrmlViewNode()
-            originalCamera = slicer.modules.cameras.logic().GetViewActiveCameraNode(originalViewNode)
+            currentLayout = layoutManager.layout
+            threeDWidget = layoutManager.threeDWidget(0)
 
-            # Debugging: Print original camera settings
-            print("Original Camera Settings:")
-            print("Position:", originalCamera.GetPosition())
-            print("Focal Point:", originalCamera.GetFocalPoint())
-            print("View Up:", originalCamera.GetViewUp())
-            # Get original background colors
-            originalBackgroundColor1 = originalViewNode.GetBackgroundColor()
-            originalBackgroundColor2 = originalViewNode.GetBackgroundColor2()
+            threeDWidget.setParent(None)
+            threeDWidget.show()
+            originalSize = threeDWidget.size
+            print("Original Image size:", threeDWidget.size)
 
-            # Set the layout to include the necessary view
-            # layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutDualMonitorFourUpView)
-            # viewLogic = slicer.app.applicationLogic().GetViewLogicByLayoutName("1+")
-            # viewNode = viewLogic.GetViewNode()
+            viewNode = threeDWidget.mrmlViewNode()
+            originalScaleFactor = viewNode.GetScreenScaleFactor()
+            print("Original Markup Scale Factor:", originalScaleFactor)
+            viewNode.SetScreenScaleFactor(originalScaleFactor * self.currentScaleFactor)
+
+            threeDWidget.size = qt.QSize(originalSize.width() * self.resolutionFactor,
+                                         originalSize.height() * self.resolutionFactor)
+            print("Updated Image size:", threeDWidget.size)
+
+            print("Updated Markup Scale Factor:", viewNode.GetScreenScaleFactor())
+            viewNode.SetScreenScaleFactor(originalScaleFactor)
+
+            threeDWidget.grab().save(self.outputPath)
+
+            # make sure the layout changes so that the threeDWidget is reparented and resized
+            layoutManager.layout = slicer.vtkMRMLLayoutNode.SlicerLayoutCustomView
+            layoutManager.layout = currentLayout
+
+            # layoutManager = slicer.app.layoutManager()
+            # originalLayout = layoutManager.layout
+            # originalViewNode = layoutManager.threeDWidget(0).mrmlViewNode()
+            # originalCamera = slicer.modules.cameras.logic().GetViewActiveCameraNode(originalViewNode)
+            #
+            # # Debugging: Print original camera settings
+            # print("Original Camera Settings:")
+            # print("Position:", originalCamera.GetPosition())
+            # print("Focal Point:", originalCamera.GetFocalPoint())
+            # print("View Up:", originalCamera.GetViewUp())
+            #
+            # # Get original background colors
+            # originalBackgroundColor1 = originalViewNode.GetBackgroundColor()
+            # originalBackgroundColor2 = originalViewNode.GetBackgroundColor2()
+            #
+            # # Set the layout to include the necessary view
+            # # layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutDualMonitorFourUpView)
+            # # viewLogic = slicer.app.applicationLogic().GetViewLogicByLayoutName("1+")
+            # # viewNode = viewLogic.GetViewNode()
+            # # layoutManager.addMaximizedViewNode(viewNode)
+            #
+            # self.setupCustom3DView()
+            # viewNode = self.get3DViewNodeByTag("2")
             # layoutManager.addMaximizedViewNode(viewNode)
-
-            self.setupCustom3DView()
-            viewNode = self.get3DViewNodeByTag("2")
-            layoutManager.addMaximizedViewNode(viewNode)
-
-            # Set and debug new camera settings
-            newCamera = slicer.modules.cameras.logic().GetViewActiveCameraNode(viewNode)
-            newCamera.SetPosition(originalCamera.GetPosition())
-            newCamera.SetFocalPoint(originalCamera.GetFocalPoint())
-            newCamera.SetViewUp(originalCamera.GetViewUp())
-
-            # Set new view's background to match the original
-            viewNode.SetBackgroundColor(originalBackgroundColor1)
-            viewNode.SetBackgroundColor2(originalBackgroundColor2)  # Ensure uniform background
-
-            # Base multiplier might need tuning based on your specific needs
-            viewNode.SetScreenScaleFactor(self.currentScaleFactor)
-
-            print("New Camera Settings Applied")
-
-            # Ensure volume rendering is visible in the new view
-            volumeRenderingLogic = slicer.modules.volumerendering.logic()
-            volumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLVolumeNode")
-            displayNode = volumeRenderingLogic.GetFirstVolumeRenderingDisplayNode(volumeNode)
-            if displayNode:
-                displayNode.SetVisibility(True)
-                displayNode.SetViewNodeIDs([viewNode.GetID()])
-
-            # Resize and capture the view
-            viewWidget = layoutManager.viewWidget(viewNode)
-            layoutDockingWidget = viewWidget.parent().parent()
-            originalSize = layoutDockingWidget.size
-            layoutDockingWidget.resize(originalSize.width() * self.resolutionFactor,
-                                       originalSize.height() * self.resolutionFactor)
-
-            # Force a redraw
-            newCamera.GetCamera().Dolly(1.003)
-            viewWidget.threeDView().forceRender()
-
-            # Capture the view
-            cap = ScreenCapture.ScreenCaptureLogic()
-            cap.captureImageFromView(viewWidget.threeDView(), self.outputPath)
-
-            # Restore original size and layout
-            layoutDockingWidget.resize(originalSize.width(), originalSize.height())
-            layoutManager.setLayout(originalLayout)
-
-            # reset volume rendering visibility
-            if displayNode:
-                displayNode.SetVisibility(True)
-                displayNode.SetViewNodeIDs([originalViewNode.GetID()])
-
-            print("Capture Completed")
-
-            # Make all other view nodes except the original one invisible
-            allViewNodes = slicer.mrmlScene.GetNodesByClass("vtkMRMLViewNode")
-            allViewNodes.InitTraversal()
-            viewNode = allViewNodes.GetNextItemAsObject()
-            while viewNode:
-                if viewNode.GetID() != originalViewNode.GetID():
-                    slicer.mrmlScene.RemoveNode(viewNode)
-                viewNode = allViewNodes.GetNextItemAsObject()
+            #
+            # # Set and debug new camera settings
+            # newCamera = slicer.modules.cameras.logic().GetViewActiveCameraNode(viewNode)
+            # newCamera.SetPosition(originalCamera.GetPosition())
+            # newCamera.SetFocalPoint(originalCamera.GetFocalPoint())
+            # newCamera.SetViewUp(originalCamera.GetViewUp())
+            #
+            # # Set new view's background to match the original
+            # viewNode.SetBackgroundColor(originalBackgroundColor1)
+            # viewNode.SetBackgroundColor2(originalBackgroundColor2)  # Ensure uniform background
+            #
+            # # Base multiplier might need tuning based on your specific needs
+            # viewNode.SetScreenScaleFactor(self.currentScaleFactor)
+            #
+            # print("New Camera Settings Applied")
+            #
+            # # Ensure volume rendering is visible in the new view
+            # volumeRenderingLogic = slicer.modules.volumerendering.logic()
+            # volumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLVolumeNode")
+            # displayNode = volumeRenderingLogic.GetFirstVolumeRenderingDisplayNode(volumeNode)
+            # if displayNode:
+            #     displayNode.SetVisibility(True)
+            #     displayNode.SetViewNodeIDs([viewNode.GetID()])
+            #
+            # # Resize and capture the view
+            # viewWidget = layoutManager.viewWidget(viewNode)
+            # layoutDockingWidget = viewWidget.parent().parent()
+            # originalSize = layoutDockingWidget.size
+            # layoutDockingWidget.resize(originalSize.width() * self.resolutionFactor,
+            #                            originalSize.height() * self.resolutionFactor)
+            #
+            # # Force a redraw
+            # # newCamera.GetCamera().Dolly(1.003)
+            # viewWidget.threeDView().forceRender()
+            #
+            # # Capture the view
+            # cap = ScreenCapture.ScreenCaptureLogic()
+            # cap.captureImageFromView(viewWidget.threeDView(), self.outputPath)
+            #
+            # # Restore original size and layout
+            # layoutDockingWidget.resize(originalSize.width(), originalSize.height())
+            # layoutManager.setLayout(originalLayout)
+            #
+            # # reset volume rendering visibility
+            # if displayNode:
+            #     displayNode.SetVisibility(True)
+            #     displayNode.SetViewNodeIDs([originalViewNode.GetID()])
+            #
+            # print("Capture Completed")
+            #
+            # # Remove all other view nodes except the original one
+            # allViewNodes = slicer.mrmlScene.GetNodesByClass("vtkMRMLViewNode")
+            # allViewNodes.InitTraversal()
+            # viewNode = allViewNodes.GetNextItemAsObject()
+            # while viewNode:
+            #     if viewNode.GetID() != originalViewNode.GetID():
+            #         slicer.mrmlScene.RemoveNode(viewNode)
+            #     viewNode = allViewNodes.GetNextItemAsObject()
 
     # def runScreenCapture(self) -> None:
     #     if self.resolution and self.outputPath:
