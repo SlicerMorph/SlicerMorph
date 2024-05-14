@@ -76,25 +76,16 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         Called when the user opens the module the first time and the widget is initialized.
         """
         ScriptedLoadableModuleWidget.__init__(self, parent)
-        self.resolutionButtons = {}
-        self.scaleFactorMapping = {}
-        self.resolutionMapping = {}  # Dictionary to map buttons to resolution factors
+        self.finalresolutionDisplayLabel = None
+        self.updateTimer = None
+        self.resolutionDisplayLabel = None
+        self.currentScaleFactor = 1.0  # Default scale factor
         self.selectOutputDirButton = None
         self.applyButton = None
-        self.resolutionYSpinBox = None
+        self.resolutionSpinBox = None  # Use a QDoubleSpinBox for resolution factor
         self.outputDirLineEdit = None
         self.filenameLineEdit = None
         self.logic = None
-
-        self.resolutionScaleFactors = {
-            "1X": 1.,
-            "2X": 2.,
-            "4X": 4.,
-            "8X": 8.,
-            "12X": 12.,
-            "16X": 16.,
-            "20X": 20.,
-        }
 
     def setup(self) -> None:
         """
@@ -126,19 +117,24 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         directoryHBox.addWidget(self.selectOutputDirButton)
         parametersFormLayout.addRow("Output Folder:", directoryHBox)
 
-        # Resolution selection
-        resolutionGroupBox = qt.QGroupBox("Resolution Selection (Magnification):")
-        resolutionLayout = qt.QHBoxLayout()  # Changed to QHBoxLayout for horizontal tiling
-        resolutionGroupBox.setLayout(resolutionLayout)
+        # Resolution Scaling Factor (using QDoubleSpinBox)
+        self.resolutionSpinBox = qt.QDoubleSpinBox()
+        self.resolutionSpinBox.setRange(0.1, 100.0)  # Set appropriate range
+        self.resolutionSpinBox.setSingleStep(0.1)
+        self.resolutionSpinBox.setDecimals(2)
+        self.resolutionSpinBox.setValue(self.currentScaleFactor)
+        self.resolutionSpinBox.valueChanged.connect(self.onResolutionFactorChanged)
+        parametersFormLayout.addRow("Resolution Scaling Factor:", self.resolutionSpinBox)
 
-        for resolution in ["1X", "2X", "4X", "8X", "12X", "16X", "20X"]:
-            radioButton = qt.QRadioButton(resolution)
-            radioButton.toggled.connect(self.onResolutionChange)
-            radioButton.toggled.connect(self.updateApplyButtonState)  # Ensure state update affects the Apply button
-            resolutionLayout.addWidget(radioButton)
-            self.resolutionButtons[resolution] = radioButton
-            self.resolutionMapping[radioButton] = int(resolution[:-1])  # Store resolution factor in the dictionary
-        parametersFormLayout.addRow(resolutionGroupBox)
+        self.resolutionDisplayLabel = qt.QLabel("Current Resolution: Unknown")
+        self.finalresolutionDisplayLabel = qt.QLabel("Current Resolution: Unknown")
+        parametersFormLayout.addRow("Current 3D Resolution:", self.resolutionDisplayLabel)
+        parametersFormLayout.addRow("Expected Screenshot 3D Resolution:", self.finalresolutionDisplayLabel)
+
+        # Initialize the timer for updating the resolution display
+        self.updateTimer = qt.QTimer()
+        self.updateTimer.timeout.connect(self.updateResolutionDisplay)
+        self.updateTimer.start(100)  # update every second
 
         # Apply button
         self.applyButton = qt.QPushButton("Export Screenshot")
@@ -147,6 +143,7 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
 
         # Create logic class
         self.logic = HiResScreenCaptureLogic()
+        self.logic.setCurrentScalFactor(self.currentScaleFactor)  # set default scale factor
 
         # Connect signals
         self.filenameLineEdit.textChanged.connect(self.updateApplyButtonState)
@@ -155,11 +152,25 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         # Set initial state for the apply button
         self.updateApplyButtonState()
 
-    def cleanup(self) -> None:
+    def updateResolutionDisplay(self):
+        threeDWidget = slicer.app.layoutManager().threeDWidget(0)
+        if threeDWidget:
+            view = threeDWidget.threeDView()
+            width = view.width
+            height = view.height
+            self.resolutionDisplayLabel.setText(f"{width} x {height}")
+            self.finalresolutionDisplayLabel.setText(f"{int(round(width*self.currentScaleFactor))} x "
+                                                     f"{int(round(height*self.currentScaleFactor))}")
+
+    def cleanup(self):
         """
         Called when the application closes and the module widget is destroyed.
         """
-        return
+        if self.updateTimer:
+            self.updateTimer.stop()
+
+        # Properly call super with the current class name and `self`
+        super().cleanup()
 
     def selectOutputDirectory(self) -> None:
         """
@@ -169,36 +180,29 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         if selectedDir:
             self.outputDirLineEdit.setText(selectedDir)
 
-    def onResolutionChange(self):
-        for button, factor in self.resolutionMapping.items():
-            if button.isChecked():
-                self.logic.setResolutionFactor(factor)
-                break
+    def onResolutionFactorChanged(self, value):
+        """
+        Updates the current resolution scaling factor based on user input from the spin box.
+        """
+        self.logic.setCurrentScalFactor(value)
+        self.currentScaleFactor = value
+        # print("Resolution scaling factor set to:", self.currentScaleFactor)
 
-        # Set Scale factor for markups
-        for radioButton in self.resolutionButtons.values():
-            if radioButton.isChecked():
-                resolutionKey = radioButton.text  # Get the text of the radio button, e.g., "2X"
-                self.logic.setCurrentScalFactor(
-                    self.resolutionScaleFactors.get(resolutionKey, 0.01))  # Default to 1.0 if not found
-                print("Resolution changed to:", resolutionKey, "Scale factor set to:",
-                      self.resolutionScaleFactors.get(resolutionKey, 0.01))
-                break
-
-    def updateApplyButtonState(self) -> None:
-        # Check conditions for enabling the button
+    def updateApplyButtonState(self):
+        """
+        Updates the state of the apply button based on the input fields and resolution factor.
+        """
         isFilenameSet = bool(self.filenameLineEdit.text.strip()) and self.filenameLineEdit.text.strip().endswith('.png')
         isOutputFolderSet = bool(self.outputDirLineEdit.text.strip())
+        self.applyButton.setEnabled(isFilenameSet and isOutputFolderSet)
 
-        # Check if any resolution radio button is selected
-        isResolutionSelected = any(button.isChecked() for button in self.resolutionMapping.keys())
-
-        # Enable or disable the button based on the conditions
-        self.applyButton.setEnabled(isFilenameSet and isOutputFolderSet and isResolutionSelected)
-
-    def applyButtonClicked(self) -> None:
+    def applyButtonClicked(self):
+        """
+        Handles the apply button click to execute screenshot logic with the current scale factor.
+        """
         outputPath = os.path.join(self.outputDirLineEdit.text, self.filenameLineEdit.text)
         self.logic.setOutputPath(outputPath)
+        self.logic.setResolutionFactor(self.currentScaleFactor)
         self.logic.runScreenCapture()
 
 
@@ -224,79 +228,15 @@ class HiResScreenCaptureLogic(ScriptedLoadableModuleLogic):
         self.currentScaleFactor = None
         self.resolutionFactor = None
         self.outputPath = None
-        self.initial_layout = None
 
     def setResolutionFactor(self, resolutionFactor: int) -> None:
         self.resolutionFactor = resolutionFactor
 
-    def setCurrentScalFactor(self, scaleFactor: int) -> None:
+    def setCurrentScalFactor(self, scaleFactor: float) -> None:
         self.currentScaleFactor = scaleFactor
 
     def setOutputPath(self, outputPath: str) -> None:
         self.outputPath = outputPath
-
-    def setInitialLayout(self, layout) -> None:
-        self.initial_layout = layout
-
-    @staticmethod
-    def setupCustom3DView():
-        # Define the custom layout XML for dual monitor with two 3D views
-        customDual3DLayoutXML = """
-        <layout type="horizontal">
-            <item>
-                <view class="vtkMRMLViewNode" singletontag="1">
-                    <property name="viewlabel" action="default">1L</property>  <!-- Left Monitor -->
-                </view>
-            </item>
-            <item>
-                <view class="vtkMRMLViewNode" singletontag="2">
-                    <property name="viewlabel" action="default">1R</property>  <!-- Right Monitor -->
-                </view>
-            </item>
-        </layout>
-        """
-
-        # Register the custom layout
-        customDual3DLayoutId = 501  # Ensure this ID is unique in your application
-        layoutNode = slicer.app.layoutManager().layoutLogic().GetLayoutNode()
-        layoutNode.AddLayoutDescription(customDual3DLayoutId, customDual3DLayoutXML)
-
-        # Set the layout to the new custom dual 3D only layout
-        layoutManager = slicer.app.layoutManager()
-        layoutManager.setLayout(customDual3DLayoutId)
-
-    @staticmethod
-    def get3DViewNodeByTag(tag):
-        """
-        Retrieves a 3D view node by its singleton tag.
-        """
-        viewNode = slicer.mrmlScene.GetSingletonNode(tag, "vtkMRMLViewNode")
-        if not viewNode:
-            print(f"No view node found with tag {tag}")
-        return viewNode
-
-    @staticmethod
-    def undockAndViewNode(tag):
-        """
-        Undocks and hides/shows the view widget associated with a specific view node singleton tag.
-        """
-        layoutManager = slicer.app.layoutManager()
-        # Find the 3D widget by its associated view node tag
-        for i in range(layoutManager.threeDViewCount):
-            threeDWidget = layoutManager.threeDWidget(i)
-            viewNode = threeDWidget.mrmlViewNode()
-            if viewNode.GetSingletonTag() == tag:
-                # Undock the widget (if your application supports floating/detaching widgets)
-                # This typically requires interaction with the widget's parent or the windowing system
-                if hasattr(threeDWidget, 'setFloating'):
-                    threeDWidget.setFloating(True)  # PyQt/PySide dependent
-
-                # Manage visibility
-                threeDWidget.setVisible(False)  # Make the widget invisible
-                print(f"Widget for tag {tag} has been undocked and hidden.")
-                return
-
-        print(f"No widget found with tag {tag}.")
 
     def runScreenCapture(self) -> None:
         if self.resolutionFactor and self.outputPath:
@@ -314,250 +254,20 @@ class HiResScreenCaptureLogic(ScriptedLoadableModuleLogic):
             print("Original Markup Scale Factor:", originalScaleFactor)
             viewNode.SetScreenScaleFactor(originalScaleFactor * self.currentScaleFactor)
 
-            threeDWidget.size = qt.QSize(originalSize.width() * self.resolutionFactor,
-                                         originalSize.height() * self.resolutionFactor)
+            threeDWidget.size = qt.QSize(originalSize.width() * self.currentScaleFactor,
+                                         originalSize.height() * self.currentScaleFactor)
             print("Updated Image size:", threeDWidget.size)
 
             print("Updated Markup Scale Factor:", viewNode.GetScreenScaleFactor())
-            viewNode.SetScreenScaleFactor(originalScaleFactor)
 
+            # Capture the view
             threeDWidget.grab().save(self.outputPath)
+
+            viewNode.SetScreenScaleFactor(originalScaleFactor)
 
             # make sure the layout changes so that the threeDWidget is reparented and resized
             layoutManager.layout = slicer.vtkMRMLLayoutNode.SlicerLayoutCustomView
             layoutManager.layout = currentLayout
-
-            # layoutManager = slicer.app.layoutManager()
-            # originalLayout = layoutManager.layout
-            # originalViewNode = layoutManager.threeDWidget(0).mrmlViewNode()
-            # originalCamera = slicer.modules.cameras.logic().GetViewActiveCameraNode(originalViewNode)
-            #
-            # # Debugging: Print original camera settings
-            # print("Original Camera Settings:")
-            # print("Position:", originalCamera.GetPosition())
-            # print("Focal Point:", originalCamera.GetFocalPoint())
-            # print("View Up:", originalCamera.GetViewUp())
-            #
-            # # Get original background colors
-            # originalBackgroundColor1 = originalViewNode.GetBackgroundColor()
-            # originalBackgroundColor2 = originalViewNode.GetBackgroundColor2()
-            #
-            # # Set the layout to include the necessary view
-            # # layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutDualMonitorFourUpView)
-            # # viewLogic = slicer.app.applicationLogic().GetViewLogicByLayoutName("1+")
-            # # viewNode = viewLogic.GetViewNode()
-            # # layoutManager.addMaximizedViewNode(viewNode)
-            #
-            # self.setupCustom3DView()
-            # viewNode = self.get3DViewNodeByTag("2")
-            # layoutManager.addMaximizedViewNode(viewNode)
-            #
-            # # Set and debug new camera settings
-            # newCamera = slicer.modules.cameras.logic().GetViewActiveCameraNode(viewNode)
-            # newCamera.SetPosition(originalCamera.GetPosition())
-            # newCamera.SetFocalPoint(originalCamera.GetFocalPoint())
-            # newCamera.SetViewUp(originalCamera.GetViewUp())
-            #
-            # # Set new view's background to match the original
-            # viewNode.SetBackgroundColor(originalBackgroundColor1)
-            # viewNode.SetBackgroundColor2(originalBackgroundColor2)  # Ensure uniform background
-            #
-            # # Base multiplier might need tuning based on your specific needs
-            # viewNode.SetScreenScaleFactor(self.currentScaleFactor)
-            #
-            # print("New Camera Settings Applied")
-            #
-            # # Ensure volume rendering is visible in the new view
-            # volumeRenderingLogic = slicer.modules.volumerendering.logic()
-            # volumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLVolumeNode")
-            # displayNode = volumeRenderingLogic.GetFirstVolumeRenderingDisplayNode(volumeNode)
-            # if displayNode:
-            #     displayNode.SetVisibility(True)
-            #     displayNode.SetViewNodeIDs([viewNode.GetID()])
-            #
-            # # Resize and capture the view
-            # viewWidget = layoutManager.viewWidget(viewNode)
-            # layoutDockingWidget = viewWidget.parent().parent()
-            # originalSize = layoutDockingWidget.size
-            # layoutDockingWidget.resize(originalSize.width() * self.resolutionFactor,
-            #                            originalSize.height() * self.resolutionFactor)
-            #
-            # # Force a redraw
-            # # newCamera.GetCamera().Dolly(1.003)
-            # viewWidget.threeDView().forceRender()
-            #
-            # # Capture the view
-            # cap = ScreenCapture.ScreenCaptureLogic()
-            # cap.captureImageFromView(viewWidget.threeDView(), self.outputPath)
-            #
-            # # Restore original size and layout
-            # layoutDockingWidget.resize(originalSize.width(), originalSize.height())
-            # layoutManager.setLayout(originalLayout)
-            #
-            # # reset volume rendering visibility
-            # if displayNode:
-            #     displayNode.SetVisibility(True)
-            #     displayNode.SetViewNodeIDs([originalViewNode.GetID()])
-            #
-            # print("Capture Completed")
-            #
-            # # Remove all other view nodes except the original one
-            # allViewNodes = slicer.mrmlScene.GetNodesByClass("vtkMRMLViewNode")
-            # allViewNodes.InitTraversal()
-            # viewNode = allViewNodes.GetNextItemAsObject()
-            # while viewNode:
-            #     if viewNode.GetID() != originalViewNode.GetID():
-            #         slicer.mrmlScene.RemoveNode(viewNode)
-            #     viewNode = allViewNodes.GetNextItemAsObject()
-
-    # def runScreenCapture(self) -> None:
-    #     if self.resolution and self.outputPath:
-    #         layoutManager = slicer.app.layoutManager()
-    #         originalLayout = layoutManager.layout
-    #         originalViewNode = layoutManager.threeDWidget(self.threeDViewIndex).mrmlViewNode()
-    #         originalCamera = slicer.modules.cameras.logic().GetViewActiveCameraNode(originalViewNode)
-    #
-    #         # Debugging: Print original camera settings
-    #         print("Original Camera Settings:")
-    #         print("Position:", originalCamera.GetPosition())
-    #         print("Focal Point:", originalCamera.GetFocalPoint())
-    #         print("View Up:", originalCamera.GetViewUp())
-    #
-    #         layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutDualMonitorFourUpView)
-    #         viewNode = layoutManager.threeDWidget(0).mrmlViewNode()
-    #         layoutManager.addMaximizedViewNode(viewNode)
-    #         newCamera = slicer.modules.cameras.logic().GetViewActiveCameraNode(viewNode)
-    #
-    #         # Set and debug new camera settings
-    #         newCamera.SetPosition(originalCamera.GetPosition())
-    #         newCamera.SetFocalPoint(originalCamera.GetFocalPoint())
-    #         newCamera.SetViewUp(originalCamera.GetViewUp())
-    #         print("New Camera Settings Applied")
-    #
-    #         # Resize and capture the view
-    #         # viewWidget = layoutManager.threeDWidget(0) # my code, which does not render whole image
-    #         viewWidget = layoutManager.viewWidget(viewNode)
-    #         layoutDockingWidget = viewWidget.parent().parent()
-    #         originalSize = layoutDockingWidget.size
-    #         layoutDockingWidget.resize(self.resolution[0], self.resolution[1])
-    #
-    #         # Force a redraw
-    #         layoutManager.threeDWidget(0).threeDView().scheduleRender()
-    #
-    #         # Capture the view
-    #         cap = ScreenCapture.ScreenCaptureLogic()
-    #         cap.captureImageFromView(viewWidget.threeDView(), self.outputPath)
-    #
-    #         # Restore original size and layout
-    #         layoutDockingWidget.resize(originalSize.width(), originalSize.height())
-    #         layoutManager.setLayout(originalLayout)
-    #
-    #         print("Capture Completed")
-
-    # def runScreenCapture(self) -> None:
-    #     if self.resolution and self.outputPath:
-    #         # Switch to a layout that has a window that is not in the main window
-    #         layoutManager = slicer.app.layoutManager()
-    #         originalLayout = layoutManager.layout
-    #         layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutDualMonitorFourUpView)
-    #
-    #         # Maximize the 3D view within this layout
-    #         viewLogic = slicer.app.applicationLogic().GetViewLogicByLayoutName("1+")
-    #         viewNode = viewLogic.GetViewNode()
-    #         layoutManager.addMaximizedViewNode(viewNode)
-    #
-    #         # Resize the view
-    #         viewWidget = layoutManager.viewWidget(viewNode)
-    #         # Parent of the view widget is the frame, parent of the frame is the docking widget
-    #         layoutDockingWidget = viewWidget.parent().parent()
-    #         originalSize = layoutDockingWidget.size
-    #         layoutDockingWidget.resize(self.resolution[0], self.resolution[1])
-    #
-    #         # Capture the view
-    #         cap = ScreenCapture.ScreenCaptureLogic()
-    #         cap.captureImageFromView(viewWidget.threeDView(), self.outputPath)
-    #         # Restore original size and layout
-    #         layoutDockingWidget.resize(originalSize)
-    #         layoutManager.setLayout(originalLayout)
-
-    # def runScreenCapture(self) -> None:
-    #     if self.resolution and self.outputPath:
-    #         vtk.vtkGraphicsFactory()
-    #         gf = vtk.vtkGraphicsFactory()
-    #         gf.SetOffScreenOnlyMode(1)
-    #         gf.SetUseMesaClasses(1)
-    #         rw = vtk.vtkRenderWindow()
-    #         rw.SetOffScreenRendering(1)
-    #         ren = vtk.vtkRenderer()
-    #         rw.SetSize(self.resolution[0], self.resolution[1])
-    #
-    #         lm = slicer.app.layoutManager()
-    #
-    #         threeDViewWidget = lm.threeDWidget(self.threeDViewIndex)
-    #         threeDView = threeDViewWidget.threeDView()
-    #
-    #         renderers = threeDView.renderWindow().GetRenderers()
-    #         ren3d = renderers.GetFirstRenderer()
-    #
-    #         # Set the background color of the off-screen renderer to match the original
-    #         backgroundColor = ren3d.GetBackground()
-    #         ren.SetBackground(backgroundColor)
-    #
-    #         camera = ren3d.GetActiveCamera()
-    #
-    #         while ren3d:
-    #
-    #             actors = ren3d.GetActors()
-    #             for index in range(actors.GetNumberOfItems()):
-    #                 actor = actors.GetItemAsObject(index)
-    #
-    #                 actor_class_name = actor.GetClassName()  # Get the class name using VTK's method
-    #                 # Alternatively, use Python's type function: actor_type = type(actor).__name__
-    #                 print("Actor index:", index, "Class name:", actor_class_name)
-    #
-    #                 property = actor.GetProperty()
-    #                 # print("Actor Property:", property)
-    #                 representation = property.GetRepresentation()
-    #
-    #                 # vtkProperty defines three representation types:
-    #                 # vtkProperty.VTK_POINTS, vtkProperty.VTK_WIREFRAME, vtkProperty.VTK_SURFACE
-    #                 if representation == vtk.VTK_POINTS:
-    #                     print("Actor index:", index, "is represented as points.")
-    #                 elif representation == vtk.VTK_WIREFRAME:
-    #                     print("Actor index:", index, "is represented as wireframe.")
-    #                 elif representation == vtk.VTK_SURFACE:
-    #                     print("Actor index:", index, "is represented as a surface.")
-    #                 else:
-    #                     print("Actor index:", index, "has an unknown representation.")
-    #
-    #                 print("Actor index:", index, "Visibility -", actor.GetVisibility(), "|", isActorVisible(camera, actor))
-    #                 if actor.GetVisibility():  # and isActorVisible(camera, actor):
-    #                     ren.AddActor(actor)  # Add only visible actors
-    #
-    #             lights = ren3d.GetLights()
-    #             for index in range(lights.GetNumberOfItems()):
-    #                 ren.AddLight(lights.GetItemAsObject(index))
-    #
-    #             volumes = ren3d.GetVolumes()
-    #             for index in range(volumes.GetNumberOfItems()):
-    #                 ren.AddVolume(volumes.GetItemAsObject(index))
-    #
-    #             ren3d = renderers.GetNextItem()
-    #
-    #         ren.SetActiveCamera(camera)
-    #
-    #         rw.AddRenderer(ren)
-    #         rw.Render()
-    #
-    #         wti = vtk.vtkWindowToImageFilter()
-    #         wti.SetInput(rw)
-    #         wti.Update()
-    #         writer = vtk.vtkPNGWriter()
-    #         writer.SetInputConnection(wti.GetOutputPort())
-    #         writer.SetFileName(self.outputPath)
-    #         writer.Update()
-    #         writer.Write()
-    #         i = wti.GetOutput()
 
     #
 # HiResScreenCaptureTest
