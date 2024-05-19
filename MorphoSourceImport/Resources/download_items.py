@@ -20,10 +20,17 @@ def file_exists_and_size(path):
     return 0
 
 
-def download_file(url, path, api_key, chunk_size, progress_update_func, total_bytes, media_id, existing_file_size=0):
+def download_file(url, path, api_key, chunk_size, progress_update_func, total_bytes, media_id, existing_file_size=0, max_retries=10, retry_delay=5):
     headers = {"Authorization": api_key}
     if existing_file_size > 0:
         headers['Range'] = f'bytes={existing_file_size}-'
+
+    def download_chunk(download_response, fd, downloaded_bytes):
+        for chunk in download_response.iter_content(chunk_size=chunk_size):
+            fd.write(chunk)
+            downloaded_bytes += len(chunk)
+            progress_update_func(media_id, downloaded_bytes, total_bytes)
+        return downloaded_bytes
 
     download_response = requests.get(url, headers=headers, stream=True)
 
@@ -31,10 +38,18 @@ def download_file(url, path, api_key, chunk_size, progress_update_func, total_by
     if download_response.status_code in [200, 206]:
         downloaded_bytes = existing_file_size
         with open(path, 'ab' if existing_file_size > 0 else 'wb') as fd:
-            for chunk in download_response.iter_content(chunk_size=chunk_size):
-                fd.write(chunk)
-                downloaded_bytes += len(chunk)
-                progress_update_func(media_id, downloaded_bytes, total_bytes)
+            while downloaded_bytes < total_bytes:
+                try:
+                    downloaded_bytes = download_chunk(download_response, fd, downloaded_bytes)
+                    break  # Exit loop if successful
+                except requests.RequestException as e:
+                    print(f"Error during download chunk: {e}. Retrying...", flush=True)
+                    time.sleep(retry_delay)
+                    download_response = requests.get(url, headers=headers, stream=True)
+                    max_retries -= 1
+                    if max_retries <= 0:
+                        print(f"Max retries reached. Download failed.", flush=True)
+                        return
 
         # After the download loop, do a final check and update progress to 100%
         # if the downloaded size matches or exceeds the expected total size.
@@ -43,7 +58,7 @@ def download_file(url, path, api_key, chunk_size, progress_update_func, total_by
             progress_update_func(media_id, final_file_size, total_bytes)
     else:
         # Handle error or unexpected status code
-        print(f"Error during download: Unexpected status code {download_response.status_code} for media ID {media_id}")
+        print(f"Error during download: Unexpected status code {download_response.status_code} for media ID {media_id}", flush=True)
 
 
 class MSDownload:
@@ -117,17 +132,20 @@ class MSDownload:
         start_time = time.time()
 
         try:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
                 futures = []
                 for media_id in self.items_to_download:
                     partial_filename = f"partial_media_{media_id}.zip"
                     full_file_path = os.path.join(self.download_folder, partial_filename)
                     existing_file_size = file_exists_and_size(full_file_path)
+                    max_retries = 10
+                    retry_delay = 5
                     download_url = self.get_download_media_zip_url(media_id=media_id,
                                                                    download_config=self.current_download_config)
                     futures.append(executor.submit(download_file, download_url, full_file_path,
                                                    self.current_download_config.api_key, self.chunk_size,
-                                                   self.update_progress, self.total_size, media_id, existing_file_size))
+                                                   self.update_progress, self.total_size, media_id,
+                                                   existing_file_size, max_retries, retry_delay))
                     self.completed_downloads += 1
                 concurrent.futures.wait(futures)
 
@@ -140,9 +158,6 @@ class MSDownload:
             full_partial_path = os.path.join(self.download_folder, partial_filename)
 
             if abs(file_exists_and_size(full_partial_path) - self.sizes[media_id]) <= 2:
-                # if ((file_exists_and_size(full_partial_path) == self.sizes[media_id]) or
-                #         (file_exists_and_size(full_partial_path) + 1 == self.sizes[media_id]) or
-                #         (file_exists_and_size(full_partial_path) - 1 == self.sizes[media_id])):
                 print(f"[Debug] Media ID: {media_id}, Downloaded Bytes: {file_exists_and_size(full_partial_path)}, "
                       f"Total Bytes: {self.sizes[media_id]}")
                 final_filename = f"media_{media_id}.zip"
