@@ -6,8 +6,9 @@ import time
 import requests
 import threading
 import concurrent.futures
+from typing import Optional
 
-import morphosource as ms
+# import morphosource as ms
 from morphosource import DownloadConfig
 from morphosource.download import download_media_bundle, get_download_media_zip_url
 
@@ -26,12 +27,23 @@ def download_file(url, path, api_key, chunk_size, progress_update_func, total_by
 
     download_response = requests.get(url, headers=headers, stream=True)
 
-    downloaded_bytes = existing_file_size
-    with open(path, 'ab' if existing_file_size > 0 else 'wb') as fd:
-        for chunk in download_response.iter_content(chunk_size=chunk_size):
-            fd.write(chunk)
-            downloaded_bytes += len(chunk)
-            progress_update_func(media_id, downloaded_bytes, total_bytes)
+    # Check HTTP response status code
+    if download_response.status_code in [200, 206]:
+        downloaded_bytes = existing_file_size
+        with open(path, 'ab' if existing_file_size > 0 else 'wb') as fd:
+            for chunk in download_response.iter_content(chunk_size=chunk_size):
+                fd.write(chunk)
+                downloaded_bytes += len(chunk)
+                progress_update_func(media_id, downloaded_bytes, total_bytes)
+
+        # After the download loop, do a final check and update progress to 100%
+        # if the downloaded size matches or exceeds the expected total size.
+        final_file_size = file_exists_and_size(path)
+        if final_file_size >= total_bytes:
+            progress_update_func(media_id, final_file_size, total_bytes)
+    else:
+        # Handle error or unexpected status code
+        print(f"Error during download: Unexpected status code {download_response.status_code} for media ID {media_id}")
 
 
 class MSDownload:
@@ -93,7 +105,7 @@ class MSDownload:
         # print(f"[Debug] Total Progress: {total_progress * 100:.2f}%")
         # print(f"[Debug] Total Downloaded MB: {total_downloaded_mb:.2f} MB "
         #       f"of {self.total_mb:.2f} MB downloaded", flush=True)
-        print(f"Download Progress: {total_progress * 100:.2f}%, {total_downloaded_mb:.2f} MB "
+        print(f"Download Progress: {total_progress * 100:.3f}%, {total_downloaded_mb:.3f} MB "
               f"of {self.total_mb:.2f} MB downloaded", flush=True)
 
     def downloadItems(self):
@@ -105,7 +117,7 @@ class MSDownload:
         start_time = time.time()
 
         try:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
                 futures = []
                 for media_id in self.items_to_download:
                     partial_filename = f"partial_media_{media_id}.zip"
@@ -126,17 +138,27 @@ class MSDownload:
         for media_id in self.items_to_download:
             partial_filename = f"partial_media_{media_id}.zip"
             full_partial_path = os.path.join(self.download_folder, partial_filename)
-            if file_exists_and_size(full_partial_path) == self.sizes[media_id]:
+
+            if abs(file_exists_and_size(full_partial_path) - self.sizes[media_id]) <= 2:
+                # if ((file_exists_and_size(full_partial_path) == self.sizes[media_id]) or
+                #         (file_exists_and_size(full_partial_path) + 1 == self.sizes[media_id]) or
+                #         (file_exists_and_size(full_partial_path) - 1 == self.sizes[media_id])):
                 print(f"[Debug] Media ID: {media_id}, Downloaded Bytes: {file_exists_and_size(full_partial_path)}, "
                       f"Total Bytes: {self.sizes[media_id]}")
                 final_filename = f"media_{media_id}.zip"
                 full_final_path = os.path.join(self.download_folder, final_filename)
                 os.rename(full_partial_path, full_final_path)
+            else:
+                print(f"[Debug] Media ID: {media_id}, size mismatch")
+                print(f"[Debug] Media ID: {media_id}, Downloaded Bytes: {file_exists_and_size(full_partial_path)}, "
+                      f"Total Bytes: {self.sizes[media_id]}")
 
         end_time = time.time()
         duration = end_time - start_time
         status_message = "Completed" if download_completed_successfully else "Terminated"
-        print(f"{status_message} downloading {self.completed_downloads} of {len(self.items_to_download)} items in {duration:.2f} seconds.", flush=True)
+        print(
+            f"{status_message} downloading {self.completed_downloads} of {len(self.items_to_download)} items in {duration:.2f} seconds.",
+            flush=True)
 
 
 if __name__ == "__main__":

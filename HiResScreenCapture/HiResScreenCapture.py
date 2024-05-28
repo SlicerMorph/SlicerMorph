@@ -1,11 +1,35 @@
-import logging
 import os
-from typing import Annotated, Optional
 
 import qt, ctk
 import slicer
 import vtk
+
+import ScreenCapture
 from slicer.ScriptedLoadableModule import *
+
+
+def isActorVisible(camera, actor):
+    # Create a list to store the frustum planes
+    frustumPlanes = [0.0] * 24
+
+    # Get the frustum planes from the camera
+    camera.GetFrustumPlanes(1.0, frustumPlanes)
+
+    # Create a vtkPlanes object using the frustum planes
+    planes = vtk.vtkPlanes()
+    planes.SetFrustumPlanes(frustumPlanes)
+
+    # Get the bounds of the actor
+    bounds = actor.GetBounds()
+
+    # Check if the bounding box is within the view frustum
+    for i in range(0, 6):
+        plane = vtk.vtkPlane()
+        planes.GetPlane(i, plane)
+        if plane.EvaluateFunction(bounds[:3]) * plane.EvaluateFunction(bounds[3:]) > 0:
+            # If the product is positive, then one of the box's corners is outside this plane
+            return False
+    return True
 
 
 #
@@ -20,7 +44,7 @@ class HiResScreenCapture(ScriptedLoadableModule):
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
         self.parent.title = "HiResScreenCapture"  # TODO: make this more human readable by adding spaces
-        self.parent.categories = ["Testing.TestCases"]  # TODO: set categories (folders where the module
+        self.parent.categories = ["SlicerMorph.Input and Output"]  # TODO: set categories (folders where the module
         # shows up in the module selector)
         self.parent.dependencies = []  # TODO: add here list of module names that this module requires
         self.parent.contributors = ["Murat Maga (UW), Oshane Thomas(SCRI)"]  # TODO: replace with "Firstname Lastname
@@ -29,10 +53,13 @@ class HiResScreenCapture(ScriptedLoadableModule):
         self.parent.helpText = """
 The "High Resolution Screen Capture" module allows users to capture and save high-quality screenshots from the Slicer
 application. Users specify the filename, output folder, and desired resolution, with the module ensuring all inputs are
- valid and the filename ends with PNG.
+ valid and the filename ends with .png. See more information in
+ <a href="https://github.com/oothomas/SlicerMorph/tree/master/HiResScreenCapture">module documentation</a>.
 """
         # TODO: replace with organization, grant and thanks
-        self.parent.acknowledgementText = """This module was developed by Oshane Thomas for SlicerMorph using the original script by Steve pieper. The development of the module was supported by NSF/OAC grant, HDR Institute: Imageomics: A New Frontier of Biological Information Powered by Knowledge-Guided Machine Learnings" (Award #2118240)."""
+        self.parent.acknowledgementText = """This file was originally developed by Jean-Christophe Fillion-Robin,
+        Kitware Inc., Andras Lasso, PerkLab, and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant
+        3P41RR013218-12S1. We would also like to thank Steve Pieper for developing the export function used here."""
 
 
 #
@@ -49,6 +76,14 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         Called when the user opens the module the first time and the widget is initialized.
         """
         ScriptedLoadableModuleWidget.__init__(self, parent)
+        self.finalresolutionDisplayLabel = None
+        self.updateTimer = None
+        self.resolutionDisplayLabel = None
+        self.currentScaleFactor = 1.0  # Default scale factor
+        self.selectOutputFileButton = None
+        self.applyButton = None
+        self.resolutionSpinBox = None  # Use a QDoubleSpinBox for resolution factor
+        self.outputFileLineEdit = None
         self.logic = None
 
     def setup(self) -> None:
@@ -57,10 +92,8 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         """
         ScriptedLoadableModuleWidget.setup(self)
 
-        moduleNameLabel = qt.QLabel("High Resolution Screen Capture")
-        moduleNameLabel.setAlignment(qt.Qt.AlignCenter)
-        moduleNameLabel.setStyleSheet("font-weight: bold; font-size: 18px; padding: 10px;")
-        self.layout.addWidget(moduleNameLabel)
+        # Ensure layout alignment is set to top
+        self.layout.setAlignment(qt.Qt.AlignTop)
 
         parametersCollapsibleButton = ctk.ctkCollapsibleButton()
         parametersCollapsibleButton.text = "Screen Capture Settings"
@@ -68,43 +101,34 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
 
         parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
 
-        # Output filename QLineEdit
-        self.filenameLineEdit = qt.QLineEdit()
-        self.filenameLineEdit.setPlaceholderText("Enter filename (e.g., screenshot.png)")
-        parametersFormLayout.addRow("Filename:", self.filenameLineEdit)
+        # Output file QLineEdit
+        self.outputFileLineEdit = qt.QLineEdit()
+        self.outputFileLineEdit.setPlaceholderText("e.g., /path/to/screenshot.png")
+        self.selectOutputFileButton = qt.QPushButton("Select Output File")
+        self.selectOutputFileButton.clicked.connect(self.selectOutputFile)
+        fileHBox = qt.QHBoxLayout()
+        fileHBox.addWidget(self.outputFileLineEdit)
+        fileHBox.addWidget(self.selectOutputFileButton)
+        parametersFormLayout.addRow("Output File:", fileHBox)
 
-        # Output directory selector
-        self.outputDirLineEdit = qt.QLineEdit()
-        self.outputDirLineEdit.setReadOnly(True)
-        self.selectOutputDirButton = qt.QPushButton("Select Output Folder")
-        self.selectOutputDirButton.clicked.connect(self.selectOutputDirectory)
-        directoryHBox = qt.QHBoxLayout()
-        directoryHBox.addWidget(self.outputDirLineEdit)
-        directoryHBox.addWidget(self.selectOutputDirButton)
-        parametersFormLayout.addRow("Output Folder:", directoryHBox)
+        # Resolution Scaling Factor (using QDoubleSpinBox)
+        self.resolutionSpinBox = qt.QDoubleSpinBox()
+        self.resolutionSpinBox.setRange(0.1, 100.0)  # Set appropriate range
+        self.resolutionSpinBox.setSingleStep(0.1)
+        self.resolutionSpinBox.setDecimals(2)
+        self.resolutionSpinBox.setValue(self.currentScaleFactor)
+        self.resolutionSpinBox.valueChanged.connect(self.onResolutionFactorChanged)
+        parametersFormLayout.addRow("Resolution Scaling Factor:", self.resolutionSpinBox)
 
-        # Resolution input fields
-        self.resolutionXSpinBox = qt.QSpinBox()
-        self.resolutionXSpinBox.setMinimum(1)
-        self.resolutionXSpinBox.setMaximum(5000)  # You can change this max value
-        self.resolutionXSpinBox.setValue(1920)  # Default value
-        parametersFormLayout.addRow("X Dimension:", self.resolutionXSpinBox)
+        self.resolutionDisplayLabel = qt.QLabel("Current Resolution: Unknown")
+        self.finalresolutionDisplayLabel = qt.QLabel("Current Resolution: Unknown")
+        parametersFormLayout.addRow("Current 3D Resolution:", self.resolutionDisplayLabel)
+        parametersFormLayout.addRow("Expected Screenshot 3D Resolution:", self.finalresolutionDisplayLabel)
 
-        self.resolutionYSpinBox = qt.QSpinBox()
-        self.resolutionYSpinBox.setMinimum(1)
-        self.resolutionYSpinBox.setMaximum(5000)  # You can change this max value
-        self.resolutionYSpinBox.setValue(1080)  # Default value
-        parametersFormLayout.addRow("Y Dimension:", self.resolutionYSpinBox)
-
-        # Add a combo box for selecting the 3D view
-        self.threeDViewComboBox = qt.QComboBox()
-        threeDViewCount = slicer.app.layoutManager().threeDViewCount
-        for i in range(threeDViewCount):
-            self.threeDViewComboBox.addItem("3D View #" + str(i + 1), i)
-        parametersFormLayout.addRow("3D View:", self.threeDViewComboBox)
-
-        spacer = qt.QSpacerItem(0, 0, qt.QSizePolicy.Minimum, qt.QSizePolicy.Expanding)
-        self.layout.addItem(spacer)
+        # Initialize the timer for updating the resolution display
+        self.updateTimer = qt.QTimer()
+        self.updateTimer.timeout.connect(self.updateResolutionDisplay)
+        self.updateTimer.start(100)  # update every second
 
         # Apply button
         self.applyButton = qt.QPushButton("Export Screenshot")
@@ -113,62 +137,64 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
 
         # Create logic class
         self.logic = HiResScreenCaptureLogic()
+        self.logic.setCurrentScalFactor(self.currentScaleFactor)  # set default scale factor
 
         # Connect signals
-        self.filenameLineEdit.textChanged.connect(self.updateApplyButtonState)
-        self.outputDirLineEdit.textChanged.connect(self.updateApplyButtonState)
-        self.resolutionXSpinBox.valueChanged.connect(self.updateApplyButtonState)
-        self.resolutionYSpinBox.valueChanged.connect(self.updateApplyButtonState)
-
-        # Connect the update method to the layoutChanged signal
-        slicer.app.layoutManager().layoutChanged.connect(self.updateThreeDViewComboBox)
+        self.outputFileLineEdit.textChanged.connect(self.updateApplyButtonState)
 
         # Set initial state for the apply button
         self.updateApplyButtonState()
 
-    def cleanup(self) -> None:
+    def updateResolutionDisplay(self):
+        threeDWidget = slicer.app.layoutManager().threeDWidget(0)
+        if threeDWidget:
+            view = threeDWidget.threeDView()
+            width = view.width
+            height = view.height
+            self.resolutionDisplayLabel.setText(f"{width} x {height}")
+            self.finalresolutionDisplayLabel.setText(f"{int(round(width*self.currentScaleFactor))} x "
+                                                     f"{int(round(height*self.currentScaleFactor))}")
+
+    def cleanup(self):
         """
         Called when the application closes and the module widget is destroyed.
         """
-        slicer.app.layoutManager().layoutChanged.disconnect(self.updateThreeDViewComboBox)
+        if self.updateTimer:
+            self.updateTimer.stop()
 
-    def selectOutputDirectory(self) -> None:
+        # Properly call super with the current class name and `self`
+        super().cleanup()
+
+    def selectOutputFile(self) -> None:
         """
-        Open a directory selection dialog and set the output directory.
+        Open a file selection dialog and set the output file path.
         """
-        selectedDir = qt.QFileDialog.getExistingDirectory()
-        if selectedDir:
-            self.outputDirLineEdit.setText(selectedDir)
+        selectedFile = qt.QFileDialog.getSaveFileName(None, "Select Output File", "", "PNG Files (*.png);;All Files (*)")
+        if selectedFile:
+            self.outputFileLineEdit.setText(selectedFile)
 
-    def updateApplyButtonState(self) -> None:
-        # Check conditions for enabling the button
-        isFilenameSet = bool(self.filenameLineEdit.text.strip()) and self.filenameLineEdit.text.strip().endswith(
-            '.png')
-        isOutputFolderSet = bool(self.outputDirLineEdit.text.strip())
-        isXResolutionSet = bool(self.resolutionXSpinBox.value)
-        isYResolutionSet = bool(self.resolutionYSpinBox.value)
-
-        # Enable or disable the button based on the conditions
-        self.applyButton.setEnabled(isFilenameSet and isOutputFolderSet and isXResolutionSet and isYResolutionSet)
-
-    def updateThreeDViewComboBox(self):
+    def onResolutionFactorChanged(self, value):
         """
-        Update the items in the threeDViewComboBox with the current 3D views.
+        Updates the current resolution scaling factor based on user input from the spin box.
         """
-        self.threeDViewComboBox.clear()
-        threeDViewCount = slicer.app.layoutManager().threeDViewCount
-        for i in range(threeDViewCount):
-            self.threeDViewComboBox.addItem("3D View #" + str(i + 1), i)
+        self.logic.setCurrentScalFactor(value)
+        self.currentScaleFactor = value
+        # print("Resolution scaling factor set to:", self.currentScaleFactor)
 
-    def applyButtonClicked(self) -> None:
-        selectedThreeDWidgetIndex = self.threeDViewComboBox.currentData
-        self.logic.setThreeDViewIndex(selectedThreeDWidgetIndex)
+    def updateApplyButtonState(self):
+        """
+        Updates the state of the apply button based on the input fields and resolution factor.
+        """
+        isFilePathSet = bool(self.outputFileLineEdit.text.strip()) and self.outputFileLineEdit.text.strip().endswith('.png')
+        self.applyButton.setEnabled(isFilePathSet)
 
-        # Set the resolution in the logic class
-        self.logic.setResolution([self.resolutionXSpinBox.value, self.resolutionYSpinBox.value])
-
-        outputPath = os.path.join(self.outputDirLineEdit.text, self.filenameLineEdit.text)
+    def applyButtonClicked(self):
+        """
+        Handles the apply button click to execute screenshot logic with the current scale factor.
+        """
+        outputPath = self.outputFileLineEdit.text
         self.logic.setOutputPath(outputPath)
+        self.logic.setResolutionFactor(self.currentScaleFactor)
         self.logic.runScreenCapture()
 
 
@@ -191,66 +217,51 @@ class HiResScreenCaptureLogic(ScriptedLoadableModuleLogic):
         Called when the logic class is instantiated. Can be used for initializing member variables.
         """
         ScriptedLoadableModuleLogic.__init__(self)
-
-        self.threeDViewIndex = 0
-        self.resolution = None
+        self.currentScaleFactor = None
+        self.resolutionFactor = None
         self.outputPath = None
 
-    def setResolution(self, resolution: list) -> None:
+    def setResolutionFactor(self, resolutionFactor: int) -> None:
+        self.resolutionFactor = resolutionFactor
 
-        self.resolution = resolution
+    def setCurrentScalFactor(self, scaleFactor: float) -> None:
+        self.currentScaleFactor = scaleFactor
 
     def setOutputPath(self, outputPath: str) -> None:
         self.outputPath = outputPath
 
-    def setThreeDViewIndex(self, index: int) -> None:
-        self.threeDViewIndex = index
-
     def runScreenCapture(self) -> None:
-        if self.resolution and self.outputPath:
-            vtk.vtkGraphicsFactory()
-            gf = vtk.vtkGraphicsFactory()
-            gf.SetOffScreenOnlyMode(1)
-            gf.SetUseMesaClasses(1)
-            rw = vtk.vtkRenderWindow()
-            rw.SetOffScreenRendering(1)
-            ren = vtk.vtkRenderer()
-            rw.SetSize(self.resolution[0], self.resolution[1])
+        if self.resolutionFactor and self.outputPath:
+            layoutManager = slicer.app.layoutManager()
+            currentLayout = layoutManager.layout
+            threeDWidget = layoutManager.threeDWidget(0)
 
-            lm = slicer.app.layoutManager()
-            ren3d = lm.threeDWidget(self.threeDViewIndex).threeDView().renderWindow().GetRenderers().GetFirstRenderer()
+            threeDWidget.setParent(None)
+            threeDWidget.show()
+            originalSize = threeDWidget.size
+            print("Original Image size:", threeDWidget.size)
 
-            # ren3d = lm.threeDWidget(self.threeDViewIndex).threeDView().renderWindow().GetRenderers().GetItemAsObject(0)
+            viewNode = threeDWidget.mrmlViewNode()
+            originalScaleFactor = viewNode.GetScreenScaleFactor()
+            print("Original Markup Scale Factor:", originalScaleFactor)
+            viewNode.SetScreenScaleFactor(originalScaleFactor * self.currentScaleFactor)
 
-            actors = ren3d.GetActors()
-            for index in range(actors.GetNumberOfItems()):
-                ren.AddActor(actors.GetItemAsObject(index))
+            threeDWidget.size = qt.QSize(originalSize.width() * self.currentScaleFactor,
+                                         originalSize.height() * self.currentScaleFactor)
+            print("Updated Image size:", threeDWidget.size)
 
-            lights = ren3d.GetLights()
-            for index in range(lights.GetNumberOfItems()):
-                ren.AddLight(lights.GetItemAsObject(index))
+            print("Updated Markup Scale Factor:", viewNode.GetScreenScaleFactor())
 
-            volumes = ren3d.GetVolumes()
-            for index in range(volumes.GetNumberOfItems()):
-                ren.AddVolume(volumes.GetItemAsObject(index))
+            # Capture the view
+            threeDWidget.grab().save(self.outputPath)
 
-            camera = ren3d.GetActiveCamera()
-            ren.SetActiveCamera(camera)
+            viewNode.SetScreenScaleFactor(originalScaleFactor)
 
-            rw.AddRenderer(ren)
-            rw.Render()
+            # make sure the layout changes so that the threeDWidget is reparented and resized
+            layoutManager.layout = slicer.vtkMRMLLayoutNode.SlicerLayoutCustomView
+            layoutManager.layout = currentLayout
 
-            wti = vtk.vtkWindowToImageFilter()
-            wti.SetInput(rw)
-            wti.Update()
-            writer = vtk.vtkPNGWriter()
-            writer.SetInputConnection(wti.GetOutputPort())
-            writer.SetFileName(self.outputPath)
-            writer.Update()
-            writer.Write()
-            i = wti.GetOutput()
-
-        #
+    #
 # HiResScreenCaptureTest
 #
 

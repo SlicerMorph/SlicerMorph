@@ -23,11 +23,11 @@ class QuickAlign(ScriptedLoadableModule):
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
         self.parent.title = "QuickAlign"
-        self.parent.categories = ["Testing.TestCases"]
+        self.parent.categories = ["SlicerMorph.SlicerMorph Utilities"]
         self.parent.dependencies = []
         self.parent.contributors = ["Sara Rolfe (SCRI), Murat Maga (SCRI, UW)"]
         self.parent.helpText = """
-        This is test module to link two markup nodes for joint editing.
+        This module temporarily links two objects for joint viewing. Volumes and models are supported.
         """
         # TODO: replace with organization, grant and thanks
         self.parent.acknowledgementText = """
@@ -143,6 +143,13 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         Called just after the scene is closed.
         """
 
+    def update3DViews(self):
+        #update cameras
+        layoutManager = slicer.app.layoutManager()
+        for threeDViewIndex in range(layoutManager.threeDViewCount) :
+          view = layoutManager.threeDWidget(threeDViewIndex).threeDView()
+          view.resetFocalPoint()
+
     def onLinkButton(self):
         """
         Run processing when user clicks "Link" button.
@@ -153,36 +160,36 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         camera1 = slicer.modules.cameras.logic().GetViewActiveCameraNode(self.viewNode1)
         camera2 = slicer.modules.cameras.logic().GetViewActiveCameraNode(self.viewNode2)
 
-        #get alignment transform between cameras
         logic = QuickAlignLogic()
-        self.alignmentTransform = logic.getCameraAlignmentTransform(camera1, camera2)
-
-        #apply to moving node
         movingModel = self.ui.inputSelector2.currentNode()
-        movingModel.SetAndObserveTransformNodeID(self.alignmentTransform.GetID())
+
+        #get alignment transform between cameras
+        self.alignmentTransform = logic.getCameraAlignmentTransform(camera1, camera2)
+        self.centerView2Transform.SetAndObserveTransformNodeID(self.alignmentTransform.GetID())
 
         #link and update views
         self.viewNode2.SetLinkedControl(True)
         layoutManager = slicer.app.layoutManager()
-        for threeDViewIndex in range(layoutManager.threeDViewCount) :
-          view = layoutManager.threeDWidget(threeDViewIndex).threeDView()
-          view.resetFocalPoint()
+        self.update3DViews()
 
         #set up for unlink action
         self.ui.unlinkButton.enabled = True
         self.ui.linkButton.enabled = False
+        self.ui.initializeViewButton.enabled = False
 
     def onUnlinkButton(self):
         """
         Run processing when user clicks "Unlink" button.
         """
-        slicer.mrmlScene.RemoveNode(self.alignmentTransform)
+        self.cleanUpTransformNodes()
         self.ui.unlinkButton.enabled = False
-        self.ui.linkButton.enabled = bool(self.ui.inputSelector1.currentNode and self.ui.inputSelector2.currentNode)
+        self.ui.linkButton.enabled = False
         # unlink the views
         layoutManager = slicer.app.layoutManager()
         v1 = layoutManager.threeDWidget(0).threeDView().mrmlViewNode()
         v1.SetLinkedControl(False)
+        self.update3DViews()
+        self.ui.initializeViewButton.enabled = True
 
     def addLayoutButton(self, layoutID, buttonAction, toolTip, imageFileName, layoutDiscription):
         layoutManager = slicer.app.layoutManager()
@@ -201,7 +208,42 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         layoutSwitchAction.connect('triggered()', lambda layoutId = layoutID: slicer.app.layoutManager().setLayout(layoutId))
         layoutSwitchAction.setData(layoutID)
 
+    def centerViews(self, nodeList, viewList):
+      # Center the views
+      layoutManager = slicer.app.layoutManager()
+      camera1 = slicer.modules.cameras.logic().GetViewActiveCameraNode(self.viewNode1)
+      camera2 = slicer.modules.cameras.logic().GetViewActiveCameraNode(self.viewNode2)
+      center1 = np.asarray(camera1.GetFocalPoint())
+      center2 = np.asarray(camera2.GetFocalPoint())
+      translate1=vtk.vtkTransform()
+      translate1.Translate(-center1)
+      translate2=vtk.vtkTransform()
+      translate2.Translate(-center2)
+      self.centerView1Transform = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLinearTransformNode", "center view 1")
+      self.centerView1Transform.SetMatrixTransformToParent(translate1.GetMatrix())
+      self.centerView2Transform = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLinearTransformNode", "center view 2")
+      self.centerView2Transform.SetMatrixTransformToParent(translate2.GetMatrix())
+
+      for i, currentNode in enumerate(nodeList):
+        if viewList[i] == 'vtkMRMLViewNode1':
+          currentNode.SetAndObserveTransformNodeID(self.centerView1Transform.GetID())
+        if viewList[i] == 'vtkMRMLViewNode2':
+          currentNode.SetAndObserveTransformNodeID(self.centerView2Transform.GetID())
+
+      #update views
+      self.update3DViews()
+
+    def cleanUpTransformNodes(self):
+        # remove alignment transforms from previous runs
+        if hasattr(self, 'centerView1Transform'):
+          slicer.mrmlScene.RemoveNode(self.centerView1Transform)
+        if hasattr(self, 'centerView2Transform'):
+          slicer.mrmlScene.RemoveNode(self.centerView2Transform)
+        if hasattr(self, 'alignmentTransform'):
+          slicer.mrmlScene.RemoveNode(self.alignmentTransform)
+
     def onInitializeViewButton(self):
+        self.cleanUpTransformNodes()
         customLayoutId1=701
         layoutManager = slicer.app.layoutManager()
         layoutManager.setLayout(customLayoutId1)
@@ -217,23 +259,29 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         #set up selected nodes in views
         node1 = self.ui.inputSelector1.currentNode()
         node2 = self.ui.inputSelector2.currentNode()
+        # Set up list of nodes and assigned views. Can be expanded later to multiple nodes, views
+        nodeList=[node1, node2]
+        viewList=[self.viewNode1.GetID(), self.viewNode2.GetID()]
         volRenLogic = slicer.modules.volumerendering.logic()
-        displayNode1 = volRenLogic.CreateDefaultVolumeRenderingNodes(node1)
-        displayNode2 = volRenLogic.CreateDefaultVolumeRenderingNodes(node2)
-        displayNode1.GetVolumePropertyNode().Copy(volRenLogic.GetPresetByName("US-Fetal"))
-        displayNode2.GetVolumePropertyNode().Copy(volRenLogic.GetPresetByName("US-Fetal"))
-        displayNode1.SetVisibility(True)
-        displayNode2.SetVisibility(True)
-        displayNode1.SetViewNodeIDs([self.viewNode1.GetID()])
-        displayNode2.SetViewNodeIDs([self.viewNode2.GetID()])
+
+        for i, currentNode in enumerate(nodeList):
+          if currentNode.GetNodeTagName() == "Volume":
+            displayNode = volRenLogic.CreateDefaultVolumeRenderingNodes(currentNode)
+            displayNode.GetVolumePropertyNode().Copy(volRenLogic.GetPresetByName("US-Fetal"))
+          else:
+            displayNode=currentNode.GetDisplayNode()
+          displayNode.SetVisibility(True)
+          displayNode.SetViewNodeIDs([viewList[i]])
+
         self.viewNode1.SetLinkedControl(False)
         self.viewNode2.SetLinkedControl(False)
         self.ui.linkButton.enabled = True
 
-        #update camera
-        for threeDViewIndex in range(layoutManager.threeDViewCount) :
-          view = layoutManager.threeDWidget(threeDViewIndex).threeDView()
-          view.resetFocalPoint()
+        #update views
+        self.update3DViews()
+
+        #translate all nodes to origin
+        self.centerViews(nodeList, viewList)
 
 #
 # QuickAlignLogic
@@ -271,6 +319,5 @@ class QuickAlignLogic(ScriptedLoadableModuleLogic):
       #apply to moving node
       transformNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLinearTransformNode", "alignment transform")
       transformNode.SetMatrixTransformToParent(alignmentMatrix_vtk)
-
       return transformNode
 
