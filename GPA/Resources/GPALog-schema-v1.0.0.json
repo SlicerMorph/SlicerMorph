@@ -1,0 +1,137 @@
+    {
+        "$schema": "http://json-schema.org/draft-07/schema",
+        "$id": "https://raw.githubusercontent.com/Slicer/Slicer/main/Modules/Loadable/Markups/Resources/Schema/markups-v1.0.3-schema.json#",
+        "type": "object",
+        "title": "Schema for storing analysis details from SlicerMorph GPA module",
+        "description": "Stores files analyzed, location of output, and other parameters",
+        "required": ["@schema", "analysis"],
+        "additionalProperties": true,
+        "properties": {
+            "@schema": {
+                "$id": "#schema",
+                "type": "string",
+                "title": "Schema",
+                "description": "URL of versioned schema."
+            },
+            "GPALogs": {
+                "$id": "#GPALogs",
+                "type": "array",
+                "title": "GPALogs",
+                "description": "Stores properties and outputs of one or more run of the SlicerMorph GPA module",
+                "additionalItems": true,
+                "items": {
+                    "$id": "#GPALogItems",
+                    "anyOf": [
+                            {
+                            "$id": "#GPALog",
+                            "type": "object",
+                            "title": "GPALog",
+                            "description": "Stores log information from one run of the GPA module",
+                            "default": {},
+                            "required": ["date", "time"],
+                            "additionalProperties": true,
+                            "properties": {
+                                "Date": {
+                                    "$id": "#GPALog/Date",
+                                    "type": "string",
+                                    "title": "Date",
+                                    "description": "Date of the GPA module run"
+                                },
+                                "Time": {
+                                    "$id": "#markup/Time",
+                                    "type": "string",
+                                    "title": "Time",
+                                    "description": "Time of the GPA module run"
+                                },
+                                "InputPath": {
+                                    "$id": "#markup/InputPath",
+                                    "type": "string",
+                                    "title": "Input Path",
+                                    "description": "Path to folder of landmark files analyzed"
+                                },
+                                "OutputPath": {
+                                    "$id": "#markup/OutputPath",
+                                    "type": "string",
+                                    "title": "Output Path",
+                                    "description": "Path to folder where GPA module output is stored"
+                                },
+                                "Files": {
+                                    "$id": "#markup/Files",
+                                    "type": "string",
+                                    "title": "Files",
+                                    "description": "List of landmark filenames included in the analysis"
+                                },
+                                "LMFormat": {
+                                    "$id": "#markup/LMFormat",
+                                    "type": "string",
+                                    "title": "LM Format",
+                                    "enum": [".mrk.json", ".json", ".fcsv"],
+                                    "description": "Format of landmark files analyzed. FCSV is a legacy type"
+                                },
+                                "NumberLM": {
+                                    "$id": "#markup/NumberLM",
+                                    "type": "number",
+                                    "title": "Number LM",
+                                    "description": "Number of landmarks included in the GPA analysis"
+                                },
+                                "ExcludedLM": {
+                                    "$id": "#markup/ExcludedLM",
+                                    "type": "string",
+                                    "title": "Excluded LM",
+                                    "description": "Landmark numbers of any landmarks excluded from the analysis"
+                                },
+                                "Boas": {
+                                    "$id": "#markup/Boas",
+                                    "type": "boolean",
+                                    "title": "Boas Option",
+                                    "description": "True if Boas option was selected for the analysis"
+                                },
+                                "MeanShape": {
+                                    "$id": "#markup/MeanShape",
+                                    "type": "string",
+                                    "title": "Mean Shape",
+                                    "description": "Path to mean shape coordinates output"
+                                },
+                                "Eigenvalues": {
+                                    "$id": "#markup/Eigenvalues",
+                                    "type": "string",
+                                    "title": "Eigenvalues",
+                                    "description": "Path to eigenvalues output"
+                                },
+                                "Eigenvectors": {
+                                    "$id": "#markup/Eigenvectors",
+                                    "type": "string",
+                                    "title": "Eigenvectors",
+                                    "description": "Path to eigenvectors output"
+                                },
+                                "OutputData": {
+                                    "$id": "#markup/OutputData",
+                                    "type": "string",
+                                    "title": "OutputData",
+                                    "description": "Path to output data file"
+                                },
+                                "PCScores": {
+                                    "$id": "#markup/PCScores",
+                                    "type": "string",
+                                    "title": "PC Scores",
+                                    "description": "Path to PC Scores output"
+                                },
+                                "SemiLandmarks": {
+                                    "$id": "#markup/SemiLandmarks",
+                                    "type": "string",
+                                    "title": "SemiLandmarks",
+                                    "description": "Landmark numbers of any semi-landmarks included in the analysis"
+                                },
+                                "Covariates": {
+                                    "$id": "#markup/Covariates",
+                                    "type": "string",
+                                    "title": "Covariates",
+                                    "description": "Path to covariates file used in the analysis"
+                                }
+                            }
+                        }
+                    ]
+                }
+            }
+        }
+    }
