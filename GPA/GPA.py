@@ -9,6 +9,7 @@ import re
 import csv
 import glob
 import fnmatch
+import json
 
 import Support.vtk_lib as vtk_lib
 import Support.gpa_lib as gpa_lib
@@ -1138,17 +1139,12 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     # Try to load skip scaling and skip LM options from log file, if present
     self.BoasOption = False
     self.LMExclusionList=[]
-    logFilePath = os.path.join(self.resultsDirectory, 'analysis.log')
+    logFilePath = os.path.join(self.resultsDirectory, 'analysis.json')
     try:
-      with open(logFilePath) as f:
-        for search in f:
-          if 'Boas=False' in search:
-            self.BoasOption = True
-          if 'ExcludedLM' in search:
-            line = search.rstrip()
-            header, skippedText = line.split('=')
-            if skippedText != '':
-              self.LMExclusionList = [int(i) for i in skippedText.split(',')]
+      with open(logFilePath) as json_file:
+        logData = json.load(json_file)
+      self.BoasOption = logData['GPALog'][0]['Boas']
+      self.LMExclusionList = logData['GPALog'][0]['ExcludedLM']
     except:
       logging.debug('Log import failed: Cannot read scaling option from log file')
       logging.debug('Log import failed: Cannot read skipped landmarks from log file')
@@ -1391,32 +1387,34 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
   def writeAnalysisLogFile(self, inputPath, outputPath, files):
     # generate log file
-    logFile = open(outputPath+os.sep+"analysis.log","w")
-    logFile.write("Date=" + datetime.now().strftime('%Y-%m-%d') + "\n")
-    logFile.write("Time=" + datetime.now().strftime('%H:%M:%S') + "\n")
-    logFile.write("InputPath=" + inputPath + "\n")
-    logFile.write("OutputPath=" + outputPath.replace("\\","/") + "\n")
-    logFile.write("Files=")
-    for i in range(len(files)-1):
-      logFile.write(files[i] + self.extension + ",")
-    logFile.write(files[len(files)-1] + self.extension + "\n")
-    logFile.write("LM_format="  + self.extension + "\n")
     [pointNumber, dim, subjectNumber] = self.LM.lmOrig.shape
-    totalLandmarks = pointNumber + len(self.LMExclusionList)
-    logFile.write("NumberLM=" + str(totalLandmarks) + "\n")
-    logFile.write("ExcludedLM=")
-    exclusions = ",".join(map(str, self.LMExclusionList))
-    logFile.write(exclusions + "\n")
-    logFile.write("Boas=" + str(not self.BoasOption) + "\n")
-    logFile.write("MeanShape=MeanShape.csv"+ "\n")
-    logFile.write("eigenvalues=eigenvalues.csv" + "\n")
-    logFile.write("eigenvectors=eigenvectors.csv" + "\n")
-    logFile.write("OutputData=OutputData.csv" + "\n")
-    logFile.write("pcScores=pcScores.csv" + "\n")
-    landmarkType_list = ",".join(self.landmarkTypeArray)
-    logFile.write("SemiLandmarks= " + landmarkType_list)
+    logData = {
+      "@schema": "https://raw.githubusercontent.com/slicermorph/slicermorph/master/GPA/Resources/Schema/GPALog-schema-v1.0.0.json#",
+      "GPALog" : [
+        {
+        "Date": datetime.now().strftime('%Y-%m-%d'),
+        "Time": datetime.now().strftime('%H:%M:%S'),
+        "InputPath": inputPath,
+        "OutputPath": outputPath.replace("\\","/"),
+        "Files": [f + self.extension for f in files],
+        "LMFormat": self.extension,
+        "NumberLM": pointNumber + len(self.LMExclusionList),
+        "ExcludedLM": self.LMExclusionList,
+        "Boas": bool(self.BoasOption),
+        "MeanShape": "meanShape.csv",
+        "Eigenvalues": "eigenvalues.csv",
+        "Eigenvectors": "eigenvectors.csv",
+        "OutputData": "outputData.csv",
+        "PCScores": "pcScores.csv",
+        "SemiLandmarks": self.landmarkTypeArray,
+        "Covariates": ""
+        }
+      ]
+    }
+    logFilePath = outputPath+os.sep+"analysis.json"
+    with open(logFilePath, 'w') as logFile:
+      print(json.dumps(logData, indent=2), file=logFile)
     logFile.close()
-
 
   # Explore Data callbacks and helpers
   def plot(self):
