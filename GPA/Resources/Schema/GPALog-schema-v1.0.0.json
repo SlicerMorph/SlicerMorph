@@ -1,6 +1,6 @@
     {
         "$schema": "http://json-schema.org/draft-07/schema",
-        "$id": "https://raw.githubusercontent.com/Slicer/Slicer/main/Modules/Loadable/Markups/Resources/Schema/markups-v1.0.3-schema.json#",
+        "$id": "https://raw.githubusercontent.com/slicermorph/slicermorph/master/GPA/Resources/Schema/GPALog-schema-v1.0.0.json#",
         "type": "object",
         "title": "Schema for storing analysis details from SlicerMorph GPA module",
         "description": "Stores files analyzed, location of output, and other parameters",
@@ -38,92 +38,92 @@
                                     "description": "Date of the GPA module run"
                                 },
                                 "Time": {
-                                    "$id": "#markup/Time",
+                                    "$id": "#GPALog/Time",
                                     "type": "string",
                                     "title": "Time",
                                     "description": "Time of the GPA module run"
                                 },
                                 "InputPath": {
-                                    "$id": "#markup/InputPath",
+                                    "$id": "#GPALog/InputPath",
                                     "type": "string",
                                     "title": "Input Path",
                                     "description": "Path to folder of landmark files analyzed"
                                 },
                                 "OutputPath": {
-                                    "$id": "#markup/OutputPath",
+                                    "$id": "#GPALog/OutputPath",
                                     "type": "string",
                                     "title": "Output Path",
                                     "description": "Path to folder where GPA module output is stored"
                                 },
                                 "Files": {
-                                    "$id": "#markup/Files",
-                                    "type": "string",
+                                    "$id": "#GPALog/Files",
+                                    "type": "array",
                                     "title": "Files",
                                     "description": "List of landmark filenames included in the analysis"
                                 },
                                 "LMFormat": {
-                                    "$id": "#markup/LMFormat",
+                                    "$id": "#GPALog/LMFormat",
                                     "type": "string",
                                     "title": "LM Format",
                                     "enum": [".mrk.json", ".json", ".fcsv"],
                                     "description": "Format of landmark files analyzed. FCSV is a legacy type"
                                 },
                                 "NumberLM": {
-                                    "$id": "#markup/NumberLM",
+                                    "$id": "#GPALog/NumberLM",
                                     "type": "number",
                                     "title": "Number LM",
                                     "description": "Number of landmarks included in the GPA analysis"
                                 },
                                 "ExcludedLM": {
-                                    "$id": "#markup/ExcludedLM",
-                                    "type": "string",
+                                    "$id": "#GPALog/ExcludedLM",
+                                    "type": "array",
                                     "title": "Excluded LM",
                                     "description": "Landmark numbers of any landmarks excluded from the analysis"
                                 },
                                 "Boas": {
-                                    "$id": "#markup/Boas",
+                                    "$id": "#GPALog/Boas",
                                     "type": "boolean",
                                     "title": "Boas Option",
                                     "description": "True if Boas option was selected for the analysis"
                                 },
                                 "MeanShape": {
-                                    "$id": "#markup/MeanShape",
+                                    "$id": "#GPALog/MeanShape",
                                     "type": "string",
                                     "title": "Mean Shape",
                                     "description": "Path to mean shape coordinates output"
                                 },
                                 "Eigenvalues": {
-                                    "$id": "#markup/Eigenvalues",
+                                    "$id": "#GPALog/Eigenvalues",
                                     "type": "string",
                                     "title": "Eigenvalues",
                                     "description": "Path to eigenvalues output"
                                 },
                                 "Eigenvectors": {
-                                    "$id": "#markup/Eigenvectors",
+                                    "$id": "#GPALog/Eigenvectors",
                                     "type": "string",
                                     "title": "Eigenvectors",
                                     "description": "Path to eigenvectors output"
                                 },
                                 "OutputData": {
-                                    "$id": "#markup/OutputData",
+                                    "$id": "#GPALog/OutputData",
                                     "type": "string",
                                     "title": "OutputData",
                                     "description": "Path to output data file"
                                 },
                                 "PCScores": {
-                                    "$id": "#markup/PCScores",
+                                    "$id": "#GPALog/PCScores",
                                     "type": "string",
                                     "title": "PC Scores",
                                     "description": "Path to PC Scores output"
                                 },
                                 "SemiLandmarks": {
-                                    "$id": "#markup/SemiLandmarks",
-                                    "type": "string",
+                                    "$id": "#GPALog/SemiLandmarks",
+                                    "type": "array",
                                     "title": "SemiLandmarks",
                                     "description": "Landmark numbers of any semi-landmarks included in the analysis"
                                 },
                                 "Covariates": {
-                                    "$id": "#markup/Covariates",
+                                    "$id": "#GPALog/Covariates",
                                     "type": "string",
                                     "title": "Covariates",
                                     "description": "Path to covariates file used in the analysis"
