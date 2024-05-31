@@ -207,6 +207,7 @@ class LMData:
       return 1
     except:
       print("Error loading results")
+      self.GPALogTextbox.insertPlainText("Error loading results: Failed to initialize from file \n")
       return 0
 
   def calcLMVariation(self, SampleScaleFactor, BoasOption):
@@ -230,7 +231,8 @@ class LMData:
     self.lm, self.mShape=gpa_lib.runGPA(self.lmOrig)
     self.procdist = gpa_lib.procDist(self.lm, self.mShape)
     if BoasOption:
-      print("Calculating Boas coordinates")
+      print("Using Boas coordinates")
+      self.GPALogTextbox.insertPlainText("Using Boas coordinates \n")
       for lmNum in range(i):
         for dimNum in range(j):
           for subjectNum in range(k):
@@ -515,6 +517,16 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.loadResultsButton.toolTip = "Select previous analysis from file and restore."
     self.loadResultsButton.enabled = False
     self.loadResultsButton.connect('clicked(bool)', self.onLoadFromFile)
+
+    # GPA Log Textbox
+    GPALogTextboxCollapsibleButton = ctk.ctkCollapsibleButton()
+    GPALogTextboxLayout = qt.QGridLayout(GPALogTextboxCollapsibleButton)
+    GPALogTextboxCollapsibleButton.text = "GPA module log"
+    GPALogTextboxCollapsibleButton.collapsed = False
+    setupTabLayout.addRow(GPALogTextboxCollapsibleButton)
+    self.GPALogTextbox = qt.QPlainTextEdit()
+    self.GPALogTextbox.insertPlainText("GPA Module Log Information\n")
+    GPALogTextboxLayout.addWidget(self.GPALogTextbox,6,1,1,3)
 
     ################################### Explore Tab ###################################
     #Mean Shape display section
@@ -1051,6 +1063,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       qt.QMessageBox.critical(slicer.util.mainWindow(),
       'Error', 'Please select landmark files for analysis before generating covariate table')
       logging.debug('No input files are selected')
+      self.GPALogTextbox.insertPlainText("Error: No input files were selected for generating the covariate table\n")
       return
     #if #check for rows, columns
     factorList = self.factorNames.text.split(",")
@@ -1058,6 +1071,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       qt.QMessageBox.critical(slicer.util.mainWindow(),
       'Error', 'Please specify at least one factor name to generate a covariate table template')
       logging.debug('No factor names are provided for covariate table template')
+      self.GPALogTextbox.insertPlainText("Error: No factor names were provided for the covariate table template\n")
       return
     sortedArray = np.zeros(len(self.files), dtype={'names':('filename', 'procdist'),'formats':('U50','f8')})
     sortedArray['filename']=self.files
@@ -1080,33 +1094,39 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.loadCovariatesTableButton.enabled = True
     qpath = qt.QUrl.fromLocalFile(self.covariateTableFile)
     qt.QDesktopServices().openUrl(qpath)
-      
+
   def onLoadCovariatesTable(self):
     numberOfInputFiles = len(self.inputFilePaths)
     if numberOfInputFiles<1:
       logging.debug('No input files are selected')
+      self.GPALogTextbox.insertPlainText("Error: No input files are selected for the covariate table\n")
       return
     try:
       self.factorTableNode = slicer.util.loadTable(self.covariateTableFile)
     except AttributeError:
       logging.debug('Covariate table import failed')
+      self.GPALogTextbox.insertPlainText("Error: Covariate table could not be loaded\n")
       return
     #check for at least one covariate factor
     numberOfColumns = self.factorTableNode.GetTable().GetNumberOfColumns()
     if numberOfColumns<2:
       logging.debug('Covariate table import failed, covariate table must have at least one factor column')
+      self.GPALogTextbox.insertPlainText("Error: Covariate table import failed, covariate table must have at least one factor column\n")
       slicer.mrmlScene.RemoveNode(self.factorTableNode)
       return
     indexColumn = self.factorTableNode.GetTable().GetColumn(0)
     #check for same number of covariate rows and input filenames
     if indexColumn.GetNumberOfTuples() != numberOfInputFiles:
       logging.debug('Covariate table import failed, covariate table row number does not match number of input files')
+      self.GPALogTextbox.insertPlainText("Error: Covariate table import failed, covariate table row number does not match number of input files\n")
       slicer.mrmlScene.RemoveNode(self.factorTableNode)
       return
     #check that input filenames match factor row names
     for i, inputFile in enumerate(self.inputFilePaths):
       if indexColumn.GetValue(i) not in inputFile:
         print(indexColumn.GetValue(i), inputFile)
+        self.GPALogTextbox.insertPlainText("Covariate table import failed, covariate filenames do not match input files \n")
+        self.GPALogTextbox.insertPlainText(f"Expected {inputFile}, got {indexColumn.GetValue(i)} \n")
         logging.debug('Covariate table import failed, covariate filenames do not match input files')
         slicer.mrmlScene.RemoveNode(self.factorTableNode)
         return
@@ -1144,6 +1164,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       outputData = pandas.read_csv(outputDataPath)
     except:
       logging.debug('Result import failed: Missing file')
+      self.GPALogTextbox.insertPlainText(f"Result import failed: Missing file in output folder\n")
       return
 
     # Try to load skip scaling and skip LM options from log file, if present
@@ -1156,10 +1177,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.BoasOption = logData['GPALog'][0]['Boas']
       self.LMExclusionList = logData['GPALog'][0]['ExcludedLM']
     except:
-      logging.debug('Log import failed: Cannot read scaling option from log file')
-      logging.debug('Log import failed: Cannot read skipped landmarks from log file')
-    print("Boas option: ", self.BoasOption)
-    print("Skipped Landmarks: ", self.LMExclusionList)
+      logging.debug('Log import failed: Cannot read the log file')
+      self.GPALogTextbox.insertPlainText("logging.debug('Log import failed: Cannot read the log file\n")
 
     # Initialize variables
     self.LM=LMData()
@@ -1170,7 +1189,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.files = outputData.Sample_name.tolist()
     shape = self.LM.lmOrig.shape
     print('Loaded ' + str(shape[2]) + ' subjects with ' + str(shape[0]) + ' landmark points.')
-
+    self.GPALogTextbox.insertPlainText(f"Loaded {shape[2]} subjects with {shape[0]} landmark points.\n")
     # GPA parameters
     self.pcNumber=10
     self.updateList()
@@ -1192,6 +1211,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     logic = GPALogic()
     self.sampleSizeScaleFactor = logic.dist2(self.rawMeanLandmarks).max()
     print("Scale Factor: " + str(self.sampleSizeScaleFactor))
+    self.GPALogTextbox.insertPlainText(f"Scale Factor: {self.sampleSizeScaleFactor}\n")
 
     for landmarkNumber in range (shape[0]):
       name = str(landmarkNumber+1) #start numbering at 1
@@ -1217,6 +1237,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     filename=self.LM.closestSample(self.files)
     self.populateDistanceTable(self.files)
     print("Closest sample to mean:" + filename)
+    self.GPALogTextbox.insertPlainText(f"Closest sample to mean: {filename}\n")
 
     #Setup for scatter plots
     shape = self.LM.lm.shape
@@ -1259,6 +1280,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     if len(lmToExclude) != 0:
       self.LMExclusionList=lmToExclude.split(",")
       print("Excluded landmarks: ", self.LMExclusionList)
+      self.GPALogTextbox.insertPlainText(f"Excluded landmarks: {self.LMExclusionList}\n")
       self.LMExclusionList=[int(x) for x in self.LMExclusionList]
       lmNP=np.asarray(self.LMExclusionList)
     else:
@@ -1267,9 +1289,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.LM.lmOrig, self.landmarkTypeArray = logic.loadLandmarks(self.inputFilePaths, self.LMExclusionList, self.extension)
     except:
       logging.debug('Load landmark data failed: Could not create an array from landmark files')
+      self.GPALogTextbox.insertPlainText(f"Load landmark data failed: Could not create an array from landmark files\n")
       return
     shape = self.LM.lmOrig.shape
     print('Loaded ' + str(shape[2]) + ' subjects with ' + str(shape[0]) + ' landmark points.')
+    self.GPALogTextbox.insertPlainText(f"Loaded {shape[2]} subjects with {shape[0]} landmark points.\n")
 
     # Do GPA
     self.BoasOption=self.BoasOptionCheckBox.checked
@@ -1283,6 +1307,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     logic = GPALogic()
     self.sampleSizeScaleFactor = logic.dist2(self.rawMeanLandmarks).max()
     print("Scale Factor: " + str(self.sampleSizeScaleFactor))
+    self.GPALogTextbox.insertPlainText(f"Scale Factor for visualizations: {self.sampleSizeScaleFactor}\n")
 
     # get mean landmarks as a fiducial node
     self.meanLandmarkNode=slicer.mrmlScene.GetFirstNodeByName('Mean Landmark Node')
@@ -1328,11 +1353,13 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     except:
       logging.debug('Result directory failed: Could not access output folder')
       print("Error creating result directory")
+      self.GPALogTextbox.insertPlainText("Result directory failed: Could not access output folder\n")
 
     # Get closest sample to mean
     filename=self.LM.closestSample(self.files)
     self.populateDistanceTable(self.files)
     print("Closest sample to mean:" + filename)
+    self.GPALogTextbox.insertPlainText(f"Closest sample to mean: {filename}\n")
 
     #Setup for scatter plots
     shape = self.LM.lm.shape
@@ -1521,8 +1548,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     else:
       self.grayscaleSelector.enabled = True
       self.FudSelect.enabled = True
-      print(self.grayscaleSelector.currentPath)
-      print(self.FudSelect.currentPath )
       self.selectorButton.enabled = bool( self.grayscaleSelector.currentPath != "") and bool(self.FudSelect.currentPath != "")
 
   def onPlotDistribution(self):
@@ -1935,6 +1960,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
         except:
           slicer.util.messageBox(f"Error: Load file {filePathList[i]} failed:.")
           logging.debug(f"Error: Load file {filePathList[i]} failed:.")
+          self.GPALogTextbox.insertPlainText(f"Error: Load file {filePathList[i]} failed:\n")
         if len(tmp1) == landmarkNumber:
           lmArray = tmp1['position'].to_numpy()
           landmarkIndex = 0
