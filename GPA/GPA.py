@@ -1076,8 +1076,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     sortedArray = np.zeros(len(self.files), dtype={'names':('filename', 'procdist'),'formats':('U50','f8')})
     sortedArray['filename']=self.files
     ##check for an existing factor table, if so remove
-    if hasattr(self, 'factorTableNode'):
-      slicer.mrmlScene.RemoveNode(self.factorTableNode)
+    #if hasattr(self, 'factorTableNode'):
+    #  slicer.mrmlScene.RemoveNode(self.factorTableNode)
     self.factorTableNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTableNode', 'Factor Table')
     col=self.factorTableNode.AddColumn()
     col.SetName('ID')
@@ -1088,7 +1088,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       col=self.factorTableNode.AddColumn()
       col.SetName(factorList[i])
     self.covariateTableFile = slicer.app.temporaryPath + os.sep + "covariateTable.csv"
-    slicer.util.saveNode(self.factorTableNode, self.covariateTableFile)
+    try:
+      slicer.util.saveNode(self.factorTableNode, self.covariateTableFile)
+    except:
+      self.GPALogTextbox.insertPlainText("Covariate table output failed: Could not write {self.factorTableNode} to {self.covariateTableFile}\n")
     slicer.mrmlScene.RemoveNode(self.factorTableNode)
     self.selectCovariatesText.setText(self.covariateTableFile)
     self.loadCovariatesTableButton.enabled = True
@@ -1115,7 +1118,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     if numberOfColumns<2:
       logging.debug('Covariate table import failed, covariate table must have at least one factor column')
       runAnalysis = slicer.util.confirmYesNoDisplay("Error: Covariate table must have at least one factor column. Continue analysis without covariates?")
-      slicer.mrmlScene.RemoveNode(self.factorTableNode)
+      #slicer.mrmlScene.RemoveNode(self.factorTableNode)
       self.loadButton.enabled = self.loadButton.enabled and runAnalysis
       return
     #check for same number of covariate rows and input filenames
@@ -1124,7 +1127,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       logging.debug('Covariate table import failed, covariate table row number does not match number of input files')
       self.GPALogTextbox.insertPlainText(f"Error: Covariate table import failed, covariate table row number does not match number of input files\n")
       runAnalysis = slicer.util.confirmYesNoDisplay(f"Error: Covariate table subject number does not match number of input files. Continue analysis without covariates?")
-      slicer.mrmlScene.RemoveNode(self.factorTableNode)
+      #slicer.mrmlScene.RemoveNode(self.factorTableNode)
       self.loadButton.enabled = self.loadButton.enabled and runAnalysis
       return
     #check that input filenames match factor row names
@@ -1134,7 +1137,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         self.GPALogTextbox.insertPlainText(f"Covariate table import failed, covariate filenames do not match input files \n Expected {inputFile}, got {indexColumn.GetValue(i)} \n")
         logging.debug("Covariate table import failed, covariate filenames do not match input files")
         runAnalysis = slicer.util.confirmYesNoDisplay(f"Error: Covariate table subject names does not match input filenames. Continue analysis without covariates?")
-        slicer.mrmlScene.RemoveNode(self.factorTableNode)
+        #slicer.mrmlScene.RemoveNode(self.factorTableNode)
         self.loadButton.enabled = self.loadButton.enabled and runAnalysis
         return
     for i in range(1,numberOfColumns):
@@ -1142,7 +1145,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         self.GPALogTextbox.insertPlainText(f"Covariate table import failed, covariate {i} is not labeled\n")
         logging.debug(f"Covariate table import failed, covariate {i} is not labeled")
         runAnalysis = slicer.util.confirmYesNoDisplay(f"Error: Covariate table import failed. Covariate {i} has no labeled. Continue analysis without covariates?")
-        slicer.mrmlScene.RemoveNode(self.factorTableNode)
+        #slicer.mrmlScene.RemoveNode(self.factorTableNode)
         self.loadButton.enabled = self.loadButton.enabled and runAnalysis
         return
       for j in range(self.factorTableNode.GetTable().GetNumberOfRows()):
@@ -1150,11 +1153,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
           self.GPALogTextbox.insertPlainText(f"Covariate table import failed, covariate {i} has no value for subject {j}\n")
           logging.debug(f"Covariate table import failed, covariate {i} has no value for subject {j}")
           runAnalysis = slicer.util.confirmYesNoDisplay(f"Error: Covariate table import failed, covariate {i} has no value for subject {j}. Continue analysis without covariates?")
-          slicer.mrmlScene.RemoveNode(self.factorTableNode)
+          #slicer.mrmlScene.RemoveNode(self.factorTableNode)
           self.loadButton.enabled = self.loadButton.enabled and runAnalysis
           return
-    self.selectFactor.addItem(self.factorTableNode.GetTable().GetColumnName(i))
-    GPANodeCollection.AddItem(self.factorTableNode)
+      self.selectFactor.addItem(self.factorTableNode.GetTable().GetColumnName(i))
     self.GPALogTextbox.insertPlainText("Covariate table loaded and validated\n")
     return runAnalysis
 
@@ -1298,7 +1300,12 @@ class GPAWidget(ScriptedLoadableModuleWidget):
   def onLoad(self):
     self.initializeOnLoad() #clean up module from previous runs
     logic = GPALogic()
-
+    # check for loaded covariate table if table path is specified
+    if self.selectCovariatesText.text != "" and not hasattr(self, 'factorTableNode'):
+      self.GPALogTextbox.insertPlainText(f"Error: Covariate table path is specified but table was not loaded and validated.\n")
+      runAnalysis = slicer.util.confirmYesNoDisplay(f"Error: Covariate table path specified but not loaded or validated. Continue analysis without covariates?\n")
+      if not runAnalysis:
+        return
     # get landmarks
     self.LM=LMData()
     lmToExclude=self.excludeLMText.text
@@ -1372,7 +1379,12 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.LM.writeOutData(self.outputFolder, self.files)
       # covariate table
       if hasattr(self, 'factorTableNode'):
-        slicer.util.saveNode(self.factorTableNode, self.outputFolder + os.sep + "covariateTable.csv")
+        try:
+          print(f"saving {self.factorTableNode.GetID()} to {self.outputFolder + os.sep}covariateTable.csv")
+          slicer.util.saveNode(self.factorTableNode, self.outputFolder + os.sep + "covariateTable.csv")
+          GPANodeCollection.AddItem(self.factorTableNode)
+        except:
+          self.GPALogTextbox.insertPlainText("Covariate table output failed: Could not write {self.factorTableNode} to {self.outputFolder+os.sep}covariateTable.csv\n")
       self.writeAnalysisLogFile(self.LM_dir_name, self.outputFolder, self.files)
       self.openResultsButton.enabled = True
     except:
