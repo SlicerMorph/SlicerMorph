@@ -422,7 +422,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     fileViewerLayout.addRow(self.clearButton)
     self.clearButton.connect('clicked(bool)', self.onClearButton)
 
-    # Load covariates option
+    # Load covariates options
     loadCovariatesCollapsibleButton = ctk.ctkCollapsibleButton()
     loadCovariatesLayout = qt.QGridLayout(loadCovariatesCollapsibleButton)
     loadCovariatesCollapsibleButton.text = "Load optional covariates table"
@@ -438,24 +438,24 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.factorNames.setToolTip("Enter factor names separated with a comma")
     self.factorNames.connect('textChanged(const QString &)', self.factorStringChanged)
     loadCovariatesLayout.addWidget(self.factorNames,2,2)
-    self.generateCovariatesTableButton = qt.QPushButton("Generate New Covariate Table")
+    self.generateCovariatesTableButton = qt.QPushButton("Generate New Covariate Table Template")
     self.generateCovariatesTableButton.checkable = True
-    self.generateCovariatesTableButton.toolTip = "input covariates table in CSV format"
+    self.generateCovariatesTableButton.toolTip = "Create and open a new CSV format file to enter covariate data"
     self.generateCovariatesTableButton.enabled = False
     loadCovariatesLayout.addWidget(self.generateCovariatesTableButton,3,1,1,3)
     self.generateCovariatesTableButton.connect('clicked(bool)', self.onGenerateCovariatesTable)
 
-    # Select covariates table
-    loadCovariatesTableText=qt.QLabel("Load Covariate Table from File: ")
+    # Load covariates table
+    loadCovariatesTableText=qt.QLabel("Load and Validate Covariate Table: ")
     loadCovariatesLayout.addWidget(loadCovariatesTableText,4,1)
     self.selectCovariatesText, selectCovariatesLabel, self.selectCovariatesButton=self.textIn('Covariates Table','', '')
     loadCovariatesLayout.addWidget(self.selectCovariatesText,5,2)
     loadCovariatesLayout.addWidget(selectCovariatesLabel,5,1)
     loadCovariatesLayout.addWidget(self.selectCovariatesButton,5,3)
     self.selectCovariatesButton.connect('clicked(bool)', self.onSelectCovariatesTable)
-    self.loadCovariatesTableButton = qt.QPushButton("Load Covariate Table")
+    self.loadCovariatesTableButton = qt.QPushButton("Load and validate covariate table")
     self.loadCovariatesTableButton.checkable = True
-    self.loadCovariatesTableButton.toolTip = "Load existing covariate table from file"
+    self.loadCovariatesTableButton.toolTip = "Load existing covariate table from file. Table must be loaded before running GPA+PCA"
     self.loadCovariatesTableButton.enabled = False
     loadCovariatesLayout.addWidget(self.loadCovariatesTableButton,6,1,1,3)
     self.loadCovariatesTableButton.connect('clicked(bool)', self.onLoadCovariatesTable)
@@ -1094,9 +1094,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.loadCovariatesTableButton.enabled = True
     qpath = qt.QUrl.fromLocalFile(self.covariateTableFile)
     qt.QDesktopServices().openUrl(qpath)
+    self.GPALogTextbox.insertPlainText("Covariate table template generated. Please fill in covariate columns, save, and load table in the next step to proceed.\n")
 
   def onLoadCovariatesTable(self):
     numberOfInputFiles = len(self.inputFilePaths)
+    runAnalysis=True
     if numberOfInputFiles<1:
       logging.debug('No input files are selected')
       self.GPALogTextbox.insertPlainText("Error: No input files are selected for the covariate table\n")
@@ -1105,34 +1107,57 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.factorTableNode = slicer.util.loadTable(self.covariateTableFile)
     except AttributeError:
       logging.debug('Covariate table import failed')
-      self.GPALogTextbox.insertPlainText("Error: Covariate table could not be loaded\n")
+      runAnalysis = slicer.util.confirmYesNoDisplay("Error: Covariate table could not be loaded. Continue analysis without covariates?")
+      self.loadButton.enabled = self.loadButton.enabled and runAnalysis
       return
     #check for at least one covariate factor
     numberOfColumns = self.factorTableNode.GetTable().GetNumberOfColumns()
     if numberOfColumns<2:
       logging.debug('Covariate table import failed, covariate table must have at least one factor column')
-      self.GPALogTextbox.insertPlainText("Error: Covariate table import failed, covariate table must have at least one factor column\n")
+      runAnalysis = slicer.util.confirmYesNoDisplay("Error: Covariate table must have at least one factor column. Continue analysis without covariates?")
       slicer.mrmlScene.RemoveNode(self.factorTableNode)
+      self.loadButton.enabled = self.loadButton.enabled and runAnalysis
       return
-    indexColumn = self.factorTableNode.GetTable().GetColumn(0)
     #check for same number of covariate rows and input filenames
+    indexColumn = self.factorTableNode.GetTable().GetColumn(0)
     if indexColumn.GetNumberOfTuples() != numberOfInputFiles:
       logging.debug('Covariate table import failed, covariate table row number does not match number of input files')
-      self.GPALogTextbox.insertPlainText("Error: Covariate table import failed, covariate table row number does not match number of input files\n")
+      self.GPALogTextbox.insertPlainText(f"Error: Covariate table import failed, covariate table row number does not match number of input files\n")
+      runAnalysis = slicer.util.confirmYesNoDisplay(f"Error: Covariate table subject number does not match number of input files. Continue analysis without covariates?")
       slicer.mrmlScene.RemoveNode(self.factorTableNode)
+      self.loadButton.enabled = self.loadButton.enabled and runAnalysis
       return
     #check that input filenames match factor row names
     for i, inputFile in enumerate(self.inputFilePaths):
       if indexColumn.GetValue(i) not in inputFile:
         print(indexColumn.GetValue(i), inputFile)
-        self.GPALogTextbox.insertPlainText("Covariate table import failed, covariate filenames do not match input files \n")
-        self.GPALogTextbox.insertPlainText(f"Expected {inputFile}, got {indexColumn.GetValue(i)} \n")
-        logging.debug('Covariate table import failed, covariate filenames do not match input files')
+        self.GPALogTextbox.insertPlainText(f"Covariate table import failed, covariate filenames do not match input files \n Expected {inputFile}, got {indexColumn.GetValue(i)} \n")
+        logging.debug("Covariate table import failed, covariate filenames do not match input files")
+        runAnalysis = slicer.util.confirmYesNoDisplay(f"Error: Covariate table subject names does not match input filenames. Continue analysis without covariates?")
         slicer.mrmlScene.RemoveNode(self.factorTableNode)
+        self.loadButton.enabled = self.loadButton.enabled and runAnalysis
         return
     for i in range(1,numberOfColumns):
-      self.selectFactor.addItem(self.factorTableNode.GetTable().GetColumnName(i))
+      if self.factorTableNode.GetTable().GetColumnName(i) == "":
+        self.GPALogTextbox.insertPlainText(f"Covariate table import failed, covariate {i} is not labeled\n")
+        logging.debug(f"Covariate table import failed, covariate {i} is not labeled")
+        runAnalysis = slicer.util.confirmYesNoDisplay(f"Error: Covariate table import failed. Covariate {i} has no labeled. Continue analysis without covariates?")
+        slicer.mrmlScene.RemoveNode(self.factorTableNode)
+        self.loadButton.enabled = self.loadButton.enabled and runAnalysis
+        return
+      for j in range(self.factorTableNode.GetTable().GetNumberOfRows()):
+        if self.factorTableNode.GetTable().GetValue(j,i) == "":
+          self.GPALogTextbox.insertPlainText(f"Covariate table import failed, covariate {i} has no value for subject {j}\n")
+          logging.debug(f"Covariate table import failed, covariate {i} has no value for subject {j}")
+          runAnalysis = slicer.util.confirmYesNoDisplay(f"Error: Covariate table import failed, covariate {i} has no value for subject {j}. Continue analysis without covariates?")
+          slicer.mrmlScene.RemoveNode(self.factorTableNode)
+          self.loadButton.enabled = self.loadButton.enabled and runAnalysis
+          return
+    self.selectFactor.addItem(self.factorTableNode.GetTable().GetColumnName(i))
     GPANodeCollection.AddItem(self.factorTableNode)
+    self.GPALogTextbox.insertPlainText("Covariate table loaded and validated\n")
+    return runAnalysis
+
 
   def onSelectResultsDirectory(self):
     self.resultsDirectory=qt.QFileDialog().getExistingDirectory()
