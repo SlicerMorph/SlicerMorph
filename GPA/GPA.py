@@ -1085,15 +1085,19 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     for i in range(len(factorList)):
       col=self.factorTableNode.AddColumn()
       col.SetName(factorList[i])
-    self.covariateTableFile = slicer.app.temporaryPath + os.sep + "covariateTable.csv"
+    dateTimeStamp = datetime.now().strftime('%Y-%m-%d_%H_%M_%S')
+    covariateFolder = os.path.join(slicer.app.temporaryPath, dateTimeStamp)
+    self.covariateTableFile = os.path.join(covariateFolder, "covariateTable.csv")
     try:
+      os.makedirs(covariateFolder)
+      self.covariateTableFile = os.path.join(covariateFolder, "covariateTable.csv")
       slicer.util.saveNode(self.factorTableNode, self.covariateTableFile)
     except:
       self.GPALogTextbox.insertPlainText("Covariate table output failed: Could not write {self.factorTableNode} to {self.covariateTableFile}\n")
     slicer.mrmlScene.RemoveNode(self.factorTableNode)
     self.selectCovariatesText.setText(self.covariateTableFile)
     self.loadCovariatesTableButton.enabled = True
-    qpath = qt.QUrl.fromLocalFile(self.covariateTableFile)
+    qpath = qt.QUrl.fromLocalFile(os.path.dirname(covariateFolder+os.path.sep))
     qt.QDesktopServices().openUrl(qpath)
     self.GPALogTextbox.insertPlainText("Covariate table template generated. Please fill in covariate columns, save, and load table in the next step to proceed.\n")
 
