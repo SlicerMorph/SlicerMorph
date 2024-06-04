@@ -172,6 +172,12 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         layoutManager = slicer.app.layoutManager()
         self.update3DViews()
 
+        #if nodes are markup fiducial lists, enable joint editing
+        node1 = self.ui.inputSelector1.currentNode()
+        node2 = self.ui.inputSelector2.currentNode()
+        if node1.GetNodeTagName() == "MarkupsFiducial" and node2.GetNodeTagName() == "MarkupsFiducial":
+          self.observerList = logic.startJointMarkupEditing(node1,node2)
+
         #set up for unlink action
         self.ui.unlinkButton.enabled = True
         self.ui.linkButton.enabled = False
@@ -276,6 +282,7 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.viewNode1.SetLinkedControl(False)
         self.viewNode2.SetLinkedControl(False)
         self.ui.linkButton.enabled = True
+        self.ui.unlinkButton.enabled = False
 
         #update views
         self.update3DViews()
@@ -321,3 +328,42 @@ class QuickAlignLogic(ScriptedLoadableModuleLogic):
       transformNode.SetMatrixTransformToParent(alignmentMatrix_vtk)
       return transformNode
 
+    def updateSelectPoints1(self, caller, eventId):
+      if not self.updatingNodesActive:
+        self.updatingNodesActive = True
+        for i in range(self.node1.GetNumberOfControlPoints()):
+          self.node2.SetNthControlPointSelected(i,self.node1.GetNthControlPointSelected(i))
+        self.updatingNodesActive = False
+
+    def updateSelectPoints2(self, caller, eventId):
+      if not self.updatingNodesActive:
+        self.updatingNodesActive = True
+        for i in range(self.node2.GetNumberOfControlPoints()):
+          self.node1.SetNthControlPointSelected(i,self.node2.GetNthControlPointSelected(i))
+          self.updatingNodesActive = False
+
+    def startJointMarkupEditing(self, inputNode1, inputNode2):
+        logging.info('Enabling joint editing of point list nodes')
+        if inputNode1.GetNumberOfControlPoints() != inputNode2.GetNumberOfControlPoints():
+          print("Error: point lists must have same number of points to enable joint editing.")
+          return
+        self.node1 = inputNode1
+        self.node2 = inputNode2
+        self.updatingNodesActive = False
+        self.node1.SetFixedNumberOfControlPoints(True)
+        self.node2.SetFixedNumberOfControlPoints(True)
+        observerTag1 = inputNode1.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent, self.updateSelectPoints1)
+        observerTag2 = inputNode2.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent, self.updateSelectPoints2)
+
+        return[observerTag1, observerTag2]
+
+    def endJointMarkupEditing(self, inputNode1, inputNode2, observerTags):
+        logging.info('Ending joint editing of point lists')
+        try:
+          inputNode1.RemoveObserver(observerTags[0])
+        except:
+          print(f"No tag found for {inputNode1.GetName()}")
+        try:
+          inputNode2.RemoveObserver(observerTags[1])
+        except:
+          print(f"No tag found for {inputNode2.GetName()}")
