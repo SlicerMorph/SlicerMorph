@@ -231,8 +231,6 @@ class LMData:
     self.lm, self.mShape=gpa_lib.runGPA(self.lmOrig)
     self.procdist = gpa_lib.procDist(self.lm, self.mShape)
     if BoasOption:
-      print("Using Boas coordinates")
-      self.GPALogTextbox.insertPlainText("Using Boas coordinates \n")
       for lmNum in range(i):
         for dimNum in range(j):
           for subjectNum in range(k):
@@ -1333,6 +1331,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.LM.calcEigen()
     self.pcNumber=10
     self.updateList()
+
+    if(self.BoasOption):
+      self.GPALogTextbox.insertPlainText("Using Boas coordinates \n")
+      print("Using Boas coordinates")
 
     #set scaling factor using mean of landmarks
     self.rawMeanLandmarks = self.LM.lmOrig.mean(2)
