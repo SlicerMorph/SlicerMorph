@@ -33,6 +33,7 @@
          <stringlist notr="true">
           <string>vtkMRMLScalarVolumeNode</string>
           <string>vtkMRMLModelNode</string>
+          <string>vtkMRMLMarkupsFiducialNode</string>
          </stringlist>
         </property>
         <property name="showChildNodeTypes">
@@ -68,6 +69,7 @@
          <stringlist notr="true">
           <string>vtkMRMLScalarVolumeNode</string>
           <string>vtkMRMLModelNode</string>
+          <string>vtkMRMLMarkupsFiducialNode</string>
          </stringlist>
         </property>
         <property name="showChildNodeTypes">
