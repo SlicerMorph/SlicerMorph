@@ -1104,6 +1104,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
   def onLoadCovariatesTable(self):
     numberOfInputFiles = len(self.inputFilePaths)
     runAnalysis=True
+    columnsToRemove = []
     if numberOfInputFiles<1:
       logging.debug('No input files are selected')
       self.GPALogTextbox.insertPlainText("Error: No input files are selected for the covariate table\n")
@@ -1116,7 +1117,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.loadButton.enabled = self.loadButton.enabled and runAnalysis
       return
     #check for at least one covariate factor
-    numberOfColumns = self.factorTableNode.GetTable().GetNumberOfColumns()
+    numberOfColumns = self.factorTableNode.GetNumberOfColumns()
     if numberOfColumns<2:
       logging.debug('Covariate table import failed, covariate table must have at least one factor column')
       runAnalysis = slicer.util.confirmYesNoDisplay("Error: Covariate table must have at least one factor column. Continue analysis without covariates?")
@@ -1150,18 +1151,35 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         #slicer.mrmlScene.RemoveNode(self.factorTableNode)
         self.loadButton.enabled = self.loadButton.enabled and runAnalysis
         return
+      hasNumericValue = False
       for j in range(self.factorTableNode.GetTable().GetNumberOfRows()):
         if self.factorTableNode.GetTable().GetValue(j,i) == "":
-          self.GPALogTextbox.insertPlainText(f"Covariate table import failed, covariate {i} has no value for subject {j}\n")
-          logging.debug(f"Covariate table import failed, covariate {i} has no value for subject {j}")
-          runAnalysis = slicer.util.confirmYesNoDisplay(f"Error: Covariate table import failed, covariate {i} has no value for subject {j}. Continue analysis without covariates?")
+          self.GPALogTextbox.insertPlainText(f"Covariate table import failed, covariate {self.factorTableNode.GetTable().GetColumnName(i)} has no value for subject {j}\n")
+          logging.debug(f"Covariate table import failed, covariate {self.factorTableNode.GetTable().GetColumnName(i)} has no value for subject {j}")
+          runAnalysis = slicer.util.confirmYesNoDisplay(f"Error: Covariate table import failed, covariate {self.factorTableNode.GetTable().GetColumnName(i)} has no value for subject {j}. Continue analysis without covariates?")
           #slicer.mrmlScene.RemoveNode(self.factorTableNode)
           self.loadButton.enabled = self.loadButton.enabled and runAnalysis
           return
-      self.selectFactor.addItem(self.factorTableNode.GetTable().GetColumnName(i))
+        if self.factorTableNode.GetTable().GetValue(j,i).ToString().isnumeric():
+          hasNumericValue = True
+      if hasNumericValue:
+        self.GPALogTextbox.insertPlainText(f"Covariate: {self.factorTableNode.GetTable().GetColumnName(i)} contains numeric values and will not be loaded for plotting\n")
+        logging.debug(f"Covariate: {self.factorTableNode.GetTable().GetColumnName(i)} contains numeric values and will not be loaded for plotting\n")
+        qt.QMessageBox.critical(slicer.util.mainWindow(),
+        "Warning: ", f"Covariate: {self.factorTableNode.GetTable().GetColumnName(i)} contains numeric values and will not be loaded for plotting")
+        columnsToRemove.append(i)
+      else:
+        self.selectFactor.addItem(self.factorTableNode.GetTable().GetColumnName(i))
+    print("Removing columns: ", columnsToRemove)
+    for columnToRemove in columnsToRemove:
+      print(columnToRemove)
+      self.factorTableNode.RemoveColumn(columnToRemove)
     self.GPALogTextbox.insertPlainText("Covariate table loaded and validated\n")
+    self.GPALogTextbox.insertPlainText("Table contains 2 covariates: ")
+    for i in range(1,self.factorTableNode.GetNumberOfColumns()):
+      self.GPALogTextbox.insertPlainText(f"{self.factorTableNode.GetTable().GetColumnName(i)} ")
+    self.GPALogTextbox.insertPlainText("\n")
     return runAnalysis
-
 
   def onSelectResultsDirectory(self):
     self.resultsDirectory=qt.QFileDialog().getExistingDirectory()
