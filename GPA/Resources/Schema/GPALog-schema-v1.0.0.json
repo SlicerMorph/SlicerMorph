@@ -74,6 +74,12 @@
                                     "title": "Number LM",
                                     "description": "Number of landmarks included in the GPA analysis"
                                 },
+                                "Excluded": {
+                                    "$id": "#GPALog/Excluded",
+                                    "type": "boolean",
+                                    "title": "Excluded",
+                                    "description": "True if any landmarks are excluded from the analysis"
+                                },
                                 "ExcludedLM": {
                                     "$id": "#GPALog/ExcludedLM",
                                     "type": "array",
@@ -116,14 +122,20 @@
                                     "title": "PC Scores",
                                     "description": "Path to PC Scores output"
                                 },
+                                "Semi": {
+                                    "$id": "#GPALog/Semi",
+                                    "type": "boolean",
+                                    "title": "Semi",
+                                    "description": "True if semi-landmarks are included in the analysis"
+                                },
                                 "SemiLandmarks": {
                                     "$id": "#GPALog/SemiLandmarks",
                                     "type": "array",
                                     "title": "SemiLandmarks",
                                     "description": "Landmark numbers of any semi-landmarks included in the analysis"
                                 },
-                                "Covariates": {
-                                    "$id": "#GPALog/Covariates",
+                                "CovariatesFile": {
+                                    "$id": "#GPALog/CovariatesFile",
                                     "type": "string",
                                     "title": "Covariates",
                                     "description": "Path to covariates file used in the analysis"
