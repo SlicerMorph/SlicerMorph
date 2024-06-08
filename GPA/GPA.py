@@ -191,7 +191,7 @@ class LMData:
 
   def initializeFromDataFrame(self, outputData, meanShape, eigenVectors, eigenValues):
     try:
-      self.centriodSize = outputData.centeroid.to_numpy()
+      self.centriodSize = outputData.centroid.to_numpy()
       self.centriodSize=self.centriodSize.reshape(-1,1)
       LMHeaders = [name for name in outputData.columns if 'LM ' in name]
       points = outputData[LMHeaders].to_numpy().transpose()
@@ -304,7 +304,7 @@ class LMData:
     self.procdist = self.procdist.reshape(i, 1)
     self.centriodSize = self.centriodSize.reshape(i, 1)
     tmp = np.column_stack((files, self.procdist, self.centriodSize, np.transpose(coords)))
-    header = np.array(['Sample_name', 'proc_dist', 'centeroid'])
+    header = np.array(['Sample_name', 'proc_dist', 'centroid'])
     i1, j = tmp.shape
     coodrsL = (j - 3) / 3.0
     l = np.zeros(int(3 * coodrsL))
@@ -1104,7 +1104,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
   def onLoadCovariatesTable(self):
     numberOfInputFiles = len(self.inputFilePaths)
     runAnalysis=True
-    columnsToRemove = []
+    #columnsToRemove = []
     if numberOfInputFiles<1:
       logging.debug('No input files are selected')
       self.GPALogTextbox.insertPlainText("Error: No input files are selected for the covariate table\n")
@@ -1167,15 +1167,15 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         logging.debug(f"Covariate: {self.factorTableNode.GetTable().GetColumnName(i)} contains numeric values and will not be loaded for plotting\n")
         qt.QMessageBox.critical(slicer.util.mainWindow(),
         "Warning: ", f"Covariate: {self.factorTableNode.GetTable().GetColumnName(i)} contains numeric values and will not be loaded for plotting")
-        columnsToRemove.append(i)
+        #columnsToRemove.append(i)
       else:
         self.selectFactor.addItem(self.factorTableNode.GetTable().GetColumnName(i))
-    print("Removing columns: ", columnsToRemove)
-    for columnToRemove in columnsToRemove:
-      print(columnToRemove)
-      self.factorTableNode.RemoveColumn(columnToRemove)
+    #print("Removing columns: ", columnsToRemove)
+    #for columnToRemove in columnsToRemove:
+    #  print(columnToRemove)
+    #  self.factorTableNode.RemoveColumn(columnToRemove)
     self.GPALogTextbox.insertPlainText("Covariate table loaded and validated\n")
-    self.GPALogTextbox.insertPlainText("Table contains 2 covariates: ")
+    self.GPALogTextbox.insertPlainText(f"Table contains {self.factorTableNode.GetNumberOfColumns()-1} covariates: ")
     for i in range(1,self.factorTableNode.GetNumberOfColumns()):
       self.GPALogTextbox.insertPlainText(f"{self.factorTableNode.GetTable().GetColumnName(i)} ")
     self.GPALogTextbox.insertPlainText("\n")
@@ -1486,6 +1486,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
   def writeAnalysisLogFile(self, inputPath, outputPath, files):
     # generate log file
     [pointNumber, dim, subjectNumber] = self.LM.lmOrig.shape
+    if
     if hasattr(self, 'factorTableNode'):
       covariatePath = "covariateTable.csv"
     else:
@@ -1501,6 +1502,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         "Files": [f + self.extension for f in files],
         "LMFormat": self.extension,
         "NumberLM": pointNumber + len(self.LMExclusionList),
+        "Excluded": bool(self.LMExclusionList),
         "ExcludedLM": self.LMExclusionList,
         "Boas": bool(self.BoasOption),
         "MeanShape": "meanShape.csv",
@@ -1509,7 +1511,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         "OutputData": "outputData.csv",
         "PCScores": "pcScores.csv",
         "SemiLandmarks": self.landmarkTypeArray,
-        "Covariates": covariatePath
+        "Semi": bool(self.landmarkTypeArray),
+        "CovariatesFile": covariatePath
         }
       ]
     }
@@ -1526,13 +1529,14 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     yValue=self.YcomboBox.currentIndex
     shape = self.LM.lm.shape
 
-    factorIndex = self.selectFactor.currentIndex
-    if (factorIndex > 0) and hasattr(self, 'factorTableNode'):
-      factorCol = self.factorTableNode.GetTable().GetColumn(factorIndex)
+    if (self.selectFactor.currentIndex > 0) and hasattr(self, 'factorTableNode'):
+      factorName = self.selectFactor.currentText
+      factorCol = self.factorTableNode.GetTable().GetColumnByName(factorName)
       factorArray=[]
       for i in range(factorCol.GetNumberOfTuples()):
         factorArray.append(factorCol.GetValue(i).rstrip())
       factorArrayNP = np.array(factorArray)
+      print("Factor array: ", factorArrayNP)
       if(len(np.unique(factorArrayNP))>1 ): #check values of factors for scatter plot
         logic.makeScatterPlotWithFactors(self.scatterDataAll,self.files,factorArrayNP,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1),self.pcNumber)
       else:   #if the user input a factor requiring more than 3 groups, do not use factor
