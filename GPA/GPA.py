@@ -1486,7 +1486,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
   def writeAnalysisLogFile(self, inputPath, outputPath, files):
     # generate log file
     [pointNumber, dim, subjectNumber] = self.LM.lmOrig.shape
-    if
     if hasattr(self, 'factorTableNode'):
       covariatePath = "covariateTable.csv"
     else:
