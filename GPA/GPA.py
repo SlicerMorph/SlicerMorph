@@ -9,6 +9,7 @@ import re
 import csv
 import glob
 import fnmatch
+import json
 
 import Support.vtk_lib as vtk_lib
 import Support.gpa_lib as gpa_lib
@@ -190,7 +191,7 @@ class LMData:
 
   def initializeFromDataFrame(self, outputData, meanShape, eigenVectors, eigenValues):
     try:
-      self.centriodSize = outputData.centeroid.to_numpy()
+      self.centriodSize = outputData.centroid.to_numpy()
       self.centriodSize=self.centriodSize.reshape(-1,1)
       LMHeaders = [name for name in outputData.columns if 'LM ' in name]
       points = outputData[LMHeaders].to_numpy().transpose()
@@ -206,6 +207,7 @@ class LMData:
       return 1
     except:
       print("Error loading results")
+      self.GPALogTextbox.insertPlainText("Error loading results: Failed to initialize from file \n")
       return 0
 
   def calcLMVariation(self, SampleScaleFactor, BoasOption):
@@ -229,7 +231,6 @@ class LMData:
     self.lm, self.mShape=gpa_lib.runGPA(self.lmOrig)
     self.procdist = gpa_lib.procDist(self.lm, self.mShape)
     if BoasOption:
-      print("Calculating Boas coordinates")
       for lmNum in range(i):
         for dimNum in range(j):
           for subjectNum in range(k):
@@ -291,7 +292,7 @@ class LMData:
       headerLM.append("LM " + str(i + 1))
     temp = np.column_stack((np.array(headerLM), self.mShape))
     temp = np.vstack((np.array(headerCoordinate), temp))
-    np.savetxt(outputFolder + os.sep + "MeanShape.csv", temp, delimiter=",", fmt='%s')
+    np.savetxt(outputFolder + os.sep + "meanShape.csv", temp, delimiter=",", fmt='%s')
 
     percentVar = self.val / self.val.sum()
     files = np.array(files)
@@ -303,7 +304,7 @@ class LMData:
     self.procdist = self.procdist.reshape(i, 1)
     self.centriodSize = self.centriodSize.reshape(i, 1)
     tmp = np.column_stack((files, self.procdist, self.centriodSize, np.transpose(coords)))
-    header = np.array(['Sample_name', 'proc_dist', 'centeroid'])
+    header = np.array(['Sample_name', 'proc_dist', 'centroid'])
     i1, j = tmp.shape
     coodrsL = (j - 3) / 3.0
     l = np.zeros(int(3 * coodrsL))
@@ -318,7 +319,7 @@ class LMData:
     l = np.array(l)
     header = np.column_stack((header.reshape(1, 3), l.reshape(1, int(3 * coodrsL))))
     tmp1 = np.vstack((header, tmp))
-    np.savetxt(outputFolder + os.sep + "OutputData.csv", tmp1, fmt="%s", delimiter=",")
+    np.savetxt(outputFolder + os.sep + "outputData.csv", tmp1, fmt="%s", delimiter=",")
 
     # calc PC scores
     twoDcoors = gpa_lib.makeTwoDim(self.lm)
@@ -419,38 +420,70 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     fileViewerLayout.addRow(self.clearButton)
     self.clearButton.connect('clicked(bool)', self.onClearButton)
 
+    # Load covariates options
+    loadCovariatesCollapsibleButton = ctk.ctkCollapsibleButton()
+    loadCovariatesLayout = qt.QGridLayout(loadCovariatesCollapsibleButton)
+    loadCovariatesCollapsibleButton.text = "Load optional covariates table"
+    loadCovariatesCollapsibleButton.collapsed = True
+    inputLayout.addWidget(loadCovariatesCollapsibleButton,3,1,1,3)
+
+    # Generate covariates button
+    generateCovariatesTableText=qt.QLabel("Generate new covariate table template")
+    loadCovariatesLayout.addWidget(generateCovariatesTableText,1,1)
+    self.factorNamesLabel=qt.QLabel('Factor Names:')
+    loadCovariatesLayout.addWidget(self.factorNamesLabel,2,1)
+    self.factorNames=qt.QLineEdit()
+    self.factorNames.setToolTip("Enter factor names separated with a comma")
+    self.factorNames.connect('textChanged(const QString &)', self.factorStringChanged)
+    loadCovariatesLayout.addWidget(self.factorNames,2,2)
+    self.generateCovariatesTableButton = qt.QPushButton("Generate Template")
+    self.generateCovariatesTableButton.checkable = False
+    self.generateCovariatesTableButton.toolTip = "Create and open a new CSV format file to enter covariate data"
+    self.generateCovariatesTableButton.enabled = False
+    loadCovariatesLayout.addWidget(self.generateCovariatesTableButton,2,3)
+    self.generateCovariatesTableButton.connect('clicked(bool)', self.onGenerateCovariatesTable)
+
+    # Load covariates table
+    loadCovariatesTableText=qt.QLabel("Import covariates table to include in analysis")
+    loadCovariatesLayout.addWidget(loadCovariatesTableText,4,1)
+    self.selectCovariatesText, selectCovariatesLabel, self.selectCovariatesButton=self.textIn('Select covariates table:','', '')
+    loadCovariatesLayout.addWidget(self.selectCovariatesText,5,2)
+    loadCovariatesLayout.addWidget(selectCovariatesLabel,5,1)
+    loadCovariatesLayout.addWidget(self.selectCovariatesButton,5,3)
+    self.selectCovariatesButton.connect('clicked(bool)', self.onSelectCovariatesTable)
+
     # Select output directory
     self.outText, outLabel, self.outbutton=self.textIn('Select output directory: ','', '')
-    inputLayout.addWidget(self.outText,3,2)
-    inputLayout.addWidget(outLabel,3,1)
-    inputLayout.addWidget(self.outbutton,3,3)
+    inputLayout.addWidget(self.outText,4,2)
+    inputLayout.addWidget(outLabel,4,1)
+    inputLayout.addWidget(self.outbutton,4,3)
     self.outbutton.connect('clicked(bool)', self.onSelectOutputDirectory)
 
     self.excludeLMLabel=qt.QLabel('Exclude landmarks')
-    inputLayout.addWidget(self.excludeLMLabel,4,1)
+    inputLayout.addWidget(self.excludeLMLabel,5,1)
 
     self.excludeLMText=qt.QLineEdit()
     self.excludeLMText.setToolTip("No spaces. Separate numbers by commas.  Example:  51,52")
-    inputLayout.addWidget(self.excludeLMText,4,2,1,2)
+    inputLayout.addWidget(self.excludeLMText,5,2,1,2)
 
     self.BoasOptionCheckBox = qt.QCheckBox()
     self.BoasOptionCheckBox.setText("Use Boas coordinates for GPA")
     self.BoasOptionCheckBox.checked = 0
     self.BoasOptionCheckBox.setToolTip("If checked, GPA will skip scaling.")
-    inputLayout.addWidget(self.BoasOptionCheckBox, 5,2)
+    inputLayout.addWidget(self.BoasOptionCheckBox, 6,2)
 
     #Load Button
     self.loadButton = qt.QPushButton("Execute GPA + PCA")
-    self.loadButton.checkable = True
-    inputLayout.addWidget(self.loadButton,6,1,1,3)
+    self.loadButton.checkable = False
+    inputLayout.addWidget(self.loadButton,7,1,1,3)
     self.loadButton.toolTip = "Push to start the program. Make sure you have filled in all the data."
     self.loadButton.enabled = False
     self.loadButton.connect('clicked(bool)', self.onLoad)
 
     #Open Results
     self.openResultsButton = qt.QPushButton("View output files")
-    self.openResultsButton.checkable = True
-    inputLayout.addWidget(self.openResultsButton,7,1,1,3)
+    self.openResultsButton.checkable = False
+    inputLayout.addWidget(self.openResultsButton,8,1,1,3)
     self.openResultsButton.toolTip = "Push to open the folder where the GPA + PCA results are stored"
     self.openResultsButton.enabled = False
     self.openResultsButton.connect('clicked(bool)', self.onOpenResults)
@@ -471,11 +504,21 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     #Load Results Button
     self.loadResultsButton = qt.QPushButton("Load GPA + PCA Analysis from File")
-    self.loadResultsButton.checkable = True
+    self.loadResultsButton.checkable = False
     loadFromFileLayout.addWidget(self.loadResultsButton,5,1,1,3)
     self.loadResultsButton.toolTip = "Select previous analysis from file and restore."
     self.loadResultsButton.enabled = False
     self.loadResultsButton.connect('clicked(bool)', self.onLoadFromFile)
+
+    # GPA Log Textbox
+    GPALogTextboxCollapsibleButton = ctk.ctkCollapsibleButton()
+    GPALogTextboxLayout = qt.QGridLayout(GPALogTextboxCollapsibleButton)
+    GPALogTextboxCollapsibleButton.text = "GPA module log"
+    GPALogTextboxCollapsibleButton.collapsed = False
+    setupTabLayout.addRow(GPALogTextboxCollapsibleButton)
+    self.GPALogTextbox = qt.QPlainTextEdit()
+    self.GPALogTextbox.insertPlainText("GPA Module Log Information\n")
+    GPALogTextboxLayout.addWidget(self.GPALogTextbox,6,1,1,3)
 
     ################################### Explore Tab ###################################
     #Mean Shape display section
@@ -488,7 +531,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     meanShapeLayout.addWidget(meanButtonLable,1,1)
 
     self.plotMeanButton3D = qt.QPushButton("Toggle mean shape visibility")
-    self.plotMeanButton3D.checkable = True
+    self.plotMeanButton3D.checkable = False
     self.plotMeanButton3D.toolTip = "Toggle visibility of mean shape plot"
     meanShapeLayout.addWidget(self.plotMeanButton3D,1,2)
     self.plotMeanButton3D.enabled = False
@@ -498,7 +541,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     meanShapeLayout.addWidget(meanButtonLable,2,1)
 
     self.showMeanLabelsButton = qt.QPushButton("Toggle label visibility")
-    self.showMeanLabelsButton.checkable = True
+    self.showMeanLabelsButton.checkable = False
     self.showMeanLabelsButton.toolTip = "Toggle visibility of mean point labels"
     meanShapeLayout.addWidget(self.showMeanLabelsButton,2,2)
     self.showMeanLabelsButton.enabled = False
@@ -560,7 +603,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.scaleSlider.connect('valueChanged(double)', self.onPlotDistribution)
 
     self.plotDistributionButton = qt.QPushButton("Plot LM variance")
-    self.plotDistributionButton.checkable = True
+    self.plotDistributionButton.checkable = False
     self.plotDistributionButton.toolTip = "Visualize variance of landmarks from all subjects"
     distributionLayout.addWidget(self.plotDistributionButton,7,1,1,4)
     self.plotDistributionButton.enabled = False
@@ -582,28 +625,14 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     plotLayout.addWidget(Ylabel,2,1)
     plotLayout.addWidget(self.YcomboBox,2,2,1,3)
 
-    self.factorNameLabel=qt.QLabel('Factor Name:')
-    plotLayout.addWidget(self.factorNameLabel,3,1)
-    self.factorName=qt.QLineEdit()
-    self.factorName.setToolTip("Enter factor name")
-    self.factorName.connect('textChanged(const QString &)', self.factorStringChanged)
-    plotLayout.addWidget(self.factorName,3,2)
-
-    self.inputFactorButton = qt.QPushButton("Add factor data")
-    self.inputFactorButton.checkable = True
-    self.inputFactorButton.toolTip = "Open table to input factor data"
-    plotLayout.addWidget(self.inputFactorButton,3,4)
-    self.inputFactorButton.enabled = False
-    self.inputFactorButton.connect('clicked(bool)', self.enterFactors)
-
     self.selectFactor=qt.QComboBox()
     self.selectFactor.addItem("No factor data")
     selectFactorLabel=qt.QLabel("Select factor: ")
     plotLayout.addWidget(selectFactorLabel,4,1)
-    plotLayout.addWidget(self.selectFactor,4,2,)
+    plotLayout.addWidget(self.selectFactor,4,2)
 
     self.plotButton = qt.QPushButton("Scatter Plot")
-    self.plotButton.checkable = True
+    self.plotButton.checkable = False
     self.plotButton.toolTip = "Plot PCs"
     plotLayout.addWidget(self.plotButton,5,1,1,5)
     self.plotButton.enabled = False
@@ -637,7 +666,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     lolliLayout.addWidget(self.TwoDType,4,2)
 
     self.lolliButton = qt.QPushButton("Lollipop Vector Plot")
-    self.lolliButton.checkable = True
+    self.lolliButton.checkable = False
     self.lolliButton.toolTip = "Plot PC vectors"
     lolliLayout.addWidget(self.lolliButton,6,1,1,6)
     self.lolliButton.enabled = False
@@ -688,7 +717,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     selectTemplatesLayout.addWidget(self.FudSelect,5,3,1,3)
 
     self.selectorButton = qt.QPushButton("Apply")
-    self.selectorButton.checkable = True
+    self.selectorButton.checkable = False
     selectTemplatesLayout.addWidget(self.selectorButton,6,1,1,5)
     self.selectorButton.enabled = False
     self.selectorButton.connect('clicked(bool)', self.onSelect)
@@ -737,7 +766,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     # Reset button
     resetButton = qt.QPushButton("Reset Scene")
-    resetButton.checkable = True
+    resetButton.checkable = False
     visualizeTabLayout.addRow(resetButton)
     resetButton.toolTip = "Push to reset all fields."
     resetButton.connect('clicked(bool)', self.reset)
@@ -851,10 +880,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.vectorThree.addItem(string)
 
   def factorStringChanged(self):
-    if self.factorName.text != "":
-      self.inputFactorButton.enabled = True
+    if self.factorNames.text != "" and hasattr(self, 'inputFilePaths') and self.inputFilePaths is not []:
+      self.generateCovariatesTableButton.enabled = True
     else:
-      self.inputFactorButton.enabled = False
+      self.generateCovariatesTableButton.enabled = False
 
   def populateDistanceTable(self, files):
     sortedArray = np.zeros(len(files), dtype={'names':('filename', 'procdist'),'formats':('U50','f8')})
@@ -899,36 +928,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     #add table to new layout
     slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveTableID(tableNode.GetID())
     slicer.app.applicationLogic().PropagateTableSelection()
-
-  def enterFactors(self):
-    sortedArray = np.zeros(len(self.files), dtype={'names':('filename', 'procdist'),'formats':('U50','f8')})
-    sortedArray['filename']=self.files
-
-    #check for an existing factor table, if so remove
-    if hasattr(self, 'factorTableNode'):
-      GPANodeCollection.RemoveItem(self.factorTableNode)
-      slicer.mrmlScene.RemoveNode(self.factorTableNode)
-
-    self.factorTableNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTableNode', 'Factor Table')
-    GPANodeCollection.AddItem(self.factorTableNode)
-    col1=self.factorTableNode.AddColumn()
-    col1.SetName('ID')
-    for i in range(len(self.files)):
-      self.factorTableNode.AddEmptyRow()
-      self.factorTableNode.SetCellText(i,0,sortedArray['filename'][i])
-
-    col2=self.factorTableNode.AddColumn()
-    col2.SetName(self.factorName.text)
-    self.selectFactor.addItem(self.factorName.text)
-
-    #add table to new layout
-    slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveTableID(self.factorTableNode.GetID())
-    slicer.app.applicationLogic().PropagateTableSelection()
-    self.factorTableNode.GetTable().Modified()
-
-    #reset text field for names
-    self.factorName.setText("")
-    self.inputFactorButton.enabled = False
 
   def reset(self):
     # delete the two data objects
@@ -1028,6 +1027,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       for path in self.inputFilePaths:
         basename =  os.path.basename(path).partition('.')[0]
         self.files.append(basename)
+      self.factorStringChanged()
 
   def onSelectOutputDirectory(self):
     self.outputDirectory=qt.QFileDialog().getExistingDirectory()
@@ -1037,6 +1037,125 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.loadButton.enabled = bool (filePathsExist and self.outputDirectory)
     except AttributeError:
       self.loadButton.enabled = False
+
+  def onSelectCovariatesTable(self):
+    dialog = qt.QFileDialog()
+    filter = "csv(*.csv)"
+    self.covariateTableFile = qt.QFileDialog.getOpenFileName(dialog, "", "", filter)
+    if self.covariateTableFile:
+      self.selectCovariatesText.setText(self.covariateTableFile)
+    else:
+     self.selectCovariatesText.setText("")
+
+  def onGenerateCovariatesTable(self):
+    numberOfInputFiles = len(self.inputFilePaths)
+    if numberOfInputFiles<1:
+      qt.QMessageBox.critical(slicer.util.mainWindow(),
+      'Error', 'Please select landmark files for analysis before generating covariate table')
+      logging.debug('No input files are selected')
+      self.GPALogTextbox.insertPlainText("Error: No input files were selected for generating the covariate table\n")
+      return
+    #if #check for rows, columns
+    factorList = self.factorNames.text.split(",")
+    if len(factorList)<1:
+      qt.QMessageBox.critical(slicer.util.mainWindow(),
+      'Error', 'Please specify at least one factor name to generate a covariate table template')
+      logging.debug('No factor names are provided for covariate table template')
+      self.GPALogTextbox.insertPlainText("Error: No factor names were provided for the covariate table template\n")
+      return
+    sortedArray = np.zeros(len(self.files), dtype={'names':('filename', 'procdist'),'formats':('U50','f8')})
+    sortedArray['filename']=self.files
+    ##check for an existing factor table, if so remove
+    #if hasattr(self, 'factorTableNode'):
+    #  slicer.mrmlScene.RemoveNode(self.factorTableNode)
+    self.factorTableNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTableNode', 'Factor Table')
+    col=self.factorTableNode.AddColumn()
+    col.SetName('ID')
+    for i in range(len(self.files)):
+      self.factorTableNode.AddEmptyRow()
+      self.factorTableNode.SetCellText(i,0,sortedArray['filename'][i])
+    for i in range(len(factorList)):
+      col=self.factorTableNode.AddColumn()
+      col.SetName(factorList[i])
+    dateTimeStamp = datetime.now().strftime('%Y-%m-%d_%H_%M_%S')
+    covariateFolder = os.path.join(slicer.app.temporaryPath, dateTimeStamp)
+    self.covariateTableFile = os.path.join(covariateFolder, "covariateTable.csv")
+    try:
+      os.makedirs(covariateFolder)
+      self.covariateTableFile = os.path.join(covariateFolder, "covariateTable.csv")
+      slicer.util.saveNode(self.factorTableNode, self.covariateTableFile)
+    except:
+      self.GPALogTextbox.insertPlainText("Covariate table output failed: Could not write {self.factorTableNode} to {self.covariateTableFile}\n")
+    slicer.mrmlScene.RemoveNode(self.factorTableNode)
+    self.selectCovariatesText.setText(self.covariateTableFile)
+    qpath = qt.QUrl.fromLocalFile(os.path.dirname(covariateFolder+os.path.sep))
+    qt.QDesktopServices().openUrl(qpath)
+    self.GPALogTextbox.insertPlainText("Covariate table template generated. Please fill in covariate columns, save, and load table in the next step to proceed.\n")
+
+  def onLoadCovariatesTable(self):
+    numberOfInputFiles = len(self.inputFilePaths)
+    runAnalysis=True
+    #columnsToRemove = []
+    if numberOfInputFiles<1:
+      logging.debug('No input files are selected')
+      self.GPALogTextbox.insertPlainText("Error: No input files are selected for the covariate table\n")
+      return runAnalysis
+    try:
+      self.factorTableNode = slicer.util.loadTable(self.covariateTableFile)
+    except AttributeError:
+      logging.debug('Covariate table import failed')
+      runAnalysis = slicer.util.confirmYesNoDisplay(f"Error: Covariate import failed. Table could not be loaded from {self.covariateTableFile}. \n\nYou can continue analysis without covariates or stop and edit your selected table. \n\nWould you like to proceed with the analysis?")
+      return runAnalysis
+    #check for at least one covariate factor
+    numberOfColumns = self.factorTableNode.GetNumberOfColumns()
+    if numberOfColumns<2:
+      logging.debug('Covariate table import failed, covariate table must have at least one factor column')
+      runAnalysis = slicer.util.confirmYesNoDisplay("Error: Covariate import failed. Table is required to have at least one factor column. \n\nYou can continue analysis without covariates or stop and edit your table. \n\nWould you like to proceed with the analysis?")
+      return runAnalysis
+    #check for same number of covariate rows and input filenames
+    indexColumn = self.factorTableNode.GetTable().GetColumn(0)
+    if indexColumn.GetNumberOfTuples() != numberOfInputFiles:
+      logging.debug('Covariate table import failed, covariate table row number does not match number of input files')
+      self.GPALogTextbox.insertPlainText(f"Error: Covariate table import failed, covariate table row number does not match number of input files\n")
+      runAnalysis = slicer.util.confirmYesNoDisplay(f"Error: Covariate import failed. The number of rows in the table is required to match the number of selected input files. \n\nYou can continue analysis without covariates or stop and edit your sample selection and/or covariate table. \n\nWould you like to proceed with the analysis?")
+      return runAnalysis
+    #check that input filenames match factor row names
+    for i, inputFile in enumerate(self.inputFilePaths):
+      if indexColumn.GetValue(i) not in inputFile:
+        print(indexColumn.GetValue(i), inputFile)
+        self.GPALogTextbox.insertPlainText(f"Covariate import failed. Covariate filenames do not match input files \n Expected {inputFile}, got {indexColumn.GetValue(i)} \n")
+        logging.debug("Covariate table import failed, covariate filenames do not match input files")
+        runAnalysis = slicer.util.confirmYesNoDisplay(f"Error: Covariate import failed. The row names in the table are required to match the selected input filenames. \n\nYou can continue analysis without covariates or stop and edit your covariate table. \n\nWould you like to proceed with the analysis?")
+        return runAnalysis
+    for i in range(1,numberOfColumns):
+      if self.factorTableNode.GetTable().GetColumnName(i) == "":
+        self.GPALogTextbox.insertPlainText(f"Covariate import failed, covariate {i} is not labeled\n")
+        logging.debug(f"Covariate import failed, covariate {i} is not labeled")
+        runAnalysis = slicer.util.confirmYesNoDisplay(f"Error: Covariate import failed. Covariate {i} has no label. Covariates table is required to have a header row with covariate names. \n\nYou can continue analysis without covariates or stop and edit your table. \n\nWould you like to proceed with the analysis?")
+        return runAnalysis
+      hasNumericValue = False
+      for j in range(self.factorTableNode.GetTable().GetNumberOfRows()):
+        if self.factorTableNode.GetTable().GetValue(j,i) == "":
+          subjectID = self.factorTableNode.GetTable().GetValue(j,0).ToString()
+          self.GPALogTextbox.insertPlainText(f"Covariate table import failed, covariate {self.factorTableNode.GetTable().GetColumnName(i)} has no value for {subjectID}\n")
+          logging.debug(f"Covariate table import failed, covariate {self.factorTableNode.GetTable().GetColumnName(i)} has no value for {subjectID}")
+          runAnalysis = slicer.util.confirmYesNoDisplay(f"Error: Covariate import failed. Covariate {self.factorTableNode.GetTable().GetColumnName(i)} has no value for {subjectID}. Missing observation(s) in the covariates table are not allowed. \n\nYou can continue analysis without covariates or stop and edit your sample selection and/or covariate table. \n\nWould you like to proceed with the analysis?")
+          return runAnalysis
+        if self.factorTableNode.GetTable().GetValue(j,i).ToString().isnumeric():
+          hasNumericValue = True
+      if hasNumericValue:
+        self.GPALogTextbox.insertPlainText(f"Covariate: {self.factorTableNode.GetTable().GetColumnName(i)} contains numeric values and will not be loaded for plotting\n")
+        logging.debug(f"Covariate: {self.factorTableNode.GetTable().GetColumnName(i)} contains numeric values and will not be loaded for plotting\n")
+        qt.QMessageBox.critical(slicer.util.mainWindow(),
+        "Warning: ", f"Covariate: {self.factorTableNode.GetTable().GetColumnName(i)} contains numeric values and will not be loaded for plotting")
+      else:
+        self.selectFactor.addItem(self.factorTableNode.GetTable().GetColumnName(i))
+    self.GPALogTextbox.insertPlainText("Covariate table loaded and validated\n")
+    self.GPALogTextbox.insertPlainText(f"Table contains {self.factorTableNode.GetNumberOfColumns()-1} covariates: ")
+    for i in range(1,self.factorTableNode.GetNumberOfColumns()):
+      self.GPALogTextbox.insertPlainText(f"{self.factorTableNode.GetTable().GetColumnName(i)} ")
+    self.GPALogTextbox.insertPlainText("\n")
+    return runAnalysis
 
   def onSelectResultsDirectory(self):
     self.resultsDirectory=qt.QFileDialog().getExistingDirectory()
@@ -1056,8 +1175,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     import pandas
 
     # Load data
-    outputDataPath = os.path.join(self.resultsDirectory, 'OutputData.csv')
-    meanShapePath = os.path.join(self.resultsDirectory, 'MeanShape.csv')
+    outputDataPath = os.path.join(self.resultsDirectory, 'outputData.csv')
+    meanShapePath = os.path.join(self.resultsDirectory, 'meanShape.csv')
     eigenVectorPath = os.path.join(self.resultsDirectory, 'eigenvector.csv')
     eigenValuePath = os.path.join(self.resultsDirectory, 'eigenvalues.csv')
     eigenValueNames = ['Index', 'Scores']
@@ -1068,27 +1187,21 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       outputData = pandas.read_csv(outputDataPath)
     except:
       logging.debug('Result import failed: Missing file')
+      self.GPALogTextbox.insertPlainText(f"Result import failed: Missing file in output folder\n")
       return
 
     # Try to load skip scaling and skip LM options from log file, if present
     self.BoasOption = False
     self.LMExclusionList=[]
-    logFilePath = os.path.join(self.resultsDirectory, 'analysis.log')
+    logFilePath = os.path.join(self.resultsDirectory, 'analysis.json')
     try:
-      with open(logFilePath) as f:
-        for search in f:
-          if 'Boas=False' in search:
-            self.BoasOption = True
-          if 'ExcludedLM' in search:
-            line = search.rstrip()
-            header, skippedText = line.split('=')
-            if skippedText != '':
-              self.LMExclusionList = [int(i) for i in skippedText.split(',')]
+      with open(logFilePath) as json_file:
+        logData = json.load(json_file)
+      self.BoasOption = logData['GPALog'][0]['Boas']
+      self.LMExclusionList = logData['GPALog'][0]['ExcludedLM']
     except:
-      logging.debug('Log import failed: Cannot read scaling option from log file')
-      logging.debug('Log import failed: Cannot read skipped landmarks from log file')
-    print("Boas option: ", self.BoasOption)
-    print("Skipped Landmarks: ", self.LMExclusionList)
+      logging.debug('Log import failed: Cannot read the log file')
+      self.GPALogTextbox.insertPlainText("logging.debug('Log import failed: Cannot read the log file\n")
 
     # Initialize variables
     self.LM=LMData()
@@ -1099,7 +1212,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.files = outputData.Sample_name.tolist()
     shape = self.LM.lmOrig.shape
     print('Loaded ' + str(shape[2]) + ' subjects with ' + str(shape[0]) + ' landmark points.')
-
+    self.GPALogTextbox.insertPlainText(f"Loaded {shape[2]} subjects with {shape[0]} landmark points.\n")
     # GPA parameters
     self.pcNumber=10
     self.updateList()
@@ -1121,6 +1234,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     logic = GPALogic()
     self.sampleSizeScaleFactor = logic.dist2(self.rawMeanLandmarks).max()
     print("Scale Factor: " + str(self.sampleSizeScaleFactor))
+    self.GPALogTextbox.insertPlainText(f"Scale Factor: {self.sampleSizeScaleFactor}\n")
 
     for landmarkNumber in range (shape[0]):
       name = str(landmarkNumber+1) #start numbering at 1
@@ -1146,6 +1260,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     filename=self.LM.closestSample(self.files)
     self.populateDistanceTable(self.files)
     print("Closest sample to mean:" + filename)
+    self.GPALogTextbox.insertPlainText(f"Closest sample to mean: {filename}\n")
 
     #Setup for scatter plots
     shape = self.LM.lm.shape
@@ -1181,13 +1296,19 @@ class GPAWidget(ScriptedLoadableModuleWidget):
   def onLoad(self):
     self.initializeOnLoad() #clean up module from previous runs
     logic = GPALogic()
+    # check for loaded covariate table if table path is specified
 
+    if self.selectCovariatesText.text != "":
+      runAnalysis = self.onLoadCovariatesTable()
+      if not runAnalysis:
+        return
     # get landmarks
     self.LM=LMData()
     lmToExclude=self.excludeLMText.text
     if len(lmToExclude) != 0:
       self.LMExclusionList=lmToExclude.split(",")
       print("Excluded landmarks: ", self.LMExclusionList)
+      self.GPALogTextbox.insertPlainText(f"Excluded landmarks: {self.LMExclusionList}\n")
       self.LMExclusionList=[int(x) for x in self.LMExclusionList]
       lmNP=np.asarray(self.LMExclusionList)
     else:
@@ -1196,9 +1317,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.LM.lmOrig, self.landmarkTypeArray = logic.loadLandmarks(self.inputFilePaths, self.LMExclusionList, self.extension)
     except:
       logging.debug('Load landmark data failed: Could not create an array from landmark files')
+      self.GPALogTextbox.insertPlainText(f"Load landmark data failed: Could not create an array from landmark files\n")
       return
     shape = self.LM.lmOrig.shape
     print('Loaded ' + str(shape[2]) + ' subjects with ' + str(shape[0]) + ' landmark points.')
+    self.GPALogTextbox.insertPlainText(f"Loaded {shape[2]} subjects with {shape[0]} landmark points.\n")
 
     # Do GPA
     self.BoasOption=self.BoasOptionCheckBox.checked
@@ -1207,11 +1330,16 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.pcNumber=10
     self.updateList()
 
+    if(self.BoasOption):
+      self.GPALogTextbox.insertPlainText("Using Boas coordinates \n")
+      print("Using Boas coordinates")
+
     #set scaling factor using mean of landmarks
     self.rawMeanLandmarks = self.LM.lmOrig.mean(2)
     logic = GPALogic()
     self.sampleSizeScaleFactor = logic.dist2(self.rawMeanLandmarks).max()
     print("Scale Factor: " + str(self.sampleSizeScaleFactor))
+    self.GPALogTextbox.insertPlainText(f"Scale Factor for visualizations: {self.sampleSizeScaleFactor}\n")
 
     # get mean landmarks as a fiducial node
     self.meanLandmarkNode=slicer.mrmlScene.GetFirstNodeByName('Mean Landmark Node')
@@ -1249,16 +1377,26 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     try:
       os.makedirs(self.outputFolder)
       self.LM.writeOutData(self.outputFolder, self.files)
+      # covariate table
+      if hasattr(self, 'factorTableNode'):
+        try:
+          print(f"saving {self.factorTableNode.GetID()} to {self.outputFolder + os.sep}covariateTable.csv")
+          slicer.util.saveNode(self.factorTableNode, self.outputFolder + os.sep + "covariateTable.csv")
+          GPANodeCollection.AddItem(self.factorTableNode)
+        except:
+          self.GPALogTextbox.insertPlainText("Covariate table output failed: Could not write {self.factorTableNode} to {self.outputFolder+os.sep}covariateTable.csv\n")
       self.writeAnalysisLogFile(self.LM_dir_name, self.outputFolder, self.files)
       self.openResultsButton.enabled = True
     except:
       logging.debug('Result directory failed: Could not access output folder')
       print("Error creating result directory")
+      self.GPALogTextbox.insertPlainText("Result directory failed: Could not access output folder\n")
 
     # Get closest sample to mean
     filename=self.LM.closestSample(self.files)
     self.populateDistanceTable(self.files)
     print("Closest sample to mean:" + filename)
+    self.GPALogTextbox.insertPlainText(f"Closest sample to mean: {filename}\n")
 
     #Setup for scatter plots
     shape = self.LM.lm.shape
@@ -1323,32 +1461,38 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
   def writeAnalysisLogFile(self, inputPath, outputPath, files):
     # generate log file
-    logFile = open(outputPath+os.sep+"analysis.log","w")
-    logFile.write("Date=" + datetime.now().strftime('%Y-%m-%d') + "\n")
-    logFile.write("Time=" + datetime.now().strftime('%H:%M:%S') + "\n")
-    logFile.write("InputPath=" + inputPath + "\n")
-    logFile.write("OutputPath=" + outputPath.replace("\\","/") + "\n")
-    logFile.write("Files=")
-    for i in range(len(files)-1):
-      logFile.write(files[i] + self.extension + ",")
-    logFile.write(files[len(files)-1] + self.extension + "\n")
-    logFile.write("LM_format="  + self.extension + "\n")
     [pointNumber, dim, subjectNumber] = self.LM.lmOrig.shape
-    totalLandmarks = pointNumber + len(self.LMExclusionList)
-    logFile.write("NumberLM=" + str(totalLandmarks) + "\n")
-    logFile.write("ExcludedLM=")
-    exclusions = ",".join(map(str, self.LMExclusionList))
-    logFile.write(exclusions + "\n")
-    logFile.write("Boas=" + str(not self.BoasOption) + "\n")
-    logFile.write("MeanShape=MeanShape.csv"+ "\n")
-    logFile.write("eigenvalues=eigenvalues.csv" + "\n")
-    logFile.write("eigenvectors=eigenvectors.csv" + "\n")
-    logFile.write("OutputData=OutputData.csv" + "\n")
-    logFile.write("pcScores=pcScores.csv" + "\n")
-    landmarkType_list = ",".join(self.landmarkTypeArray)
-    logFile.write("SemiLandmarks= " + landmarkType_list)
+    if hasattr(self, 'factorTableNode'):
+      covariatePath = "covariateTable.csv"
+    else:
+      covariatePath = ""
+    logData = {
+      "@schema": "https://raw.githubusercontent.com/slicermorph/slicermorph/master/GPA/Resources/Schema/GPALog-schema-v1.0.0.json#",
+      "GPALog" : [
+        {
+        "Date": datetime.now().strftime('%Y-%m-%d'),
+        "Time": datetime.now().strftime('%H:%M:%S'),
+        "InputPath": inputPath,
+        "OutputPath": outputPath.replace("\\","/"),
+        "Files": [f + self.extension for f in files],
+        "LMFormat": self.extension,
+        "NumberLM": pointNumber + len(self.LMExclusionList),
+        "ExcludedLM": self.LMExclusionList,
+        "Boas": bool(self.BoasOption),
+        "MeanShape": "meanShape.csv",
+        "Eigenvalues": "eigenvalues.csv",
+        "Eigenvectors": "eigenvectors.csv",
+        "OutputData": "outputData.csv",
+        "PCScores": "pcScores.csv",
+        "SemiLandmarks": self.landmarkTypeArray,
+        "CovariatesFile": covariatePath
+        }
+      ]
+    }
+    logFilePath = outputPath+os.sep+"analysis.json"
+    with open(logFilePath, 'w') as logFile:
+      print(json.dumps(logData, indent=2), file=logFile)
     logFile.close()
-
 
   # Explore Data callbacks and helpers
   def plot(self):
@@ -1358,13 +1502,14 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     yValue=self.YcomboBox.currentIndex
     shape = self.LM.lm.shape
 
-    factorIndex = self.selectFactor.currentIndex
-    if (factorIndex > 0) and hasattr(self, 'factorTableNode'):
-      factorCol = self.factorTableNode.GetTable().GetColumn(1)
+    if (self.selectFactor.currentIndex > 0) and hasattr(self, 'factorTableNode'):
+      factorName = self.selectFactor.currentText
+      factorCol = self.factorTableNode.GetTable().GetColumnByName(factorName)
       factorArray=[]
       for i in range(factorCol.GetNumberOfTuples()):
         factorArray.append(factorCol.GetValue(i).rstrip())
       factorArrayNP = np.array(factorArray)
+      print("Factor array: ", factorArrayNP)
       if(len(np.unique(factorArrayNP))>1 ): #check values of factors for scatter plot
         logic.makeScatterPlotWithFactors(self.scatterDataAll,self.files,factorArrayNP,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1),self.pcNumber)
       else:   #if the user input a factor requiring more than 3 groups, do not use factor
@@ -1441,11 +1586,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     else:
       self.grayscaleSelector.enabled = True
       self.FudSelect.enabled = True
-      print(self.grayscaleSelector.currentPath)
-      print(self.FudSelect.currentPath )
       self.selectorButton.enabled = bool( self.grayscaleSelector.currentPath != "") and bool(self.FudSelect.currentPath != "")
-
-
 
   def onPlotDistribution(self):
     self.scaleSlider.enabled = True
@@ -1857,6 +1998,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
         except:
           slicer.util.messageBox(f"Error: Load file {filePathList[i]} failed:.")
           logging.debug(f"Error: Load file {filePathList[i]} failed:.")
+          self.GPALogTextbox.insertPlainText(f"Error: Load file {filePathList[i]} failed:\n")
         if len(tmp1) == landmarkNumber:
           lmArray = tmp1['position'].to_numpy()
           landmarkIndex = 0
