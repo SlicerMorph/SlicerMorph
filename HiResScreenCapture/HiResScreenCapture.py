@@ -51,7 +51,7 @@ class HiResScreenCapture(ScriptedLoadableModule):
         # (Organization)"
         # TODO: update with short description of the module and a link to online module documentation
         self.parent.helpText = """
-The "High Resolution Screen Capture" module allows users to capture and save high-quality screenshots from the Slicer application. Decorate the 3D viewer in exactly how you would like the screenshot. Then, specify the filename, output folder, and a scaling factor to give the desired output resolution. 
+The "High Resolution Screen Capture" module allows users to capture and save high-quality screenshots from the Slicer application. Decorate the 3D viewer in exactly how you would like the screenshot. Then, specify the filename, output folder, and a scaling factor to give the desired output resolution.
 """
         # TODO: replace with organization, grant and thanks
         self.parent.acknowledgementText = """This file was originally developed by Jean-Christophe Fillion-Robin,
