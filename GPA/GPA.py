@@ -1297,7 +1297,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.initializeOnLoad() #clean up module from previous runs
     logic = GPALogic()
     # check for loaded covariate table if table path is specified
-    
+
     if self.selectCovariatesText.text != "":
       runAnalysis = self.onLoadCovariatesTable()
       if not runAnalysis:
