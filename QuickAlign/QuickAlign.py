@@ -27,7 +27,7 @@ class QuickAlign(ScriptedLoadableModule):
         self.parent.dependencies = []
         self.parent.contributors = ["Sara Rolfe (SCRI), Murat Maga (SCRI, UW)"]
         self.parent.helpText = """
-        This module temporarily links two objects for joint viewing. Volumes and models are supported.
+        This module temporarily fixes the alignment of two nodes in linked 3D views. If the nodes are point lists, joint editing can be enabled.
         """
         # TODO: replace with organization, grant and thanks
         self.parent.acknowledgementText = """
@@ -114,6 +114,12 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def onSelect(self):
         self.ui.initializeViewButton.enabled = bool(self.ui.inputSelector1.currentNode() and self.ui.inputSelector2.currentNode())
+        #if nodes are markup fiducial lists, enable joint editing
+        node1 = self.ui.inputSelector1.currentNode()
+        node2 = self.ui.inputSelector2.currentNode()
+        markupsTypeNodes = bool(node1.GetNodeTagName() == "MarkupsFiducial" and node2.GetNodeTagName() == "MarkupsFiducial")
+        self.ui.jointEditCheckBox.enabled = markupsTypeNodes
+        self.ui.jointEditCheckBox.checked = markupsTypeNodes
 
     def cleanup(self):
         """
@@ -175,13 +181,16 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         #if nodes are markup fiducial lists, enable joint editing
         node1 = self.ui.inputSelector1.currentNode()
         node2 = self.ui.inputSelector2.currentNode()
-        if node1.GetNodeTagName() == "MarkupsFiducial" and node2.GetNodeTagName() == "MarkupsFiducial":
+        if node1.GetNodeTagName() == "MarkupsFiducial" and node2.GetNodeTagName() == "MarkupsFiducial" and self.ui.jointEditCheckBox.checked:
           self.observerList = logic.startJointMarkupEditing(node1,node2)
+          if self.observerList == []:
+            self.ui.jointEditCheckBox.checked=False
 
         #set up for unlink action
         self.ui.unlinkButton.enabled = True
         self.ui.linkButton.enabled = False
         self.ui.initializeViewButton.enabled = False
+        self.ui.jointEditCheckBox.enabled = False
 
     def onUnlinkButton(self):
         """
@@ -190,12 +199,19 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.cleanUpTransformNodes()
         self.ui.unlinkButton.enabled = False
         self.ui.linkButton.enabled = False
+        # end joint editing if it was initiated
+        node1 = self.ui.inputSelector1.currentNode()
+        node2 = self.ui.inputSelector2.currentNode()
+        if node1.GetNodeTagName() == "MarkupsFiducial" and node2.GetNodeTagName() == "MarkupsFiducial" and self.ui.jointEditCheckBox.checked:
+          self.logic.endJointMarkupEditing(node1, node2, self.observerList)
         # unlink the views
         layoutManager = slicer.app.layoutManager()
         v1 = layoutManager.threeDWidget(0).threeDView().mrmlViewNode()
         v1.SetLinkedControl(False)
         self.update3DViews()
         self.ui.initializeViewButton.enabled = True
+        markupsTypeNodes = bool(node1.GetNodeTagName() == "MarkupsFiducial" and node2.GetNodeTagName() == "MarkupsFiducial")
+        self.ui.jointEditCheckBox.enabled = markupsTypeNodes
 
     def addLayoutButton(self, layoutID, buttonAction, toolTip, imageFileName, layoutDiscription):
         layoutManager = slicer.app.layoutManager()
@@ -346,7 +362,7 @@ class QuickAlignLogic(ScriptedLoadableModuleLogic):
         logging.info('Enabling joint editing of point list nodes')
         if inputNode1.GetNumberOfControlPoints() != inputNode2.GetNumberOfControlPoints():
           print("Error: point lists must have same number of points to enable joint editing.")
-          return
+          return []
         self.node1 = inputNode1
         self.node2 = inputNode2
         self.updatingNodesActive = False
