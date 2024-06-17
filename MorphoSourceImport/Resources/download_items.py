@@ -139,7 +139,7 @@ class MSDownload:
                     full_file_path = os.path.join(self.download_folder, partial_filename)
                     existing_file_size = file_exists_and_size(full_file_path)
                     max_retries = 10
-                    retry_delay = 5
+                    retry_delay = 10
                     download_url = self.get_download_media_zip_url(media_id=media_id,
                                                                    download_config=self.current_download_config)
                     futures.append(executor.submit(download_file, download_url, full_file_path,
