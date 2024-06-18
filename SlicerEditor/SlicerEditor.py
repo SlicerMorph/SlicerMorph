@@ -1,16 +1,18 @@
 import os
+import sys
 
 import qt, ctk
 import slicer
-import vtk
+
 from slicer.ScriptedLoadableModule import *
 from pygments import highlight
 from pygments.lexers import PythonLexer
 from pygments.formatters import HtmlFormatter
+import jedi
 
 
 #
-# Python Editor
+# SlicerEditor
 #
 
 class SlicerEditor(ScriptedLoadableModule):
@@ -42,15 +44,20 @@ class SlicerEditorWidget(ScriptedLoadableModuleWidget):
         Called when the user opens the module the first time and the widget is initialized.
         """
         ScriptedLoadableModuleWidget.__init__(self, parent)
+        self.toolbar = None
+        self.editor = None
         self.logic = SlicerEditorLogic()
         self.formatter = HtmlFormatter(full=True, style='colorful')
         self.currentFilePath = None
+        self.eventFilter = EventFilter(self)
 
     def setup(self):
         """
         Called when the user opens the module the first time and the widget is initialized.
         """
         ScriptedLoadableModuleWidget.setup(self)
+
+        self.setupSlicerPythonEnvironment()
 
         # Collapsible button
         parametersCollapsibleButton = ctk.ctkCollapsibleButton()
@@ -59,7 +66,7 @@ class SlicerEditorWidget(ScriptedLoadableModuleWidget):
 
         parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
 
-        # Toolbar with file operations
+        # Toolbar with save to scene and open from scene actions
         self.toolbar = qt.QToolBar()
         parametersFormLayout.addWidget(self.toolbar)
 
@@ -67,17 +74,13 @@ class SlicerEditorWidget(ScriptedLoadableModuleWidget):
         newFileAction.triggered.connect(self.newFile)
         self.toolbar.addAction(newFileAction)
 
-        openFileAction = qt.QAction("Open File", self.toolbar)
-        openFileAction.triggered.connect(self.openFile)
-        self.toolbar.addAction(openFileAction)
+        saveToSceneAction = qt.QAction("Save to Scene", self.toolbar)
+        saveToSceneAction.triggered.connect(self.saveToScene)
+        self.toolbar.addAction(saveToSceneAction)
 
-        saveFileAction = qt.QAction("Save File", self.toolbar)
-        saveFileAction.triggered.connect(self.saveFile)
-        self.toolbar.addAction(saveFileAction)
-
-        saveAsFileAction = qt.QAction("Save File As", self.toolbar)
-        saveAsFileAction.triggered.connect(self.saveFileAs)
-        self.toolbar.addAction(saveAsFileAction)
+        openFromSceneAction = qt.QAction("Open from Scene", self.toolbar)
+        openFromSceneAction.triggered.connect(self.openFromScene)
+        self.toolbar.addAction(openFromSceneAction)
 
         # Editor area
         self.editor = qt.QTextEdit()
@@ -85,38 +88,55 @@ class SlicerEditorWidget(ScriptedLoadableModuleWidget):
         parametersFormLayout.addWidget(self.editor)
         self.editor.textChanged.connect(self.onTextChanged)
 
+        # Corrected Event Filter Installation (Slicer-specific)
+        self.editor.installEventFilter(self.eventFilter)
+
+    @staticmethod
+    def setupSlicerPythonEnvironment():
+        # Get the paths from the Slicer application
+        slicer_paths = [
+            os.path.join(slicer.app.slicerHome, 'lib/Slicer-5.62/qt-loadable-modules'),
+            os.path.join(slicer.app.slicerHome, 'lib/Slicer-5.62/qt-scripted-modules'),
+            os.path.join(slicer.app.slicerHome, 'bin/Python/lib/python3.6/site-packages')
+        ]
+        for path in slicer_paths:
+            if path not in sys.path:
+                sys.path.append(path)
+
+        # Set PYTHONPATH environment variable
+        os.environ['PYTHONPATH'] = os.pathsep.join(slicer_paths)
+
     def newFile(self):
         self.currentFilePath = None
         self.editor.clear()
 
-    def openFile(self):
-        fileDialog = qt.QFileDialog()
-        fileDialog.setNameFilter("Python files (*.py)")
-        fileDialog.setFileMode(qt.QFileDialog.ExistingFile)
-        if fileDialog.exec_():
-            filePath = fileDialog.selectedFiles()[0]
-            with open(filePath, 'r') as file:
-                fileContent = file.read()
-                self.editor.setPlainText(fileContent)
-                self.displayHighlightedContent(fileContent)
-                self.currentFilePath = filePath
+    def saveToScene(self):
+        # Prompt user for a name
+        textNodeName = qt.QInputDialog.getText(slicer.util.mainWindow(), 'Save to Scene', 'Enter name for the script:')
+        if textNodeName:
+            textNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTextNode")
+            textNode.SetName(textNodeName)
+            textNode.SetText(self.editor.toPlainText())
 
-    def saveFile(self):
-        if self.currentFilePath:
-            with open(self.currentFilePath, 'w') as file:
-                file.write(self.editor.toPlainText())
+    def openFromScene(self):
+        # Get all text nodes in the scene
+        textNodes = slicer.util.getNodesByClass("vtkMRMLTextNode")
+        if not textNodes:
+            qt.QMessageBox.information(slicer.util.mainWindow(), 'SlicerEditor', 'No text nodes found in the scene.')
+            return
+
+        # Let the user select a node
+        items = [''] + [node.GetName() for node in textNodes]
+        item = qt.QInputDialog.getItem(slicer.util.mainWindow(), 'Select Text Node', 'Select a text node to open:',
+                                       items, 0, False)
+
+        if item == '':
+            pass
         else:
-            self.saveFileAs()
-
-    def saveFileAs(self):
-        fileDialog = qt.QFileDialog()
-        fileDialog.setNameFilter("Python files (*.py)")
-        fileDialog.setAcceptMode(qt.QFileDialog.AcceptSave)
-        if fileDialog.exec_():
-            filePath = fileDialog.selectedFiles()[0]
-            with open(filePath, 'w') as file:
-                file.write(self.editor.toPlainText())
-            self.currentFilePath = filePath
+            selectedNode = next(node for node in textNodes if node.GetName() == item)
+            fileContent = selectedNode.GetText()
+            self.editor.setPlainText(fileContent)
+            self.displayHighlightedContent(fileContent)
 
     def onTextChanged(self):
         plainText = self.editor.toPlainText()
@@ -138,11 +158,61 @@ class SlicerEditorWidget(ScriptedLoadableModuleWidget):
         self.editor.setTextCursor(cursor)
         self.editor.blockSignals(False)
 
+    def showCompletion(self):
+        cursor = self.editor.textCursor()
+        cursor.select(qt.QTextCursor.LineUnderCursor)
+        code = cursor.selectedText()
+        line_number = cursor.blockNumber() + 1
+        column = cursor.positionInBlock()
+
+        # Pass the entire code from the editor as a positional argument to jedi.Script
+        script = jedi.Script(
+            self.editor.toPlainText(),
+        )
+        completions = script.complete(line=line_number, column=column)
+
+        if completions:
+            completion_menu = qt.QMenu(self.editor)
+            for completion in completions:
+                action = qt.QAction(completion.name, completion_menu)
+                action.triggered.connect(
+                    lambda checked, text=completion.name: self.insertCompletion(text)
+                )
+                completion_menu.addAction(action)
+
+            # Use cursorRect to get the rectangle of the cursor's current position
+            cursor_rect = self.editor.cursorRect(cursor)
+            completion_menu.exec_(self.editor.mapToGlobal(cursor_rect.bottomRight()))
+
+    def insertCompletion(self, text):
+        cursor = self.editor.textCursor()
+        cursor.insertText(text)
+
+        # Fix for cursor and display update (Slicer-specific)
+        cursor.setPosition(cursor.position())  # Force cursor update
+        self.editor.setTextCursor(cursor)  # Force display update
+
     def cleanup(self):
         """
         Called when the application closes and the module widget is destroyed.
         """
         pass
+
+
+class EventFilter(qt.QObject):
+    def __init__(self, parentWidget):
+        super(EventFilter, self).__init__()
+        self.parentWidget = parentWidget
+
+    def eventFilter(self, watched, event):
+        if (
+                watched == self.parentWidget.editor
+                and event.type() == qt.QEvent.KeyPress
+                and event.key() == qt.Qt.Key_Tab
+        ):
+            self.parentWidget.showCompletion()
+            return True
+        return qt.QObject.eventFilter(self, watched, event)
 
 
 #
