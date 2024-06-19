@@ -178,8 +178,8 @@ class SlicerEditorWidget(ScriptedLoadableModuleWidget):
         self.editor.blockSignals(False)
 
         # Restore the cursor position, ensuring it does not exceed the new text length
-        cursor_position = min(pos, len(self.editor.toPlainText()))
-        cursor.setPosition(cursor_position)
+        # cursor_position = min(pos, len(self.editor.toPlainText()))
+        cursor.setPosition(pos)
         self.editor.setTextCursor(cursor)
 
     def showCompletion(self):
@@ -232,39 +232,7 @@ class EventFilter(qt.QObject):
                 self.parentWidget.showCompletion()
                 return True
             elif event.key() in (qt.Qt.Key_Return, qt.Qt.Key_Enter):
-                cursor = self.parentWidget.editor.textCursor()
-                cursorPosition = cursor.position()
-                lineLength = cursor.block().length()  # Account for newline at end of block
-                atEndOfLine = cursorPosition == lineLength
-                print(lineLength, atEndOfLine)
-
-                if atEndOfLine:
-                    cursor.insertText(" /n")  # Insert space then newline
-                    temp_pos = cursorPosition - 1
-                    cursor = self.parentWidget.editor.textCursor()
-                    print(temp_pos, cursor)
-
-                    self.parentWidget.editor.setTextCursor(temp_pos)
-
-                    plainText = self.parentWidget.editor.toPlainText()
-                    self.parentWidget.displayHighlightedContent(plainText)
-
-                else:
-                    plainText = self.parentWidget.editor.toPlainText()
-                    self.parentWidget.displayHighlightedContent(plainText)
-
-                #
-                # cursor = self.parentWidget.editor.textCursor()
-                #
-                # # Move cursor to the next line, then remove the space
-                # cursor.movePosition(qt.QTextCursor.StartOfLine)
-                # cursor.movePosition(qt.QTextCursor.Down)
-                # if atEndOfLine:  # Only delete space if we added one
-                #
-                #
-                # self.parentWidget.editor.setTextCursor(cursor)
-
-                return True
+                return False
         return qt.QObject.eventFilter(self, watched, event)
 
 
