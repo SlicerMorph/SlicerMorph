@@ -1,14 +1,9 @@
 import os
 import sys
-
-import qt, ctk
+import qt
+import ctk
 import slicer
-
 from slicer.ScriptedLoadableModule import *
-from pygments import highlight
-from pygments.lexers import PythonLexer
-from pygments.formatters import HtmlFormatter
-import jedi
 
 
 #
@@ -44,6 +39,27 @@ class SlicerEditorWidget(ScriptedLoadableModuleWidget):
         Called when the user opens the module the first time and the widget is initialized.
         """
         ScriptedLoadableModuleWidget.__init__(self, parent)
+
+        # Attempt to import packages, and install if not present
+        try:
+            import jedi
+        except ImportError:
+            slicer.util.pip_install('jedi')
+            import jedi
+
+        try:
+            from pygments import highlight
+            from pygments.lexers import PythonLexer
+            from pygments.formatters import HtmlFormatter
+        except ImportError:
+            slicer.util.pip_install('pygments')
+            from pygments import highlight
+            from pygments.lexers import PythonLexer
+            from pygments.formatters import HtmlFormatter
+
+        self.PythonLexer = PythonLexer
+        self.jedi = jedi
+        self.highlight = highlight
         self.toolbar = None
         self.editor = None
         self.logic = SlicerEditorLogic()
@@ -84,7 +100,8 @@ class SlicerEditorWidget(ScriptedLoadableModuleWidget):
 
         # Editor area
         self.editor = qt.QTextEdit()
-        self.editor.setAcceptRichText(True)
+        self.editor.setTextInteractionFlags(qt.Qt.TextEditorInteraction)
+        self.editor.setAcceptRichText(False)  # Use plain text for editing
         parametersFormLayout.addWidget(self.editor)
         self.editor.textChanged.connect(self.onTextChanged)
 
@@ -93,11 +110,15 @@ class SlicerEditorWidget(ScriptedLoadableModuleWidget):
 
     @staticmethod
     def setupSlicerPythonEnvironment():
+        # Get the Slicer version
+        slicer_version = slicer.app.applicationVersion
+
         # Get the paths from the Slicer application
         slicer_paths = [
-            os.path.join(slicer.app.slicerHome, 'lib/Slicer-5.62/qt-loadable-modules'),
-            os.path.join(slicer.app.slicerHome, 'lib/Slicer-5.62/qt-scripted-modules'),
-            os.path.join(slicer.app.slicerHome, 'bin/Python/lib/python3.6/site-packages')
+            os.path.join(slicer.app.slicerHome, f'lib/Slicer-{slicer_version}/qt-loadable-modules'),
+            os.path.join(slicer.app.slicerHome, f'lib/Slicer-{slicer_version}/qt-scripted-modules'),
+            os.path.join(slicer.app.slicerHome, 'bin/Python',
+                         f'lib/python{sys.version_info.major}.{sys.version_info.minor}/site-packages')
         ]
         for path in slicer_paths:
             if path not in sys.path:
@@ -143,8 +164,8 @@ class SlicerEditorWidget(ScriptedLoadableModuleWidget):
         self.displayHighlightedContent(plainText)
 
     def displayHighlightedContent(self, content):
-        lexer = PythonLexer()
-        highlightedContent = highlight(content, lexer, self.formatter)
+        lexer = self.PythonLexer()
+        highlightedContent = self.highlight(content, lexer, self.formatter)
 
         css = self.formatter.get_style_defs()
         html = f"<html><head><style>{css}</style></head><body>{highlightedContent}</body></html>"
@@ -154,19 +175,20 @@ class SlicerEditorWidget(ScriptedLoadableModuleWidget):
 
         self.editor.blockSignals(True)
         self.editor.setHtml(html)
-        cursor.setPosition(pos)
-        self.editor.setTextCursor(cursor)
         self.editor.blockSignals(False)
+
+        # Restore the cursor position, ensuring it does not exceed the new text length
+        cursor_position = min(pos, len(self.editor.toPlainText()))
+        cursor.setPosition(cursor_position)
+        self.editor.setTextCursor(cursor)
 
     def showCompletion(self):
         cursor = self.editor.textCursor()
-        cursor.select(qt.QTextCursor.LineUnderCursor)
-        code = cursor.selectedText()
         line_number = cursor.blockNumber() + 1
         column = cursor.positionInBlock()
 
         # Pass the entire code from the editor as a positional argument to jedi.Script
-        script = jedi.Script(
+        script = self.jedi.Script(
             self.editor.toPlainText(),
         )
         completions = script.complete(line=line_number, column=column)
@@ -186,11 +208,11 @@ class SlicerEditorWidget(ScriptedLoadableModuleWidget):
 
     def insertCompletion(self, text):
         cursor = self.editor.textCursor()
+        # Select the text from the current cursor position to the start of the current word
+        cursor.movePosition(qt.QTextCursor.StartOfWord, qt.QTextCursor.KeepAnchor)
+        cursor.removeSelectedText()
         cursor.insertText(text)
-
-        # Fix for cursor and display update (Slicer-specific)
-        cursor.setPosition(cursor.position())  # Force cursor update
-        self.editor.setTextCursor(cursor)  # Force display update
+        self.editor.setTextCursor(cursor)
 
     def cleanup(self):
         """
@@ -205,13 +227,44 @@ class EventFilter(qt.QObject):
         self.parentWidget = parentWidget
 
     def eventFilter(self, watched, event):
-        if (
-                watched == self.parentWidget.editor
-                and event.type() == qt.QEvent.KeyPress
-                and event.key() == qt.Qt.Key_Tab
-        ):
-            self.parentWidget.showCompletion()
-            return True
+        if watched == self.parentWidget.editor and event.type() == qt.QEvent.KeyPress:
+            if event.key() == qt.Qt.Key_Tab:
+                self.parentWidget.showCompletion()
+                return True
+            elif event.key() in (qt.Qt.Key_Return, qt.Qt.Key_Enter):
+                cursor = self.parentWidget.editor.textCursor()
+                cursorPosition = cursor.position()
+                lineLength = cursor.block().length()  # Account for newline at end of block
+                atEndOfLine = cursorPosition == lineLength
+                print(lineLength, atEndOfLine)
+
+                if atEndOfLine:
+                    cursor.insertText(" /n")  # Insert space then newline
+                    temp_pos = cursorPosition - 1
+                    cursor = self.parentWidget.editor.textCursor()
+                    print(temp_pos, cursor)
+
+                    self.parentWidget.editor.setTextCursor(temp_pos)
+
+                    plainText = self.parentWidget.editor.toPlainText()
+                    self.parentWidget.displayHighlightedContent(plainText)
+
+                else:
+                    plainText = self.parentWidget.editor.toPlainText()
+                    self.parentWidget.displayHighlightedContent(plainText)
+
+                #
+                # cursor = self.parentWidget.editor.textCursor()
+                #
+                # # Move cursor to the next line, then remove the space
+                # cursor.movePosition(qt.QTextCursor.StartOfLine)
+                # cursor.movePosition(qt.QTextCursor.Down)
+                # if atEndOfLine:  # Only delete space if we added one
+                #
+                #
+                # self.parentWidget.editor.setTextCursor(cursor)
+
+                return True
         return qt.QObject.eventFilter(self, watched, event)
 
 
