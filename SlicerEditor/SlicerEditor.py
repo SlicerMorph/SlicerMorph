@@ -60,7 +60,7 @@ class SlicerEditorWidget(ScriptedLoadableModuleWidget):
         self.PythonLexer = PythonLexer
         self.jedi = jedi
         self.highlight = highlight
-        self.toolbar = None
+        self.saveOpenComboBox = None
         self.editor = None
         self.logic = SlicerEditorLogic()
         self.formatter = HtmlFormatter(full=True, style='colorful')
@@ -82,27 +82,22 @@ class SlicerEditorWidget(ScriptedLoadableModuleWidget):
 
         parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
 
-        # Toolbar with save to scene and open from scene actions
-        self.toolbar = qt.QToolBar()
-        parametersFormLayout.addWidget(self.toolbar)
+        # Label for the combo box
+        self.comboBoxLabel = qt.QLabel("Python File Node:")
+        self.saveOpenComboBox = qt.QComboBox()
+        self.saveOpenComboBox.addItem("Choose a .py Node")
+        self.saveOpenComboBox.addItem("Create New Node")
+        self.saveOpenComboBox.addItem("Save Node to Scene")
+        self.saveOpenComboBox.addItem("Open Node from Scene")
+        parametersFormLayout.addRow(self.comboBoxLabel, self.saveOpenComboBox)
 
-        newFileAction = qt.QAction("New File", self.toolbar)
-        newFileAction.triggered.connect(self.newFile)
-        self.toolbar.addAction(newFileAction)
-
-        saveToSceneAction = qt.QAction("Save to Scene", self.toolbar)
-        saveToSceneAction.triggered.connect(self.saveToScene)
-        self.toolbar.addAction(saveToSceneAction)
-
-        openFromSceneAction = qt.QAction("Open from Scene", self.toolbar)
-        openFromSceneAction.triggered.connect(self.openFromScene)
-        self.toolbar.addAction(openFromSceneAction)
+        self.saveOpenComboBox.currentIndexChanged.connect(self.onComboBoxIndexChanged)
 
         # Editor area
         self.editor = qt.QTextEdit()
         self.editor.setTextInteractionFlags(qt.Qt.TextEditorInteraction)
         self.editor.setAcceptRichText(False)  # Use plain text for editing
-        parametersFormLayout.addWidget(self.editor)
+        parametersFormLayout.addRow(self.editor)
         self.editor.textChanged.connect(self.onTextChanged)
 
         # Corrected Event Filter Installation (Slicer-specific)
@@ -110,16 +105,13 @@ class SlicerEditorWidget(ScriptedLoadableModuleWidget):
 
     @staticmethod
     def setupSlicerPythonEnvironment():
-        # Get the Slicer version
-        slicer_version = slicer.app.applicationVersion
 
         # Get the paths from the Slicer application
         slicer_paths = [
-            os.path.join(slicer.app.slicerHome, f'lib/Slicer-{slicer_version}/qt-loadable-modules'),
-            os.path.join(slicer.app.slicerHome, f'lib/Slicer-{slicer_version}/qt-scripted-modules'),
             os.path.join(slicer.app.slicerHome, 'bin/Python',
                          f'lib/python{sys.version_info.major}.{sys.version_info.minor}/site-packages')
         ]
+
         for path in slicer_paths:
             if path not in sys.path:
                 sys.path.append(path)
@@ -177,9 +169,10 @@ class SlicerEditorWidget(ScriptedLoadableModuleWidget):
         self.editor.setHtml(html)
         self.editor.blockSignals(False)
 
-        # Restore the cursor position, ensuring it does not exceed the new text length
-        # cursor_position = min(pos, len(self.editor.toPlainText()))
-        cursor.setPosition(pos)
+        # Adjust the cursor position if it's out of range
+        newPlainTextLength = len(self.editor.toPlainText())
+        cursor.setPosition(min(pos, newPlainTextLength))
+
         self.editor.setTextCursor(cursor)
 
     def showCompletion(self):
@@ -213,6 +206,17 @@ class SlicerEditorWidget(ScriptedLoadableModuleWidget):
         cursor.removeSelectedText()
         cursor.insertText(text)
         self.editor.setTextCursor(cursor)
+
+    def onComboBoxIndexChanged(self, index):
+        if index == 1:
+            self.newFile()
+        elif index == 2:
+            self.saveToScene()
+        elif index == 3:
+            self.openFromScene()
+
+        # Reset to the default option after selection
+        self.saveOpenComboBox.setCurrentIndex(0)
 
     def cleanup(self):
         """
