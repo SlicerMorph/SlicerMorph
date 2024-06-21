@@ -103,6 +103,15 @@ class SlicerEditorWidget(ScriptedLoadableModuleWidget):
         # Corrected Event Filter Installation (Slicer-specific)
         self.editor.installEventFilter(self.eventFilter)
 
+        # Add buttons below the editor
+        self.runAllButton = qt.QPushButton("Run All")
+        self.runAllButton.clicked.connect(self.runAllScript)
+        parametersFormLayout.addRow(self.runAllButton)
+
+        self.runSelectedButton = qt.QPushButton("Run Selected")
+        self.runSelectedButton.clicked.connect(self.runSelectedScript)
+        parametersFormLayout.addRow(self.runSelectedButton)
+
     @staticmethod
     def setupSlicerPythonEnvironment():
 
@@ -206,6 +215,16 @@ class SlicerEditorWidget(ScriptedLoadableModuleWidget):
         cursor.removeSelectedText()
         cursor.insertText(text)
         self.editor.setTextCursor(cursor)
+
+    def runAllScript(self):
+        script = self.editor.toPlainText()
+        exec(script, globals())
+
+    def runSelectedScript(self):
+        cursor = self.editor.textCursor()
+        selectedText = cursor.selectedText()
+        if selectedText:
+            exec(selectedText, globals())
 
     def onComboBoxIndexChanged(self, index):
         if index == 1:
