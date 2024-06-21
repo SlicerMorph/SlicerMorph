@@ -115,10 +115,10 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
             )
             slicer.app.processEvents()
             try:
-                slicer.util.pip_install(["itk==5.3.0"])
+                slicer.util.pip_install(["itk~=5.4.0"])
                 slicer.util.pip_install(["scikit-learn"])
-                slicer.util.pip_install(["itk_fpfh==0.1.1"])
-                slicer.util.pip_install(["itk_ransac==0.1.4"])
+                slicer.util.pip_install(["itk-fpfh~=0.2.0"])
+                slicer.util.pip_install(["itk-ransac~=0.2.1"])
                 slicer.util.pip_install(f"cpdalp")
             except:
                 slicer.util.infoDisplay("Issue while installing the ITK Python packages")
