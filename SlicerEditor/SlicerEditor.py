@@ -165,6 +165,9 @@ class SlicerEditorWidget(ScriptedLoadableModuleWidget):
         self.displayHighlightedContent(plainText)
 
     def displayHighlightedContent(self, content):
+        if not content.endswith(' '):
+            content += ' '
+
         lexer = self.PythonLexer()
         highlightedContent = self.highlight(content, lexer, self.formatter)
 
@@ -210,9 +213,28 @@ class SlicerEditorWidget(ScriptedLoadableModuleWidget):
 
     def insertCompletion(self, text):
         cursor = self.editor.textCursor()
-        # Select the text from the current cursor position to the start of the current word
         cursor.movePosition(qt.QTextCursor.StartOfWord, qt.QTextCursor.KeepAnchor)
-        cursor.removeSelectedText()
+
+        # Check if the selected text ends with a period
+        selected_text = cursor.selectedText()
+        print(selected_text)
+        print(text)
+        if selected_text == '.':
+            print('period detected')
+            # Move the cursor to the end of the selected text without removing it
+            cursor.movePosition(qt.QTextCursor.Right, qt.QTextCursor.MoveAnchor, len(selected_text))
+
+        elif selected_text == 'import ':
+            print('import statement detected')
+            cursor.removeSelectedText()
+            cursor.movePosition(qt.QTextCursor.Left, qt.QTextCursor.MoveAnchor, 1)
+            text = selected_text + text
+
+        else:
+            # Remove the selected text if it doesn't end with a period
+            cursor.removeSelectedText()
+            cursor.movePosition(qt.QTextCursor.Left, qt.QTextCursor.MoveAnchor, 1)
+
         cursor.insertText(text)
         self.editor.setTextCursor(cursor)
 
