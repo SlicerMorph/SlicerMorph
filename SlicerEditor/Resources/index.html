@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Slicer Editor</title>
+    <meta http-equiv="Content-Type" content="text/html;charset=utf-8" />
+    <script src="./node_modules/monaco-editor/min/vs/loader.js"></script>
+    <style>
+        html, body, #container {
+            height: 100%;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+        #container {
+            border: 1px solid grey;
+        }
+    </style>
+</head>
+<body>
+    <img id="run" src="3D-Slicer-Mark.svg" width="75" height="75"></img>
+    <div id="container"></div>
+    <script>
+        if (!("slicerPython" in window)) {
+            alert("This page is meant to be used inside 3D Slicer.\nUse a version newer than March 5, 2024")
+        }
+    </script>
+    <script>
+        // workaround for missing WeakRef on some QWebEngine versions
+        // from: https://github.com/flutter/flutter/issues/134317#issuecomment-1803171309
+        /*! (c) Andrea Giammarchi - ISC */
+        var self=this||{};try{self.WeakRef=WeakRef,self.FinalizationGroup=FinalizationGroup}catch(e){!function(e,t){var i=new e;function n(e){i.set(this,e)}t(n.prototype,{deref:{value:function(){return i.get(this)}}});var a=new e;function r(e){a.set(this,[])}t(r.prototype,{register:{value:function(e,t){var i=a.get(this);i.indexOf(t)<0&&i.push(t)}},unregister:{value:function(e,t){var i=a.get(this),n=i.indexOf(t);return-1<n&&i.splice(n,1),-1<n}},cleanupSome:{value:function(e){e(a.get(this))}}}),self.WeakRef=n,self.FinalizationGroup=r}(WeakMap,Object.defineProperties)}
+        if ("slicerPython" in window) {
+            if (!("EvalPythonMode" in slicerPython)) {
+                alert("Use a 3D Slicer version newer than March 5, 2024");
+            }
+            var pythonCode = `
+import SampleData
+SampleData.SampleDataLogic().downloadMRHead()
+`
+            const evalSlicer = async (s) => {
+                let jsonResult = await slicerPython.evalPython(s, slicerPython.EvalPythonMode.EvalInput);
+                return JSON.parse( jsonResult );
+            };
+            const evalSlicerSingle = async (s) => {
+                return await slicerPython.evalPython(s, slicerPython.EvalPythonMode.SingleInput);
+            };
+            async function setupSlicerCompletion(monaco) {
+                await evalSlicerSingle("import json");
+                async function createSuggestions(range, textUntilPosition, word) {
+                    let completions = [];
+                    if (textUntilPosition[textUntilPosition.length - 1] != ".") {
+                        completions = await evalSlicer("json.dumps(list(globals().keys()))");
+                    } else {
+                        let token = textUntilPosition.slice(0, textUntilPosition.length - 1);
+                        pythonCommand = `json.dumps(dir(${token}))`;
+                        completions = await evalSlicer(pythonCommand);
+                    }
+                    let suggestions = [];
+                    completions.forEach((completion) => {
+                        suggestions.push({
+                            label: completion,
+                            kind: monaco.languages.CompletionItemKind.Function,
+                            insertText: completion,
+                            range: range,
+                        });
+                    });
+                    return suggestions;
+                }
+                monaco.languages.registerCompletionItemProvider("python", {
+                    triggerCharacters: ["."],
+                    provideCompletionItems: async function (model, position) {
+                        var textUntilPosition = model.getValueInRange({
+                            startLineNumber: position.lineNumber,
+                            startColumn: 1,
+                            endLineNumber: position.lineNumber,
+                            endColumn: position.column,
+                        });
+                        var word = model.getWordUntilPosition(position);
+                        var range = {
+                            startLineNumber: position.lineNumber,
+                            endLineNumber: position.lineNumber,
+                            startColumn: word.startColumn,
+                            endColumn: word.endColumn,
+                        };
+                        return {
+                            suggestions: await createSuggestions(range, textUntilPosition, word),
+                        };
+                    },
+                });
+            }
+            require.config({ paths: { vs: './node_modules/monaco-editor/min/vs' } });
+            require(["vs/editor/editor.main"], async function () {
+                await setupSlicerCompletion(monaco);
+                window.editor = monaco.editor.create(document.getElementById('container'), {
+                    value: pythonCode,
+                    language: 'python',
+                    theme: 'vs-dark'
+                });
+            });
+            document.getElementById("run").addEventListener("click", () => {
+                let code = window.editor.getModel().getValueInRange(window.editor.getSelection());
+                if (code == '') {
+                    code = window.editor.getModel().getValue();
+                }
+                if (window.slicerPython) {
+                    window.slicerPython.evalPython(code);
+                } else {
+                    console.log("In Slicer you would have executed this code:");
+                    console.log(code);
+                }
+            });
+        }
+    </script>
+</body>
+</html>
