@@ -2,34 +2,9 @@ import os
 
 import qt, ctk
 import slicer
-import vtk
 
 import ScreenCapture
 from slicer.ScriptedLoadableModule import *
-
-
-def isActorVisible(camera, actor):
-    # Create a list to store the frustum planes
-    frustumPlanes = [0.0] * 24
-
-    # Get the frustum planes from the camera
-    camera.GetFrustumPlanes(1.0, frustumPlanes)
-
-    # Create a vtkPlanes object using the frustum planes
-    planes = vtk.vtkPlanes()
-    planes.SetFrustumPlanes(frustumPlanes)
-
-    # Get the bounds of the actor
-    bounds = actor.GetBounds()
-
-    # Check if the bounding box is within the view frustum
-    for i in range(0, 6):
-        plane = vtk.vtkPlane()
-        planes.GetPlane(i, plane)
-        if plane.EvaluateFunction(bounds[:3]) * plane.EvaluateFunction(bounds[3:]) > 0:
-            # If the product is positive, then one of the box's corners is outside this plane
-            return False
-    return True
 
 
 #
@@ -240,6 +215,25 @@ class HiResScreenCaptureLogic(ScriptedLoadableModuleLogic):
             # Store the original size and scale factor
             originalSize = threeDView.size
             originalScaleFactor = viewNode.GetScreenScaleFactor()
+
+            # Get the main window
+            mainWindow = slicer.util.mainWindow()
+
+            # Get the global position of the main window
+            globalPosition = mainWindow.mapToGlobal(qt.QPoint(0, 0))
+
+            # Iterate through all screens to find which one contains the main window
+            screen = None
+            for screen in qt.QApplication.screens():
+                if screen.geometry.contains(globalPosition):
+                    break
+
+            if screen:
+                # Get the device pixel ratio (scaling factor) for this screen
+                scaling_factor = screen.devicePixelRatio
+                print(f"Display scaling factor for the screen Slicer is rendering on: {scaling_factor}")
+            else:
+                print("No screen found that contains the main window.")
 
             try:
                 print("Original Image size:", originalSize)
