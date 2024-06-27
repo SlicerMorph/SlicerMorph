@@ -233,98 +233,40 @@ class HiResScreenCaptureLogic(ScriptedLoadableModuleLogic):
     def runScreenCapture(self) -> None:
         if self.resolutionFactor and self.outputPath:
             layoutManager = slicer.app.layoutManager()
-            currentLayout = layoutManager.layout
             threeDWidget = layoutManager.threeDWidget(0)
+            threeDView = threeDWidget.threeDView()
+            viewNode = threeDView.mrmlViewNode()
 
-            threeDWidget.setParent(None)
-            threeDWidget.show()
-            originalSize = threeDWidget.size
-            print("Original Image size:", threeDWidget.size)
-
-            viewNode = threeDWidget.mrmlViewNode()
+            # Store the original size and scale factor
+            originalSize = threeDView.size
             originalScaleFactor = viewNode.GetScreenScaleFactor()
-            print("Original Markup Scale Factor:", originalScaleFactor)
-            viewNode.SetScreenScaleFactor(originalScaleFactor * self.currentScaleFactor)
 
-            threeDWidget.size = qt.QSize(originalSize.width() * self.currentScaleFactor,
-                                         originalSize.height() * self.currentScaleFactor)
-            print("Updated Image size:", threeDWidget.size)
+            try:
+                print("Original Image size:", originalSize)
+                print("Original Markup Scale Factor:", originalScaleFactor)
 
-            print("Updated Markup Scale Factor:", viewNode.GetScreenScaleFactor())
+                # Update the scale factor and size for high resolution capture
+                viewNode.SetScreenScaleFactor(originalScaleFactor * self.currentScaleFactor)
+                threeDView.resize(originalSize.width() * self.currentScaleFactor,
+                                  originalSize.height() * self.currentScaleFactor)
 
-            # Capture the view
-            threeDWidget.grab().save(self.outputPath)
+                print("Updated Image size:", threeDView.size)
+                print("Updated Markup Scale Factor:", viewNode.GetScreenScaleFactor())
 
-            viewNode.SetScreenScaleFactor(originalScaleFactor)
+                # Capture the view
+                screenshot = threeDView.grab()
+                screenshot.save(self.outputPath)
 
-            # make sure the layout changes so that the threeDWidget is reparented and resized
-            layoutManager.layout = slicer.vtkMRMLLayoutNode.SlicerLayoutCustomView
-            layoutManager.layout = currentLayout
+                print("Screenshot saved to:", self.outputPath)
 
-    #
-# HiResScreenCaptureTest
-#
+            finally:
+                # Restore the original size and scale factor
+                viewNode.SetScreenScaleFactor(originalScaleFactor)
+                threeDView.resize(originalSize)
+                print("Restored Image size:", threeDView.size)
+                print("Restored Markup Scale Factor:", viewNode.GetScreenScaleFactor())
 
-# class HiResScreenCaptureTest(ScriptedLoadableModuleTest):
-#     """
-#     This is the test case for your scripted module.
-#     Uses ScriptedLoadableModuleTest base class, available at:
-#     https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
-#     """
-#
-#     def setUp(self):
-#         """ Do whatever is needed to reset the state - typically a scene clear will be enough.
-#         """
-#         slicer.mrmlScene.Clear()
-#
-#     def runTest(self):
-#         """Run as few or as many tests as needed here.
-#         """
-#         self.setUp()
-#         self.test_HiResScreenCapture1()
-#
-#     def test_HiResScreenCapture1(self):
-#         """ Ideally you should have several levels of tests.  At the lowest level
-#         tests should exercise the functionality of the logic with different inputs
-#         (both valid and invalid).  At higher levels your tests should emulate the
-#         way the user would interact with your code and confirm that it still works
-#         the way you intended.
-#         One of the most important features of the tests is that it should alert other
-#         developers when their changes will have an impact on the behavior of your
-#         module.  For example, if a developer removes a feature that you depend on,
-#         your test should break so they know that the feature is needed.
-#         """
-#
-#         self.delayDisplay("Starting the test")
-#
-#         # Get/create input data
-#
-#         import SampleData
-#         registerSampleData()
-#         inputVolume = SampleData.downloadSample('HiResScreenCapture1')
-#         self.delayDisplay('Loaded test data set')
-#
-#         inputScalarRange = inputVolume.GetImageData().GetScalarRange()
-#         self.assertEqual(inputScalarRange[0], 0)
-#         self.assertEqual(inputScalarRange[1], 695)
-#
-#         outputVolume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode")
-#         threshold = 100
-#
-#         # Test the module logic
-#
-#         logic = HiResScreenCaptureLogic()
-#
-#         # Test algorithm with non-inverted threshold
-#         logic.process(inputVolume, outputVolume, threshold, True)
-#         outputScalarRange = outputVolume.GetImageData().GetScalarRange()
-#         self.assertEqual(outputScalarRange[0], inputScalarRange[0])
-#         self.assertEqual(outputScalarRange[1], threshold)
-#
-#         # Test algorithm with inverted threshold
-#         logic.process(inputVolume, outputVolume, threshold, False)
-#         outputScalarRange = outputVolume.GetImageData().GetScalarRange()
-#         self.assertEqual(outputScalarRange[0], inputScalarRange[0])
-#         self.assertEqual(outputScalarRange[1], inputScalarRange[1])
-#
-#         self.delayDisplay('Test passed')
+            # Ensure the layout updates to reflect the changes
+            layoutManager.layoutChanged()
+
+            print("Done.")
