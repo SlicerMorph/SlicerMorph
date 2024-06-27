@@ -228,12 +228,8 @@ class HiResScreenCaptureLogic(ScriptedLoadableModuleLogic):
                 if screen.geometry.contains(globalPosition):
                     break
 
-            if screen:
-                # Get the device pixel ratio (scaling factor) for this screen
-                scaling_factor = screen.devicePixelRatio
-                print(f"Display scaling factor for the screen Slicer is rendering on: {scaling_factor}")
-            else:
-                print("No screen found that contains the main window.")
+            scaling_factor = screen.devicePixelRatio
+            print(f"Display scaling factor for the screen Slicer is rendering on: {scaling_factor}")
 
             try:
                 print("Original Image size:", originalSize)
@@ -241,8 +237,8 @@ class HiResScreenCaptureLogic(ScriptedLoadableModuleLogic):
 
                 # Update the scale factor and size for high resolution capture
                 viewNode.SetScreenScaleFactor(originalScaleFactor * self.currentScaleFactor)
-                threeDView.resize(originalSize.width() * self.currentScaleFactor,
-                                  originalSize.height() * self.currentScaleFactor)
+                threeDView.resize(originalSize.width() * self.currentScaleFactor * (1/scaling_factor),
+                                  originalSize.height() * self.currentScaleFactor * (1/scaling_factor))
 
                 print("Updated Image size:", threeDView.size)
                 print("Updated Markup Scale Factor:", viewNode.GetScreenScaleFactor())
