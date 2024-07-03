@@ -146,6 +146,23 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
             fpfh = itk.Fpfh.PointFeature.MF3MF3.New()
         progressDialog.close()
 
+        # Import pandas if needed
+        try:
+          import pandas
+        except:
+          progressDialog = slicer.util.createProgressDialog(
+              windowTitle="Installing...",
+              labelText="Installing Pandas Python package...",
+              maximum=0,
+          )
+          slicer.app.processEvents()
+          try:
+            slicer.util.pip_install(["pandas"])
+            progressDialog.close()
+          except:
+            slicer.util.infoDisplay("Issue while installing Pandas Python package. Please install manually.")
+            progressDialog.close()
+
         # Load widget from .ui file (created by Qt Designer).
         uiWidget = slicer.util.loadUI(self.resourcePath("UI/ALPACA.ui"))
         self.layout.addWidget(uiWidget)
