@@ -390,8 +390,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     tabsWidget.addTab(visualizeTab, "Interactive 3D Visualization")
     self.layout.addWidget(tabsWidget)
 
-    ################################### Setup Tab ###################################   
-    
+    ################################### Setup Tab ###################################
+
     inbutton=ctk.ctkCollapsibleButton()
     inbutton.text="Setup Analysis"
     inputLayout= qt.QGridLayout(inbutton)
