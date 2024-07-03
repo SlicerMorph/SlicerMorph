@@ -391,6 +391,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.layout.addWidget(tabsWidget)
 
     ################################### Setup Tab ###################################
+
     inbutton=ctk.ctkCollapsibleButton()
     inbutton.text="Setup Analysis"
     inputLayout= qt.QGridLayout(inbutton)
@@ -421,35 +422,39 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.clearButton.connect('clicked(bool)', self.onClearButton)
 
     # Load covariates options
-    loadCovariatesCollapsibleButton = ctk.ctkCollapsibleButton()
+    loadCovariatesCollapsibleButton = ctk.ctkCollapsibleGroupBox()
     loadCovariatesLayout = qt.QGridLayout(loadCovariatesCollapsibleButton)
-    loadCovariatesCollapsibleButton.text = "Load optional covariates table"
+    loadCovariatesCollapsibleButton.title = "Covariate options"
     loadCovariatesCollapsibleButton.collapsed = True
     inputLayout.addWidget(loadCovariatesCollapsibleButton,3,1,1,3)
 
     # Generate covariates button
-    generateCovariatesTableText=qt.QLabel("Generate new covariate table template")
-    loadCovariatesLayout.addWidget(generateCovariatesTableText,1,1)
-    self.factorNamesLabel=qt.QLabel('Factor Names:')
-    loadCovariatesLayout.addWidget(self.factorNamesLabel,2,1)
-    self.factorNames=qt.QLineEdit()
+    generateCovariatesTableBox=ctk.ctkCollapsibleGroupBox()
+    generateCovariatesTableBox.title = "Generate new covariate table template"
+    generateCovariatesTableBoxLayout = qt.QHBoxLayout()
+    generateCovariatesTableBox.setLayout(generateCovariatesTableBoxLayout)
+    loadCovariatesLayout.addWidget(generateCovariatesTableBox,1,1)
+    self.factorNames, factorNamesLabel, self.generateCovariatesTableButton=self.textIn('Factor Names:','', 'Generate Template')
     self.factorNames.setToolTip("Enter factor names separated with a comma")
     self.factorNames.connect('textChanged(const QString &)', self.factorStringChanged)
-    loadCovariatesLayout.addWidget(self.factorNames,2,2)
-    self.generateCovariatesTableButton = qt.QPushButton("Generate Template")
     self.generateCovariatesTableButton.checkable = False
     self.generateCovariatesTableButton.toolTip = "Create and open a new CSV format file to enter covariate data"
     self.generateCovariatesTableButton.enabled = False
-    loadCovariatesLayout.addWidget(self.generateCovariatesTableButton,2,3)
+    generateCovariatesTableBoxLayout.addWidget(factorNamesLabel)
+    generateCovariatesTableBoxLayout.addWidget(self.factorNames)
+    generateCovariatesTableBoxLayout.addWidget(self.generateCovariatesTableButton)
     self.generateCovariatesTableButton.connect('clicked(bool)', self.onGenerateCovariatesTable)
 
     # Load covariates table
-    loadCovariatesTableText=qt.QLabel("Import covariates table to include in analysis")
-    loadCovariatesLayout.addWidget(loadCovariatesTableText,4,1)
+    loadCovariatesTableBox=ctk.ctkCollapsibleGroupBox()
+    loadCovariatesTableBox.title = "Import covariates table to include in analysis"
+    loadCovariatesTableBoxLayout = qt.QHBoxLayout()
+    loadCovariatesTableBox.setLayout(loadCovariatesTableBoxLayout)
+    loadCovariatesLayout.addWidget(loadCovariatesTableBox,2,1)
     self.selectCovariatesText, selectCovariatesLabel, self.selectCovariatesButton=self.textIn('Select covariates table:','', '')
-    loadCovariatesLayout.addWidget(self.selectCovariatesText,5,2)
-    loadCovariatesLayout.addWidget(selectCovariatesLabel,5,1)
-    loadCovariatesLayout.addWidget(self.selectCovariatesButton,5,3)
+    loadCovariatesTableBoxLayout.addWidget(selectCovariatesLabel)
+    loadCovariatesTableBoxLayout.addWidget(self.selectCovariatesText)
+    loadCovariatesTableBoxLayout.addWidget(self.selectCovariatesButton)
     self.selectCovariatesButton.connect('clicked(bool)', self.onSelectCovariatesTable)
 
     # Select output directory
@@ -834,19 +839,21 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       threeDView.resetFocalPoint()
       threeDView.resetCamera()
 
-  def textIn(self,label, dispText, toolTip):
+  def textIn(self,label, dispText, buttonText):
     """ a function to set up the appearance of a QlineEdit widget.
     """
     # set up text line
     textInLine=qt.QLineEdit();
     textInLine.setText(dispText)
-    textInLine.toolTip = toolTip
+    #textInLine.toolTip = toolTip
     # set up label
     lineLabel=qt.QLabel()
     lineLabel.setText(label)
 
     # make clickable button
-    button=qt.QPushButton("..")
+    if buttonText == "":
+      buttonText = "..."
+    button=qt.QPushButton(buttonText)
     return textInLine, lineLabel, button
 
   def updateList(self):
@@ -1044,8 +1051,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.covariateTableFile = qt.QFileDialog.getOpenFileName(dialog, "", "", filter)
     if self.covariateTableFile:
       self.selectCovariatesText.setText(self.covariateTableFile)
-    else:
-     self.selectCovariatesText.setText("")
+    #else:
+     #self.selectCovariatesText.setText("")
 
   def onGenerateCovariatesTable(self):
     numberOfInputFiles = len(self.inputFilePaths)
@@ -1078,7 +1085,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       col=self.factorTableNode.AddColumn()
       col.SetName(factorList[i])
     dateTimeStamp = datetime.now().strftime('%Y-%m-%d_%H_%M_%S')
-    covariateFolder = os.path.join(slicer.app.temporaryPath, dateTimeStamp)
+    covariateFolder = os.path.join(slicer.app.cachePath, dateTimeStamp)
     self.covariateTableFile = os.path.join(covariateFolder, "covariateTable.csv")
     try:
       os.makedirs(covariateFolder)
@@ -1090,7 +1097,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.selectCovariatesText.setText(self.covariateTableFile)
     qpath = qt.QUrl.fromLocalFile(os.path.dirname(covariateFolder+os.path.sep))
     qt.QDesktopServices().openUrl(qpath)
-    self.GPALogTextbox.insertPlainText("Covariate table template generated. Please fill in covariate columns, save, and load table in the next step to proceed.\n")
+    self.GPALogTextbox.insertPlainText(f"Covariate table template generated in folder: \n{covariateFolder}\n Please fill in covariate columns, save, and load table in the next step to proceed.\n")
 
   def onLoadCovariatesTable(self):
     numberOfInputFiles = len(self.inputFilePaths)
