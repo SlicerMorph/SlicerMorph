@@ -421,12 +421,32 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     fileViewerLayout.addRow(self.clearButton)
     self.clearButton.connect('clicked(bool)', self.onClearButton)
 
+    # Select output directory
+    self.outText, outLabel, self.outbutton=self.textIn('Select output directory: ','', '')
+    inputLayout.addWidget(self.outText,3,2)
+    inputLayout.addWidget(outLabel,3,1)
+    inputLayout.addWidget(self.outbutton,3,3)
+    self.outbutton.connect('clicked(bool)', self.onSelectOutputDirectory)
+
+    self.excludeLMLabel=qt.QLabel('Exclude landmarks:')
+    inputLayout.addWidget(self.excludeLMLabel,4,1)
+
+    self.excludeLMText=qt.QLineEdit()
+    self.excludeLMText.setToolTip("No spaces. Separate numbers by commas.  Example:  51,52")
+    inputLayout.addWidget(self.excludeLMText,4,2,1,2)
+
+    self.BoasOptionCheckBox = qt.QCheckBox()
+    self.BoasOptionCheckBox.setText("Use Boas coordinates for GPA")
+    self.BoasOptionCheckBox.checked = 0
+    self.BoasOptionCheckBox.setToolTip("If checked, GPA will skip scaling.")
+    inputLayout.addWidget(self.BoasOptionCheckBox,5,2)
+
     # Load covariates options
     loadCovariatesCollapsibleButton = ctk.ctkCollapsibleGroupBox()
     loadCovariatesLayout = qt.QGridLayout(loadCovariatesCollapsibleButton)
     loadCovariatesCollapsibleButton.title = "Covariate options"
     loadCovariatesCollapsibleButton.collapsed = True
-    inputLayout.addWidget(loadCovariatesCollapsibleButton,3,1,1,3)
+    inputLayout.addWidget(loadCovariatesCollapsibleButton,6,1,1,3)
 
     # Generate covariates button
     generateCovariatesTableBox=ctk.ctkCollapsibleGroupBox()
@@ -456,26 +476,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     loadCovariatesTableBoxLayout.addWidget(self.selectCovariatesText)
     loadCovariatesTableBoxLayout.addWidget(self.selectCovariatesButton)
     self.selectCovariatesButton.connect('clicked(bool)', self.onSelectCovariatesTable)
-
-    # Select output directory
-    self.outText, outLabel, self.outbutton=self.textIn('Select output directory: ','', '')
-    inputLayout.addWidget(self.outText,4,2)
-    inputLayout.addWidget(outLabel,4,1)
-    inputLayout.addWidget(self.outbutton,4,3)
-    self.outbutton.connect('clicked(bool)', self.onSelectOutputDirectory)
-
-    self.excludeLMLabel=qt.QLabel('Exclude landmarks')
-    inputLayout.addWidget(self.excludeLMLabel,5,1)
-
-    self.excludeLMText=qt.QLineEdit()
-    self.excludeLMText.setToolTip("No spaces. Separate numbers by commas.  Example:  51,52")
-    inputLayout.addWidget(self.excludeLMText,5,2,1,2)
-
-    self.BoasOptionCheckBox = qt.QCheckBox()
-    self.BoasOptionCheckBox.setText("Use Boas coordinates for GPA")
-    self.BoasOptionCheckBox.checked = 0
-    self.BoasOptionCheckBox.setToolTip("If checked, GPA will skip scaling.")
-    inputLayout.addWidget(self.BoasOptionCheckBox, 6,2)
 
     #Load Button
     self.loadButton = qt.QPushButton("Execute GPA + PCA")
