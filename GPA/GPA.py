@@ -411,6 +411,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     # File viewer box
     self.inputFileTable = qt.QTextEdit()
+    self.inputFileTable.setTextInteractionFlags(False)
     fileViewerLayout.addRow(self.inputFileTable)
 
     # Clear Button
