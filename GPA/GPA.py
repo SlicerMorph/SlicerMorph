@@ -1052,8 +1052,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.covariateTableFile = qt.QFileDialog.getOpenFileName(dialog, "", "", filter)
     if self.covariateTableFile:
       self.selectCovariatesText.setText(self.covariateTableFile)
-    #else:
-     #self.selectCovariatesText.setText("")
+    else:
+     self.covariateTableFile =  self.selectCovariatesText.text
 
   def onGenerateCovariatesTable(self):
     numberOfInputFiles = len(self.inputFilePaths)
@@ -1109,9 +1109,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.GPALogTextbox.insertPlainText("Error: No input files are selected for the covariate table\n")
       return runAnalysis
     try:
+      # refresh covariateTableFile from GUI
+      self.covariateTableFile =  self.selectCovariatesText.text
       self.factorTableNode = slicer.util.loadTable(self.covariateTableFile)
     except AttributeError:
-      logging.debug('Covariate table import failed')
+      logging.debug(f'Covariate table import failed for: {self.covariateTableFile}')
       runAnalysis = slicer.util.confirmYesNoDisplay(f"Error: Covariate import failed. Table could not be loaded from {self.covariateTableFile}. \n\nYou can continue analysis without covariates or stop and edit your selected table. \n\nWould you like to proceed with the analysis?")
       return runAnalysis
     #check for at least one covariate factor
@@ -1305,7 +1307,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.initializeOnLoad() #clean up module from previous runs
     logic = GPALogic()
     # check for loaded covariate table if table path is specified
-
     if self.selectCovariatesText.text != "":
       runAnalysis = self.onLoadCovariatesTable()
       if not runAnalysis:
