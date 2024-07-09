@@ -166,12 +166,20 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         camera1 = slicer.modules.cameras.logic().GetViewActiveCameraNode(self.viewNode1)
         camera2 = slicer.modules.cameras.logic().GetViewActiveCameraNode(self.viewNode2)
 
+        #get zoom factor and set up scaling transform
+        camera2ZoomFactor = camera1.GetParallelScale()/camera2.GetParallelScale()
+        scalingTransform=vtk.vtkTransform()
+        scalingTransform.Scale(camera2ZoomFactor,camera2ZoomFactor,camera2ZoomFactor)
+        self.scalingTransformNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLinearTransformNode", "scale transform")
+        self.scalingTransformNode.SetMatrixTransformToParent(scalingTransform.GetMatrix())
+
         logic = QuickAlignLogic()
         movingModel = self.ui.inputSelector2.currentNode()
 
         #get alignment transform between cameras
         self.alignmentTransform = logic.getCameraAlignmentTransform(camera1, camera2)
         self.centerView2Transform.SetAndObserveTransformNodeID(self.alignmentTransform.GetID())
+        self.alignmentTransform.SetAndObserveTransformNodeID(self.scalingTransformNode.GetID())
 
         #link and update views
         self.viewNode2.SetLinkedControl(True)
@@ -263,6 +271,8 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
           slicer.mrmlScene.RemoveNode(self.centerView2Transform)
         if hasattr(self, 'alignmentTransform'):
           slicer.mrmlScene.RemoveNode(self.alignmentTransform)
+        if hasattr(self, 'scalingTransformNode'):
+          slicer.mrmlScene.RemoveNode(self.scalingTransformNode)
 
     def onInitializeViewButton(self):
         self.cleanUpTransformNodes()
@@ -383,3 +393,4 @@ class QuickAlignLogic(ScriptedLoadableModuleLogic):
           inputNode2.RemoveObserver(observerTags[1])
         except:
           print(f"No tag found for {inputNode2.GetName()}")
+
