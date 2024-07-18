@@ -97,23 +97,23 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         # check box to trigger taking screen shots for later use in tutorials
         #
         self.flipNormalsCheckBox = qt.QCheckBox()
-        self.flipNormalsCheckBox.checked = 1
+        self.flipNormalsCheckBox.checked = False
         self.flipNormalsCheckBox.setToolTip("If checked, flip grid surface direction.")
         parametersFormLayout.addRow("Flip grid orientation", self.flipNormalsCheckBox)
 
         #
         # Outline Button
         #
-        self.outlineButton = qt.QPushButton("Place grid outline")
-        self.outlineButton.toolTip = "Initiate placement of grid outline"
+        self.outlineButton = qt.QPushButton("Place new grid patch")
+        self.outlineButton.toolTip = "Initiate placement of patch outline"
         self.outlineButton.enabled = False
         parametersFormLayout.addRow(self.outlineButton)
         
         #
         # Grid Button
         #
-        self.sampleGridButton = qt.QPushButton("Sample grid")
-        self.sampleGridButton.toolTip = "Initiate sampling of grid"
+        self.sampleGridButton = qt.QPushButton("Sample current patch")
+        self.sampleGridButton.toolTip = "Initiate sampling of patch"
         self.sampleGridButton.enabled = False
         parametersFormLayout.addRow(self.sampleGridButton)
         
@@ -126,14 +126,21 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         self.outlineButton.connect('clicked(bool)', self.onOutlineButton)
         self.sampleGridButton.connect('clicked(bool)', self.onSampleGridButton)
 
+        # Track number of patches generated for naming
+        self.patchCounter = -1
     @vtk.calldata_type(vtk.VTK_INT)
 
     def onSelect(self):
         self.outlineButton.enabled = bool(self.modelSelector.currentNode())
 
     def onOutlineButton(self):
+        self.patchCounter += 1
+        if hasattr(self, 'gridNode'):
+          delattr(self, 'gridNode')
+        if hasattr(self, 'gridModel'):
+          delattr(self, 'gridModel')
         modelNode = self.modelSelector.currentNode()
-        self.outlineCurve = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsClosedCurveNode", "gridOutline")
+        self.outlineCurve = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsClosedCurveNode", f"gridOutline_{self.patchCounter}")
         self.outlineCurve.AddNControlPoints(4, "outline", (0,0,0) )
         self.outlineCurve.UnsetAllControlPoints()
         self.outlineCurve.SetFixedNumberOfControlPoints(True)
@@ -152,18 +159,18 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
       gridResolution = int(self.sampleRate.value)
       self.modelNode = self.modelSelector.currentNode()
       flipNormalsFlag = self.flipNormalsCheckBox.checked
+      if hasattr(self, 'gridNode'):
+        slicer.mrmlScene.RemoveNode(self.gridNode)
+      if hasattr(self, 'gridModel'):
+        slicer.mrmlScene.RemoveNode(self.gridModel)
       # set up grid
-      self.gridNode=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsGridSurfaceNode","grid")
+      self.gridNode=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsGridSurfaceNode",f"grid_{self.patchCounter}")
       self.gridNode.SetGridResolution(gridResolution,gridResolution)
-      self.gridModel=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLModelNode","gridModel")
+      self.gridModel=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLModelNode",f"gridModel_{self.patchCounter}")
       self.logic.placeGrid(gridResolution, self.outlineCurve, self.gridNode)
       self.gridNode.SetOutputSurfaceModelNodeID(self.gridModel.GetID())
-      # flip model normals
-      if flipNormalsFlag:
-        self.logic.flipSurfacePatchOrientation(self.gridModel)
-      else:
-        print("no flip")
-      self.logic.projectPatch(self.modelNode, self.gridNode, self.gridModel)
+      
+      self.logic.projectPatch(self.modelNode, self.gridNode, self.gridModel, flipNormalsFlag)
       self.logic.relaxGrid(self.gridNode, self.modelNode, gridResolution)
 
       # update view
@@ -177,12 +184,13 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
     def refreshGrid(self, caller, eventId):
       self.gridNode.LockedOff()
       gridResolution = int(self.sampleRate.value)
+      flipNormalsFlag = self.flipNormalsCheckBox.checked
       self.gridNode.RemoveAllControlPoints()
       self.gridNode.SetGridResolution(gridResolution,gridResolution)
       self.gridModel = self.gridNode.GetOutputSurfaceModelNode()
       self.logic.placeGrid(gridResolution, self.outlineCurve, self.gridNode)
       self.gridNode.SetOutputSurfaceModelNodeID(self.gridModel.GetID())
-      self.logic.projectPatch(self.modelNode, self.gridNode, self.gridModel)
+      self.logic.projectPatch(self.modelNode, self.gridNode, self.gridModel, flipNormalsFlag)
       self.logic.relaxGrid(self.gridNode, self.modelNode, gridResolution)
       self.gridNode.LockedOn()
       
@@ -246,7 +254,6 @@ class PlaceLandmarkGridLogic(ScriptedLoadableModuleLogic):
         slicer.mrmlScene.RemoveNode(transformNode)
 
     def flipSurfacePatchOrientation(self, gridModelNode):
-      print("flipping patch...")
       reverse = vtk.vtkReverseSense()
       reverse.SetInputData(gridModelNode.GetPolyData())
       reverse.Update()
@@ -256,10 +263,17 @@ class PlaceLandmarkGridLogic(ScriptedLoadableModuleLogic):
       normals.Update()
       gridModelNode.SetAndObservePolyData(normals.GetOutput())
 
-    def projectPatch(self, model, markupNode, markupModel):
+    def projectPatch(self, model, markupNode, markupModel, flipNormalsFlag):
       points = self.markup2VtkPoints(markupNode)
-      maxProjection = (model.GetPolyData().GetLength()) * 0.3
-      projectedPoints = self.projectPointsPolydata(markupModel.GetPolyData(), model.GetPolyData(), points, maxProjection)
+      maxProjection = (model.GetPolyData().GetLength()) * 0.5
+      if flipNormalsFlag:
+        gridModelFlip=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLModelNode","gridModelTemp")
+        gridModelFlip.SetAndObservePolyData(markupModel.GetPolyData())
+        self.flipSurfacePatchOrientation(gridModelFlip)
+        projectedPoints = self.projectPointsPolydata(gridModelFlip.GetPolyData(), model.GetPolyData(), points, maxProjection)
+        slicer.mrmlScene.RemoveNode(gridModelFlip)
+      else:
+        projectedPoints = self.projectPointsPolydata(markupModel.GetPolyData(), model.GetPolyData(), points, maxProjection)
       self.updateGridPoints(markupNode, projectedPoints)
 
     def updateGridPoints(self, grid, pointsVtk):
