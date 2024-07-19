@@ -67,7 +67,7 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
 
         # Layout within the dummy collapsible button
         parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
-        
+
         #
         # Select model
         #
@@ -80,7 +80,29 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         self.modelSelector.showHidden = False
         self.modelSelector.setMRMLScene( slicer.mrmlScene )
         parametersFormLayout.addRow("Model: ", self.modelSelector)
-        
+
+        #
+        # Outline Button
+        #
+        self.outlineButton = qt.QPushButton("Create a new grid patch")
+        self.outlineButton.toolTip = "Initiate placement of patch outline"
+        self.outlineButton.enabled = False
+        parametersFormLayout.addRow(self.outlineButton)
+
+        #
+        # Select model
+        #
+        self.gridSelector = slicer.qMRMLNodeComboBox()
+        self.gridSelector.nodeTypes = ( ("vtkMRMLMarkupsGridSurfaceNode"), "" )
+        self.gridSelector.selectNodeUponCreation = False
+        self.gridSelector.addEnabled = False
+        self.gridSelector.removeEnabled = False
+        self.gridSelector.noneEnabled = True
+        self.gridSelector.showHidden = False
+        self.gridSelector.setMRMLScene( slicer.mrmlScene )
+        self.gridSelector.setCurrentNode(None)
+        parametersFormLayout.addRow("Active patch: ", self.gridSelector)
+
         #
         # set sample rate value
         #
@@ -102,27 +124,20 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         parametersFormLayout.addRow("Flip grid orientation", self.flipNormalsCheckBox)
 
         #
-        # Outline Button
-        #
-        self.outlineButton = qt.QPushButton("Place new grid patch")
-        self.outlineButton.toolTip = "Initiate placement of patch outline"
-        self.outlineButton.enabled = False
-        parametersFormLayout.addRow(self.outlineButton)
-        
-        #
         # Grid Button
         #
         self.sampleGridButton = qt.QPushButton("Sample current patch")
         self.sampleGridButton.toolTip = "Initiate sampling of patch"
         self.sampleGridButton.enabled = False
         parametersFormLayout.addRow(self.sampleGridButton)
-        
+
         # Create logic class. Logic implements all computations that should be possible to run
         # in batch mode, without a graphical user interface.
         self.logic = PlaceLandmarkGridLogic()
 
         # Connections
         self.modelSelector.connect('currentNodeChanged(vtkMRMLNode*)', self.onSelect)
+        self.gridSelector.connect('currentNodeChanged(vtkMRMLNode*)', self.onSelectGrid)
         self.outlineButton.connect('clicked(bool)', self.onOutlineButton)
         self.sampleGridButton.connect('clicked(bool)', self.onSampleGridButton)
 
@@ -133,13 +148,32 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
     def onSelect(self):
         self.outlineButton.enabled = bool(self.modelSelector.currentNode())
 
+    def onSelectGrid(self):
+        selectedNode = self.gridSelector.currentNode()
+        if selectedNode is None:
+          return
+        outlineName=selectedNode.GetName().replace("grid", "gridOutline")
+        try:
+          self.outlineCurve = slicer.util.getNode(outlineName)
+          self.gridNode = selectedNode
+          self.gridModel = selectedNode.GetOutputSurfaceModelNode()
+        except:
+          qt.QMessageBox.critical(slicer.util.mainWindow(),
+          'Error', 'The selected landmark grid patch is not valid.')
+          self.gridSelector.setCurrentNode(None)
+
+
     def onOutlineButton(self):
         self.patchCounter += 1
-        if hasattr(self, 'gridNode'):
-          delattr(self, 'gridNode')
-        if hasattr(self, 'gridModel'):
-          delattr(self, 'gridModel')
         modelNode = self.modelSelector.currentNode()
+        #if hasattr(self, 'gridNode'):
+        #  delattr(self, 'gridNode')
+        #if hasattr(self, 'gridModel'):
+        #  delattr(self, 'gridModel')
+        # set up grid and supporting nodes
+        self.gridNode=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsGridSurfaceNode",f"grid_{self.patchCounter}")
+        self.gridModel=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLModelNode",f"gridModel_{self.patchCounter}")
+        self.gridNode.SetOutputSurfaceModelNodeID(self.gridModel.GetID())
         self.outlineCurve = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsClosedCurveNode", f"gridOutline_{self.patchCounter}")
         self.outlineCurve.AddNControlPoints(4, "outline", (0,0,0) )
         self.outlineCurve.UnsetAllControlPoints()
@@ -152,6 +186,11 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         slicer.modules.markups.toolBar().onPlacePointShortcut()
         self.sampleGridButton.enabled  = True
 
+        # hide support nodes and update GUI
+        #self.outlineCurve.HideFromEditorsOn()
+        #self.gridModel.HideFromEditorsOn()
+        self.gridSelector.setCurrentNode(self.gridNode)
+
     def onSampleGridButton(self):
       if self.outlineCurve.GetNumberOfControlPoints() != 4:
         print("Please finish placing grid outline with 4 points")
@@ -159,17 +198,13 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
       gridResolution = int(self.sampleRate.value)
       self.modelNode = self.modelSelector.currentNode()
       flipNormalsFlag = self.flipNormalsCheckBox.checked
-      if hasattr(self, 'gridNode'):
-        slicer.mrmlScene.RemoveNode(self.gridNode)
-      if hasattr(self, 'gridModel'):
-        slicer.mrmlScene.RemoveNode(self.gridModel)
-      # set up grid
-      self.gridNode=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsGridSurfaceNode",f"grid_{self.patchCounter}")
       self.gridNode.SetGridResolution(gridResolution,gridResolution)
-      self.gridModel=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLModelNode",f"gridModel_{self.patchCounter}")
+      self.gridNode.RemoveAllControlPoints()
+      print("init grid points: ", self.gridNode.GetNumberOfControlPoints())
+
+      self.gridModel = self.gridNode.GetOutputSurfaceModelNode()
       self.logic.placeGrid(gridResolution, self.outlineCurve, self.gridNode)
-      self.gridNode.SetOutputSurfaceModelNodeID(self.gridModel.GetID())
-      
+      self.gridModel = self.gridNode.GetOutputSurfaceModelNode()
       self.logic.projectPatch(self.modelNode, self.gridNode, self.gridModel, flipNormalsFlag)
       self.logic.relaxGrid(self.gridNode, self.modelNode, gridResolution)
 
@@ -193,7 +228,7 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
       self.logic.projectPatch(self.modelNode, self.gridNode, self.gridModel, flipNormalsFlag)
       self.logic.relaxGrid(self.gridNode, self.modelNode, gridResolution)
       self.gridNode.LockedOn()
-      
+
 # PlaceLandmarkGridLogic
 #
 
@@ -212,19 +247,20 @@ class PlaceLandmarkGridLogic(ScriptedLoadableModuleLogic):
         Called when the logic class is instantiated. Can be used for initializing member variables.
         """
         ScriptedLoadableModuleLogic.__init__(self)
+
     def placeGrid(self, gridResolution, curveNode, gridNode):
-        error = 0.00003
+        error = 0.0003
         gridPointNumber = gridResolution*gridResolution
 
         # set up transform between base lms and current lms
         sourcePoints = vtk.vtkPoints()
         targetPoints = vtk.vtkPoints()
-
+        print("grid points before: ", gridNode.GetNumberOfControlPoints())
         for i in range(3):
           point = curveNode.GetNthControlPointPosition(i)
           sourcePoints.InsertNextPoint(point)
           gridNode.AddControlPoint(point)
-
+        print("grid points after: ", gridNode.GetNumberOfControlPoints())
         #get source points from grid corners
         gridCorners = [gridNode.GetNthControlPointPosition(0), gridNode.GetNthControlPointPosition(gridResolution-1), gridNode.GetNthControlPointPosition(gridPointNumber-gridResolution), gridNode.GetNthControlPointPosition(gridPointNumber-1)]
         curveCorners=[]
@@ -239,8 +275,11 @@ class PlaceLandmarkGridLogic(ScriptedLoadableModuleLogic):
             sourcePoints.InsertNextPoint(corner)
 
         if sourcePoints.GetNumberOfPoints() != targetPoints.GetNumberOfPoints():
+          print("sourcePoints: ", sourcePoints.GetNumberOfPoints())
+          print("targetPoints: ", targetPoints.GetNumberOfPoints())
+          print("grid points: ", gridNode.GetNumberOfControlPoints())
           print("Grid corners already at curve corners")
-          return 
+          sourcePoints = targetPoints
 
         transform = vtk.vtkThinPlateSplineTransform()
         transform.SetSourceLandmarks( sourcePoints )
@@ -265,7 +304,7 @@ class PlaceLandmarkGridLogic(ScriptedLoadableModuleLogic):
 
     def projectPatch(self, model, markupNode, markupModel, flipNormalsFlag):
       points = self.markup2VtkPoints(markupNode)
-      maxProjection = (model.GetPolyData().GetLength()) * 0.5
+      maxProjection = (model.GetPolyData().GetLength()) * 0.3
       if flipNormalsFlag:
         gridModelFlip=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLModelNode","gridModelTemp")
         gridModelFlip.SetAndObservePolyData(markupModel.GetPolyData())
@@ -298,27 +337,27 @@ class PlaceLandmarkGridLogic(ScriptedLoadableModuleLogic):
         markupNode.AddControlPoint(p)
       markupNode.GetDisplayNode().SetTextScale(0)
       return markupNode
-  
+
     def projectPointsPolydata(self, sourcePolydata, targetPolydata, originalPoints, rayLength):
       #set up polydata for projected points to return
       projectedPointData = vtk.vtkPolyData()
       projectedPoints = vtk.vtkPoints()
       projectedPointData.SetPoints(projectedPoints)
-  
+
       #set up locater for intersection with normal vector rays
       obbTree = vtk.vtkOBBTree()
       obbTree.SetDataSet(targetPolydata)
       obbTree.BuildLocator()
-  
+
       #set up point locator for finding surface normals and closest point
       pointLocator = vtk.vtkPointLocator()
       pointLocator.SetDataSet(sourcePolydata)
       pointLocator.BuildLocator()
-  
+
       targetPointLocator = vtk.vtkPointLocator()
       targetPointLocator.SetDataSet(targetPolydata)
       targetPointLocator.BuildLocator()
-  
+
       #get surface normal from each landmark point
       rayDirection=[0,0,0]
       normalArray = sourcePolydata.GetPointData().GetArray("Normals")
@@ -332,7 +371,6 @@ class PlaceLandmarkGridLogic(ScriptedLoadableModuleLogic):
         if(not normalArray):
           print("Error: no normal array")
           return projectedPointData
-      print('Original points:', originalPoints.GetNumberOfPoints() )
       for index in range(originalPoints.GetNumberOfPoints()):
         originalPoint= originalPoints.GetPoint(index)
         # get ray direction from closest normal
@@ -349,7 +387,7 @@ class PlaceLandmarkGridLogic(ScriptedLoadableModuleLogic):
           exteriorPoint = intersectionPoints.GetPoint(intersectionPoints.GetNumberOfPoints()-1)
           projectedPoints.InsertNextPoint(exteriorPoint)
         #if there are no intersections, reverse the normal vector
-        else: 
+        else:
           for dim in range(len(rayEndPoint)):
             rayEndPoint[dim] = originalPoint[dim] + rayDirection[dim]* -rayLength
           obbTree.IntersectWithLine(originalPoint,rayEndPoint,intersectionPoints,intersectionIds)
@@ -361,10 +399,9 @@ class PlaceLandmarkGridLogic(ScriptedLoadableModuleLogic):
             closestPointId = targetPointLocator.FindClosestPoint(originalPoint)
             rayOrigin = targetPolydata.GetPoint(closestPointId)
             projectedPoints.InsertNextPoint(rayOrigin)
-      print('Projected points:', originalPoints.GetNumberOfPoints() )
       return projectedPointData
 
-    def relaxGrid(self, gridNode, modelNode, gridResolution):  
+    def relaxGrid(self, gridNode, modelNode, gridResolution):
       gridResolutionU = gridResolution
       gridResolutionV = gridResolution
       gridPointsPolyData = vtk.vtkPolyData()
