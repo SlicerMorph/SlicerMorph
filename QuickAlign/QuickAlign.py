@@ -298,8 +298,11 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         for i, currentNode in enumerate(nodeList):
           if currentNode.GetNodeTagName() == "Volume":
-            displayNode = volRenLogic.CreateDefaultVolumeRenderingNodes(currentNode)
-            displayNode.GetVolumePropertyNode().Copy(volRenLogic.GetPresetByName("US-Fetal"))
+            if currentNode.GetNumberOfDisplayNodes() > 1:
+              displayNode = currentNode.GetNthDisplayNode(1)
+            else:
+              displayNode = volRenLogic.CreateDefaultVolumeRenderingNodes(currentNode)
+              displayNode.GetVolumePropertyNode().Copy(volRenLogic.GetPresetByName("US-Fetal"))
           else:
             displayNode=currentNode.GetDisplayNode()
           displayNode.SetVisibility(True)
@@ -393,3 +396,4 @@ class QuickAlignLogic(ScriptedLoadableModuleLogic):
           inputNode2.RemoveObserver(observerTags[1])
         except:
           print(f"No tag found for {inputNode2.GetName()}")
+
