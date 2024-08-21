@@ -1011,7 +1011,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
   def onSelectLandmarkFiles(self):
     self.inputFileTable.clear()
     self.inputFilePaths = []
-    filter = ["Landmarks (*.json *.mrk.json *.fcsv )"]
+    filter = "Landmarks (*.json *.mrk.json *.fcsv )"
     self.inputFilePaths = qt.QFileDialog().getOpenFileNames(None, "Window name", "", filter)
     self.inputFileTable.plainText = '\n'.join(self.inputFilePaths)
     self.clearButton.enabled = True
