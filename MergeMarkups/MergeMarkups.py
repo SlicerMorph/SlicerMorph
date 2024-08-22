@@ -325,12 +325,13 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     for index in range(len(self.fixedFilePaths)):
       fixed =  slicer.util.loadMarkups(self.fixedFilePaths[index])
       semi =  slicer.util.loadMarkups(self.semiFilePaths[index])
-      logic.mergeLMNodes(fixed,semi)
-      fixed.SetName(fixed.GetName()+'_merged')
-      outputFilePath = os.path.join(self.outputDirectorySelector.currentPath, fixed.GetName() + ".mrk.json")
-      slicer.util.saveNode(fixed, outputFilePath)
+      tempNode = logic.mergeLMNodes(fixed, semi)
+      tempNode.SetName(fixed.GetName()+'_merged')
+      outputFilePath = os.path.join(self.outputDirectorySelector.currentPath, tempNode.GetName() + ".mrk.json")
+      slicer.util.saveNode(tempNode, outputFilePath)
       slicer.mrmlScene.RemoveNode(fixed)
       slicer.mrmlScene.RemoveNode(semi)
+      slicer.mrmlScene.RemoveNode(tempNode)
     return True
 
   def onClearButton(self):
@@ -354,23 +355,30 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
   def mergeLMNodes(self, fixedLM, semiLM):
-    # merges semilandmarks into the fixed landmark set
+    # merges semilandmarks into the merged landmark set
     # if there are no landmark descriptions, these will be set according to the
     # fixed/semiLM box they were entered in
+    mergedNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode')
     for index in range(fixedLM.GetNumberOfControlPoints()):
+      pt = fixedLM.GetNthControlPointPositionVector(index)
+      fiducialLabel = fixedLM.GetNthControlPointLabel(index)
       fiducialDescription = fixedLM.GetNthControlPointDescription(index)
       if fiducialDescription == "":
-        fixedLM.SetNthControlPointDescription(index,"Fixed")
+        fiducialDescription = "Fixed"
+      mergedNode.AddControlPoint(pt,fiducialLabel)
+      mergedNode.SetNthControlPointDescription(index,"Fixed")
+
     for index in range(semiLM.GetNumberOfControlPoints()):
       pt = semiLM.GetNthControlPointPositionVector(index)
       fiducialLabel = semiLM.GetNthControlPointLabel(index)
       fiducialDescription = semiLM.GetNthControlPointDescription(index)
-      fixedLM.AddControlPoint(pt,fiducialLabel)
-      mergedIndex = fixedLM.GetNumberOfControlPoints()-1
+      mergedNode.AddControlPoint(pt,fiducialLabel)
+      mergedIndex = mergedNode.GetNumberOfControlPoints()-1
       if fiducialDescription == "":
-        fixedLM.SetNthControlPointDescription(mergedIndex,"Semi")
+        mergedNode.SetNthControlPointDescription(mergedIndex,"Semi")
       else:
-        fixedLM.SetNthControlPointDescription(mergedIndex,fiducialDescription)
+        mergedNode.SetNthControlPointDescription(mergedIndex,fiducialDescription)
+    return mergedNode
 
   def runApplyLandmarksType(self, markupsTreeView, label):
     nodeIDs=markupsTreeView.selectedIndexes()
@@ -379,7 +387,7 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
         currentNode = slicer.util.getNode(id.data())
         self.setAllLandmarkDescriptions(currentNode, label)
 
-  def setAllLandmarkDescriptions(self,landmarkNode, landmarkDescription):
+  def setAllLandmarkDescriptions(self, landmarkNode, landmarkDescription):
     for controlPointIndex in range(landmarkNode.GetNumberOfControlPoints()):
       landmarkNode.SetNthControlPointDescription(controlPointIndex, landmarkDescription)
 
