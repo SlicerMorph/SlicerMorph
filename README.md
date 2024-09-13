@@ -12,7 +12,7 @@ SlicerMorph streamlines digital morphology research by enabling effortless data 
 Official method of obtaining SlicerMorph is through extension mechanism of 3D Slicer. To obtain SlicerMorph, please first install the latest **stable release** (at the moment v5.6.2) of [3D Slicer](https://download.slicer.org/) and use the [Extensions Manager module](https://www.slicer.org/wiki/Documentation/Nightly/SlicerApplication/ExtensionsManager) to search for and install the SlicerMorph extension. After restarting 3D Slicer, all SlicerMorph modules will be available in the application.
 
 ### Use SlicerMorph on the cloud:
-Do not have a powerful computer to run 3D Slicer and SlicerMorph, or your institution does not give you permission to install software on their devices? You can now run 3D Slicer and SlicerMorph inside a web browser, without having to install anything, through our **MorphoCloud On-Demand Instances**. Please see http://instances.morpho.cloud to learn more and get started. 
+Do not have a powerful computer to run 3D Slicer and SlicerMorph, or your institution does not give you permission to install software on their devices? You can now run 3D Slicer and SlicerMorph inside a web browser, without having to install anything, through our **MorphoCloud On-Demand Instances**. Please see http://instances.morpho.cloud to learn more and get started.
 
 <img src="https://raw.githubusercontent.com/SlicerMorph/Spr_2021/main/TechCheckin/exten_manager.png">
 
