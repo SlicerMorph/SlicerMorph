@@ -105,6 +105,8 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     fileListLayout.addWidget(self.addByBrowsingButton)
 
     self.fileTable = qt.QTextBrowser()
+    # disable wrapping
+    self.fileTable.setLineWrapMode(qt.QTextBrowser.NoWrap)
     fileListLayout.addWidget(self.fileTable)
 
     fileListGroupBox.collapsed = True
@@ -749,12 +751,13 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
       volumeArray[sliceIndex] = sliceArray
       sliceIndex += 1
 
+    newVolume = False
     if not outputNode:
+      newVolume = True
       if len(volumeArray.shape) == 3:
-        outputNode = slicer.vtkMRMLScalarVolumeNode()
+        outputNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode")
       else:
-        outputNode = slicer.vtkMRMLVectorVolumeNode()
-      slicer.mrmlScene.AddNode(outputNode)
+        outputNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLVectorVolumeNode")
       path = paths[0]
       fileName = os.path.basename(path)
       name = os.path.splitext(fileName)[0]
@@ -776,6 +779,10 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
     ijkToRAS = slicer.util.vtkMatrixFromArray(ijkToRAS)
     outputNode.SetIJKToRASMatrix(ijkToRAS)
     slicer.util.updateVolumeFromArray(outputNode, volumeArray)
+    if newVolume:
+      # Disable compression to speed up saving/loading
+      if outputNode.AddDefaultStorageNode():
+        outputNode.GetStorageNode().SetUseCompression(0)
     slicer.util.setSliceViewerLayers(background=outputNode, fit=True)
     return outputNode
 
