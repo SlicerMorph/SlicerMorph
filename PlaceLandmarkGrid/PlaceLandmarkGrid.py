@@ -321,7 +321,6 @@ class InteractivePatch:
     self.gridLine3.GetDisplayNode().SetSelectedColor(0,1,0)
     self.gridLine3.LockedOn()
 
-    self.midPoints = ["midPoint0", "midPoint1", "midPoint2", "midPoint3"]
     self.midPoint0 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsFiducialNode", "midPoint0")
     self.midPoint0.AddControlPoint(self.gridLine0.GetNthControlPointPosition(1))
     self.midPoint0.GetDisplayNode().SetSelectedColor(0,0,1)
@@ -440,7 +439,7 @@ class PlaceLandmarkGridLogic(ScriptedLoadableModuleLogic):
         gridResMid = int((gridResolution-1)/2)
         #get source points from grid corners and midpoints
         gridCorners = [gridNode.GetNthControlPointPosition(0), gridNode.GetNthControlPointPosition(gridResolution-1), gridNode.GetNthControlPointPosition(gridPointNumber-gridResolution), gridNode.GetNthControlPointPosition(gridPointNumber-1)]
-        gridMidPoints = [gridNode.GetNthControlPointPosition(gridResMid), gridNode.GetNthControlPointPosition(int(((gridNumber-1)/2)-gridResMid)), gridNode.GetNthControlPointPosition(int(((gridNumber-1)/2)+gridResMid)), gridNode.GetNthControlPointPosition(gridPointNumber-gridResMid)]
+        gridMidPoints = [gridNode.GetNthControlPointPosition(gridResMid), gridNode.GetNthControlPointPosition(int(((gridNumber-1)/2)-gridResMid)), gridNode.GetNthControlPointPosition(int(((gridNumber-1)/2)+gridResMid)), gridNode.GetNthControlPointPosition(gridPointNumber-gridResMid-1)]
         curveCorners=[]
         #get target points from placed curve
         targetPoints.InsertNextPoint(patch.cornerPoint0.GetNthControlPointPosition(0))
