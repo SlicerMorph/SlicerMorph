@@ -1023,11 +1023,15 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       basename, self.extension = os.path.splitext(self.inputFilePaths[0])
       if self.extension == '.json':
         basename, secondExtension = os.path.splitext(basename)
-        self.extension =  secondExtension + self.extension
+        if secondExtension == '.mrk':
+          self.extension =  secondExtension + self.extension
       self.files=[]
       for path in self.inputFilePaths:
-        basename =  os.path.basename(path).partition('.')[0]
+        basename, ext = os.path.splitext(os.path.basename(path))
+        if self.extension == '.mrk.json':
+          basename, ext = os.path.splitext(basename)
         self.files.append(basename)
+      self.factorStringChanged()
 
   def onSelectOutputDirectory(self):
     self.outputDirectory=qt.QFileDialog().getExistingDirectory()
