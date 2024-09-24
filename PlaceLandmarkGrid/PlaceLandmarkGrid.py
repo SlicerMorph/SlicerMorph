@@ -117,11 +117,11 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         # set sample rate value
         #
         self.sampleRate = ctk.ctkDoubleSpinBox()
-        self.sampleRate.singleStep = 1
+        self.sampleRate.singleStep = 2
         self.sampleRate.minimum = 1
         self.sampleRate.maximum = 100
         self.sampleRate.setDecimals(0)
-        self.sampleRate.value = 4
+        self.sampleRate.value = 5
         self.sampleRate.setToolTip("Select grid resolution")
         parametersFormLayout.addRow("Resolution for landmark grid:", self.sampleRate)
 
@@ -172,14 +172,10 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
           'Error', 'The selected landmark grid patch is not valid.')
           self.gridSelector.setCurrentNode(None)
 
-
     def onOutlineButton(self):
         self.patchCounter += 1
-        modelNode = self.modelSelector.currentNode()
-        #if hasattr(self, 'gridNode'):
-        #  delattr(self, 'gridNode')
-        #if hasattr(self, 'gridModel'):
-        #  delattr(self, 'gridModel')
+        self.modelNode = self.modelSelector.currentNode()
+
         # set up grid and supporting nodes
         self.gridNode=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsGridSurfaceNode",f"grid_{self.patchCounter}")
         self.gridModel=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLModelNode",f"gridModel_{self.patchCounter}")
@@ -189,7 +185,7 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         self.outlineCurve.UnsetAllControlPoints()
         self.outlineCurve.SetFixedNumberOfControlPoints(True)
         self.outlineCurve.SetCurveTypeToLinear()
-        self.outlineCurve.SetAndObserveSurfaceConstraintNode(modelNode)
+        self.outlineCurve.SetAndObserveSurfaceConstraintNode(self.modelNode)
         self.outlineCurve.SetSurfaceConstraintMaximumSearchRadiusTolerance(.75)
         self.outlineCurve.GetDisplayNode().SetSelectedColor(0,1,0)
         self.outlineCurve.GetDisplayNode().SetGlyphScale(3.2)
@@ -197,9 +193,8 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         self.sampleGridButton.enabled  = True
 
         # hide support nodes and update GUI
-        #self.outlineCurve.HideFromEditorsOn()
-        #self.gridModel.HideFromEditorsOn()
         self.gridSelector.setCurrentNode(self.gridNode)
+        observerTagPointAdded = self.outlineCurve.AddObserver(slicer.vtkMRMLMarkupsClosedCurveNode.PointPositionDefinedEvent, self.initializeInteractivePatch)
 
     def onSampleGridButton(self):
       if self.outlineCurve.GetNumberOfControlPoints() != 4:
@@ -210,21 +205,29 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
       flipNormalsFlag = self.flipNormalsCheckBox.checked
       self.gridNode.SetGridResolution(gridResolution,gridResolution)
       self.gridNode.RemoveAllControlPoints()
-      print("init grid points: ", self.gridNode.GetNumberOfControlPoints())
 
       self.gridModel = self.gridNode.GetOutputSurfaceModelNode()
-      self.logic.placeGrid(gridResolution, self.outlineCurve, self.gridNode)
+      self.logic.placeGrid(gridResolution, self.patch, self.gridNode)
       self.gridModel = self.gridNode.GetOutputSurfaceModelNode()
       self.logic.projectPatch(self.modelNode, self.gridNode, self.gridModel, flipNormalsFlag)
       self.logic.relaxGrid(self.gridNode, self.modelNode, gridResolution)
 
       # update view
       self.gridModel.SetDisplayVisibility(False)
-      self.gridNode.GetDisplayNode().SetGlyphSize(2.8)
+      self.gridNode.GetDisplayNode().SetGlyphScale(2.5)
       self.gridNode.LockedOn()
 
       # curve event handling
-      observerTag = self.outlineCurve.AddObserver(slicer.vtkMRMLMarkupsClosedCurveNode.PointEndInteractionEvent, self.refreshGrid)
+      #observerTag = self.outlineCurve.AddObserver(slicer.vtkMRMLMarkupsClosedCurveNode.PointEndInteractionEvent, self.refreshGrid)
+      observerTagGridCorner0 = self.patch.cornerPoint0.AddObserver(slicer.vtkMRMLMarkupsCurveNode.PointEndInteractionEvent, self.refreshGrid)
+      observerTagGridCorner1 = self.patch.cornerPoint1.AddObserver(slicer.vtkMRMLMarkupsCurveNode.PointEndInteractionEvent, self.refreshGrid)
+      observerTagGridCorner2 = self.patch.cornerPoint2.AddObserver(slicer.vtkMRMLMarkupsCurveNode.PointEndInteractionEvent, self.refreshGrid)
+      observerTagGridCorner3 = self.patch.cornerPoint3.AddObserver(slicer.vtkMRMLMarkupsCurveNode.PointEndInteractionEvent, self.refreshGrid)
+
+      observerTagGridMid0 = self.patch.midPoint0.AddObserver(slicer.vtkMRMLMarkupsCurveNode.PointEndInteractionEvent, self.refreshGrid)
+      observerTagGridMid1 = self.patch.midPoint1.AddObserver(slicer.vtkMRMLMarkupsCurveNode.PointEndInteractionEvent, self.refreshGrid)
+      observerTagGridMid2 = self.patch.midPoint2.AddObserver(slicer.vtkMRMLMarkupsCurveNode.PointEndInteractionEvent, self.refreshGrid)
+      observerTagGridMid3 = self.patch.midPoint3.AddObserver(slicer.vtkMRMLMarkupsCurveNode.PointEndInteractionEvent, self.refreshGrid)
 
     def refreshGrid(self, caller, eventId):
       self.gridNode.LockedOff()
@@ -233,14 +236,173 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
       self.gridNode.RemoveAllControlPoints()
       self.gridNode.SetGridResolution(gridResolution,gridResolution)
       self.gridModel = self.gridNode.GetOutputSurfaceModelNode()
-      self.logic.placeGrid(gridResolution, self.outlineCurve, self.gridNode)
+      self.logic.placeGrid(gridResolution, self.patch, self.gridNode)
       self.gridNode.SetOutputSurfaceModelNodeID(self.gridModel.GetID())
       self.logic.projectPatch(self.modelNode, self.gridNode, self.gridModel, flipNormalsFlag)
       self.logic.relaxGrid(self.gridNode, self.modelNode, gridResolution)
       self.gridNode.LockedOn()
 
+    def initializeInteractivePatch(self, caller, eventId):
+      if self.outlineCurve.GetNumberOfDefinedControlPoints() != 4:
+        return
+        self.logic = PlaceLandmarkGridLogic()
+      self.patch = InteractivePatch(self.outlineCurve, self.modelNode)
+      self.updatingNodesActive = False
+      self.outlineCurve.SetDisplayVisibility(False)
+
 # PlaceLandmarkGridLogic
 #
+
+class InteractivePatch:
+  def __init__(self, closedCurve, surfaceConstraintNode):
+    self.cornerPoint0 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsFiducialNode", "cornerPoint0")
+    self.cornerPoint0.AddControlPoint(closedCurve.GetNthControlPointPosition(0))
+    self.cornerPoint0.GetDisplayNode().SetSelectedColor(0,1,0)
+    self.cornerPoint0.GetDisplayNode().SetTextScale(0)
+    self.tagC0 = self.cornerPoint0.AddObserver(slicer.vtkMRMLMarkupsFiducialNode().PointModifiedEvent, self.updateCornerPoint)
+    self.cornerPoint1 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsFiducialNode", "cornerPoint1")
+    self.cornerPoint1.AddControlPoint(closedCurve.GetNthControlPointPosition(1))
+    self.cornerPoint1.GetDisplayNode().SetSelectedColor(0,1,0)
+    self.cornerPoint1.GetDisplayNode().SetTextScale(0)
+    self.tagC1 = self.cornerPoint1.AddObserver(slicer.vtkMRMLMarkupsFiducialNode().PointModifiedEvent, self.updateCornerPoint)
+    self.cornerPoint2 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsFiducialNode", "cornerPoint2")
+    self.cornerPoint2.AddControlPoint(closedCurve.GetNthControlPointPosition(2))
+    self.cornerPoint2.GetDisplayNode().SetSelectedColor(0,1,0)
+    self.cornerPoint2.GetDisplayNode().SetTextScale(0)
+    self.tagC2 = self.cornerPoint2.AddObserver(slicer.vtkMRMLMarkupsFiducialNode().PointModifiedEvent, self.updateCornerPoint)
+    self.cornerPoint3 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsFiducialNode", "cornerPoint3")
+    self.cornerPoint3.AddControlPoint(closedCurve.GetNthControlPointPosition(3))
+    self.cornerPoint3.GetDisplayNode().SetSelectedColor(0,1,0)
+    self.cornerPoint3.GetDisplayNode().SetTextScale(0)
+    self.tagC3 = self.cornerPoint3.AddObserver(slicer.vtkMRMLMarkupsFiducialNode().PointModifiedEvent, self.updateCornerPoint)
+
+    self.gridLines = ["gridLine0", "gridLine1", "gridLine2", "gridLine3"]
+    self.gridLine0 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsCurveNode", "gridLine0")
+    self.gridLine0.AddControlPoint(closedCurve.GetNthControlPointPosition(0))
+    self.gridLine0.AddControlPoint(closedCurve.GetNthControlPointPosition(1))
+    self.gridLine0.SetAndObserveSurfaceConstraintNode(surfaceConstraintNode)
+    self.gridLine0.ResampleCurveWorld(self.gridLine0.GetCurveLengthWorld()/2)
+    self.gridLine0.SetFixedNumberOfControlPoints(True)
+    self.gridLine0.GetDisplayNode().SetGlyphScale(2.5)
+    self.gridLine0.GetDisplayNode().SetTextScale(0)
+    self.gridLine0.GetDisplayNode().SetSelectedColor(0,1,0)
+    self.gridLine0.LockedOn()
+
+    self.gridLine1 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsCurveNode", "gridLine1")
+    self.gridLine1.AddControlPoint(closedCurve.GetNthControlPointPosition(1))
+    self.gridLine1.AddControlPoint(closedCurve.GetNthControlPointPosition(2))
+    self.gridLine1.SetAndObserveSurfaceConstraintNode(surfaceConstraintNode)
+    self.gridLine1.ResampleCurveWorld(self.gridLine1.GetCurveLengthWorld()/2)
+    self.gridLine1.SetFixedNumberOfControlPoints(True)
+    self.gridLine1.GetDisplayNode().SetGlyphScale(2.5)
+    self.gridLine1.GetDisplayNode().SetTextScale(0)
+    self.gridLine1.GetDisplayNode().SetSelectedColor(0,1,0)
+    self.gridLine1.LockedOn()
+
+    self.gridLine2 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsCurveNode", "gridLine2")
+    self.gridLine2.AddControlPoint(closedCurve.GetNthControlPointPosition(2))
+    self.gridLine2.AddControlPoint(closedCurve.GetNthControlPointPosition(3))
+    self.gridLine2.SetAndObserveSurfaceConstraintNode(surfaceConstraintNode)
+    self.gridLine2.ResampleCurveWorld(self.gridLine2.GetCurveLengthWorld()/2)
+    self.gridLine2.SetFixedNumberOfControlPoints(True)
+    self.gridLine2.GetDisplayNode().SetGlyphScale(2.5)
+    self.gridLine2.GetDisplayNode().SetTextScale(0)
+    self.gridLine2.GetDisplayNode().SetSelectedColor(0,1,0)
+    self.gridLine2.LockedOn()
+
+    self.gridLine3 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsCurveNode", "gridLine3")
+    self.gridLine3.AddControlPoint(closedCurve.GetNthControlPointPosition(3))
+    self.gridLine3.AddControlPoint(closedCurve.GetNthControlPointPosition(0))
+    self.gridLine3.SetAndObserveSurfaceConstraintNode(surfaceConstraintNode)
+    self.gridLine3.ResampleCurveWorld(self.gridLine3.GetCurveLengthWorld()/2)
+    self.gridLine3.SetFixedNumberOfControlPoints(True)
+    self.gridLine3.GetDisplayNode().SetGlyphScale(2.5)
+    self.gridLine3.GetDisplayNode().SetTextScale(0)
+    self.gridLine3.GetDisplayNode().SetSelectedColor(0,1,0)
+    self.gridLine3.LockedOn()
+
+    self.midPoint0 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsFiducialNode", "midPoint0")
+    self.midPoint0.AddControlPoint(self.gridLine0.GetNthControlPointPosition(1))
+    self.midPoint0.GetDisplayNode().SetSelectedColor(0,0,1)
+    self.midPoint0.GetDisplayNode().SetTextScale(0)
+    self.tag_M0 = self.midPoint0.AddObserver(slicer.vtkMRMLMarkupsFiducialNode().PointModifiedEvent, self.updateMidPoint)
+    self.midPoint1 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsFiducialNode", "midPoint1")
+    self.midPoint1.AddControlPoint(self.gridLine1.GetNthControlPointPosition(1))
+    self.midPoint1.GetDisplayNode().SetSelectedColor(0,0,1)
+    self.midPoint1.GetDisplayNode().SetTextScale(0)
+    self.tag_M1 = self.midPoint1.AddObserver(slicer.vtkMRMLMarkupsFiducialNode().PointModifiedEvent, self.updateMidPoint)
+    self.midPoint2 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsFiducialNode", "midPoint2")
+    self.midPoint2.AddControlPoint(self.gridLine2.GetNthControlPointPosition(1))
+    self.midPoint2.GetDisplayNode().SetSelectedColor(0,0,1)
+    self.midPoint2.GetDisplayNode().SetTextScale(0)
+    self.tag_M2 = self.midPoint2.AddObserver(slicer.vtkMRMLMarkupsFiducialNode().PointModifiedEvent, self.updateMidPoint)
+    self.midPoint3 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsFiducialNode", "midPoint3")
+    self.midPoint3.AddControlPoint(self.gridLine3.GetNthControlPointPosition(1))
+    self.midPoint3.GetDisplayNode().SetSelectedColor(0,0,1)
+    self.midPoint3.GetDisplayNode().SetTextScale(0)
+    self.tag_M3 = self.midPoint3.AddObserver(slicer.vtkMRMLMarkupsFiducialNode().PointModifiedEvent, self.updateMidPoint)
+
+    self.updatingNodesActive = False
+
+  def unsetGridLine(self, gridLine)  :
+      gridLine.LockedOff()
+      gridLine.SetFixedNumberOfControlPoints(False)
+      gridLine.RemoveNthControlPoint(1)
+
+  def resetGridLine(self, gridLine):
+      gridLine.ResampleCurveWorld(gridLine.GetCurveLengthWorld()/2)
+      gridLine.SetFixedNumberOfControlPoints(True)
+      gridLine.LockedOn()
+
+  def updateCornerPoint(self, caller, eventId):
+    if not self.updatingNodesActive:
+      self.updatingNodesActive = True
+      if caller.GetName() == "cornerPoint0":
+        self.unsetGridLine(self.gridLine0)
+        self.unsetGridLine(self.gridLine3)
+        self.gridLine0.SetNthControlPointPosition(0, caller.GetNthControlPointPosition(0))
+        self.gridLine3.SetNthControlPointPosition(1, caller.GetNthControlPointPosition(0))
+        self.resetGridLine(self.gridLine0)
+        self.resetGridLine(self.gridLine3)
+        self.midPoint0.SetNthControlPointPosition(0,self.gridLine0.GetNthControlPointPosition(1))
+        self.midPoint3.SetNthControlPointPosition(0,self.gridLine3.GetNthControlPointPosition(1))
+      elif caller.GetName() == "cornerPoint1":
+        self.unsetGridLine(self.gridLine0)
+        self.unsetGridLine(self.gridLine1)
+        self.gridLine0.SetNthControlPointPosition(1, caller.GetNthControlPointPosition(0))
+        self.gridLine1.SetNthControlPointPosition(0, caller.GetNthControlPointPosition(0))
+        self.resetGridLine(self.gridLine0)
+        self.resetGridLine(self.gridLine1)
+        self.midPoint0.SetNthControlPointPosition(0,self.gridLine0.GetNthControlPointPosition(1))
+        self.midPoint1.SetNthControlPointPosition(0,self.gridLine1.GetNthControlPointPosition(1))
+      elif caller.GetName() == "cornerPoint2":
+        self.unsetGridLine(self.gridLine1)
+        self.unsetGridLine(self.gridLine2)
+        self.gridLine1.SetNthControlPointPosition(1, caller.GetNthControlPointPosition(0))
+        self.gridLine2.SetNthControlPointPosition(0, caller.GetNthControlPointPosition(0))
+        self.resetGridLine(self.gridLine1)
+        self.resetGridLine(self.gridLine2)
+        self.midPoint1.SetNthControlPointPosition(0,self.gridLine1.GetNthControlPointPosition(1))
+        self.midPoint2.SetNthControlPointPosition(0,self.gridLine2.GetNthControlPointPosition(1))
+      elif caller.GetName() == "cornerPoint3":
+        self.unsetGridLine(self.gridLine2)
+        self.unsetGridLine(self.gridLine3)
+        self.gridLine2.SetNthControlPointPosition(1, caller.GetNthControlPointPosition(0))
+        self.gridLine3.SetNthControlPointPosition(0, caller.GetNthControlPointPosition(0))
+        self.resetGridLine(self.gridLine2)
+        self.resetGridLine(self.gridLine3)
+        self.midPoint2.SetNthControlPointPosition(0,self.gridLine2.GetNthControlPointPosition(1))
+        self.midPoint3.SetNthControlPointPosition(0,self.gridLine3.GetNthControlPointPosition(1))
+      self.updatingNodesActive = False
+
+  def updateMidPoint(self, caller, eventId):
+    if not self.updatingNodesActive:
+      self.updatingNodesActive = True
+      self.gridLine0.SetNthControlPointPosition(1,self.midPoint0.GetNthControlPointPosition(0))
+      self.gridLine1.SetNthControlPointPosition(1,self.midPoint1.GetNthControlPointPosition(0))
+      self.gridLine2.SetNthControlPointPosition(1,self.midPoint2.GetNthControlPointPosition(0))
+      self.gridLine3.SetNthControlPointPosition(1,self.midPoint3.GetNthControlPointPosition(0))
+      self.updatingNodesActive = False
 
 class PlaceLandmarkGridLogic(ScriptedLoadableModuleLogic):
     """This class should implement all the actual
@@ -258,26 +420,34 @@ class PlaceLandmarkGridLogic(ScriptedLoadableModuleLogic):
         """
         ScriptedLoadableModuleLogic.__init__(self)
 
-    def placeGrid(self, gridResolution, curveNode, gridNode):
+    def placeGrid(self, gridResolution, patch, gridNode):
         error = 0.0003
         gridPointNumber = gridResolution*gridResolution
 
         # set up transform between base lms and current lms
         sourcePoints = vtk.vtkPoints()
         targetPoints = vtk.vtkPoints()
-        print("grid points before: ", gridNode.GetNumberOfControlPoints())
+        sourcePoints.InsertNextPoint(patch.cornerPoint0.GetNthControlPointPosition(0))
+        sourcePoints.InsertNextPoint(patch.cornerPoint1.GetNthControlPointPosition(0))
+        sourcePoints.InsertNextPoint(patch.cornerPoint2.GetNthControlPointPosition(0))
+
         for i in range(3):
-          point = curveNode.GetNthControlPointPosition(i)
-          sourcePoints.InsertNextPoint(point)
+          point = sourcePoints.GetPoint(i)
           gridNode.AddControlPoint(point)
         print("grid points after: ", gridNode.GetNumberOfControlPoints())
-        #get source points from grid corners
+        gridNumber = gridNode.GetNumberOfControlPoints()
+        gridResMid = int((gridResolution-1)/2)
+        #get source points from grid corners and midpoints
         gridCorners = [gridNode.GetNthControlPointPosition(0), gridNode.GetNthControlPointPosition(gridResolution-1), gridNode.GetNthControlPointPosition(gridPointNumber-gridResolution), gridNode.GetNthControlPointPosition(gridPointNumber-1)]
+        gridMidPoints = [gridNode.GetNthControlPointPosition(gridResMid), gridNode.GetNthControlPointPosition(int(((gridNumber-1)/2)-gridResMid)), gridNode.GetNthControlPointPosition(int(((gridNumber-1)/2)+gridResMid)), gridNode.GetNthControlPointPosition(gridPointNumber-gridResMid-1)]
         curveCorners=[]
         #get target points from placed curve
+        targetPoints.InsertNextPoint(patch.cornerPoint0.GetNthControlPointPosition(0))
+        targetPoints.InsertNextPoint(patch.cornerPoint1.GetNthControlPointPosition(0))
+        targetPoints.InsertNextPoint(patch.cornerPoint2.GetNthControlPointPosition(0))
+        targetPoints.InsertNextPoint(patch.cornerPoint3.GetNthControlPointPosition(0))
         for i in range(4):
-          point = curveNode.GetNthControlPointPosition(i)
-          targetPoints.InsertNextPoint(point)
+          point = targetPoints.GetPoint(i)
           curveCorners.append(point)
 
         for corner in gridCorners:
@@ -285,11 +455,16 @@ class PlaceLandmarkGridLogic(ScriptedLoadableModuleLogic):
             sourcePoints.InsertNextPoint(corner)
 
         if sourcePoints.GetNumberOfPoints() != targetPoints.GetNumberOfPoints():
-          print("sourcePoints: ", sourcePoints.GetNumberOfPoints())
-          print("targetPoints: ", targetPoints.GetNumberOfPoints())
-          print("grid points: ", gridNode.GetNumberOfControlPoints())
           print("Grid corners already at curve corners")
           sourcePoints = targetPoints
+
+        # add midpoints
+        for gridMidPoint in gridMidPoints:
+            sourcePoints.InsertNextPoint(gridMidPoint)
+        targetPoints.InsertNextPoint(patch.midPoint0.GetNthControlPointPosition(0))
+        targetPoints.InsertNextPoint(patch.midPoint3.GetNthControlPointPosition(0))
+        targetPoints.InsertNextPoint(patch.midPoint1.GetNthControlPointPosition(0))
+        targetPoints.InsertNextPoint(patch.midPoint2.GetNthControlPointPosition(0))
 
         transform = vtk.vtkThinPlateSplineTransform()
         transform.SetSourceLandmarks( sourcePoints )
