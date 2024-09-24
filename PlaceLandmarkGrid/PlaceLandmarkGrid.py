@@ -150,6 +150,7 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         self.gridSelector.connect('currentNodeChanged(vtkMRMLNode*)', self.onSelectGrid)
         self.outlineButton.connect('clicked(bool)', self.onOutlineButton)
         self.sampleGridButton.connect('clicked(bool)', self.onSampleGridButton)
+        self.sampleRate.connect('valueChanged(double )', self.onSampleRateChanged)
 
         # Track number of patches generated for naming
         self.patchCounter = -1
@@ -171,6 +172,12 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
           qt.QMessageBox.critical(slicer.util.mainWindow(),
           'Error', 'The selected landmark grid patch is not valid.')
           self.gridSelector.setCurrentNode(None)
+
+    def onSampleRateChanged(self):
+      if self.sampleRate.value % 2 == 0:
+        self.sampleRate.value += 1
+        qt.QMessageBox.critical(slicer.util.mainWindow(),
+          'Warning', 'The landmark grid resolution must be odd')
 
     def onOutlineButton(self):
         self.patchCounter += 1
