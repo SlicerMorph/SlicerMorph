@@ -100,17 +100,10 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         parametersFormLayout.addRow(self.outlineButton)
 
         #
-        # Select model
+        # Select active patch
         #
-        self.gridSelector = slicer.qMRMLNodeComboBox()
-        self.gridSelector.nodeTypes = ( ("vtkMRMLMarkupsGridSurfaceNode"), "" )
-        self.gridSelector.selectNodeUponCreation = False
-        self.gridSelector.addEnabled = False
-        self.gridSelector.removeEnabled = False
-        self.gridSelector.noneEnabled = True
-        self.gridSelector.showHidden = False
-        self.gridSelector.setMRMLScene( slicer.mrmlScene )
-        self.gridSelector.setCurrentNode(None)
+        self.gridSelector = qt.QComboBox()
+        self.gridSelector.addItem('None')
         parametersFormLayout.addRow("Active patch: ", self.gridSelector)
 
         #
@@ -118,7 +111,7 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         #
         self.sampleRate = ctk.ctkDoubleSpinBox()
         self.sampleRate.singleStep = 2
-        self.sampleRate.minimum = 1
+        self.sampleRate.minimum = 3
         self.sampleRate.maximum = 100
         self.sampleRate.setDecimals(0)
         self.sampleRate.value = 5
@@ -147,52 +140,53 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
 
         # Connections
         self.modelSelector.connect('currentNodeChanged(vtkMRMLNode*)', self.onSelect)
-        self.gridSelector.connect('currentNodeChanged(vtkMRMLNode*)', self.onSelectGrid)
+        self.gridSelector.connect('currentIndexChanged(int)', self.onSelectGrid)
         self.outlineButton.connect('clicked(bool)', self.onOutlineButton)
         self.sampleGridButton.connect('clicked(bool)', self.onSampleGridButton)
         self.sampleRate.connect('valueChanged(double )', self.onSampleRateChanged)
 
         # Track number of patches generated for naming
         self.patchCounter = -1
+        self.patchList = []
+        self.updatingGUI = False
     @vtk.calldata_type(vtk.VTK_INT)
+
+    def onSampleRateChanged(self):
+          if self.sampleRate.value <= 1:
+            self.sampleRate.value = 3
+            qt.QMessageBox.critical(slicer.util.mainWindow(),
+              'Warning', 'The minimum landmark grid resolution is 3x3')
+          if self.sampleRate.value % 2 == 0:
+            self.sampleRate.value += 1
+            qt.QMessageBox.critical(slicer.util.mainWindow(),
+              'Warning', 'The landmark grid resolution must be odd')
+
 
     def onSelect(self):
         self.outlineButton.enabled = bool(self.modelSelector.currentNode())
 
     def onSelectGrid(self):
-        selectedNode = self.gridSelector.currentNode()
-        if selectedNode is None:
+        if self.gridSelector.currentText == "None":
           return
-        outlineName=selectedNode.GetName().replace("grid", "gridOutline")
-        try:
-          self.outlineCurve = slicer.util.getNode(outlineName)
-          self.gridNode = selectedNode
-          self.gridModel = selectedNode.GetOutputSurfaceModelNode()
-        except:
-          qt.QMessageBox.critical(slicer.util.mainWindow(),
-          'Error', 'The selected landmark grid patch is not valid.')
-          self.gridSelector.setCurrentNode(None)
-
-    def onSampleRateChanged(self):
-      if self.sampleRate.value % 2 == 0:
-        self.sampleRate.value += 1
-        qt.QMessageBox.critical(slicer.util.mainWindow(),
-          'Warning', 'The landmark grid resolution must be odd')
+        if not self.updatingGUI:
+          try:
+            newPatch = self.patchList[self.gridSelector.currentIndex - 1]
+            self.updateCurrentPatch(newPatch)
+            print("New patch: ", self.patchList[self.gridSelector.currentIndex - 1].name)
+          except:
+            qt.QMessageBox.critical(slicer.util.mainWindow(),
+            'Error', 'The selected landmark grid patch is not valid.')
+            self.gridSelector.setCurrentIndex(0)
 
     def onOutlineButton(self):
         self.patchCounter += 1
-        self.modelNode = self.modelSelector.currentNode()
-
-        # set up grid and supporting nodes
-        self.gridNode=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsGridSurfaceNode",f"grid_{self.patchCounter}")
-        self.gridModel=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLModelNode",f"gridModel_{self.patchCounter}")
-        self.gridNode.SetOutputSurfaceModelNodeID(self.gridModel.GetID())
+        constraintNode = self.modelSelector.currentNode()
         self.outlineCurve = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsClosedCurveNode", f"gridOutline_{self.patchCounter}")
         self.outlineCurve.AddNControlPoints(4, "outline", (0,0,0) )
         self.outlineCurve.UnsetAllControlPoints()
         self.outlineCurve.SetFixedNumberOfControlPoints(True)
         self.outlineCurve.SetCurveTypeToLinear()
-        self.outlineCurve.SetAndObserveSurfaceConstraintNode(self.modelNode)
+        self.outlineCurve.SetAndObserveSurfaceConstraintNode(constraintNode)
         self.outlineCurve.SetSurfaceConstraintMaximumSearchRadiusTolerance(.75)
         self.outlineCurve.GetDisplayNode().SetSelectedColor(0,1,0)
         self.outlineCurve.GetDisplayNode().SetGlyphScale(3.2)
@@ -200,7 +194,6 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         self.sampleGridButton.enabled  = True
 
         # hide support nodes and update GUI
-        self.gridSelector.setCurrentNode(self.gridNode)
         observerTagPointAdded = self.outlineCurve.AddObserver(slicer.vtkMRMLMarkupsClosedCurveNode.PointPositionDefinedEvent, self.initializeInteractivePatch)
 
     def onSampleGridButton(self):
@@ -208,21 +201,12 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         print("Please finish placing grid outline with 4 points")
         return
       gridResolution = int(self.sampleRate.value)
-      self.modelNode = self.modelSelector.currentNode()
       flipNormalsFlag = self.flipNormalsCheckBox.checked
-      self.gridNode.SetGridResolution(gridResolution,gridResolution)
-      self.gridNode.RemoveAllControlPoints()
-
-      self.gridModel = self.gridNode.GetOutputSurfaceModelNode()
-      self.logic.placeGrid(gridResolution, self.patch, self.gridNode)
-      self.gridModel = self.gridNode.GetOutputSurfaceModelNode()
-      self.logic.projectPatch(self.modelNode, self.gridNode, self.gridModel, flipNormalsFlag)
-      self.logic.relaxGrid(self.gridNode, self.modelNode, gridResolution)
-
-      # update view
-      self.gridModel.SetDisplayVisibility(False)
-      self.gridNode.GetDisplayNode().SetGlyphScale(2.5)
-      self.gridNode.LockedOn()
+      #if not self.patch.hasGrid:
+      self.patch.initializeGrid(gridResolution)
+      self.logic.placeGrid(gridResolution, self.patch)
+      self.logic.projectPatch(self.patch.constraintNode, self.patch.gridNode, self.patch.gridModel, flipNormalsFlag)
+      self.logic.relaxGrid(self.patch.gridNode, self.patch.constraintNode, gridResolution)
 
       # curve event handling
       #observerTag = self.outlineCurve.AddObserver(slicer.vtkMRMLMarkupsClosedCurveNode.PointEndInteractionEvent, self.refreshGrid)
@@ -237,31 +221,52 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
       observerTagGridMid3 = self.patch.midPoint3.AddObserver(slicer.vtkMRMLMarkupsCurveNode.PointEndInteractionEvent, self.refreshGrid)
 
     def refreshGrid(self, caller, eventId):
-      self.gridNode.LockedOff()
+      self.patch.gridNode.LockedOff()
       gridResolution = int(self.sampleRate.value)
       flipNormalsFlag = self.flipNormalsCheckBox.checked
-      self.gridNode.RemoveAllControlPoints()
-      self.gridNode.SetGridResolution(gridResolution,gridResolution)
-      self.gridModel = self.gridNode.GetOutputSurfaceModelNode()
-      self.logic.placeGrid(gridResolution, self.patch, self.gridNode)
-      self.gridNode.SetOutputSurfaceModelNodeID(self.gridModel.GetID())
-      self.logic.projectPatch(self.modelNode, self.gridNode, self.gridModel, flipNormalsFlag)
-      self.logic.relaxGrid(self.gridNode, self.modelNode, gridResolution)
-      self.gridNode.LockedOn()
+      self.patch.gridNode.RemoveAllControlPoints()
+      self.patch.gridNode.SetGridResolution(gridResolution,gridResolution)
+      self.patch.gridModel = self.patch.gridNode.GetOutputSurfaceModelNode()
+      self.logic.placeGrid(gridResolution, self.patch)
+      self.patch.gridNode.SetOutputSurfaceModelNodeID(self.patch.gridModel.GetID())
+      self.logic.projectPatch(self.patch.constraintNode, self.patch.gridNode, self.patch.gridModel, flipNormalsFlag)
+      self.logic.relaxGrid(self.patch.gridNode, self.patch.constraintNode, gridResolution)
+      self.patch.gridNode.LockedOn()
+      #self.gridSelector.setCurrentNode(self.gridNode)
 
     def initializeInteractivePatch(self, caller, eventId):
       if self.outlineCurve.GetNumberOfDefinedControlPoints() != 4:
         return
-        self.logic = PlaceLandmarkGridLogic()
-      self.patch = InteractivePatch(self.outlineCurve, self.modelNode)
+      self.updatingGUI = True
+      self.logic = PlaceLandmarkGridLogic()
+      gridName = "gridPatch_" + str(self.patchCounter)
+      print("gridName: ", gridName)
+      constraintNode = self.modelSelector.currentNode()
+      self.patch = InteractivePatch(self.outlineCurve, constraintNode, str(self.patchCounter))
       self.updatingNodesActive = False
+      if self.gridSelector.currentIndex>0:
+        lastPatch = self.patchList[self.gridSelector.currentIndex-1]
+        lastPatch.setLockPatch(True)
+      self.patchList.append(self.patch)
+      self.gridSelector.addItem(self.patch.name)
+      self.gridSelector.setCurrentText(self.patch.name)
       self.outlineCurve.SetDisplayVisibility(False)
+      self.outlineCurve.HideFromEditorsOn()
+      self.updatingGUI = False
 
+    def updateCurrentPatch(self, newPatch):
+      self.patch.setLockPatch(True)
+      self.patch = newPatch
+      self.patch.setLockPatch(False)
 # PlaceLandmarkGridLogic
 #
 
 class InteractivePatch:
-  def __init__(self, closedCurve, surfaceConstraintNode):
+  def __init__(self, closedCurve, surfaceConstraintNode, gridID):
+    self.name = "gridPatch_" + gridID
+    self.gridID = gridID
+    self.constraintNode = surfaceConstraintNode
+    self.hasGrid = False
     self.cornerPoint0 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsFiducialNode", "cornerPoint0")
     self.cornerPoint0.AddControlPoint(closedCurve.GetNthControlPointPosition(0))
     self.cornerPoint0.GetDisplayNode().SetSelectedColor(0,1,0)
@@ -283,7 +288,6 @@ class InteractivePatch:
     self.cornerPoint3.GetDisplayNode().SetTextScale(0)
     self.tagC3 = self.cornerPoint3.AddObserver(slicer.vtkMRMLMarkupsFiducialNode().PointModifiedEvent, self.updateCornerPoint)
 
-    self.gridLines = ["gridLine0", "gridLine1", "gridLine2", "gridLine3"]
     self.gridLine0 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsCurveNode", "gridLine0")
     self.gridLine0.AddControlPoint(closedCurve.GetNthControlPointPosition(0))
     self.gridLine0.AddControlPoint(closedCurve.GetNthControlPointPosition(1))
@@ -348,18 +352,51 @@ class InteractivePatch:
     self.midPoint3.GetDisplayNode().SetSelectedColor(0,0,1)
     self.midPoint3.GetDisplayNode().SetTextScale(0)
     self.tag_M3 = self.midPoint3.AddObserver(slicer.vtkMRMLMarkupsFiducialNode().PointModifiedEvent, self.updateMidPoint)
-
+    
+    self.cornerPoint0.HideFromEditorsOn()
+    self.cornerPoint1.HideFromEditorsOn()
+    self.cornerPoint2.HideFromEditorsOn()
+    self.cornerPoint3.HideFromEditorsOn()
+    self.midPoint0.HideFromEditorsOn()
+    self.midPoint1.HideFromEditorsOn()
+    self.midPoint2.HideFromEditorsOn()
+    self.midPoint3.HideFromEditorsOn()
+    self.gridLine0.HideFromEditorsOn()
+    self.gridLine1.HideFromEditorsOn()
+    self.gridLine2.HideFromEditorsOn()
+    self.gridLine3.HideFromEditorsOn()
+    
     self.updatingNodesActive = False
 
-  def unsetGridLine(self, gridLine)  :
-      gridLine.LockedOff()
-      gridLine.SetFixedNumberOfControlPoints(False)
-      gridLine.RemoveNthControlPoint(1)
+  def initializeGrid(self, gridResolution):
+    # set up grid and supporting nodes
+    if not self.hasGrid:
+      self.gridNode=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsGridSurfaceNode",f"grid_{self.gridID}")
+      self.gridModel=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLModelNode",f"gridModel_{self.gridID}")
+    self.gridNode.SetOutputSurfaceModelNodeID(self.gridModel.GetID())
+    self.gridNode.SetGridResolution(gridResolution,gridResolution)
+    self.gridNode.RemoveAllControlPoints()
+    self.hasGrid = True
+    # update view
+    self.gridModel.SetDisplayVisibility(False)
+    self.gridModel.HideFromEditorsOn()
+    self.gridNode.GetDisplayNode().SetGlyphScale(2.5)
+    self.gridNode.LockedOn()
+    
+    observerTagDeleteGrid = self.gridNode.AddObserver(vtk.vtkCommand.DeleteEvent, self.deleteGrid)
+
+  def deleteGrid(self, caller, eventId):
+    print("The grid was deleted")
+    
+  def unsetGridLine(self, gridLine):
+    gridLine.LockedOff()
+    gridLine.SetFixedNumberOfControlPoints(False)
+    gridLine.RemoveNthControlPoint(1)
 
   def resetGridLine(self, gridLine):
-      gridLine.ResampleCurveWorld(gridLine.GetCurveLengthWorld()/2)
-      gridLine.SetFixedNumberOfControlPoints(True)
-      gridLine.LockedOn()
+    gridLine.ResampleCurveWorld(gridLine.GetCurveLengthWorld()/2)
+    gridLine.SetFixedNumberOfControlPoints(True)
+    gridLine.LockedOn()
 
   def updateCornerPoint(self, caller, eventId):
     if not self.updatingNodesActive:
@@ -411,6 +448,18 @@ class InteractivePatch:
       self.gridLine3.SetNthControlPointPosition(1,self.midPoint3.GetNthControlPointPosition(0))
       self.updatingNodesActive = False
 
+  def setLockPatch(self, setLocked):
+    #self.gridNode.SetLocked(setLocked)
+    self.cornerPoint0.SetLocked(setLocked)
+    self.cornerPoint1.SetLocked(setLocked)
+    self.cornerPoint2.SetLocked(setLocked)
+    self.cornerPoint3.SetLocked(setLocked)
+    self.midPoint0.SetLocked(setLocked)
+    self.midPoint1.SetLocked(setLocked)
+    self.midPoint2.SetLocked(setLocked)
+    self.midPoint3.SetLocked(setLocked)
+  
+
 class PlaceLandmarkGridLogic(ScriptedLoadableModuleLogic):
     """This class should implement all the actual
     computation done by your module.  The interface
@@ -427,10 +476,10 @@ class PlaceLandmarkGridLogic(ScriptedLoadableModuleLogic):
         """
         ScriptedLoadableModuleLogic.__init__(self)
 
-    def placeGrid(self, gridResolution, patch, gridNode):
+    def placeGrid(self, gridResolution, patch):
         error = 0.0003
         gridPointNumber = gridResolution*gridResolution
-
+        gridNode = patch.gridNode
         # set up transform between base lms and current lms
         sourcePoints = vtk.vtkPoints()
         targetPoints = vtk.vtkPoints()
@@ -441,7 +490,6 @@ class PlaceLandmarkGridLogic(ScriptedLoadableModuleLogic):
         for i in range(3):
           point = sourcePoints.GetPoint(i)
           gridNode.AddControlPoint(point)
-        print("grid points after: ", gridNode.GetNumberOfControlPoints())
         gridNumber = gridNode.GetNumberOfControlPoints()
         gridResMid = int((gridResolution-1)/2)
         #get source points from grid corners and midpoints
