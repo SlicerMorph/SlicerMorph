@@ -149,8 +149,10 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         self.patchCounter = -1
         self.patchList = []
         self.updatingGUI = False
-    @vtk.calldata_type(vtk.VTK_INT)
+        shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
+        self.observerTagDeleteGrid = shNode.AddObserver(shNode.SubjectHierarchyItemAboutToBeRemovedEvent, self.deleteObservers)
 
+    @vtk.calldata_type(vtk.VTK_INT)
     def onSampleRateChanged(self):
           if self.sampleRate.value <= 1:
             self.sampleRate.value = 3
@@ -209,7 +211,6 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
       self.logic.relaxGrid(self.patch.gridNode, self.patch.constraintNode, gridResolution)
 
       # curve event handling
-      #observerTag = self.outlineCurve.AddObserver(slicer.vtkMRMLMarkupsClosedCurveNode.PointEndInteractionEvent, self.refreshGrid)
       observerTagGridCorner0 = self.patch.cornerPoint0.AddObserver(slicer.vtkMRMLMarkupsCurveNode.PointEndInteractionEvent, self.refreshGrid)
       observerTagGridCorner1 = self.patch.cornerPoint1.AddObserver(slicer.vtkMRMLMarkupsCurveNode.PointEndInteractionEvent, self.refreshGrid)
       observerTagGridCorner2 = self.patch.cornerPoint2.AddObserver(slicer.vtkMRMLMarkupsCurveNode.PointEndInteractionEvent, self.refreshGrid)
@@ -232,7 +233,6 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
       self.logic.projectPatch(self.patch.constraintNode, self.patch.gridNode, self.patch.gridModel, flipNormalsFlag)
       self.logic.relaxGrid(self.patch.gridNode, self.patch.constraintNode, gridResolution)
       self.patch.gridNode.LockedOn()
-      #self.gridSelector.setCurrentNode(self.gridNode)
 
     def initializeInteractivePatch(self, caller, eventId):
       if self.outlineCurve.GetNumberOfDefinedControlPoints() != 4:
@@ -240,7 +240,6 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
       self.updatingGUI = True
       self.logic = PlaceLandmarkGridLogic()
       gridName = "gridPatch_" + str(self.patchCounter)
-      print("gridName: ", gridName)
       constraintNode = self.modelSelector.currentNode()
       self.patch = InteractivePatch(self.outlineCurve, constraintNode, str(self.patchCounter))
       self.updatingNodesActive = False
@@ -258,6 +257,15 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
       self.patch.setLockPatch(True)
       self.patch = newPatch
       self.patch.setLockPatch(False)
+
+
+    @vtk.calldata_type(vtk.VTK_INT)
+    def deleteObservers(self, caller, event, removedItem):
+      shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
+      removedNode = shNode.GetItemDataNode(removedItem) if removedItem else None
+      if removedNode is not None and removedNode.IsA('vtkMRMLNode'):
+        removedNode.RemoveAllObservers()
+
 # PlaceLandmarkGridLogic
 #
 
@@ -267,6 +275,11 @@ class InteractivePatch:
     self.gridID = gridID
     self.constraintNode = surfaceConstraintNode
     self.hasGrid = False
+
+    self.colorValue=[0,0,0]
+    colorNode=slicer.util.getNode("MediumChartColors")
+    colorNode.GetLookupTable().GetColor(int(gridID),self.colorValue)
+
     self.cornerPoint0 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsFiducialNode", "cornerPoint0")
     self.cornerPoint0.AddControlPoint(closedCurve.GetNthControlPointPosition(0))
     self.cornerPoint0.GetDisplayNode().SetSelectedColor(0,1,0)
@@ -352,20 +365,23 @@ class InteractivePatch:
     self.midPoint3.GetDisplayNode().SetSelectedColor(0,0,1)
     self.midPoint3.GetDisplayNode().SetTextScale(0)
     self.tag_M3 = self.midPoint3.AddObserver(slicer.vtkMRMLMarkupsFiducialNode().PointModifiedEvent, self.updateMidPoint)
-    
-    self.cornerPoint0.HideFromEditorsOn()
-    self.cornerPoint1.HideFromEditorsOn()
-    self.cornerPoint2.HideFromEditorsOn()
-    self.cornerPoint3.HideFromEditorsOn()
-    self.midPoint0.HideFromEditorsOn()
-    self.midPoint1.HideFromEditorsOn()
-    self.midPoint2.HideFromEditorsOn()
-    self.midPoint3.HideFromEditorsOn()
-    self.gridLine0.HideFromEditorsOn()
-    self.gridLine1.HideFromEditorsOn()
-    self.gridLine2.HideFromEditorsOn()
-    self.gridLine3.HideFromEditorsOn()
-    
+
+    shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
+    sceneItemID = shNode.GetSceneItemID()
+    self.folder = shNode.CreateFolderItem(sceneItemID, self.name)
+    shNode.SetItemParent(shNode.GetItemByDataNode(self.cornerPoint0), self.folder)
+    shNode.SetItemParent(shNode.GetItemByDataNode(self.cornerPoint1), self.folder)
+    shNode.SetItemParent(shNode.GetItemByDataNode(self.cornerPoint2), self.folder)
+    shNode.SetItemParent(shNode.GetItemByDataNode(self.cornerPoint3), self.folder)
+    shNode.SetItemParent(shNode.GetItemByDataNode(self.midPoint0), self.folder)
+    shNode.SetItemParent(shNode.GetItemByDataNode(self.midPoint1), self.folder)
+    shNode.SetItemParent(shNode.GetItemByDataNode(self.midPoint2), self.folder)
+    shNode.SetItemParent(shNode.GetItemByDataNode(self.midPoint3), self.folder)
+    shNode.SetItemParent(shNode.GetItemByDataNode(self.gridLine0), self.folder)
+    shNode.SetItemParent(shNode.GetItemByDataNode(self.gridLine1), self.folder)
+    shNode.SetItemParent(shNode.GetItemByDataNode(self.gridLine2), self.folder)
+    shNode.SetItemParent(shNode.GetItemByDataNode(self.gridLine3), self.folder)
+
     self.updatingNodesActive = False
 
   def initializeGrid(self, gridResolution):
@@ -382,12 +398,12 @@ class InteractivePatch:
     self.gridModel.HideFromEditorsOn()
     self.gridNode.GetDisplayNode().SetGlyphScale(2.5)
     self.gridNode.LockedOn()
-    
-    observerTagDeleteGrid = self.gridNode.AddObserver(vtk.vtkCommand.DeleteEvent, self.deleteGrid)
+    self.gridNode.GetDisplayNode().SetSelectedColor(self.colorValue)
 
-  def deleteGrid(self, caller, eventId):
-    print("The grid was deleted")
-    
+    shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
+    shNode.SetItemParent(shNode.GetItemByDataNode(self.gridModel), self.folder)
+    shNode.SetItemParent(shNode.GetItemByDataNode(self.gridNode), self.folder)
+
   def unsetGridLine(self, gridLine):
     gridLine.LockedOff()
     gridLine.SetFixedNumberOfControlPoints(False)
@@ -458,7 +474,7 @@ class InteractivePatch:
     self.midPoint1.SetLocked(setLocked)
     self.midPoint2.SetLocked(setLocked)
     self.midPoint3.SetLocked(setLocked)
-  
+
 
 class PlaceLandmarkGridLogic(ScriptedLoadableModuleLogic):
     """This class should implement all the actual
