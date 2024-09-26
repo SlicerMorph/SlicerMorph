@@ -223,7 +223,7 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
 
     def refreshGrid(self, caller, eventId):
       self.patch.gridNode.LockedOff()
-      gridResolution = int(self.sampleRate.value)
+      gridResolution = int(self.patch.resolution)
       flipNormalsFlag = self.flipNormalsCheckBox.checked
       self.patch.gridNode.RemoveAllControlPoints()
       self.patch.gridNode.SetGridResolution(gridResolution,gridResolution)
@@ -257,6 +257,8 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
       self.patch.setLockPatch(True)
       self.patch = newPatch
       self.patch.setLockPatch(False)
+      self.sampleRate.value = self.patch.resolution
+
 
 
     @vtk.calldata_type(vtk.VTK_INT)
@@ -275,7 +277,7 @@ class InteractivePatch:
     self.gridID = gridID
     self.constraintNode = surfaceConstraintNode
     self.hasGrid = False
-
+    self.resolution = 5
     self.colorValue=[0,0,0]
     colorNode=slicer.util.getNode("MediumChartColors")
     colorNode.GetLookupTable().GetColor(int(gridID),self.colorValue)
@@ -399,6 +401,7 @@ class InteractivePatch:
     self.gridNode.GetDisplayNode().SetGlyphScale(2.5)
     self.gridNode.LockedOn()
     self.gridNode.GetDisplayNode().SetSelectedColor(self.colorValue)
+    self.resolution = gridResolution
 
     shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
     shNode.SetItemParent(shNode.GetItemByDataNode(self.gridModel), self.folder)
