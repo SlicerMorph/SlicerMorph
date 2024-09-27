@@ -232,6 +232,7 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
       self.patch.gridNode.SetOutputSurfaceModelNodeID(self.patch.gridModel.GetID())
       self.logic.projectPatch(self.patch.constraintNode, self.patch.gridNode, self.patch.gridModel, flipNormalsFlag)
       self.logic.relaxGrid(self.patch.gridNode, self.patch.constraintNode, gridResolution)
+      self.patch.gridModel.SetDisplayVisibility(False)
       self.patch.gridNode.LockedOn()
 
     def initializeInteractivePatch(self, caller, eventId):
