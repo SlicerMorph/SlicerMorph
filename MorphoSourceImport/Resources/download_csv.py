@@ -187,7 +187,7 @@ class DownloadMSRecords:
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
         # Construct the filename
-        if formatted_taxonomy is not "None":
+        if formatted_taxonomy != "None":
             filename = f"{formatted_query}_{formatted_taxonomy}_{timestamp}.csv"
         else:
             filename = f"{formatted_query}_{timestamp}.csv"
