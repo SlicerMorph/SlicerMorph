@@ -185,7 +185,10 @@ class DownloadMSRecords:
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
         # Construct the filename
-        filename = f"{formatted_query}_{formatted_taxonomy}_{timestamp}.csv"
+        if formatted_taxonomy != 'None':
+            filename = f"{formatted_query}_{formatted_taxonomy}_{timestamp}.csv"
+        else:
+            filename = f"{formatted_query}_{timestamp}.csv"
 
         # Define the file path for saving the DataFrame
         save_path = os.path.join(self.path, filename)
