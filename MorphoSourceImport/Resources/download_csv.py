@@ -163,6 +163,8 @@ class DownloadMSRecords:
 
     def format_for_filename(self, text):
         """Format the text to be suitable for use in a filename."""
+        if not text:
+            return 'None'
         return text.replace(" ", "_").replace("/", "_").replace("\\", "_")
 
     def combine_and_save_dataframes(self):
@@ -185,7 +187,10 @@ class DownloadMSRecords:
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
         # Construct the filename
-        filename = f"{formatted_query}_{formatted_taxonomy}_{timestamp}.csv"
+        if formatted_taxonomy is not "None":
+            filename = f"{formatted_query}_{formatted_taxonomy}_{timestamp}.csv"
+        else:
+            filename = f"{formatted_query}_{timestamp}.csv"
 
         # Define the file path for saving the DataFrame
         save_path = os.path.join(self.path, filename)
