@@ -119,8 +119,8 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
 
         self.resolutionDisplayLabel = qt.QLabel("Current Resolution: Unknown")
         self.finalresolutionDisplayLabel = qt.QLabel("Current Resolution: Unknown")
-        parametersFormLayout.addRow("Current 3D Resolution:", self.resolutionDisplayLabel)
-        parametersFormLayout.addRow("Expected Screenshot 3D Resolution:", self.finalresolutionDisplayLabel)
+        parametersFormLayout.addRow("3D Viewer Size:", self.resolutionDisplayLabel)
+        parametersFormLayout.addRow("Screenshot Output Resolution:", self.finalresolutionDisplayLabel)
 
         # Initialize the timer for updating the resolution display
         self.updateTimer = qt.QTimer()
