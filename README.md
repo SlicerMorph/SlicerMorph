@@ -76,7 +76,7 @@ Modules in SlicerMorph are organized in three broad categories:
 ## Automatically installed extensions
 The following extension is installed automatically with SlicerMorph. Although it is not directly relied on by the modules, it is necessary for many workflows supoorted by SlicerMorph:
 - [**SegmentEditorExtraEffects:**](https://github.com/lassoan/SlicerSegmentEditorExtraEffects) Provides additional segmentation effects and utilities, such as our SplitSegment function that allows saving the 3D volume  into multiple smaller, individual volumes using the provided segmentation.
-- [**Sandbox:**](https://github.com/lassoan/SlicerSandbox](https://github.com/PerkLab/SlicerSandbox) Provides the `ColorizeVolume` module and other additional utilities that are functional, but not fully tested and not ready to be incorporated to Slicer's core.
+- [**Sandbox:**](https://github.com/lassoan/SlicerSandbox) Provides the `ColorizeVolume` module and other additional utilities that are functional, but not fully tested and not ready to be incorporated to Slicer's core.
 - [**SurfaceMarkups:**](https://github.com/SlicerHeart/SlicerSurfaceMarkup) Provides the Surface Markup type needed by the 'PlaceLandmarkGrid' module.
   
 ## Manually installed extensions
