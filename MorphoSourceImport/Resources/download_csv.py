@@ -179,16 +179,17 @@ class DownloadMSRecords:
 
         # Format search query and taxonomy for filename
         formatted_query = self.format_for_filename(self.query)
-        formatted_taxonomy = self.format_for_filename(self.taxonomy_gbif)
 
         # Generate a more readable timestamp
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
         # Construct the filename
-        if formatted_taxonomy != 'None':
-            filename = f"{formatted_query}_{formatted_taxonomy}_{timestamp}.csv"
-        else:
+        if self.taxonomy_gbif is None:
             filename = f"{formatted_query}_{timestamp}.csv"
+
+        else:
+            formatted_taxonomy = self.format_for_filename(self.taxonomy_gbif)
+            filename = f"{formatted_query}_{formatted_taxonomy}_{timestamp}.csv"
 
         # Define the file path for saving the DataFrame
         save_path = os.path.join(self.path, filename)
