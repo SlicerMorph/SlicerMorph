@@ -9,10 +9,10 @@ SlicerMorph streamlines digital morphology research by enabling effortless data 
 [SlicerMorph: An open and extensible platform to retrieve, visualize and analyze 3D morphology](https://besjournals.onlinelibrary.wiley.com/doi/10.1111/2041-210X.13669) is now available in Methods in Ecology and Evolution as an open-access paper. A more detailed version of this manuscript that explains all digital anatomy workflows in Slicer is also [available as a preprint on Biorxiv](https://www.biorxiv.org/content/10.1101/2020.11.09.374926v1).
 
 ## Installation
-Official method of obtaining SlicerMorph is through extension mechanism of 3D Slicer. To obtain SlicerMorph, please first install the latest **stable release** (at the moment v5.6.2) of [3D Slicer](https://download.slicer.org/) and use the [Extensions Manager module](https://www.slicer.org/wiki/Documentation/Nightly/SlicerApplication/ExtensionsManager) to search for and install the SlicerMorph extension. After restarting 3D Slicer, all SlicerMorph modules will be available in the application.
+Official method of obtaining SlicerMorph is through extension mechanism of 3D Slicer. To obtain SlicerMorph, please first install the latest **stable release** of [3D Slicer](https://download.slicer.org/) and use the [Extensions Manager module](https://www.slicer.org/wiki/Documentation/Nightly/SlicerApplication/ExtensionsManager) to search for and install the SlicerMorph extension. After restarting 3D Slicer, all SlicerMorph modules will be available in the application.
 
 ### Use SlicerMorph on the cloud:
-Your data does not fit into your laptop, or do not have a powerful computer to run 3D Slicer and SlicerMorph, or your institution does not give you permission to install software on their devices? You can now run 3D Slicer and SlicerMorph inside a web browser, without having to install anything through our **MorphoCloud On-Demand Instances**. All you need is GitHub account and a public ORCID profile. Please see http://instances.morpho.cloud for details and get started.
+Your data does not fit into your laptop, or do not have a powerful computer to run 3D Slicer and SlicerMorph, or your institution does not give you permission to install software on their devices? You can now run 3D Slicer and SlicerMorph inside a web browser without having to install anything through our **MorphoCloud On-Demand Instances**. All you need is GitHub account and a public ORCID profile. Please see http://instances.morpho.cloud for details and get started.
 
 <img src="https://raw.githubusercontent.com/SlicerMorph/Spr_2021/main/TechCheckin/exten_manager.png">
 
@@ -73,21 +73,30 @@ Modules in SlicerMorph are organized in three broad categories:
 - [**HiResScreenCapture:**](https://github.com/SlicerMorph/Tutorials/blob/main/HiResScreenCapture/readme.md) Allows the user to create high-resolution off-screen rendering of what's visible in the 3D viewer. Useful to create high-DPI rendering for posters and publications. (Only available for Slicer 5.7 or later).
 
 ## Dependencies
-## Automatically installed recommended extensions
+## Automatically installed extensions
 The following extension is installed automatically with SlicerMorph. Although it is not directly relied on by the modules, it is necessary for many workflows supoorted by SlicerMorph:
-- [**SegmentEditorExtraEffects:** Provides additional segmentation effects and utilities, such as our SplitSegment function that allows saving the 3D volume  into multiple smaller, individual volumes using the provided segmentation.](https://github.com/lassoan/SlicerSegmentEditorExtraEffects)
-
-## Manually installed dependencies
+- [**SegmentEditorExtraEffects:**](https://github.com/lassoan/SlicerSegmentEditorExtraEffects) Provides additional segmentation effects and utilities, such as our SplitSegment function that allows saving the 3D volume  into multiple smaller, individual volumes using the provided segmentation.
+- [**Sandbox:**](https://github.com/lassoan/SlicerSandbox](https://github.com/PerkLab/SlicerSandbox) Provides the `ColorizeVolume` module and other additional utilities that are functional, but not fully tested and not ready to be incorporated to Slicer's core.
+- [**SurfaceMarkups:**](https://github.com/SlicerHeart/SlicerSurfaceMarkup) Provides the Surface Markup type needed by the 'PlaceLandmarkGrid' module.
+  
+## Manually installed extensions
 The following extension is required for using the SegmentEndocranium. Installation is prompted on opening this module.
 - [**SurfaceWrapSolidy:** A segment editor effect useful to extract endocasts of cranial and other spaces.](https://github.com/sebastianandress/Slicer-SurfaceWrapSolidify)
 
-## Manually installed recommended extensions
-We  recommend that the user manually install the following extensions that provide useful convenience functions:
-- [**SlicerIGT:** Provides landmark driven registration (affine and deformable) of volumes and models.](https://github.com/SlicerIGT/SlicerIGT)
-- [**Sandbox:** Provides utilities like Cross-sectional Area from segments, Colorize Volume, CurvePlanarReformat modules and more.](https://github.com/PerkLab/SlicerSandbox/)
-- [**DCM2NIIX:** Provides a user-interface for the DICOM to NIFTI converter DCM2NIIX. Ideal for stripping metadata from DICOM datasets.](https://github.com/rordenlab/dcm2niix)
-- [**RawImageGuess:** A module that enables the user to import proprietary imaging formats by specifying data type, image dimensions and endianness.](https://github.com/acetylsalicyl/SlicerRawImageGuess)
+## Related Extensions by the SlicerMorph team
+SlicerMorph project also maintains other extensions that offer complementary functionality:
 
+- [**ScriptEditor:**](https://github.com/SlicerMorph/SlicerScriptEditor) Provides the open-source Monaco programming editor inside the Slicer. Scripts can be saved as part of the scene and can be sent directly to the Slicer's integrated Python console for execution.
+- [**Mouse Embryo Multi-Organ Segmentations (MEMOS):**](https://github.com/SlicerMorph/SlicerMEMOS)  An extension for automated segmentation 50 anatomical structures from diceCT scans of E15 fetal mice using deep-learning.
+- **Dense Correspondence Analysis:** WIP
+  
+## Other recommended extensions
+Slicer extension catalog has over 100 extensions. We  recommend the following extensions that provide useful convenience functions:
+- [**SlicerIGT:** Provides landmark driven registration (affine and deformable) of volumes and models.](https://github.com/SlicerIGT/SlicerIGT)
+- [**RawImageGuess:** A module that enables the user to import proprietary imaging formats by specifying data type, image dimensions and endianness.](https://github.com/acetylsalicyl/SlicerRawImageGuess)
+- [**Model To Model Distance:**]()This extension computes the distance between two 3D models. This is useful to generate heatmaps on models from PCA.
+
+  
 ## SlicerMorph Tutorials
 [We have step-by-step module specific tutorials that is useful for people starting with Slicer and SlicerMorph.](https://github.com/SlicerMorph/Tutorials)
 
