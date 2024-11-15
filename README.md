@@ -78,7 +78,7 @@ The following extension is installed automatically with SlicerMorph. Although it
 - [**SegmentEditorExtraEffects:**](https://github.com/lassoan/SlicerSegmentEditorExtraEffects) Provides additional segmentation effects and utilities, such as our SplitSegment function that allows saving the 3D volume  into multiple smaller, individual volumes using the provided segmentation.
 - [**Sandbox:**](https://github.com/lassoan/SlicerSandbox) Provides the `ColorizeVolume` module and other additional utilities that are functional, but not fully tested and not ready to be incorporated to Slicer's core.
 - [**SurfaceMarkups:**](https://github.com/SlicerHeart/SlicerSurfaceMarkup) Provides the Surface Markup type needed by the 'PlaceLandmarkGrid' module.
-  
+
 ## Manually installed extensions
 The following extension is required for using the SegmentEndocranium. Installation is prompted on opening this module.
 - [**SurfaceWrapSolidy:** A segment editor effect useful to extract endocasts of cranial and other spaces.](https://github.com/sebastianandress/Slicer-SurfaceWrapSolidify)
@@ -89,14 +89,14 @@ SlicerMorph project also maintains other extensions that offer complementary fun
 - [**ScriptEditor:**](https://github.com/SlicerMorph/SlicerScriptEditor) Provides the open-source Monaco programming editor inside the Slicer. Scripts can be saved as part of the scene and can be sent directly to the Slicer's integrated Python console for execution.
 - [**Mouse Embryo Multi-Organ Segmentations (MEMOS):**](https://github.com/SlicerMorph/SlicerMEMOS)  An extension for automated segmentation 50 anatomical structures from diceCT scans of E15 fetal mice using deep-learning.
 - **Dense Correspondence Analysis:** WIP
-  
+
 ## Other recommended extensions
 Slicer extension catalog has over 100 extensions. We  recommend the following extensions that provide useful convenience functions:
 - [**SlicerIGT:** Provides landmark driven registration (affine and deformable) of volumes and models.](https://github.com/SlicerIGT/SlicerIGT)
 - [**RawImageGuess:** A module that enables the user to import proprietary imaging formats by specifying data type, image dimensions and endianness.](https://github.com/acetylsalicyl/SlicerRawImageGuess)
 - [**Model To Model Distance:**]()This extension computes the distance between two 3D models. This is useful to generate heatmaps on models from PCA.
 
-  
+
 ## SlicerMorph Tutorials
 [We have step-by-step module specific tutorials that is useful for people starting with Slicer and SlicerMorph.](https://github.com/SlicerMorph/Tutorials)
 
