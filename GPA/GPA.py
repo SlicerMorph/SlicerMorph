@@ -1763,6 +1763,13 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       # get landmark node selected
       logic = GPALogic()
       self.sourceLMNode= slicer.util.loadMarkups(self.FudSelect.currentPath)
+      # check if landmark number is valid
+      if self.sourceLMNode.GetNumberOfControlPoints() != self.LM.lmOrig.shape[0]:
+        # error message
+        logging.debug("Number of landmarks selected for 3D visualization does not match the analysis\n")
+        slicer.util.messageBox(f"Error: Expected {self.LM.lmOrig.shape[0]} landmarks but loaded file has {self.sourceLMNode.GetNumberOfControlPoints()}")
+        slicer.mrmlScene.RemoveNode(self.sourceLMNode)
+        return
       GPANodeCollection.AddItem(self.sourceLMNode)
       self.sourceLMnumpy=logic.convertFudicialToNP(self.sourceLMNode)
 
