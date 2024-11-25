@@ -654,6 +654,8 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
         self.apiKeyInput.text = savedApiKey
 
         savedDownloadFolder = self.logic.loadSetting('downloadFolder', '')
+        if savedDownloadFolder == "":
+          savedDownloadFolder = slicer.mrmlScene.GetRootDirectory()
         self.downloadFolderPathInput.text = savedDownloadFolder
 
         # Add download button below the table
@@ -1138,7 +1140,7 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
             self.toggleAPIKeyVisibilityButton.setText("Show")
 
     def onSelectDownloadFolder(self):
-        folderPath = qt.QFileDialog.getExistingDirectory()
+        folderPath = qt.QFileDialog.getExistingDirectory(qt.QWidget(), "Select Directory", self.downloadFolderPathInput.text)
         if folderPath:
             self.downloadFolderPathInput.setText(folderPath)
             self.logic.set_download_folder(folderPath)

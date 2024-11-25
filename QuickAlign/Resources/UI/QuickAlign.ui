@@ -33,6 +33,7 @@
          <stringlist notr="true">
           <string>vtkMRMLScalarVolumeNode</string>
           <string>vtkMRMLModelNode</string>
+          <string>vtkMRMLMarkupsFiducialNode</string>
          </stringlist>
         </property>
         <property name="showChildNodeTypes">
@@ -68,6 +69,7 @@
          <stringlist notr="true">
           <string>vtkMRMLScalarVolumeNode</string>
           <string>vtkMRMLModelNode</string>
+          <string>vtkMRMLMarkupsFiducialNode</string>
          </stringlist>
         </property>
         <property name="showChildNodeTypes">
@@ -110,6 +112,19 @@
      </property>
      <layout class="QFormLayout" name="formLayout_3">
       <item row="0" column="0" colspan="2">
+       <widget class="QCheckBox" name="jointEditCheckBox">
+        <property name="enabled">
+         <bool>false</bool>
+        </property>
+        <property name="text">
+         <string>Enable joint editing of point lists</string>
+        </property>
+        <property name="checked">
+         <bool>false</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0" colspan="2">
        <widget class="QPushButton" name="linkButton">
         <property name="enabled">
          <bool>false</bool>
@@ -122,7 +137,7 @@
         </property>
        </widget>
       </item>
-      <item row="1" column="0" colspan="2">
+      <item row="2" column="0" colspan="2">
        <widget class="QPushButton" name="unlinkButton">
         <property name="enabled">
          <bool>false</bool>

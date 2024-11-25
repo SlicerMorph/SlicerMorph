@@ -27,7 +27,7 @@ class QuickAlign(ScriptedLoadableModule):
         self.parent.dependencies = []
         self.parent.contributors = ["Sara Rolfe (SCRI), Murat Maga (SCRI, UW)"]
         self.parent.helpText = """
-        This module temporarily links two objects for joint viewing. Volumes and models are supported.
+        This module temporarily fixes the alignment of two nodes in linked 3D views. If the nodes are point lists, joint editing can be enabled.
         """
         # TODO: replace with organization, grant and thanks
         self.parent.acknowledgementText = """
@@ -114,6 +114,12 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def onSelect(self):
         self.ui.initializeViewButton.enabled = bool(self.ui.inputSelector1.currentNode() and self.ui.inputSelector2.currentNode())
+        #if nodes are markup fiducial lists, enable joint editing
+        node1 = self.ui.inputSelector1.currentNode()
+        node2 = self.ui.inputSelector2.currentNode()
+        markupsTypeNodes = bool(node1.GetNodeTagName() == "MarkupsFiducial" and node2.GetNodeTagName() == "MarkupsFiducial")
+        self.ui.jointEditCheckBox.enabled = markupsTypeNodes
+        self.ui.jointEditCheckBox.checked = markupsTypeNodes
 
     def cleanup(self):
         """
@@ -160,22 +166,39 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         camera1 = slicer.modules.cameras.logic().GetViewActiveCameraNode(self.viewNode1)
         camera2 = slicer.modules.cameras.logic().GetViewActiveCameraNode(self.viewNode2)
 
+        #get zoom factor and set up scaling transform
+        camera2ZoomFactor = camera1.GetParallelScale()/camera2.GetParallelScale()
+        scalingTransform=vtk.vtkTransform()
+        scalingTransform.Scale(camera2ZoomFactor,camera2ZoomFactor,camera2ZoomFactor)
+        self.scalingTransformNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLinearTransformNode", "scale transform")
+        self.scalingTransformNode.SetMatrixTransformToParent(scalingTransform.GetMatrix())
+
         logic = QuickAlignLogic()
         movingModel = self.ui.inputSelector2.currentNode()
 
         #get alignment transform between cameras
         self.alignmentTransform = logic.getCameraAlignmentTransform(camera1, camera2)
         self.centerView2Transform.SetAndObserveTransformNodeID(self.alignmentTransform.GetID())
+        self.alignmentTransform.SetAndObserveTransformNodeID(self.scalingTransformNode.GetID())
 
         #link and update views
         self.viewNode2.SetLinkedControl(True)
         layoutManager = slicer.app.layoutManager()
         self.update3DViews()
 
+        #if nodes are markup fiducial lists, enable joint editing
+        node1 = self.ui.inputSelector1.currentNode()
+        node2 = self.ui.inputSelector2.currentNode()
+        if node1.GetNodeTagName() == "MarkupsFiducial" and node2.GetNodeTagName() == "MarkupsFiducial" and self.ui.jointEditCheckBox.checked:
+          self.observerList = logic.startJointMarkupEditing(node1,node2)
+          if self.observerList == []:
+            self.ui.jointEditCheckBox.checked=False
+
         #set up for unlink action
         self.ui.unlinkButton.enabled = True
         self.ui.linkButton.enabled = False
         self.ui.initializeViewButton.enabled = False
+        self.ui.jointEditCheckBox.enabled = False
 
     def onUnlinkButton(self):
         """
@@ -184,12 +207,19 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.cleanUpTransformNodes()
         self.ui.unlinkButton.enabled = False
         self.ui.linkButton.enabled = False
+        # end joint editing if it was initiated
+        node1 = self.ui.inputSelector1.currentNode()
+        node2 = self.ui.inputSelector2.currentNode()
+        if node1.GetNodeTagName() == "MarkupsFiducial" and node2.GetNodeTagName() == "MarkupsFiducial" and self.ui.jointEditCheckBox.checked:
+          self.logic.endJointMarkupEditing(node1, node2, self.observerList)
         # unlink the views
         layoutManager = slicer.app.layoutManager()
         v1 = layoutManager.threeDWidget(0).threeDView().mrmlViewNode()
         v1.SetLinkedControl(False)
         self.update3DViews()
         self.ui.initializeViewButton.enabled = True
+        markupsTypeNodes = bool(node1.GetNodeTagName() == "MarkupsFiducial" and node2.GetNodeTagName() == "MarkupsFiducial")
+        self.ui.jointEditCheckBox.enabled = markupsTypeNodes
 
     def addLayoutButton(self, layoutID, buttonAction, toolTip, imageFileName, layoutDiscription):
         layoutManager = slicer.app.layoutManager()
@@ -241,6 +271,8 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
           slicer.mrmlScene.RemoveNode(self.centerView2Transform)
         if hasattr(self, 'alignmentTransform'):
           slicer.mrmlScene.RemoveNode(self.alignmentTransform)
+        if hasattr(self, 'scalingTransformNode'):
+          slicer.mrmlScene.RemoveNode(self.scalingTransformNode)
 
     def onInitializeViewButton(self):
         self.cleanUpTransformNodes()
@@ -266,8 +298,11 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         for i, currentNode in enumerate(nodeList):
           if currentNode.GetNodeTagName() == "Volume":
-            displayNode = volRenLogic.CreateDefaultVolumeRenderingNodes(currentNode)
-            displayNode.GetVolumePropertyNode().Copy(volRenLogic.GetPresetByName("US-Fetal"))
+            if currentNode.GetNumberOfDisplayNodes() > 1:
+              displayNode = currentNode.GetNthDisplayNode(1)
+            else:
+              displayNode = volRenLogic.CreateDefaultVolumeRenderingNodes(currentNode)
+              displayNode.GetVolumePropertyNode().Copy(volRenLogic.GetPresetByName("US-Fetal"))
           else:
             displayNode=currentNode.GetDisplayNode()
           displayNode.SetVisibility(True)
@@ -276,6 +311,7 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.viewNode1.SetLinkedControl(False)
         self.viewNode2.SetLinkedControl(False)
         self.ui.linkButton.enabled = True
+        self.ui.unlinkButton.enabled = False
 
         #update views
         self.update3DViews()
@@ -320,4 +356,44 @@ class QuickAlignLogic(ScriptedLoadableModuleLogic):
       transformNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLinearTransformNode", "alignment transform")
       transformNode.SetMatrixTransformToParent(alignmentMatrix_vtk)
       return transformNode
+
+    def updateSelectPoints1(self, caller, eventId):
+      if not self.updatingNodesActive:
+        self.updatingNodesActive = True
+        for i in range(self.node1.GetNumberOfControlPoints()):
+          self.node2.SetNthControlPointSelected(i,self.node1.GetNthControlPointSelected(i))
+        self.updatingNodesActive = False
+
+    def updateSelectPoints2(self, caller, eventId):
+      if not self.updatingNodesActive:
+        self.updatingNodesActive = True
+        for i in range(self.node2.GetNumberOfControlPoints()):
+          self.node1.SetNthControlPointSelected(i,self.node2.GetNthControlPointSelected(i))
+          self.updatingNodesActive = False
+
+    def startJointMarkupEditing(self, inputNode1, inputNode2):
+        logging.info('Enabling joint editing of point list nodes')
+        if inputNode1.GetNumberOfControlPoints() != inputNode2.GetNumberOfControlPoints():
+          print("Error: point lists must have same number of points to enable joint editing.")
+          return []
+        self.node1 = inputNode1
+        self.node2 = inputNode2
+        self.updatingNodesActive = False
+        self.node1.SetFixedNumberOfControlPoints(True)
+        self.node2.SetFixedNumberOfControlPoints(True)
+        observerTag1 = inputNode1.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent, self.updateSelectPoints1)
+        observerTag2 = inputNode2.AddObserver(slicer.vtkMRMLMarkupsNode.PointModifiedEvent, self.updateSelectPoints2)
+
+        return[observerTag1, observerTag2]
+
+    def endJointMarkupEditing(self, inputNode1, inputNode2, observerTags):
+        logging.info('Ending joint editing of point lists')
+        try:
+          inputNode1.RemoveObserver(observerTags[0])
+        except:
+          print(f"No tag found for {inputNode1.GetName()}")
+        try:
+          inputNode2.RemoveObserver(observerTags[1])
+        except:
+          print(f"No tag found for {inputNode2.GetName()}")
 

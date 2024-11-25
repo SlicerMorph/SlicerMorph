@@ -77,7 +77,7 @@ class GEVolImportWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.applyButton.enabled = bool(self.inputFileSelector.currentPath)
 
   def onApplyButton(self):
-      with slicer.util.tryWithErrorDisplay(_("Failed to compute results."), waitCursor=True):
+      with slicer.util.tryWithErrorDisplay(("Failed to compute results."), waitCursor=True):
           logic = GEVolImportLogic()
           nhdrPathName = logic.generateNHDRHeader(self.inputFileSelector.currentPath)
           slicer.util.loadVolume(nhdrPathName)
@@ -102,6 +102,7 @@ class PCRDataObject:
             if not os.path.isfile(filePath):
                 # pcr file is not found
                 raise FileNotFoundError(f"PCR file {filePath} was not found for VOL file")
+
 
         # Verify that a vol file exists there
         volPathName = fileName + ".vol"
@@ -142,7 +143,24 @@ class PCRDataObject:
         if self.dimensions[2] is None:
             raise RuntimeError("Volume_SizeZ field is not found in file")
         if self.spacing is None:
-            raise RuntimeError("VoxelSizeRec field is not found in file")
+           pcaFilePath = fileName + ".pca"
+           vgiFilePath = fileName + ".vgi"
+           if os.path.isfile(pcaFilePath):
+               with open (pcaFilePath) as in_file:
+                   for line in in_file:
+                       lines.append(line.strip("\n"))
+               for element in lines:
+                   if(element.find("VoxelSizeX=")>=0):
+                       self.spacing = float(element.split('=')[1])
+           elif os.path.isfile(vgiFilePath):
+               with open (vgiFilePath) as in_file:
+                   for line in in_file:
+                       lines.append(line.strip("\n"))
+               for element in lines:
+                   if(element.find("resolution")>=0):
+                       self.spacing = float(element.split(' ')[2])
+           else:
+               raise RuntimeError("VoxelSizeRec field is not found in file")
         if self.scalarType is None:
             raise RuntimeError("Format field is not found in file")
 
