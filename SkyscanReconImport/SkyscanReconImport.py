@@ -120,9 +120,22 @@ class SkyscanReconImportWidget(ScriptedLoadableModuleWidget):
         self.findFilesButton.toolTip = "Search for log files in the specified directory."
         self.batchModeTabLayout.addWidget(self.findFilesButton)
 
-        # Modify the List widget to display found log files with checkboxes
-        self.logFilesList = qt.QListWidget()
-        self.batchModeTabLayout.addWidget(self.logFilesList)
+        # Tree widget to display found log files with metadata
+        self.logFilesTree = qt.QTreeWidget()
+        self.logFilesTree.setHeaderLabels(["Filename", "Scan Folder", "Date Created", "Date Last Modified"])
+        self.logFilesTree.setSortingEnabled(True)  # Enable sorting
+        header = self.logFilesTree.header()
+
+        # Allow interactive resizing for all columns
+        header.setSectionResizeMode(qt.QHeaderView.Interactive)
+
+        # Optionally set initial sizes for the columns
+        header.resizeSection(0, 300)  # Filename column width
+        header.resizeSection(1, 100)  # Scan Folder column width
+        header.resizeSection(2, 100)  # Date Created column width
+        header.resizeSection(3, 100)  # Date Modified column width
+
+        self.batchModeTabLayout.addWidget(self.logFilesTree)
 
         # Directory selector for Full Resolution NRRD Export
         self.fullResOutputSelector = ctk.ctkPathLineEdit()
@@ -157,27 +170,70 @@ class SkyscanReconImportWidget(ScriptedLoadableModuleWidget):
         self.findFilesButton.clicked.connect(self.onFindFilesButtonClicked)
         self.startBatchProcessingButton.clicked.connect(self.onStartBatchProcessingClicked)
 
+    # def onFindFilesButtonClicked(self):
+    #     mainDirectory = self.directorySelector.currentPath
+    #     if mainDirectory:
+    #         logFiles = self.find_rec_log_files(mainDirectory)
+    #         self.logFilesList.clear()  # Clear existing items before adding new ones
+    #         for logFile in logFiles:
+    #             # Create a QListWidgetItem for each log file
+    #             item = qt.QListWidgetItem(logFile)
+    #             item.setFlags(item.flags() | qt.Qt.ItemIsUserCheckable)  # Add checkbox feature
+    #             item.setCheckState(qt.Qt.Unchecked)  # Set the checkbox to unchecked, or qt.Qt.Checked for checked
+    #             self.logFilesList.addItem(item)  # Add the item with a checkbox to the list
+    #     else:
+    #         slicer.util.errorDisplay("Please select a valid directory.")
+
     def onFindFilesButtonClicked(self):
         mainDirectory = self.directorySelector.currentPath
         if mainDirectory:
             logFiles = self.find_rec_log_files(mainDirectory)
-            self.logFilesList.clear()  # Clear existing items before adding new ones
+            self.logFilesTree.clear()  # Clear existing items before adding new ones
             for logFile in logFiles:
-                # Create a QListWidgetItem for each log file
-                item = qt.QListWidgetItem(logFile)
-                item.setFlags(item.flags() | qt.Qt.ItemIsUserCheckable)  # Add checkbox feature
-                item.setCheckState(qt.Qt.Unchecked)  # Set the checkbox to unchecked, or qt.Qt.Checked for checked
-                self.logFilesList.addItem(item)  # Add the item with a checkbox to the list
+                # Extract scan folder from the path
+                relative_path = os.path.relpath(logFile, mainDirectory)
+                scan_folder = relative_path.split(os.sep)[0]  # Get the first folder in the relative path
+
+                # Fetch file metadata
+                creation_time = os.path.getctime(logFile)
+                modification_time = os.path.getmtime(logFile)
+                creation_date = qt.QDateTime.fromSecsSinceEpoch(creation_time)
+                modification_date = qt.QDateTime.fromSecsSinceEpoch(modification_time)
+
+                # Create tree item with metadata and add a checkbox
+                item = qt.QTreeWidgetItem([
+                    logFile,  # Filename (full path)
+                    scan_folder,  # Scan folder
+                    creation_date.toString("yyyy-MM-dd HH:mm:ss"),  # Date created
+                    modification_date.toString("yyyy-MM-dd HH:mm:ss")  # Date modified
+                ])
+                item.setFlags(item.flags() | qt.Qt.ItemIsUserCheckable)  # Enable checkboxes
+                item.setCheckState(0, qt.Qt.Unchecked)  # Set the checkbox to unchecked
+
+                # Store sortable data in a hidden role
+                item.setData(1, qt.Qt.UserRole, scan_folder)
+                item.setData(2, qt.Qt.UserRole, creation_date)
+                item.setData(3, qt.Qt.UserRole, modification_date)
+
+                self.logFilesTree.addTopLevelItem(item)
         else:
             slicer.util.errorDisplay("Please select a valid directory.")
 
-    def getSelectedLogFiles(self):
-        selectedLogFiles = []
-        for index in range(self.logFilesList.count):
-            item = self.logFilesList.item(index)
-            if item.checkState() == qt.Qt.Checked:
-                selectedLogFiles.append(item.text())
-        return selectedLogFiles
+    # def getSelectedLogFiles(self):
+    #     selectedLogFiles = []
+    #     for index in range(self.logFilesList.count):
+    #         item = self.logFilesList.item(index)
+    #         if item.checkState() == qt.Qt.Checked:
+    #             selectedLogFiles.append(item.text())
+    #     return selectedLogFiles
+
+    def getCheckedLogFiles(self):
+        checkedLogFiles = []
+        for index in range(self.logFilesTree.topLevelItemCount):
+            item = self.logFilesTree.topLevelItem(index)
+            if item.checkState(0) == qt.Qt.Checked:  # Check if the checkbox is checked
+                checkedLogFiles.append(item.text(0))  # Get the filename
+        return checkedLogFiles
 
     def getDownsampleRatio(self):
         """
@@ -219,13 +275,35 @@ class SkyscanReconImportWidget(ScriptedLoadableModuleWidget):
         progress.close()
         return log_files
 
+    # def onStartBatchProcessingClicked(self):
+    #     # Check if log files list is populated
+    #
+    #     selectedLogFiles = self.getSelectedLogFiles()
+    #
+    #     if len(selectedLogFiles) == 0:
+    #         slicer.util.errorDisplay("No log files found. Please find log files before starting batch processing.")
+    #         return
+    #
+    #     # Check if output directories are specified
+    #     fullResOutputPath = self.fullResOutputSelector.currentPath.strip()
+    #     downsampledOutputPath = self.downsampledOutputSelector.currentPath.strip()
+    #     if not fullResOutputPath or not downsampledOutputPath:
+    #         slicer.util.errorDisplay("Please specify both full resolution and downsampled output directories.")
+    #         return
+    #
+    #     # Check if downsample ratio is selected (this is optional as default value is set)
+    #     downsampleRatios = self.getDownsampleRatio()
+    #
+    #     # Proceed with batch processing logic here, utilizing the specified parameters
+    #     self.startBatchProcessing(logFilesList=selectedLogFiles, fullResOutputPath=fullResOutputPath,
+    #                               downsampledOutputPath=downsampledOutputPath, downsampleRatio=downsampleRatios)
+
     def onStartBatchProcessingClicked(self):
-        # Check if log files list is populated
+        # Collect checked log files
+        checkedLogFiles = self.getCheckedLogFiles()
 
-        selectedLogFiles = self.getSelectedLogFiles()
-
-        if len(selectedLogFiles) == 0:
-            slicer.util.errorDisplay("No log files found. Please find log files before starting batch processing.")
+        if len(checkedLogFiles) == 0:
+            slicer.util.errorDisplay("No files selected for export. Please check files to process.")
             return
 
         # Check if output directories are specified
@@ -235,11 +313,11 @@ class SkyscanReconImportWidget(ScriptedLoadableModuleWidget):
             slicer.util.errorDisplay("Please specify both full resolution and downsampled output directories.")
             return
 
-        # Check if downsample ratio is selected (this is optional as default value is set)
+        # Get downsampling ratio selection
         downsampleRatios = self.getDownsampleRatio()
 
-        # Proceed with batch processing logic here, utilizing the specified parameters
-        self.startBatchProcessing(logFilesList=selectedLogFiles, fullResOutputPath=fullResOutputPath,
+        # Start batch processing
+        self.startBatchProcessing(logFilesList=checkedLogFiles, fullResOutputPath=fullResOutputPath,
                                   downsampledOutputPath=downsampledOutputPath, downsampleRatio=downsampleRatios)
 
     @staticmethod
