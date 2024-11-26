@@ -167,7 +167,7 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         """
         Open a file selection dialog and set the output file path.
         """
-        selectedFile = qt.QFileDialog.getSaveFileName(None, "Select Output File", self.initialDir, "PNG Files (*.png);;BMP Files (*.bmp);;JPG Files (*.jpg *.jpeg);;All Files (*)")
+        selectedFile = qt.QFileDialog.getSaveFileName(None, "Select Output File", self.initialDir, "PNG Files (*.png);;BMP Files (*.bmp);;JPG Files (*.jpg *.jpeg);;TIFF Files (*.tiff);;All Files (*)")
         if selectedFile:
             self.outputFileLineEdit.setText(selectedFile)
             self.initialDir = os.path.dirname(selectedFile)
@@ -185,14 +185,14 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         Updates the state of the apply button based on the input fields and resolution factor.
         """
         if self.outputFileLineEdit.text:
-          extensionList = ['.png', '.bmp', '.jpg', '.jpeg']
+          extensionList = ['.png', '.bmp', '.jpg', '.jpeg', '.tiff']
           root, ext = os.path.splitext(self.outputFileLineEdit.text)
           directoryValid = os.path.isdir(os.path.dirname(self.outputFileLineEdit.text))
           if not directoryValid:
             print("Please choose a valid directory")
           extensionValid = ext in extensionList
           if not extensionValid:
-            print("Please choose a valid extension (png, bmp, jpg)")
+            print("Please choose a valid extension (png, bmp, jpg, tiff)")
           self.applyButton.setEnabled(extensionValid and directoryValid)
         else:
           self.applyButton.setEnabled(False)
