@@ -101,6 +101,7 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         # Output file QLineEdit
         self.outputFileLineEdit = qt.QLineEdit()
         self.outputFileLineEdit.setPlaceholderText("e.g., /path/to/screenshot.png")
+        self.initialDir = slicer.mrmlScene.GetRootDirectory()
         self.selectOutputFileButton = qt.QPushButton("Select Output File")
         self.selectOutputFileButton.clicked.connect(self.selectOutputFile)
         fileHBox = qt.QHBoxLayout()
@@ -166,9 +167,10 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         """
         Open a file selection dialog and set the output file path.
         """
-        selectedFile = qt.QFileDialog.getSaveFileName(None, "Select Output File", "", "PNG Files (*.png);;All Files (*)")
+        selectedFile = qt.QFileDialog.getSaveFileName(None, "Select Output File", self.initialDir, "PNG Files (*.png);;BMP Files (*.bmp);;JPG Files (*.jpg *.jpeg);;All Files (*)")
         if selectedFile:
             self.outputFileLineEdit.setText(selectedFile)
+            self.initialDir = os.path.dirname(selectedFile)
 
     def onResolutionFactorChanged(self, value):
         """
@@ -182,8 +184,18 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         """
         Updates the state of the apply button based on the input fields and resolution factor.
         """
-        isFilePathSet = bool(self.outputFileLineEdit.text.strip()) and self.outputFileLineEdit.text.strip().endswith('.png')
-        self.applyButton.setEnabled(isFilePathSet)
+        if self.outputFileLineEdit.text:
+          extensionList = ['.png', '.bmp', '.jpg', '.jpeg']
+          root, ext = os.path.splitext(self.outputFileLineEdit.text)
+          directoryValid = os.path.isdir(os.path.dirname(self.outputFileLineEdit.text))
+          if not directoryValid:
+            print("Please choose a valid directory")
+          extensionValid = ext in extensionList
+          if not extensionValid:
+            print("Please choose a valid extension (png, bmp, jpg)")
+          self.applyButton.setEnabled(extensionValid and directoryValid)
+        else:
+          self.applyButton.setEnabled(False)
 
     def applyButtonClicked(self):
         """
