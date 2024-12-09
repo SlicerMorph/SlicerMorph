@@ -108,16 +108,19 @@
            </widget>
           </item>
           <item row="2" column="0">
-           <widget class="QLabel" name="skipScalingLabel">
+           <widget class="QLabel" name="scalingLabel">
             <property name="text">
-             <string>Skip scaling</string>
+             <string>Apply scaling</string>
             </property>
            </widget>
           </item>
           <item row="2" column="1">
-           <widget class="QCheckBox" name="skipScalingCheckBox">
+           <widget class="QCheckBox" name="scalingCheckBox">
             <property name="toolTip">
-             <string>If checked, ALPACA will skip scaling during alignment (Not recommended).</string>
+             <string>Whether to apply scaling during alignment (highly recommended).</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
             </property>
            </widget>
           </item>
