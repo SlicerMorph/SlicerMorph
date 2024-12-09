@@ -264,7 +264,7 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         ) = logic.runSubsample(
             self.sourceModelNode_clone,
             self.targetModelNode,
-            self.ui.skipScalingCheckBox.checked,
+            self.ui.scalingCheckBox.checked,
             self.parameterDictionary,
             self.ui.poissonSubsampleCheckBox.checked,
         )
@@ -332,7 +332,7 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.targetModelNode = self.ui.targetModelSelector.currentNode()
         logic = FastModelAlignLogic()
 
-        self.sourcePoints, self.targetPoints, self.scalingTransformNode, self.ICPTransformNode = logic.ITKRegistration(self.sourceModelNode, self.targetModelNode, self.ui.skipScalingCheckBox.checked,
+        self.sourcePoints, self.targetPoints, self.scalingTransformNode, self.ICPTransformNode = logic.ITKRegistration(self.sourceModelNode, self.targetModelNode, self.ui.scalingCheckBox.checked,
             self.parameterDictionary, self.ui.poissonSubsampleCheckBox.checked)
 
         scalingNodeName = self.sourceModelName + "_scaling"
@@ -353,7 +353,7 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         slicer.mrmlScene.RemoveNode(self.sourceModelNode)
 
-        if self.ui.skipScalingCheckBox.checked:
+        if not self.ui.scalingCheckBox.checked:
             slicer.mrmlScene.RemoveNode(self.scalingTransformNode)
 
         self.ui.runCPDAffineButton.enabled = True
@@ -437,7 +437,7 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
         ScriptedLoadableModuleLogic.__init__(self)
 
 
-    def ITKRegistration(self, sourceModelNode, targetModelNode, skipScalingOption, parameterDictionary, usePoisson):
+    def ITKRegistration(self, sourceModelNode, targetModelNode, scalingOption, parameterDictionary, usePoisson):
         import ALPACA
         logic = ALPACA.ALPACALogic()
         (
@@ -450,7 +450,7 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
         ) = logic.runSubsample(
             sourceModelNode,
             targetModelNode,
-            skipScalingOption,
+            scalingOption,
             parameterDictionary,
             usePoisson,
         )
@@ -475,7 +475,7 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
             sourceFeatures,
             targetFeatures,
             voxelSize,
-            skipScalingOption,
+            scalingOption,
             parameterDictionary,
         )
 
@@ -613,7 +613,7 @@ class FastModelAlignTest(ScriptedLoadableModuleTest):
 
 
         self.sourcePoints_test, self.targetPoints_test, self.scalingTransformNode_test, self.ICPTransformNode_test = logic.ITKRegistration(self.sourceModelNode_test, self.targetModelNode_test, False,
-            self.parameterDictionary_test, False)
+            self.parameterDictionary_test, True)
 
         scalingNodeName_test = self.sourceModelName_test + "_scaling_test"
         rigidNodeName_test = self.sourceModelName_test + "_rigid_test"
