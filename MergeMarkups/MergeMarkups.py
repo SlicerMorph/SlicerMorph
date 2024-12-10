@@ -480,49 +480,59 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
     self.mergeList(nodeList, mergedNode, continuousCurveOption)
     return True
 
-  def runGrids(self, gridTreeViews, markupsTreeView):
+  def runGrids(self, gridTreeView, markupsTreeView):
     mergedNodeName = "mergedGridMarkupsNode"
     mergedNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode', mergedNodeName)
     purple=[1,0,1]
     mergedNode.GetDisplayNode().SetSelectedColor(purple)
     mergedNode.GetDisplayNode().SetTextScale(0)
     # get node lists
-    gridNodeIDs=gridTreeViews.selectedIndexes()
+    gridNodeIDs=gridTreeView.selectedIndexes()
     gridNodeList = vtk.vtkCollection()
     for id in gridNodeIDs:
       if id.column() == 0:
         currentNode = slicer.util.getNode(id.data())
         gridNodeList.AddItem(currentNode)
-    markupNodeIDs=gridTreeViews.selectedIndexes()
+    markupNodeIDs=markupsTreeView.selectedIndexes()
     markupNodeList = vtk.vtkCollection()
     for id in markupNodeIDs:
       if id.column() == 0:
         currentNode = slicer.util.getNode(id.data())
         markupNodeList.AddItem(currentNode)
     self.mergePointsAndGrids(gridNodeList, markupNodeList, mergedNode)
-    
     mergedNode.SetLocked(True)
     return True
 
+  def getGridMinResolutionSize(self, grid):
+     p1 = grid.GetNthControlPointPosition(0)
+     p2 = grid.GetNthControlPointPosition(1)
+     p3 = grid.GetNthControlPointPosition(grid.GetGridResolution()[0])
+     length = vtk.vtkMath().Distance2BetweenPoints(p1, p2)
+     width = vtk.vtkMath().Distance2BetweenPoints(p1, p3)
+     return(min(length, width))
+    
   def mergePointsAndGrids(self, gridList, markupList, mergedNode):
     mergedPoints = vtk.vtkPoints()
     resolutions = []
     for currentNode in gridList:
-      resolutions.append(currentNode.GetGridResolution()[0])
-      for index in range(currentNode.GetNumberOfControlPoints()):
-        mergedPoints.InsertNextPoint(currentNode.GetNthControlPointPositionVector(index))
-    spatialConstraint = min(resolutions)
-    # filter grid points and create node
-    mergedPointPD=vtk.vtkPolyData()
-    mergedPointPD.SetPoints(mergedPoints)
-    cleanFilter=vtk.vtkCleanPolyData()
-    cleanFilter.SetTolerance(spatialConstraint)
-    cleanFilter.SetInputData(mergedPointPD)
-    cleanFilter.Update()
-    outputPoints = cleanFilter.GetOutput()
-    for i in range(outputPoints.GetNumberOfPoints()):
-      point = outputPoints.GetPoint(i)
-      mergedNode.AddControlPoint(point)
+      if mergedNode.GetNumberOfControlPoints() == 0:
+        for i in range(currentNode.GetNumberOfControlPoints()):
+          mergedNode.AddControlPoint(currentNode.GetNthControlPointPosition(i))
+        continue  
+      resolution = self.getGridMinResolutionSize(currentNode)
+      print("resolution: ", resolution)
+      resolutions.append(resolution)
+      for i in range(currentNode.GetNumberOfControlPoints()):
+        currentPoint = currentNode.GetNthControlPointPosition(i)
+        closestPointIndex = mergedNode.GetClosestControlPointIndexToPositionWorld(currentPoint)
+        print("index: ", closestPointIndex)
+        if closestPointIndex>=0:
+          closestPoint = mergedNode.GetNthControlPointPosition(closestPointIndex)
+          distance = vtk.vtkMath().Distance2BetweenPoints(currentPoint, closestPoint)
+          print("distance: ", distance)
+          if distance > resolution/10:
+            mergedNode.AddControlPoint(currentPoint)
+    overallSpatialConstrain = min(resolutions)    
     # add markup points
     for currentNode in markupList:
       for i in range(currentNode.GetNumberOfControlPoints()):
@@ -531,7 +541,7 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
         if closestPointIndex>=0:
           closestPoint = mergedNode.GetNthControlPointPosition(closestPointIndex)
           distance = vtk.vtkMath().Distance2BetweenPoints(currentPoint, closestPoint)
-          if distance < spatialConstraint:
+          if distance < overallSpatialConstrain:
             mergedNode.RemoveNthControlPoint(closestPointIndex)
         mergedNode.AddControlPoint(currentPoint)
 
