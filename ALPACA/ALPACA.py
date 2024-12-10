@@ -2784,13 +2784,9 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         sourceModelMesh = sourceModel.GetMesh()
         targetModelMesh = targetModel.GetMesh()
 
-        vtk_meshes = []
-        vtk_meshes.append(targetModelMesh)
-        vtk_meshes.append(sourceModelMesh)
-
         # Scale the mesh and the landmark points
-        fixedBoxLengths, fixedlength = self.getBoxLengths(vtk_meshes[0])
-        movingBoxLengths, movinglength = self.getBoxLengths(vtk_meshes[1])
+        fixedBoxLengths, fixedlength = self.getBoxLengths(targetModelMesh)
+        movingBoxLengths, movinglength = self.getBoxLengths(sourceModelMesh)
 
         # Sub-Sample the points for rigid refinement and deformable registration
         point_density = parameters["pointDensity"]
@@ -2808,8 +2804,8 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             scalingFactor = 1
         print("Scaling factor is ", scalingFactor)
 
-        sourceFullMesh_vtk = self.scale_vtk_point_coordinates(vtk_meshes[1], scalingFactor)
-        targetFullMesh_vtk = vtk_meshes[0]
+        sourceFullMesh_vtk = self.scale_vtk_point_coordinates(sourceModelMesh, scalingFactor)
+        targetFullMesh_vtk = targetModelMesh
 
         if usePoissonSubsample:
             print("Using Poisson Point Subsampling Method")
