@@ -2644,6 +2644,17 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         vtk_polydata.SetPoints(points2)
         return
 
+    def scale_vtk_point_coordinates(self, vtk_polydata, scalingFactor):
+        from vtk.util import numpy_support
+
+        points = vtk_polydata.GetPoints()
+        pointdata = points.GetData()
+        points_as_numpy = numpy_support.vtk_to_numpy(pointdata)
+        points_as_numpy = points_as_numpy * scalingFactor
+        self.set_numpy_points_in_vtk(vtk_polydata, points_as_numpy)
+
+        return vtk_polydata
+
     def get_numpy_points_from_vtk(self, vtk_polydata):
         import vtk
         from vtk.util import numpy_support
@@ -2672,9 +2683,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         sampled_points = f.GetOutput()
         return sampled_points
 
-    def subsample_points_voxelgrid_polydata(
-        self, inputMesh, boxLength, radius, divisions=None
-    ):
+    def subsample_points_voxelgrid_polydata(self, inputMesh, radius):
         subsample = vtk.vtkVoxelGrid()
         subsample.SetInputData(inputMesh)
         subsample.SetConfigurationStyleToLeafSize()
@@ -2769,9 +2778,6 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         parameters,
         usePoissonSubsample=False,
     ):
-        import vtk
-        from vtk.util import numpy_support
-
         print("parameters are ", parameters)
         print(":: Loading point clouds and downsampling")
 
@@ -2798,18 +2804,11 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         print("Voxel Size is ", voxel_size)
 
         scalingFactor = fixedlength / movinglength
-
-        points = vtk_meshes[1].GetPoints()
-        pointdata = points.GetData()
-        points_as_numpy = numpy_support.vtk_to_numpy(pointdata)
-
         if scalingOption is False:
             scalingFactor = 1
         print("Scaling factor is ", scalingFactor)
-        points_as_numpy = points_as_numpy * scalingFactor
-        self.set_numpy_points_in_vtk(vtk_meshes[1], points_as_numpy)
 
-        sourceFullMesh_vtk = vtk_meshes[1]
+        sourceFullMesh_vtk = self.scale_vtk_point_coordinates(vtk_meshes[1], scalingFactor)
         targetFullMesh_vtk = vtk_meshes[0]
 
         if usePoissonSubsample:
@@ -2822,10 +2821,10 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             )
         else:
             sourceMesh_vtk = self.subsample_points_voxelgrid_polydata(
-                sourceFullMesh_vtk, boxLength=movingBoxLengths, radius=voxel_size
+                sourceFullMesh_vtk, radius=voxel_size
             )
             targetMesh_vtk = self.subsample_points_voxelgrid_polydata(
-                targetFullMesh_vtk, boxLength=fixedBoxLengths, radius=voxel_size
+                targetFullMesh_vtk, radius=voxel_size
             )
 
         movingMeshPoints, movingMeshPointNormals = self.extract_pca_normal(
@@ -2850,12 +2849,14 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         target_fpfh = self.get_fpfh_feature(
             pcS, normal_np_pcl, fpfh_radius, fpfh_neighbors
         )
+        # print(f"target_fpfh {target_fpfh.shape}: {target_fpfh}")
 
         pcS = np.expand_dims(movingMeshPoints, -1)
         normal_np_pcl = movingMeshPointNormals
         source_fpfh = self.get_fpfh_feature(
             pcS, normal_np_pcl, fpfh_radius, fpfh_neighbors
         )
+        # print(f"source_fpfh {source_fpfh.shape}: {source_fpfh}")
 
         target_down = fixedMeshPoints
         source_down = movingMeshPoints
