@@ -2736,7 +2736,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         normals.SetInputData(mesh)
         normals.Update()
         out1 = normals.GetOutput()
-        normal_array = numpy_support.vtk_to_numpy(out1.GetPoints().GetData())
+        normal_array = numpy_support.vtk_to_numpy(out1.GetPointData().GetNormals())
         point_array = numpy_support.vtk_to_numpy(mesh.GetPoints().GetData())
         return point_array, normal_array
 
