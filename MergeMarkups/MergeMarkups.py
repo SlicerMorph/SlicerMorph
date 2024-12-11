@@ -529,7 +529,6 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
           distance = vtk.vtkMath().Distance2BetweenPoints(currentPoint, closestPoint)
           if distance > resolution/10:
             mergedNode.AddControlPoint(currentPoint)
-          else:
     overallSpatialConstrain = min(resolutions)/10
     # add markup points
     for currentNode in markupList:
