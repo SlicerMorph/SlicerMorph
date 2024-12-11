@@ -92,14 +92,6 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         parametersFormLayout.addRow("Model: ", self.modelSelector)
 
         #
-        # Outline Button
-        #
-        self.outlineButton = qt.QPushButton("Create a new grid patch")
-        self.outlineButton.toolTip = "Initiate placement of patch outline"
-        self.outlineButton.enabled = False
-        parametersFormLayout.addRow(self.outlineButton)
-
-        #
         # Select active patch
         #
         self.gridSelector = qt.QComboBox()
@@ -127,12 +119,12 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         parametersFormLayout.addRow("Flip grid orientation", self.flipNormalsCheckBox)
 
         #
-        # Grid Button
+        # Create Grid Button
         #
-        self.sampleGridButton = qt.QPushButton("Sample current patch")
-        self.sampleGridButton.toolTip = "Initiate sampling of patch"
-        self.sampleGridButton.enabled = False
-        parametersFormLayout.addRow(self.sampleGridButton)
+        self.createGridButton = qt.QPushButton("Create a new grid patch")
+        self.createGridButton.toolTip = "Initiate placement of a new grid markup"
+        self.createGridButton.enabled = False
+        parametersFormLayout.addRow(self.createGridButton)
 
         # Create logic class. Logic implements all computations that should be possible to run
         # in batch mode, without a graphical user interface.
@@ -141,8 +133,8 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         # Connections
         self.modelSelector.connect('currentNodeChanged(vtkMRMLNode*)', self.onSelect)
         self.gridSelector.connect('currentIndexChanged(int)', self.onSelectGrid)
-        self.outlineButton.connect('clicked(bool)', self.onOutlineButton)
-        self.sampleGridButton.connect('clicked(bool)', self.onSampleGridButton)
+        self.flipNormalsCheckBox.connect('stateChanged(int)', self.onSampleGrid)
+        self.createGridButton.connect('clicked(bool)', self.onCreateGridButton)
         self.sampleRate.connect('valueChanged(double )', self.onSampleRateChanged)
 
         # Track number of patches generated for naming
@@ -154,21 +146,23 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
 
     @vtk.calldata_type(vtk.VTK_INT)
     def onSampleRateChanged(self):
-          if self.sampleRate.value <= 1:
-            self.sampleRate.value = 3
-            qt.QMessageBox.critical(slicer.util.mainWindow(),
-              'Warning', 'The minimum landmark grid resolution is 3x3')
-          if self.sampleRate.value % 2 == 0:
-            self.sampleRate.value += 1
-            qt.QMessageBox.critical(slicer.util.mainWindow(),
-              'Warning', 'The landmark grid resolution must be odd')
-
+        print("Rate change")
+        if self.sampleRate.value <= 1:
+          self.sampleRate.value = 3
+          qt.QMessageBox.critical(slicer.util.mainWindow(),
+            'Warning', 'The minimum landmark grid resolution is 3x3')
+        if self.sampleRate.value % 2 == 0:
+          self.sampleRate.value += 1
+          qt.QMessageBox.critical(slicer.util.mainWindow(),
+            'Warning', 'The landmark grid resolution must be odd')
+        self.onSampleGrid()
 
     def onSelect(self):
-        self.outlineButton.enabled = bool(self.modelSelector.currentNode())
+        self.createGridButton.enabled = bool(self.modelSelector.currentNode())
 
     def onSelectGrid(self):
         if self.gridSelector.currentText == "None":
+          self.updateGridButton.enabled = False
           return
         if not self.updatingGUI:
           try:
@@ -180,7 +174,7 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
             'Error', 'The selected landmark grid patch is not valid.')
             self.gridSelector.setCurrentIndex(0)
 
-    def onOutlineButton(self):
+    def onCreateGridButton(self):
         self.patchCounter += 1
         constraintNode = self.modelSelector.currentNode()
         self.outlineCurve = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsClosedCurveNode", f"gridOutline_{self.patchCounter}")
@@ -193,12 +187,11 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         self.outlineCurve.GetDisplayNode().SetSelectedColor(0,1,0)
         self.outlineCurve.GetDisplayNode().SetGlyphScale(3.2)
         slicer.modules.markups.toolBar().onPlacePointShortcut()
-        self.sampleGridButton.enabled  = True
 
         # hide support nodes and update GUI
         observerTagPointAdded = self.outlineCurve.AddObserver(slicer.vtkMRMLMarkupsClosedCurveNode.PointPositionDefinedEvent, self.initializeInteractivePatch)
 
-    def onSampleGridButton(self):
+    def onSampleGrid(self):
       if self.outlineCurve.GetNumberOfControlPoints() != 4:
         print("Please finish placing grid outline with 4 points")
         return
@@ -253,14 +246,13 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
       self.outlineCurve.SetDisplayVisibility(False)
       self.outlineCurve.HideFromEditorsOn()
       self.updatingGUI = False
+      self.onSampleGrid()
 
     def updateCurrentPatch(self, newPatch):
       self.patch.setLockPatch(True)
       self.patch = newPatch
       self.patch.setLockPatch(False)
       self.sampleRate.value = self.patch.resolution
-
-
 
     @vtk.calldata_type(vtk.VTK_INT)
     def deleteObservers(self, caller, event, removedItem):
