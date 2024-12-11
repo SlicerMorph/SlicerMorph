@@ -65,10 +65,14 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     fiducialsTabLayout = qt.QFormLayout(fiducialsTab)
     batchTab = qt.QWidget()
     batchTabLayout = qt.QFormLayout(batchTab)
+    gridTab = qt.QWidget()
+    gridTabLayout = qt.QFormLayout(gridTab)
 
     tabsWidget.addTab(curvesTab, "Merge Curves")
     tabsWidget.addTab(fiducialsTab, "Merge Landmark Sets")
     tabsWidget.addTab(batchTab, "Batch Merge Landmark Sets")
+    tabsWidget.addTab(gridTab, "Merge Landmark Grids")
+
     self.layout.addWidget(tabsWidget)
     ################## Curves Tab
     #
@@ -261,12 +265,69 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     # Add vertical spacer
     self.layout.addStretch(1)
 
+    ################## Grid Tab
+    #
+    # Parameters Area
+    #
+    parametersGridCollapsibleButton = ctk.ctkCollapsibleButton()
+    parametersGridCollapsibleButton.text = "Grid Viewer"
+    gridTabLayout.addRow(parametersGridCollapsibleButton)
+
+    # Layout within the dummy collapsible button
+    parametersGridFormLayout = qt.QFormLayout(parametersGridCollapsibleButton)
+
+    #
+    # Grid View
+    #
+    self.gridView = slicer.qMRMLSubjectHierarchyTreeView()
+    self.gridView.setMRMLScene(slicer.mrmlScene)
+    self.gridView.setMultiSelection(True)
+    self.gridView.setAlternatingRowColors(True)
+    self.gridView.setDragDropMode(qt.QAbstractItemView().DragDrop)
+    self.gridView.setColumnHidden(self.gridView.model().transformColumn, True)
+    self.gridView.sortFilterProxyModel().setNodeTypes(["vtkMRMLMarkupsGridSurfaceNode"])
+    parametersGridFormLayout.addRow(self.gridView)
+
+    #
+    # Markups View
+    #
+    self.markupsGridView = slicer.qMRMLSubjectHierarchyTreeView()
+    self.markupsGridView.setMRMLScene(slicer.mrmlScene)
+    self.markupsGridView.setMultiSelection(True)
+    self.markupsGridView.setAlternatingRowColors(True)
+    self.markupsGridView.setDragDropMode(qt.QAbstractItemView().DragDrop)
+    self.markupsGridView.setColumnHidden(self.markupsView.model().transformColumn, True)
+    self.markupsGridView.sortFilterProxyModel().setNodeTypes(["vtkMRMLMarkupsFiducialNode"])
+    parametersGridFormLayout.addWidget(self.markupsGridView)
+
+    #
+    # Merge Button
+    #
+    self.mergeGridButton = qt.QPushButton("Merge highlighted nodes")
+    self.mergeGridButton.toolTip = "Generate a single point list from the selected nodes"
+    self.mergeGridButton.enabled = False
+    parametersGridFormLayout.addRow(self.mergeGridButton)
+
+    # connections
+    self.mergeGridButton.connect('clicked(bool)', self.onMergeGridButton)
+    self.gridView.connect('currentItemChanged(vtkIdType)', self.updateMergeGridButton)
+    self.markupsGridView.connect('currentItemChanged(vtkIdType)', self.updateMergeGridButton)
+
   def cleanup(self):
     pass
+
+  def onMergeGridButton(self):
+    logic = MergeMarkupsLogic()
+    logic.runGrids(self.gridView, self.markupsGridView)
 
   def onMergeButton(self):
     logic = MergeMarkupsLogic()
     logic.runCurves(self.markupsView, self.continuousCurvesCheckBox.checked)
+
+  def updateMergeGridButton(self):
+    gridNodes=self.gridView.selectedIndexes()
+    markupsGridNodes = self.markupsGridView.selectedIndexes()
+    self.mergeGridButton.enabled = bool(gridNodes or markupsGridNodes)
 
   def updateMergeButton(self):
     nodes=self.markupsView.selectedIndexes()
@@ -418,6 +479,68 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
     mergedNode.GetDisplayNode().SetSelectedColor(purple)
     self.mergeList(nodeList, mergedNode, continuousCurveOption)
     return True
+
+  def runGrids(self, gridTreeView, markupsTreeView):
+    mergedNodeName = "mergedGridMarkupsNode"
+    mergedNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode', mergedNodeName)
+    purple=[1,0,1]
+    mergedNode.GetDisplayNode().SetSelectedColor(purple)
+    mergedNode.GetDisplayNode().SetTextScale(0)
+    # get node lists
+    gridNodeIDs=gridTreeView.selectedIndexes()
+    gridNodeList = vtk.vtkCollection()
+    for id in gridNodeIDs:
+      if id.column() == 0:
+        currentNode = slicer.util.getNode(id.data())
+        gridNodeList.AddItem(currentNode)
+    markupNodeIDs=markupsTreeView.selectedIndexes()
+    markupNodeList = vtk.vtkCollection()
+    for id in markupNodeIDs:
+      if id.column() == 0:
+        currentNode = slicer.util.getNode(id.data())
+        markupNodeList.AddItem(currentNode)
+    self.mergePointsAndGrids(gridNodeList, markupNodeList, mergedNode)
+    mergedNode.SetLocked(True)
+    return True
+
+  def getGridMinResolutionSize(self, grid):
+     p1 = grid.GetNthControlPointPosition(0)
+     p2 = grid.GetNthControlPointPosition(1)
+     p3 = grid.GetNthControlPointPosition(grid.GetGridResolution()[0])
+     length = vtk.vtkMath().Distance2BetweenPoints(p1, p2)
+     width = vtk.vtkMath().Distance2BetweenPoints(p1, p3)
+     return(min(length, width))
+
+  def mergePointsAndGrids(self, gridList, markupList, mergedNode):
+    mergedPoints = vtk.vtkPoints()
+    resolutions = []
+    for currentNode in gridList:
+      if mergedNode.GetNumberOfControlPoints() == 0:
+        for i in range(currentNode.GetNumberOfControlPoints()):
+          mergedNode.AddControlPoint(currentNode.GetNthControlPointPosition(i))
+        continue
+      resolution = self.getGridMinResolutionSize(currentNode)
+      resolutions.append(resolution)
+      for i in range(currentNode.GetNumberOfControlPoints()):
+        currentPoint = currentNode.GetNthControlPointPosition(i)
+        closestPointIndex = mergedNode.GetClosestControlPointIndexToPositionWorld(currentPoint)
+        if closestPointIndex>=0:
+          closestPoint = mergedNode.GetNthControlPointPosition(closestPointIndex)
+          distance = vtk.vtkMath().Distance2BetweenPoints(currentPoint, closestPoint)
+          if distance > resolution/10:
+            mergedNode.AddControlPoint(currentPoint)
+    overallSpatialConstrain = min(resolutions)/10
+    # add markup points
+    for currentNode in markupList:
+      for i in range(currentNode.GetNumberOfControlPoints()):
+        currentPoint = currentNode.GetNthControlPointPosition(i)
+        closestPointIndex = mergedNode.GetClosestControlPointIndexToPositionWorld(currentPoint)
+        if closestPointIndex>=0:
+          closestPoint = mergedNode.GetNthControlPointPosition(closestPointIndex)
+          distance = vtk.vtkMath().Distance2BetweenPoints(currentPoint, closestPoint)
+          if distance < overallSpatialConstrain:
+            mergedNode.RemoveNthControlPoint(closestPointIndex)
+        mergedNode.AddControlPoint(currentPoint)
 
   def mergeList(self, nodeList,mergedNode, continuousCurveOption=False):
     pointList=[]
