@@ -319,7 +319,7 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
   def onMergeGridButton(self):
     logic = MergeMarkupsLogic()
     logic.runGrids(self.gridView, self.markupsGridView)
-    
+
   def onMergeButton(self):
     logic = MergeMarkupsLogic()
     logic.runCurves(self.markupsView, self.continuousCurvesCheckBox.checked)
@@ -328,7 +328,7 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     gridNodes=self.gridView.selectedIndexes()
     markupsGridNodes = self.markupsGridView.selectedIndexes()
     self.mergeGridButton.enabled = bool(gridNodes or markupsGridNodes)
-    
+
   def updateMergeButton(self):
     nodes=self.markupsView.selectedIndexes()
     self.mergeButton.enabled = bool(nodes)
@@ -510,7 +510,7 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
      length = vtk.vtkMath().Distance2BetweenPoints(p1, p2)
      width = vtk.vtkMath().Distance2BetweenPoints(p1, p3)
      return(min(length, width))
-    
+
   def mergePointsAndGrids(self, gridList, markupList, mergedNode):
     mergedPoints = vtk.vtkPoints()
     resolutions = []
@@ -518,21 +518,19 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
       if mergedNode.GetNumberOfControlPoints() == 0:
         for i in range(currentNode.GetNumberOfControlPoints()):
           mergedNode.AddControlPoint(currentNode.GetNthControlPointPosition(i))
-        continue  
+        continue
       resolution = self.getGridMinResolutionSize(currentNode)
-      print("resolution: ", resolution)
       resolutions.append(resolution)
       for i in range(currentNode.GetNumberOfControlPoints()):
         currentPoint = currentNode.GetNthControlPointPosition(i)
         closestPointIndex = mergedNode.GetClosestControlPointIndexToPositionWorld(currentPoint)
-        print("index: ", closestPointIndex)
         if closestPointIndex>=0:
           closestPoint = mergedNode.GetNthControlPointPosition(closestPointIndex)
           distance = vtk.vtkMath().Distance2BetweenPoints(currentPoint, closestPoint)
-          print("distance: ", distance)
           if distance > resolution/10:
             mergedNode.AddControlPoint(currentPoint)
-    overallSpatialConstrain = min(resolutions)    
+          else:
+    overallSpatialConstrain = min(resolutions)/10
     # add markup points
     for currentNode in markupList:
       for i in range(currentNode.GetNumberOfControlPoints()):
