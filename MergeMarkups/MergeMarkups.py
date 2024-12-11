@@ -514,10 +514,13 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
   def mergePointsAndGrids(self, gridList, markupList, mergedNode):
     mergedPoints = vtk.vtkPoints()
     resolutions = []
+    # add grid points - semi-landmarks
     for currentNode in gridList:
       if mergedNode.GetNumberOfControlPoints() == 0:
         for i in range(currentNode.GetNumberOfControlPoints()):
           mergedNode.AddControlPoint(currentNode.GetNthControlPointPosition(i))
+          currentPointIndex = mergedNode.GetNumberOfControlPoints()-1
+          mergedNode.SetNthControlPointDescription(currentPointIndex,"Semi")
         continue
       resolution = self.getGridMinResolutionSize(currentNode)
       resolutions.append(resolution)
@@ -529,8 +532,10 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
           distance = vtk.vtkMath().Distance2BetweenPoints(currentPoint, closestPoint)
           if distance > resolution/10:
             mergedNode.AddControlPoint(currentPoint)
+            currentPointIndex = mergedNode.GetNumberOfControlPoints()-1
+            mergedNode.SetNthControlPointDescription(currentPointIndex,"Semi")
     overallSpatialConstrain = min(resolutions)/10
-    # add markup points
+    # add markup points - fixed landmarks
     for currentNode in markupList:
       for i in range(currentNode.GetNumberOfControlPoints()):
         currentPoint = currentNode.GetNthControlPointPosition(i)
@@ -541,6 +546,8 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
           if distance < overallSpatialConstrain:
             mergedNode.RemoveNthControlPoint(closestPointIndex)
         mergedNode.AddControlPoint(currentPoint)
+        currentPointIndex = mergedNode.GetNumberOfControlPoints()-1
+        mergedNode.SetNthControlPointDescription(currentPointIndex,"Fixed")
 
   def mergeList(self, nodeList,mergedNode, continuousCurveOption=False):
     pointList=[]
