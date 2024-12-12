@@ -536,8 +536,6 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
   def mergePointsAndGrids(self, gridList, markupList, mergedNode, tolerence):
     mergedPoints = vtk.vtkPoints()
     resolutions = []
-    fixedPointCount = 0
-    semiLMPointCount = 0
     # add grid points - semi-landmarks
     for currentNode in gridList:
       if mergedNode.GetNumberOfControlPoints() == 0:
@@ -558,7 +556,6 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
             mergedNode.AddControlPoint(currentPoint)
             currentPointIndex = mergedNode.GetNumberOfControlPoints()-1
             mergedNode.SetNthControlPointDescription(currentPointIndex,"Semi")
-            semiLMPointCount+=1
     overallSpatialConstrain = min(resolutions)*tolerence
     # add markup points - fixed landmarks
     for currentNode in markupList:
@@ -571,11 +568,18 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
           if distance < overallSpatialConstrain:
             if mergedNode.GetNthControlPointDescription(closestPointIndex) != "Fixed":
               mergedNode.RemoveNthControlPoint(closestPointIndex)
-              semiLMPointCount-=1
         mergedNode.AddControlPoint(currentPoint)
         currentPointIndex = mergedNode.GetNumberOfControlPoints()-1
         mergedNode.SetNthControlPointDescription(currentPointIndex,"Fixed")
+    #check point numbers
+    fixedPointCount = 0
+    semiLMPointCount = 0
+    for i in range(mergedNode.GetNumberOfControlPoints()):
+      if mergedNode.GetNthControlPointDescription(i) == "Fixed":
         fixedPointCount+=1
+      elif mergedNode.GetNthControlPointDescription(i) == "Semi":
+        semiLMPointCount+=1
+    print("Total Landmarks: ", mergedNode.GetNumberOfControlPoints())
     print("Fixed Landmarks: ", fixedPointCount)
     print("Semi-Landmarks: ", semiLMPointCount)
 
