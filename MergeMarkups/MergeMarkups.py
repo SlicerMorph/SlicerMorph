@@ -339,8 +339,8 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
 
   def onMergeGridButton(self):
     logic = MergeMarkupsLogic()
-    tolerenceValue = self.projectionDistanceSlider.value/100
-    logic.runGrids(self.gridView, self.markupsGridView, tolerenceValue)
+    toleranceValue = self.projectionDistanceSlider.value/100
+    logic.runGrids(self.gridView, self.markupsGridView, toleranceValue)
 
   def onMergeButton(self):
     logic = MergeMarkupsLogic()
@@ -502,7 +502,7 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
     self.mergeList(nodeList, mergedNode, continuousCurveOption)
     return True
 
-  def runGrids(self, gridTreeView, markupsTreeView, tolerence):
+  def runGrids(self, gridTreeView, markupsTreeView, tolerance):
     mergedNodeName = "mergedGridMarkupsNode"
     mergedNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode', mergedNodeName)
     purple=[1,0,1]
@@ -523,7 +523,7 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
         currentNode = slicer.util.getNode(id.data())
         if currentNode.IsTypeOf("vtkMRMLMarkupsNode"):
           markupNodeList.AddItem(currentNode)
-    self.mergePointsAndGrids(gridNodeList, markupNodeList, mergedNode, tolerence)
+    self.mergePointsAndGrids(gridNodeList, markupNodeList, mergedNode, tolerance)
     mergedNode.SetLocked(True)
     return True
 
@@ -535,7 +535,7 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
      width = vtk.vtkMath().Distance2BetweenPoints(p1, p3)
      return(min(length, width))
 
-  def mergePointsAndGrids(self, gridList, markupList, mergedNode, tolerence):
+  def mergePointsAndGrids(self, gridList, markupList, mergedNode, tolerance):
     mergedPoints = vtk.vtkPoints()
     resolutions = []
     # add grid points - semi-landmarks
@@ -554,11 +554,11 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
         if closestPointIndex>=0:
           closestPoint = mergedNode.GetNthControlPointPosition(closestPointIndex)
           distance = vtk.vtkMath().Distance2BetweenPoints(currentPoint, closestPoint)
-          if distance > (resolution * tolerence):
+          if distance > resolution * tolerznce:
             mergedNode.AddControlPoint(currentPoint)
             currentPointIndex = mergedNode.GetNumberOfControlPoints()-1
             mergedNode.SetNthControlPointDescription(currentPointIndex,"Semi")
-    overallSpatialConstrain = min(resolutions) * tolerence
+    overallSpatialConstraint = min(resolutions) * tolerance
     # add markup points - fixed landmarks
     for currentNode in markupList:
       for i in range(currentNode.GetNumberOfControlPoints()):
@@ -567,7 +567,7 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
         if closestPointIndex>=0:
           closestPoint = mergedNode.GetNthControlPointPosition(closestPointIndex)
           distance = vtk.vtkMath().Distance2BetweenPoints(currentPoint, closestPoint)
-          if distance < overallSpatialConstrain:
+          if distance < overallSpatialConstraint:
             if mergedNode.GetNthControlPointDescription(closestPointIndex) != "Fixed":
               mergedNode.RemoveNthControlPoint(closestPointIndex)
         mergedNode.AddControlPoint(currentPoint)
