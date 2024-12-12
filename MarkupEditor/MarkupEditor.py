@@ -328,7 +328,7 @@ class MarkupEditorLogic(ScriptedLoadableModuleLogic):
 
     visibleCount = 0
     pickedCount = 0
-    pickedIndices=[]
+    selectedIndices=[]
     for index in range(fiducialsNode.GetNumberOfControlPoints()):
       pointVisible = fiducialsRepresentation.GetNthControlPointViewVisibility(index)
       if pointVisible:
@@ -342,7 +342,6 @@ class MarkupEditorLogic(ScriptedLoadableModuleLogic):
           picked = (pickColor != backgroundColor)
           if picked:
             pickedCount += 1
-            pickedIndices.append(index)
           if selectOption == "set":
             if pointVisible:
               fiducialsNode.SetNthControlPointSelected(index, picked)
@@ -356,7 +355,9 @@ class MarkupEditorLogic(ScriptedLoadableModuleLogic):
               fiducialsNode.SetNthControlPointSelected(index, False)
           else:
             logging.error(f"Unknown selectOption {selectOption}")
-    print("Picked indices: ", pickedIndices)
+      if fiducialsNode.GetNthControlPointSelected(index):
+        selectedIndices.append(index)
+    print("Selected indices: ", selectedIndices)
 
 #
 # MarkupEditorTest
