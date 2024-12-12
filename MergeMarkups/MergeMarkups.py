@@ -554,11 +554,11 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
         if closestPointIndex>=0:
           closestPoint = mergedNode.GetNthControlPointPosition(closestPointIndex)
           distance = vtk.vtkMath().Distance2BetweenPoints(currentPoint, closestPoint)
-          if distance > (resolution*tolerence):
+          if distance > (resolution * tolerence):
             mergedNode.AddControlPoint(currentPoint)
             currentPointIndex = mergedNode.GetNumberOfControlPoints()-1
             mergedNode.SetNthControlPointDescription(currentPointIndex,"Semi")
-    overallSpatialConstrain = min(resolutions)*tolerence
+    overallSpatialConstrain = min(resolutions) * tolerence
     # add markup points - fixed landmarks
     for currentNode in markupList:
       for i in range(currentNode.GetNumberOfControlPoints()):
