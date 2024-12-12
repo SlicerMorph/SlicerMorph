@@ -514,13 +514,15 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
     for id in gridNodeIDs:
       if id.column() == 0:
         currentNode = slicer.util.getNode(id.data())
-        gridNodeList.AddItem(currentNode)
+        if currentNode.IsTypeOf("vtkMRMLMarkupsGridSurfaceNode"):
+          gridNodeList.AddItem(currentNode)
     markupNodeIDs=markupsTreeView.selectedIndexes()
     markupNodeList = vtk.vtkCollection()
     for id in markupNodeIDs:
       if id.column() == 0:
         currentNode = slicer.util.getNode(id.data())
-        markupNodeList.AddItem(currentNode)
+        if currentNode.IsTypeOf("vtkMRMLMarkupsNode"):
+          markupNodeList.AddItem(currentNode)
     self.mergePointsAndGrids(gridNodeList, markupNodeList, mergedNode, tolerence)
     mergedNode.SetLocked(True)
     return True
@@ -538,14 +540,14 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
     resolutions = []
     # add grid points - semi-landmarks
     for currentNode in gridList:
+      resolution = self.getGridMinResolutionSize(currentNode)
+      resolutions.append(resolution)
       if mergedNode.GetNumberOfControlPoints() == 0:
         for i in range(currentNode.GetNumberOfControlPoints()):
           mergedNode.AddControlPoint(currentNode.GetNthControlPointPosition(i))
           currentPointIndex = mergedNode.GetNumberOfControlPoints()-1
           mergedNode.SetNthControlPointDescription(currentPointIndex,"Semi")
         continue
-      resolution = self.getGridMinResolutionSize(currentNode)
-      resolutions.append(resolution)
       for i in range(currentNode.GetNumberOfControlPoints()):
         currentPoint = currentNode.GetNthControlPointPosition(i)
         closestPointIndex = mergedNode.GetClosestControlPointIndexToPositionWorld(currentPoint)
