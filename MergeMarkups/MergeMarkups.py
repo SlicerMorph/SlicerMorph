@@ -301,6 +301,27 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     parametersGridFormLayout.addWidget(self.markupsGridView)
 
     #
+    # Advanced menu
+    #
+    advancedCollapsibleButton = ctk.ctkCollapsibleButton()
+    advancedCollapsibleButton.text = "Advanced"
+    advancedCollapsibleButton.collapsed = True
+    parametersGridFormLayout.addRow(advancedCollapsibleButton)
+    # Layout within the dummy collapsible button
+    advancedFormLayout = qt.QFormLayout(advancedCollapsibleButton)
+
+    #
+    # Spatial filtering slider
+    #
+    self.projectionDistanceSlider = ctk.ctkSliderWidget()
+    self.projectionDistanceSlider.singleStep = 5
+    self.projectionDistanceSlider.minimum = 0
+    self.projectionDistanceSlider.maximum = 100
+    self.projectionDistanceSlider.value = 20
+    self.projectionDistanceSlider.setToolTip("Set the maximum point merging distance as a percentage of grid size")
+    advancedFormLayout.addRow("Set point merging distance (percentage of grid size): ", self.projectionDistanceSlider)
+
+    #
     # Merge Button
     #
     self.mergeGridButton = qt.QPushButton("Merge highlighted nodes")
@@ -318,7 +339,8 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
 
   def onMergeGridButton(self):
     logic = MergeMarkupsLogic()
-    logic.runGrids(self.gridView, self.markupsGridView)
+    tolerenceValue = self.projectionDistanceSlider.value/100
+    logic.runGrids(self.gridView, self.markupsGridView, tolerenceValue)
 
   def onMergeButton(self):
     logic = MergeMarkupsLogic()
@@ -480,7 +502,7 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
     self.mergeList(nodeList, mergedNode, continuousCurveOption)
     return True
 
-  def runGrids(self, gridTreeView, markupsTreeView):
+  def runGrids(self, gridTreeView, markupsTreeView, tolerence):
     mergedNodeName = "mergedGridMarkupsNode"
     mergedNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode', mergedNodeName)
     purple=[1,0,1]
@@ -499,7 +521,7 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
       if id.column() == 0:
         currentNode = slicer.util.getNode(id.data())
         markupNodeList.AddItem(currentNode)
-    self.mergePointsAndGrids(gridNodeList, markupNodeList, mergedNode)
+    self.mergePointsAndGrids(gridNodeList, markupNodeList, mergedNode, tolerence)
     mergedNode.SetLocked(True)
     return True
 
@@ -511,9 +533,11 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
      width = vtk.vtkMath().Distance2BetweenPoints(p1, p3)
      return(min(length, width))
 
-  def mergePointsAndGrids(self, gridList, markupList, mergedNode):
+  def mergePointsAndGrids(self, gridList, markupList, mergedNode, tolerence):
     mergedPoints = vtk.vtkPoints()
     resolutions = []
+    fixedPointCount = 0
+    semiLMPointCount = 0
     # add grid points - semi-landmarks
     for currentNode in gridList:
       if mergedNode.GetNumberOfControlPoints() == 0:
@@ -530,11 +554,12 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
         if closestPointIndex>=0:
           closestPoint = mergedNode.GetNthControlPointPosition(closestPointIndex)
           distance = vtk.vtkMath().Distance2BetweenPoints(currentPoint, closestPoint)
-          if distance > resolution/10:
+          if distance > (resolution*tolerence):
             mergedNode.AddControlPoint(currentPoint)
             currentPointIndex = mergedNode.GetNumberOfControlPoints()-1
             mergedNode.SetNthControlPointDescription(currentPointIndex,"Semi")
-    overallSpatialConstrain = min(resolutions)/10
+            semiLMPointCount+=1
+    overallSpatialConstrain = min(resolutions)*tolerence
     # add markup points - fixed landmarks
     for currentNode in markupList:
       for i in range(currentNode.GetNumberOfControlPoints()):
@@ -544,10 +569,15 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
           closestPoint = mergedNode.GetNthControlPointPosition(closestPointIndex)
           distance = vtk.vtkMath().Distance2BetweenPoints(currentPoint, closestPoint)
           if distance < overallSpatialConstrain:
-            mergedNode.RemoveNthControlPoint(closestPointIndex)
+            if mergedNode.GetNthControlPointDescription(closestPointIndex) != "Fixed":
+              mergedNode.RemoveNthControlPoint(closestPointIndex)
+              semiLMPointCount-=1
         mergedNode.AddControlPoint(currentPoint)
         currentPointIndex = mergedNode.GetNumberOfControlPoints()-1
         mergedNode.SetNthControlPointDescription(currentPointIndex,"Fixed")
+        fixedPointCount+=1
+    print("Fixed Landmarks: ", fixedPointCount)
+    print("Semi-Landmarks: ", semiLMPointCount)
 
   def mergeList(self, nodeList,mergedNode, continuousCurveOption=False):
     pointList=[]
