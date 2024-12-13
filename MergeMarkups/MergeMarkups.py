@@ -514,15 +514,13 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
     for id in gridNodeIDs:
       if id.column() == 0:
         currentNode = slicer.util.getNode(id.data())
-        if currentNode.IsTypeOf("vtkMRMLMarkupsGridSurfaceNode"):
-          gridNodeList.AddItem(currentNode)
+        gridNodeList.AddItem(currentNode)
     markupNodeIDs=markupsTreeView.selectedIndexes()
     markupNodeList = vtk.vtkCollection()
     for id in markupNodeIDs:
       if id.column() == 0:
         currentNode = slicer.util.getNode(id.data())
-        if currentNode.IsTypeOf("vtkMRMLMarkupsNode"):
-          markupNodeList.AddItem(currentNode)
+        markupNodeList.AddItem(currentNode)
     self.mergePointsAndGrids(gridNodeList, markupNodeList, mergedNode, tolerance)
     mergedNode.SetLocked(True)
     return True
@@ -554,7 +552,7 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
         if closestPointIndex>=0:
           closestPoint = mergedNode.GetNthControlPointPosition(closestPointIndex)
           distance = vtk.vtkMath().Distance2BetweenPoints(currentPoint, closestPoint)
-          if distance > resolution * tolerznce:
+          if distance > resolution * tolerance:
             mergedNode.AddControlPoint(currentPoint)
             currentPointIndex = mergedNode.GetNumberOfControlPoints()-1
             mergedNode.SetNthControlPointDescription(currentPointIndex,"Semi")
