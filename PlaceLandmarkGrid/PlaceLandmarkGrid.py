@@ -259,10 +259,10 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
       removedNode = shNode.GetItemDataNode(removedItem) if removedItem else None
       if removedNode is not None and removedNode.IsA('vtkMRMLNode'):
         removedNode.RemoveAllObservers()
-        removedNodeName = shNode.GetItemName(removedItem)
+        removedNodeGridName = shNode.GetItemName(removedItem)
+        removedNodeName = removedNodeGridName.replace("grid", "gridPatch")
         allGrids = [self.gridSelector.itemText(i) for i in range(self.gridSelector.count)]
         if removedNodeName in allGrids:
-          print("found it!")
           index = allGrids.index(removedNodeName)
           self.gridSelector.removeItem(index)
           self.patchList.pop(index-1)
@@ -387,7 +387,7 @@ class InteractivePatch:
   def initializeGrid(self, gridResolution):
     # set up grid and supporting nodes
     if not self.hasGrid:
-      self.gridNode=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsGridSurfaceNode",f"gridPatch_{self.gridID}")
+      self.gridNode=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsGridSurfaceNode",f"grid_{self.gridID}")
       self.gridModel=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLModelNode",f"gridModel_{self.gridID}")
     self.gridNode.SetOutputSurfaceModelNodeID(self.gridModel.GetID())
     self.gridNode.SetGridResolution(gridResolution,gridResolution)
