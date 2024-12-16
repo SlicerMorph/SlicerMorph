@@ -111,12 +111,49 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         parametersFormLayout.addRow("Resolution for landmark grid:", self.sampleRate)
 
         #
-        # check box to trigger taking screen shots for later use in tutorials
+        # flip normals checkbox
         #
         self.flipNormalsCheckBox = qt.QCheckBox()
         self.flipNormalsCheckBox.checked = False
         self.flipNormalsCheckBox.setToolTip("If checked, flip grid surface direction.")
         parametersFormLayout.addRow("Flip grid orientation", self.flipNormalsCheckBox)
+
+        #
+        # Advanced menu
+        #
+        advancedCollapsibleButton = ctk.ctkCollapsibleButton()
+        advancedCollapsibleButton.text = "Advanced"
+        advancedCollapsibleButton.collapsed = True
+        parametersFormLayout.addRow(advancedCollapsibleButton)
+        # Layout within the dummy collapsible button
+        advancedFormLayout = qt.QFormLayout(advancedCollapsibleButton)
+
+        #
+        # Spatial filtering slider
+        #
+        self.projectionDistanceSlider = ctk.ctkSliderWidget()
+        self.projectionDistanceSlider.singleStep = 0.01
+        self.projectionDistanceSlider.minimum = 0
+        self.projectionDistanceSlider.maximum = 1
+        self.projectionDistanceSlider.value = 0.2
+        self.projectionDistanceSlider.setToolTip("Set the projection factor as a percentage of image")
+        advancedFormLayout.addRow("Set projection factor: ", self.projectionDistanceSlider)
+
+        self.relaxationSlider = ctk.ctkSliderWidget()
+        self.relaxationSlider.singleStep = 0.1
+        self.relaxationSlider.minimum = 0
+        self.relaxationSlider.maximum = 1
+        self.relaxationSlider.value = 0.8
+        self.relaxationSlider.setToolTip("Set the grid relaxation factor")
+        advancedFormLayout.addRow("Set relaxation factor: ", self.relaxationSlider)
+
+        self.iterationsSlider = ctk.ctkSliderWidget()
+        self.iterationsSlider.singleStep = 10
+        self.iterationsSlider.minimum = 0
+        self.iterationsSlider.maximum = 500
+        self.iterationsSlider.value = 100
+        self.iterationsSlider.setToolTip("Set number of smoothing iterations for grid relaxation")
+        advancedFormLayout.addRow("Set grid smoothing iterations: ", self.iterationsSlider)
 
         #
         # Create Grid Button
@@ -133,9 +170,10 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         # Connections
         self.modelSelector.connect('currentNodeChanged(vtkMRMLNode*)', self.onSelect)
         self.gridSelector.connect('currentIndexChanged(int)', self.onSelectGrid)
-        self.flipNormalsCheckBox.connect('stateChanged(int)', self.onSampleGrid)
+        self.flipNormalsCheckBox.connect('stateChanged(int)', self.onResampleGrid)
         self.createGridButton.connect('clicked(bool)', self.onCreateGridButton)
         self.sampleRate.connect('valueChanged(double )', self.onSampleRateChanged)
+        self.projectionDistanceSlider.connect('valueChanged(double )', self.onResampleGrid)
 
         # Track number of patches generated for naming
         self.patchCounter = -1
@@ -146,7 +184,6 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
 
     @vtk.calldata_type(vtk.VTK_INT)
     def onSampleRateChanged(self):
-        print("Rate change")
         if self.sampleRate.value <= 1:
           self.sampleRate.value = 3
           qt.QMessageBox.critical(slicer.util.mainWindow(),
@@ -155,7 +192,7 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
           self.sampleRate.value += 1
           qt.QMessageBox.critical(slicer.util.mainWindow(),
             'Warning', 'The landmark grid resolution must be odd')
-        self.onSampleGrid()
+        self.onResampleGrid()
 
     def onSelect(self):
         self.createGridButton.enabled = bool(self.modelSelector.currentNode())
@@ -190,6 +227,18 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         # hide support nodes and update GUI
         observerTagPointAdded = self.outlineCurve.AddObserver(slicer.vtkMRMLMarkupsClosedCurveNode.PointPositionDefinedEvent, self.initializeInteractivePatch)
 
+    def onResampleGrid(self):
+      if self.outlineCurve.GetNumberOfControlPoints() != 4:
+        print("Please finish placing grid outline with 4 points")
+        return
+      gridResolution = int(self.sampleRate.value)
+      flipNormalsFlag = self.flipNormalsCheckBox.checked
+      #if not self.patch.hasGrid:
+      self.patch.initializeGrid(gridResolution)
+      self.logic.placeGrid(gridResolution, self.patch)
+      self.logic.relaxGrid(self.patch.gridNode, self.patch.constraintNode, gridResolution, self.relaxationSlider.value, int(self.iterationsSlider.value))
+      self.logic.projectPatch(self.patch.constraintNode, self.patch.gridNode, self.patch.gridModel, self.projectionDistanceSlider.value, flipNormalsFlag)
+
     def onSampleGrid(self):
       if self.outlineCurve.GetNumberOfControlPoints() != 4:
         print("Please finish placing grid outline with 4 points")
@@ -199,8 +248,8 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
       #if not self.patch.hasGrid:
       self.patch.initializeGrid(gridResolution)
       self.logic.placeGrid(gridResolution, self.patch)
-      self.logic.projectPatch(self.patch.constraintNode, self.patch.gridNode, self.patch.gridModel, flipNormalsFlag)
-      self.logic.relaxGrid(self.patch.gridNode, self.patch.constraintNode, gridResolution)
+      self.logic.relaxGrid(self.patch.gridNode, self.patch.constraintNode, gridResolution, self.relaxationSlider.value, int(self.iterationsSlider.value))
+      self.logic.projectPatch(self.patch.constraintNode, self.patch.gridNode, self.patch.gridModel, self.projectionDistanceSlider.value, flipNormalsFlag)
 
       # curve event handling
       observerTagGridCorner0 = self.patch.cornerPoint0.AddObserver(slicer.vtkMRMLMarkupsCurveNode.PointEndInteractionEvent, self.refreshGrid)
@@ -222,8 +271,8 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
       self.patch.gridModel = self.patch.gridNode.GetOutputSurfaceModelNode()
       self.logic.placeGrid(gridResolution, self.patch)
       self.patch.gridNode.SetOutputSurfaceModelNodeID(self.patch.gridModel.GetID())
-      self.logic.projectPatch(self.patch.constraintNode, self.patch.gridNode, self.patch.gridModel, flipNormalsFlag)
-      self.logic.relaxGrid(self.patch.gridNode, self.patch.constraintNode, gridResolution)
+      self.logic.relaxGrid(self.patch.gridNode, self.patch.constraintNode, gridResolution, self.relaxationSlider.value, int(self.iterationsSlider.value))
+      self.logic.projectPatch(self.patch.constraintNode, self.patch.gridNode, self.patch.gridModel, self.projectionDistanceSlider.value, flipNormalsFlag)
       self.patch.gridModel.SetDisplayVisibility(False)
       self.patch.gridNode.LockedOn()
 
@@ -349,21 +398,25 @@ class InteractivePatch:
     self.midPoint0.AddControlPoint(self.gridLine0.GetNthControlPointPosition(1))
     self.midPoint0.GetDisplayNode().SetSelectedColor(0,0,1)
     self.midPoint0.GetDisplayNode().SetTextScale(0)
+    self.midPoint0.GetDisplayNode().SetGlyphScale(3.2)
     self.tag_M0 = self.midPoint0.AddObserver(slicer.vtkMRMLMarkupsFiducialNode().PointModifiedEvent, self.updateMidPoint)
     self.midPoint1 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsFiducialNode", "midPoint1")
     self.midPoint1.AddControlPoint(self.gridLine1.GetNthControlPointPosition(1))
     self.midPoint1.GetDisplayNode().SetSelectedColor(0,0,1)
     self.midPoint1.GetDisplayNode().SetTextScale(0)
+    self.midPoint1.GetDisplayNode().SetGlyphScale(3.2)
     self.tag_M1 = self.midPoint1.AddObserver(slicer.vtkMRMLMarkupsFiducialNode().PointModifiedEvent, self.updateMidPoint)
     self.midPoint2 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsFiducialNode", "midPoint2")
     self.midPoint2.AddControlPoint(self.gridLine2.GetNthControlPointPosition(1))
     self.midPoint2.GetDisplayNode().SetSelectedColor(0,0,1)
     self.midPoint2.GetDisplayNode().SetTextScale(0)
+    self.midPoint2.GetDisplayNode().SetGlyphScale(3.2)
     self.tag_M2 = self.midPoint2.AddObserver(slicer.vtkMRMLMarkupsFiducialNode().PointModifiedEvent, self.updateMidPoint)
     self.midPoint3 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsFiducialNode", "midPoint3")
     self.midPoint3.AddControlPoint(self.gridLine3.GetNthControlPointPosition(1))
     self.midPoint3.GetDisplayNode().SetSelectedColor(0,0,1)
     self.midPoint3.GetDisplayNode().SetTextScale(0)
+    self.midPoint3.GetDisplayNode().SetGlyphScale(3.2)
     self.tag_M3 = self.midPoint3.AddObserver(slicer.vtkMRMLMarkupsFiducialNode().PointModifiedEvent, self.updateMidPoint)
 
     shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
@@ -559,9 +612,9 @@ class PlaceLandmarkGridLogic(ScriptedLoadableModuleLogic):
       normals.Update()
       gridModelNode.SetAndObservePolyData(normals.GetOutput())
 
-    def projectPatch(self, model, markupNode, markupModel, flipNormalsFlag):
+    def projectPatch(self, model, markupNode, markupModel, projectionFactor, flipNormalsFlag):
       points = self.markup2VtkPoints(markupNode)
-      maxProjection = (model.GetPolyData().GetLength()) * 0.3
+      maxProjection = (model.GetPolyData().GetLength()) * projectionFactor
       if flipNormalsFlag:
         gridModelFlip=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLModelNode","gridModelTemp")
         gridModelFlip.SetAndObservePolyData(markupModel.GetPolyData())
@@ -658,7 +711,7 @@ class PlaceLandmarkGridLogic(ScriptedLoadableModuleLogic):
             projectedPoints.InsertNextPoint(rayOrigin)
       return projectedPointData
 
-    def relaxGrid(self, gridNode, modelNode, gridResolution):
+    def relaxGrid(self, gridNode, modelNode, gridResolution, relaxation, iterations):
       gridResolutionU = gridResolution
       gridResolutionV = gridResolution
       gridPointsPolyData = vtk.vtkPolyData()
@@ -686,9 +739,9 @@ class PlaceLandmarkGridLogic(ScriptedLoadableModuleLogic):
       smoothPolyDataFilter = vtk.vtkSmoothPolyDataFilter()
       smoothPolyDataFilter.SetInputDataObject(gridPointsPolyData)
       smoothPolyDataFilter.SetSourceData(modelNode.GetPolyData())
-      smoothPolyDataFilter.SetBoundarySmoothing(1)
-      smoothPolyDataFilter.SetRelaxationFactor(.8)
-      smoothPolyDataFilter.SetNumberOfIterations(300)
+      smoothPolyDataFilter.SetBoundarySmoothing(0)
+      smoothPolyDataFilter.SetRelaxationFactor(relaxation)
+      smoothPolyDataFilter.SetNumberOfIterations(iterations)
       smoothPolyDataFilter.Update()
 
       pdNew=smoothPolyDataFilter.GetOutput()
