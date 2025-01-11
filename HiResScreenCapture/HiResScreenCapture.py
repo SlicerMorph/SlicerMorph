@@ -44,7 +44,7 @@ class HiResScreenCapture(ScriptedLoadableModule):
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
         self.parent.title = "HiRes Screen Capture"  # TODO: make this more human readable by adding spaces
-        self.parent.categories = ["SlicerMorph.Utilities"]  # TODO: set categories (folders where the module
+        self.parent.categories = ["SlicerMorph.SlicerMorph Utilities"]  # TODO: set categories (folders where the module
         # shows up in the module selector)
         self.parent.dependencies = []  # TODO: add here list of module names that this module requires
         self.parent.contributors = ["Murat Maga (UW), Oshane Thomas(SCRI)"]  # TODO: replace with "Firstname Lastname
