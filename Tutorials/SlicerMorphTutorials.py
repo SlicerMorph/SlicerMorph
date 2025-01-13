@@ -2,9 +2,14 @@ import os
 import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
 import logging
-import mistune
 import requests
 import webbrowser
+
+try:
+    import mistune
+except ImportError:
+    slicer.util.pip_install('mistune')
+    import mistune
 
 class SlicerMorphTutorials(ScriptedLoadableModule):
 
