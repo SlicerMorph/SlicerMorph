@@ -1755,7 +1755,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
   # Interactive Visualization callbacks and helpers
 
   def onSelect(self):
-    self.initializeOnSelect()
     self.cloneLandmarkNode = self.copyLandmarkNode
     self.cloneLandmarkNode.CreateDefaultDisplayNodes()
     self.cloneLandmarkDisplayNode = self.cloneLandmarkNode.GetDisplayNode()
@@ -1770,6 +1769,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         slicer.util.messageBox(f"Error: Expected {self.LM.lmOrig.shape[0]} landmarks but loaded file has {self.sourceLMNode.GetNumberOfControlPoints()}")
         slicer.mrmlScene.RemoveNode(self.sourceLMNode)
         return
+      self.initializeOnSelect()
       GPANodeCollection.AddItem(self.sourceLMNode)
       self.sourceLMnumpy=logic.convertFudicialToNP(self.sourceLMNode)
 
@@ -1818,6 +1818,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       slicer.mrmlScene.RemoveNode(self.sourceLMNode)
 
     else:
+      self.initializeOnSelect()
       self.cloneLandmarkNode.SetDisplayVisibility(1)
       self.meanLandmarkNode.SetDisplayVisibility(1)
 
