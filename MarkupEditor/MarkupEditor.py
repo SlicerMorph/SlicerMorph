@@ -7,7 +7,7 @@ import unittest
 import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
-
+import PlaceLandmarkGrid
 from SubjectHierarchyPlugins import AbstractScriptedSubjectHierarchyPlugin
 
 #
@@ -83,6 +83,10 @@ class MarkupEditorSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin)
         self.deleteViewAction.objectName = 'DeleteViewAction'
         self.deleteViewAction.connect("triggered()", self.onDeleteViewAction)
 
+        self.addToGridAction = qt.QAction(f"Add point to grid", scriptedPlugin)
+        self.addToGridAction.objectName = 'AddToGridAction'
+        self.addToGridAction.connect("triggered()", self.onAddToGridAction)
+
         self.reset()
 
     def reset(self):
@@ -139,8 +143,26 @@ class MarkupEditorSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin)
             if fiducialsNode.GetNthControlPointSelected(index):
                 fiducialsNode.RemoveNthControlPoint(index)
 
+    def onAddToGridAction(self):
+        fiducialsNode = self.fiducialNodeFromEvent
+        fiducialIndex = self.fiducialIndexFromEvent
+        slicer.util.selectModule("PlaceLandmarkGrid")
+        gridOutline = slicer.modules.placelandmarkgrid.widgetRepresentation().self().logic.activeOutline
+        try:
+          if gridOutline is None:
+            slicer.util.errorDisplay("Please initialize grid from the PlaceLandmarkGrid module.")
+          else:
+            setPointNumber = gridOutline.GetNumberOfDefinedControlPoints()
+            if setPointNumber < 4:
+              fiducialPosition = fiducialsNode.GetNthControlPointPosition(fiducialIndex)
+              gridOutline.SetNthControlPointPosition(setPointNumber, fiducialPosition)
+            else:
+              slicer.util.errorDisplay(f"The active grid has {setPointNumber} defined points.")
+        except:
+          slicer.util.errorDisplay("Please initialize grid from the PlaceLandmarkGrid module.")
+
     def viewContextMenuActions(self):
-        return [self.selectViewAction, self.editViewAction, self.deleteViewAction]
+        return [self.selectViewAction, self.editViewAction, self.deleteViewAction, self.addToGridAction]
 
     def showViewContextMenuActionsForItem(self, itemID, eventData=None):
         pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler.instance()
@@ -159,6 +181,7 @@ class MarkupEditorSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin)
             menuActions.append('SelectViewAction')
             menuActions.append('EditViewAction')
             menuActions.append('DeleteViewAction')
+            menuActions.append('AddToGridAction')
             if int(slicer.app.revision)>=30033:
               pluginLogic.setAllowedViewContextMenuActionNamesForItem(itemID, menuActions)
             else:
@@ -166,8 +189,10 @@ class MarkupEditorSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin)
             self.selectViewAction.visible = True
             self.editViewAction.visible = True
             self.deleteViewAction.visible = True
+            self.addToGridAction.visible = True
             self.viewNodeFromEvent = viewNode
             self.fiducialNodeFromEvent = associatedNode
+            self.fiducialIndexFromEvent = eventData['ComponentIndex']
         else:
             self.reset()
 

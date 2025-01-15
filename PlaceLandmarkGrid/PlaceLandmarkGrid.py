@@ -158,20 +158,30 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         #
         # Create Grid Button
         #
-        self.createGridButton = qt.QPushButton("Create a new grid patch")
+        self.createGridButton = qt.QPushButton("Place new grid patch")
         self.createGridButton.toolTip = "Initiate placement of a new grid markup"
         self.createGridButton.enabled = False
         parametersFormLayout.addRow(self.createGridButton)
 
+        #
+        # Create Grid From Existing Points Button
+        #
+        self.createGridFromPointsButton = qt.QPushButton("Place new grid patch from existing points")
+        self.createGridFromPointsButton.toolTip = "Initiate placement of a new grid markup from existing points"
+        self.createGridFromPointsButton.enabled = False
+        parametersFormLayout.addRow(self.createGridFromPointsButton)
+
         # Create logic class. Logic implements all computations that should be possible to run
         # in batch mode, without a graphical user interface.
         self.logic = PlaceLandmarkGridLogic()
+        self.logic.activeOutline = None
 
         # Connections
         self.modelSelector.connect('currentNodeChanged(vtkMRMLNode*)', self.onSelect)
         self.gridSelector.connect('currentIndexChanged(int)', self.onSelectGrid)
         self.flipNormalsCheckBox.connect('stateChanged(int)', self.onResampleGrid)
         self.createGridButton.connect('clicked(bool)', self.onCreateGridButton)
+        self.createGridFromPointsButton.connect('clicked(bool)', self.onCreateGridFromPointsButton)
         self.sampleRate.connect('valueChanged(double )', self.onSampleRateChanged)
         self.projectionDistanceSlider.connect('valueChanged(double )', self.onResampleGrid)
 
@@ -196,6 +206,7 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
 
     def onSelect(self):
         self.createGridButton.enabled = bool(self.modelSelector.currentNode())
+        self.createGridFromPointsButton.enabled = bool(self.modelSelector.currentNode())
 
     def onSelectGrid(self):
         if self.gridSelector.currentText == "None":
@@ -210,22 +221,35 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
             'Error', 'The selected landmark grid patch is not valid.')
             self.gridSelector.setCurrentIndex(0)
 
+    def onCreateGridFromPointsButton(self):
+        self.patchCounter += 1
+        constraintNode = self.modelSelector.currentNode()
+        self.outlineCurve = self.initializeNewCurve(constraintNode, self.patchCounter)
+        # add observer for curve completion
+        observerTagPointAdded = self.outlineCurve.AddObserver(slicer.vtkMRMLMarkupsClosedCurveNode.PointPositionDefinedEvent, self.initializeInteractivePatch)
+        self.logic.activeOutline = self.outlineCurve
+
     def onCreateGridButton(self):
         self.patchCounter += 1
         constraintNode = self.modelSelector.currentNode()
-        self.outlineCurve = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsClosedCurveNode", f"gridOutline_{self.patchCounter}")
-        self.outlineCurve.AddNControlPoints(4, "outline", (0,0,0) )
-        self.outlineCurve.UnsetAllControlPoints()
-        self.outlineCurve.SetFixedNumberOfControlPoints(True)
-        self.outlineCurve.SetCurveTypeToLinear()
-        self.outlineCurve.SetAndObserveSurfaceConstraintNode(constraintNode)
-        self.outlineCurve.SetSurfaceConstraintMaximumSearchRadiusTolerance(.75)
-        self.outlineCurve.GetDisplayNode().SetSelectedColor(0,1,0)
-        self.outlineCurve.GetDisplayNode().SetGlyphScale(3.2)
+        self.outlineCurve = self.initializeNewCurve(constraintNode, self.patchCounter)
         slicer.modules.markups.toolBar().onPlacePointShortcut()
 
-        # hide support nodes and update GUI
+        # add observer for curve completion
         observerTagPointAdded = self.outlineCurve.AddObserver(slicer.vtkMRMLMarkupsClosedCurveNode.PointPositionDefinedEvent, self.initializeInteractivePatch)
+        self.logic.activeOutline = self.outlineCurve
+
+    def initializeNewCurve(self, constraintNode, patchCount):
+        curve = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsClosedCurveNode", f"gridOutline_{patchCount}")
+        curve.AddNControlPoints(4, "outline", (0,0,0) )
+        curve.UnsetAllControlPoints()
+        curve.SetFixedNumberOfControlPoints(True)
+        curve.SetCurveTypeToLinear()
+        curve.SetAndObserveSurfaceConstraintNode(constraintNode)
+        curve.SetSurfaceConstraintMaximumSearchRadiusTolerance(.75)
+        curve.GetDisplayNode().SetSelectedColor(0,1,0)
+        curve.GetDisplayNode().SetGlyphScale(3.2)
+        return curve
 
     def onResampleGrid(self):
       if self.outlineCurve.GetNumberOfControlPoints() != 4:
@@ -293,6 +317,7 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
       self.gridSelector.setCurrentText(self.patch.name)
       self.outlineCurve.SetDisplayVisibility(False)
       self.outlineCurve.HideFromEditorsOn()
+      self.logic.activeOutline = None
       self.updatingGUI = False
       self.onSampleGrid()
 
