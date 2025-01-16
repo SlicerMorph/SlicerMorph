@@ -1248,13 +1248,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.sampleSizeScaleFactor = logic.dist2(self.rawMeanLandmarks).max()
     print("Scale Factor: " + str(self.sampleSizeScaleFactor))
     self.GPALogTextbox.insertPlainText(f"Scale Factor: {self.sampleSizeScaleFactor}\n")
-
     for landmarkNumber in range (shape[0]):
       name = str(landmarkNumber+1) #start numbering at 1
       self.meanLandmarkNode.AddControlPoint(self.rawMeanLandmarks[landmarkNumber,:], name)
     self.meanLandmarkNode.SetDisplayVisibility(1)
     self.meanLandmarkNode.LockedOn() #lock position so when displayed they cannot be moved
-    self.meanLandmarkNode.EndModify(True)
     self.meanLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(1)
     self.meanLandmarkNode.GetDisplayNode().SetTextScale(3)
     #initialize mean LM display
@@ -1364,11 +1362,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       GPANodeCollection.AddItem(modelDisplayNode)
     self.meanLandmarkNode.GetDisplayNode().SetSliceProjection(True)
     self.meanLandmarkNode.GetDisplayNode().SetSliceProjectionOpacity(1)
-    self.meanLandmarkNode.StartModify()
     for landmarkNumber in range(shape[0]):
       name = str(landmarkNumber+1) #start numbering at 1
       self.meanLandmarkNode.AddControlPoint(vtk.vtkVector3d(self.rawMeanLandmarks[landmarkNumber,:]), name)
-    self.meanLandmarkNode.EndModify(True)
     self.meanLandmarkNode.SetDisplayVisibility(1)
     self.meanLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(1)
     self.meanLandmarkNode.GetDisplayNode().SetTextScale(3)
