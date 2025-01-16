@@ -67,11 +67,14 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     batchTabLayout = qt.QFormLayout(batchTab)
     gridTab = qt.QWidget()
     gridTabLayout = qt.QFormLayout(gridTab)
+    allTab = qt.QWidget()
+    allTabLayout = qt.QFormLayout(allTab)
 
     tabsWidget.addTab(curvesTab, "Merge Curves")
-    tabsWidget.addTab(fiducialsTab, "Merge Landmark Sets")
-    tabsWidget.addTab(batchTab, "Batch Merge Landmark Sets")
-    tabsWidget.addTab(gridTab, "Merge Landmark Grids")
+    tabsWidget.addTab(fiducialsTab, "Merge Point Sets")
+    tabsWidget.addTab(gridTab, "Merge Grids")
+    tabsWidget.addTab(allTab, "Merge All Markups")
+    tabsWidget.addTab(batchTab, "Batch Merge")
 
     self.layout.addWidget(tabsWidget)
     ################## Curves Tab
@@ -172,6 +175,111 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     self.markupsFiducialView.connect('currentItemChanged(vtkIdType)', self.updateMergeLMButton)
     self.LandmarkTypeSelection.connect('currentIndexChanged(int)', self.updateApplyLMButton)
 
+    ################## Grid Tab
+    #
+    # Parameters Area
+    #
+    parametersGridCollapsibleButton = ctk.ctkCollapsibleButton()
+    parametersGridCollapsibleButton.text = "Grid Viewer"
+    gridTabLayout.addRow(parametersGridCollapsibleButton)
+
+    # Layout within the dummy collapsible button
+    parametersGridFormLayout = qt.QFormLayout(parametersGridCollapsibleButton)
+
+    #
+    # Grid View
+    #
+    self.gridView = slicer.qMRMLSubjectHierarchyTreeView()
+    self.gridView.setMRMLScene(slicer.mrmlScene)
+    self.gridView.setMultiSelection(True)
+    self.gridView.setAlternatingRowColors(True)
+    self.gridView.setDragDropMode(qt.QAbstractItemView().DragDrop)
+    self.gridView.setColumnHidden(self.gridView.model().transformColumn, True)
+    self.gridView.sortFilterProxyModel().setNodeTypes(["vtkMRMLMarkupsGridSurfaceNode"])
+    parametersGridFormLayout.addRow(self.gridView)
+
+    #
+    # Markups View
+    #
+    self.markupsGridView = slicer.qMRMLSubjectHierarchyTreeView()
+    self.markupsGridView.setMRMLScene(slicer.mrmlScene)
+    self.markupsGridView.setMultiSelection(True)
+    self.markupsGridView.setAlternatingRowColors(True)
+    self.markupsGridView.setDragDropMode(qt.QAbstractItemView().DragDrop)
+    self.markupsGridView.setColumnHidden(self.markupsView.model().transformColumn, True)
+    self.markupsGridView.sortFilterProxyModel().setNodeTypes(["vtkMRMLMarkupsFiducialNode"])
+    parametersGridFormLayout.addWidget(self.markupsGridView)
+
+    #
+    # Advanced menu
+    #
+    advancedCollapsibleButton = ctk.ctkCollapsibleButton()
+    advancedCollapsibleButton.text = "Advanced"
+    advancedCollapsibleButton.collapsed = True
+    parametersGridFormLayout.addRow(advancedCollapsibleButton)
+    # Layout within the dummy collapsible button
+    advancedFormLayout = qt.QFormLayout(advancedCollapsibleButton)
+
+    #
+    # Spatial filtering slider
+    #
+    self.projectionDistanceSlider = ctk.ctkSliderWidget()
+    self.projectionDistanceSlider.singleStep = 5
+    self.projectionDistanceSlider.minimum = 0
+    self.projectionDistanceSlider.maximum = 100
+    self.projectionDistanceSlider.value = 20
+    self.projectionDistanceSlider.setToolTip("Set the maximum point merging distance as a percentage of grid size")
+    advancedFormLayout.addRow("Set point merging distance (percentage of grid size): ", self.projectionDistanceSlider)
+
+    #
+    # Merge Button
+    #
+    self.mergeGridButton = qt.QPushButton("Merge highlighted nodes")
+    self.mergeGridButton.toolTip = "Generate a single point list from the selected nodes"
+    self.mergeGridButton.enabled = False
+    parametersGridFormLayout.addRow(self.mergeGridButton)
+
+    # connections
+    self.mergeGridButton.connect('clicked(bool)', self.onMergeGridButton)
+    self.gridView.connect('currentItemChanged(vtkIdType)', self.updateMergeGridButton)
+    self.markupsGridView.connect('currentItemChanged(vtkIdType)', self.updateMergeGridButton)
+
+    ################ All Markups Tab
+    #
+    # Parameters Area
+    #
+    parametersAllCollapsibleButton = ctk.ctkCollapsibleButton()
+    parametersAllCollapsibleButton.text = "Markups Viewer"
+    allTabLayout.addRow(parametersAllCollapsibleButton)
+
+    # Layout within the dummy collapsible button
+    parametersAllFormLayout = qt.QGridLayout(parametersAllCollapsibleButton)
+
+    #
+    # markups view
+    #
+    self.markupsView = slicer.qMRMLSubjectHierarchyTreeView()
+    self.markupsView.setMRMLScene(slicer.mrmlScene)
+    self.markupsView.setMultiSelection(True)
+    self.markupsView.setAlternatingRowColors(True)
+    self.markupsView.setDragDropMode(qt.QAbstractItemView().DragDrop)
+    self.markupsView.setColumnHidden(self.markupsView.model().transformColumn, True)
+    nodeList = ["vtkMRMLMarkupsFiducialNode", "vtkMRMLMarkupsGridSurfaceNode", "vtkMRMLMarkupsCurveNode", "vtkMRMLMarkupsLineNode"]
+    self.markupsView.sortFilterProxyModel().setNodeTypes(nodeList)
+    parametersAllFormLayout.addWidget(self.markupsView,0,0,1,3)
+
+    #
+    # Merge Button
+    #
+    self.mergeAllButton = qt.QPushButton("Merge highlighted nodes")
+    self.mergeAllButton.toolTip = "Generate a single merged markup file from the selected nodes"
+    self.mergeAllButton.enabled = False
+    parametersAllFormLayout.addWidget(self.mergeAllButton,1,0,1,3)
+
+    # connections
+    self.mergeAllButton.connect('clicked(bool)', self.onMergeAllButton)
+    self.markupsView.connect('currentItemChanged(vtkIdType)', self.updateMergeAllButton)
+
     ################ Batch Run LM Merge Tab
     #
     # Fixed LM Area
@@ -265,75 +373,6 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     # Add vertical spacer
     self.layout.addStretch(1)
 
-    ################## Grid Tab
-    #
-    # Parameters Area
-    #
-    parametersGridCollapsibleButton = ctk.ctkCollapsibleButton()
-    parametersGridCollapsibleButton.text = "Grid Viewer"
-    gridTabLayout.addRow(parametersGridCollapsibleButton)
-
-    # Layout within the dummy collapsible button
-    parametersGridFormLayout = qt.QFormLayout(parametersGridCollapsibleButton)
-
-    #
-    # Grid View
-    #
-    self.gridView = slicer.qMRMLSubjectHierarchyTreeView()
-    self.gridView.setMRMLScene(slicer.mrmlScene)
-    self.gridView.setMultiSelection(True)
-    self.gridView.setAlternatingRowColors(True)
-    self.gridView.setDragDropMode(qt.QAbstractItemView().DragDrop)
-    self.gridView.setColumnHidden(self.gridView.model().transformColumn, True)
-    self.gridView.sortFilterProxyModel().setNodeTypes(["vtkMRMLMarkupsGridSurfaceNode"])
-    parametersGridFormLayout.addRow(self.gridView)
-
-    #
-    # Markups View
-    #
-    self.markupsGridView = slicer.qMRMLSubjectHierarchyTreeView()
-    self.markupsGridView.setMRMLScene(slicer.mrmlScene)
-    self.markupsGridView.setMultiSelection(True)
-    self.markupsGridView.setAlternatingRowColors(True)
-    self.markupsGridView.setDragDropMode(qt.QAbstractItemView().DragDrop)
-    self.markupsGridView.setColumnHidden(self.markupsView.model().transformColumn, True)
-    self.markupsGridView.sortFilterProxyModel().setNodeTypes(["vtkMRMLMarkupsFiducialNode"])
-    parametersGridFormLayout.addWidget(self.markupsGridView)
-
-    #
-    # Advanced menu
-    #
-    advancedCollapsibleButton = ctk.ctkCollapsibleButton()
-    advancedCollapsibleButton.text = "Advanced"
-    advancedCollapsibleButton.collapsed = True
-    parametersGridFormLayout.addRow(advancedCollapsibleButton)
-    # Layout within the dummy collapsible button
-    advancedFormLayout = qt.QFormLayout(advancedCollapsibleButton)
-
-    #
-    # Spatial filtering slider
-    #
-    self.projectionDistanceSlider = ctk.ctkSliderWidget()
-    self.projectionDistanceSlider.singleStep = 5
-    self.projectionDistanceSlider.minimum = 0
-    self.projectionDistanceSlider.maximum = 100
-    self.projectionDistanceSlider.value = 20
-    self.projectionDistanceSlider.setToolTip("Set the maximum point merging distance as a percentage of grid size")
-    advancedFormLayout.addRow("Set point merging distance (percentage of grid size): ", self.projectionDistanceSlider)
-
-    #
-    # Merge Button
-    #
-    self.mergeGridButton = qt.QPushButton("Merge highlighted nodes")
-    self.mergeGridButton.toolTip = "Generate a single point list from the selected nodes"
-    self.mergeGridButton.enabled = False
-    parametersGridFormLayout.addRow(self.mergeGridButton)
-
-    # connections
-    self.mergeGridButton.connect('clicked(bool)', self.onMergeGridButton)
-    self.gridView.connect('currentItemChanged(vtkIdType)', self.updateMergeGridButton)
-    self.markupsGridView.connect('currentItemChanged(vtkIdType)', self.updateMergeGridButton)
-
   def cleanup(self):
     pass
 
@@ -359,9 +398,17 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     nodes=self.markupsFiducialView.selectedIndexes()
     self.mergeLMButton.enabled = bool(nodes)
 
+  def updateMergeAllButton(self):
+    nodes=self.markupsView.selectedIndexes()
+    self.mergeAllButton.enabled = bool(nodes)
+
   def onMergeLMButton(self):
     logic = MergeMarkupsLogic()
     logic.runFiducials(self.markupsFiducialView)
+
+  def onMergeAllButton(self):
+    logic = MergeMarkupsLogic()
+    logic.runFiducials(self.markupsView)
 
   def updateApplyLMButton(self):
     self.ApplyLMButton.enabled = not bool(self.LandmarkTypeSelection.currentText == "Select")
