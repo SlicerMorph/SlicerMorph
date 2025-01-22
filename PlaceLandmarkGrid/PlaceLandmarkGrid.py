@@ -351,27 +351,27 @@ class InteractivePatch:
     self.hasGrid = False
     self.resolution = 5
     self.colorValue=[0,0,0]
-    colorNode=slicer.util.getNode("MediumChartColors")
-    colorNode.GetLookupTable().GetColor(int(gridID),self.colorValue)
+    colorNode=slicer.util.getNode("vtkMRMLColorTableNodeLabels")
+    colorNode.GetLookupTable().GetColor(int(gridID)+1,self.colorValue)
 
     self.cornerPoint0 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsFiducialNode", "cornerPoint0")
     self.cornerPoint0.AddControlPoint(closedCurve.GetNthControlPointPosition(0))
-    self.cornerPoint0.GetDisplayNode().SetSelectedColor(0,1,0)
+    self.cornerPoint0.GetDisplayNode().SetSelectedColor(0.5,0.3,1)
     self.cornerPoint0.GetDisplayNode().SetTextScale(0)
     self.tagC0 = self.cornerPoint0.AddObserver(slicer.vtkMRMLMarkupsFiducialNode().PointModifiedEvent, self.updateCornerPoint)
     self.cornerPoint1 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsFiducialNode", "cornerPoint1")
     self.cornerPoint1.AddControlPoint(closedCurve.GetNthControlPointPosition(1))
-    self.cornerPoint1.GetDisplayNode().SetSelectedColor(0,1,0)
+    self.cornerPoint1.GetDisplayNode().SetSelectedColor(0.5,0.3,1)
     self.cornerPoint1.GetDisplayNode().SetTextScale(0)
     self.tagC1 = self.cornerPoint1.AddObserver(slicer.vtkMRMLMarkupsFiducialNode().PointModifiedEvent, self.updateCornerPoint)
     self.cornerPoint2 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsFiducialNode", "cornerPoint2")
     self.cornerPoint2.AddControlPoint(closedCurve.GetNthControlPointPosition(2))
-    self.cornerPoint2.GetDisplayNode().SetSelectedColor(0,1,0)
+    self.cornerPoint2.GetDisplayNode().SetSelectedColor(0.5,0.3,1)
     self.cornerPoint2.GetDisplayNode().SetTextScale(0)
     self.tagC2 = self.cornerPoint2.AddObserver(slicer.vtkMRMLMarkupsFiducialNode().PointModifiedEvent, self.updateCornerPoint)
     self.cornerPoint3 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsFiducialNode", "cornerPoint3")
     self.cornerPoint3.AddControlPoint(closedCurve.GetNthControlPointPosition(3))
-    self.cornerPoint3.GetDisplayNode().SetSelectedColor(0,1,0)
+    self.cornerPoint3.GetDisplayNode().SetSelectedColor(0.5,0.3,1)
     self.cornerPoint3.GetDisplayNode().SetTextScale(0)
     self.tagC3 = self.cornerPoint3.AddObserver(slicer.vtkMRMLMarkupsFiducialNode().PointModifiedEvent, self.updateCornerPoint)
 
@@ -383,7 +383,7 @@ class InteractivePatch:
     self.gridLine0.SetFixedNumberOfControlPoints(True)
     self.gridLine0.GetDisplayNode().SetGlyphScale(2.5)
     self.gridLine0.GetDisplayNode().SetTextScale(0)
-    self.gridLine0.GetDisplayNode().SetSelectedColor(0,1,0)
+    self.gridLine0.GetDisplayNode().SetSelectedColor(self.colorValue)
     self.gridLine0.LockedOn()
 
     self.gridLine1 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsCurveNode", "gridLine1")
@@ -394,7 +394,7 @@ class InteractivePatch:
     self.gridLine1.SetFixedNumberOfControlPoints(True)
     self.gridLine1.GetDisplayNode().SetGlyphScale(2.5)
     self.gridLine1.GetDisplayNode().SetTextScale(0)
-    self.gridLine1.GetDisplayNode().SetSelectedColor(0,1,0)
+    self.gridLine1.GetDisplayNode().SetSelectedColor(self.colorValue)
     self.gridLine1.LockedOn()
 
     self.gridLine2 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsCurveNode", "gridLine2")
@@ -405,7 +405,7 @@ class InteractivePatch:
     self.gridLine2.SetFixedNumberOfControlPoints(True)
     self.gridLine2.GetDisplayNode().SetGlyphScale(2.5)
     self.gridLine2.GetDisplayNode().SetTextScale(0)
-    self.gridLine2.GetDisplayNode().SetSelectedColor(0,1,0)
+    self.gridLine2.GetDisplayNode().SetSelectedColor(self.colorValue)
     self.gridLine2.LockedOn()
 
     self.gridLine3 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsCurveNode", "gridLine3")
@@ -416,7 +416,7 @@ class InteractivePatch:
     self.gridLine3.SetFixedNumberOfControlPoints(True)
     self.gridLine3.GetDisplayNode().SetGlyphScale(2.5)
     self.gridLine3.GetDisplayNode().SetTextScale(0)
-    self.gridLine3.GetDisplayNode().SetSelectedColor(0,1,0)
+    self.gridLine3.GetDisplayNode().SetSelectedColor(self.colorValue)
     self.gridLine3.LockedOn()
 
     self.midPoint0 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsFiducialNode", "midPoint0")
