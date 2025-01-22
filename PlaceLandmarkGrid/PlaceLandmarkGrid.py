@@ -194,6 +194,8 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
 
     @vtk.calldata_type(vtk.VTK_INT)
     def onSampleRateChanged(self):
+        if self.gridSelector.currentText == "None":
+          return
         if self.sampleRate.value <= 1:
           self.sampleRate.value = 3
           qt.QMessageBox.critical(slicer.util.mainWindow(),
