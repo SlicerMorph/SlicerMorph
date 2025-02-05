@@ -1019,7 +1019,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.inputFileTable.clear()
     self.inputFilePaths = []
     filter = "Landmarks (*.json *.mrk.json *.fcsv )"
-    self.inputFilePaths = qt.QFileDialog().getOpenFileNames(None, "Window name", "", filter)
+    self.inputFilePaths = sorted(qt.QFileDialog().getOpenFileNames(None, "Window name", "", filter))
     self.inputFileTable.plainText = '\n'.join(self.inputFilePaths)
     self.clearButton.enabled = True
     #enable load button if required fields are complete
