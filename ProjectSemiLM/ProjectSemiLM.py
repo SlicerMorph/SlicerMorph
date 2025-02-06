@@ -11,6 +11,8 @@ import math
 import CreateSemiLMPatches
 import re
 import csv
+from pathlib import Path
+
 #
 # ProjectSemiLM
 #
@@ -214,29 +216,23 @@ class ProjectSemiLMLogic(ScriptedLoadableModuleLogic):
   def run(self, baseMeshNode, baseLMNode, semiLMNode, meshDirectory, lmDirectory, ouputDirectory, outputExtension, scaleProjection):
     SLLogic=CreateSemiLMPatches.CreateSemiLMPatchesLogic()
     targetPoints = vtk.vtkPoints()
-    point=[0,0,0]
     # estimate a sample size usingn semi-landmark spacing
     sampleArray=np.zeros(shape=(25,3))
     for i in range(25):
-      semiLMNode.GetMarkupPoint(0,i,point)
+      point = semiLMNode.GetNthControlPointPosition(i)
       sampleArray[i,:]=point
     sampleDistances = self.distanceMatrix(sampleArray)
     minimumMeshSpacing = sampleDistances[sampleDistances.nonzero()].min(axis=0)
     rayLength = minimumMeshSpacing * (scaleProjection)
-
-
-    for i in range(baseLMNode.GetNumberOfFiducials()):
-      baseLMNode.GetMarkupPoint(0,i,point)
+    for i in range(baseLMNode.GetNumberOfControlPoints()):
+      point = baseLMNode.GetNthControlPointPosition(i)
       targetPoints.InsertNextPoint(point)
-
-
     for meshFileName in os.listdir(meshDirectory):
       if(not meshFileName.startswith(".")):
         print (meshFileName)
         lmFileList = os.listdir(lmDirectory)
         meshFilePath = os.path.join(meshDirectory, meshFileName)
-        regex = re.compile(r'\d+')
-        subjectID = [int(x) for x in regex.findall(meshFileName)][0]
+        subjectID = Path(meshFileName).with_suffix('')
         for lmFileName in lmFileList:
           if str(subjectID) in lmFileName:
             # if mesh and lm file with same subject id exist, load into scene
@@ -246,8 +242,8 @@ class ProjectSemiLMLogic(ScriptedLoadableModuleLogic):
 
             # set up transform between base lms and current lms
             sourcePoints = vtk.vtkPoints()
-            for i in range(currentLMNode.GetNumberOfMarkups()):
-              currentLMNode.GetMarkupPoint(0,i,point)
+            for i in range(currentLMNode.GetNumberOfControlPoints()):
+              point = currentLMNode.GetNthControlPointPosition(i)
               sourcePoints.InsertNextPoint(point)
 
             transform = vtk.vtkThinPlateSplineTransform()
@@ -278,7 +274,7 @@ class ProjectSemiLMLogic(ScriptedLoadableModuleLogic):
               resampledLandmarkNode.SetNthControlPointDescription(index,fiducialDescription)
 
             # save output file
-            outputFileName = meshFileName + '_SL_warped' + outputExtension
+            outputFileName = str(subjectID) + '_projected' + outputExtension
             outputFilePath = os.path.join(ouputDirectory, outputFileName)
             slicer.util.saveNode(resampledLandmarkNode, outputFilePath)
 
