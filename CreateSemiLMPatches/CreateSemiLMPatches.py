@@ -636,7 +636,7 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
       if(not normalArray):
         print("Error: no normal array")
 
-    for index in range(originalPoints.GetNumberOfMarkups()):
+    for index in range(originalPoints.GetNumberOfControlPoints()):
       originalPoint = originalPoints.GetNthControlPointPosition(index)
       # get ray direction from closest normal
       closestPointId = pointLocator.FindClosestPoint(originalPoint)
@@ -696,7 +696,7 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
       if(not normalArray):
         print("Error: no normal array")
 
-    for index in range(originalPoints.GetNumberOfMarkups()):
+    for index in range(originalPoints.GetNumberOfControlPoints()):
       originalPoint = originalPoints.GetNthControlPointPosition(index)
       # get ray direction from closest normal
       closestPointId = pointLocator.FindClosestPoint(originalPoint)
@@ -740,7 +740,7 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
       if(not normalArray):
         print("Error: no normal array")
 
-    for index in range(originalPoints.GetNumberOfMarkups()):
+    for index in range(originalPoints.GetNumberOfControlPoints()):
       originalPoint = originalPoints.GetNthControlPointPosition(index)
       # get ray direction from closest normal
       closestPointId = pointLocator.FindClosestPoint(originalPoint)
