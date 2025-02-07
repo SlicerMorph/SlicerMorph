@@ -153,8 +153,12 @@ class MarkupEditorSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin)
 
     def onToggleSelectedPointsAction(self):
         fiducialsNode = self.fiducialNodeFromEvent
+        selectedIndices = []
         for index in range(fiducialsNode.GetNumberOfControlPoints()):
           fiducialsNode.SetNthControlPointSelected(index, not fiducialsNode.GetNthControlPointSelected(index))
+          if fiducialsNode.GetNthControlPointSelected(index):
+            selectedIndices.append(index)
+        print("Selected indices: ", selectedIndices)
 
     def onSelectAllPointsAction(self):
         fiducialsNode = self.fiducialNodeFromEvent
@@ -320,7 +324,6 @@ class MarkupEditorLogic(ScriptedLoadableModuleLogic):
     self.observerTags = {}
 
   def editMarkups(self, selectOption, fiducialsNode, curveNode, viewNode):
-
     layoutManager = slicer.app.layoutManager()
     threeDWidget = layoutManager.viewWidget(viewNode)
     threeDView = threeDWidget.threeDView()
