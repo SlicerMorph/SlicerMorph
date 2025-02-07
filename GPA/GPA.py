@@ -1900,7 +1900,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     #Set up a new sequence browser and add sequences
     browserNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSequenceBrowserNode", "GPASequenceBrowser")
     browserLogic=slicer.modules.sequences.logic()
-    browserLogic.AddSynchronizedNode(self.modelSequence,self.cloneModelNode,browserNode)
+    if hasattr(self, 'cloneModelNode'):
+      browserLogic.AddSynchronizedNode(self.modelSequence,self.cloneModelNode,browserNode)
     browserLogic.AddSynchronizedNode(self.modelSequence,self.cloneLandmarkNode,browserNode)
     browserLogic.AddSynchronizedNode(self.transformSequence,self.transformNode,browserNode)
     browserNode.SetRecording(self.transformSequence,'true')
