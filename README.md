@@ -88,7 +88,9 @@ SlicerMorph project also maintains other extensions that offer complementary fun
 
 - [**ScriptEditor:**](https://github.com/SlicerMorph/SlicerScriptEditor) Provides the open-source Monaco programming editor inside the Slicer. Scripts can be saved as part of the scene and can be sent directly to the Slicer's integrated Python console for execution.
 - [**Mouse Embryo Multi-Organ Segmentations (MEMOS):**](https://github.com/SlicerMorph/SlicerMEMOS)  An extension for automated segmentation 50 anatomical structures from diceCT scans of E15 fetal mice using deep-learning.
-- **Dense Correspondence Analysis:** WIP
+- [**Dense Correspondence Analysis (DeCA):**](https://github.com/SlicerMorph/SlicerDeCA) is an extension for Dense Correspondence Analysis and to generate template-based semiLMs. (WIP)
+- [**Photogrammetry:**](https://github.com/SlicerMorph/SlicerPhotogrammetry) is an extension that integrates Segment Anything Model (SAM) and OpenDroneMap software to mask foreground in large collection of photographs with the purpose of building 3D textured models.
+- [**MorphoDepot:**](https://github.com/MorphoCloud/SlicerMorphoDepot): is an extension that allows creating 3D specimen repositories on Github with focus on digital morphology classroom assignments or remote collaborative segmentation. It implements the `fork and pull` workflow for remote collaborations.
 
 ## Other recommended extensions
 Slicer extension catalog has over 100 extensions. We  recommend the following extensions that provide useful convenience functions:
