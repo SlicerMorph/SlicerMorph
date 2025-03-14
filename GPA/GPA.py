@@ -1844,7 +1844,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       itemIDToClone = shNode.GetItemByDataNode(self.modelNode)
       clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(shNode, itemIDToClone)
       self.cloneModelNode = shNode.GetItemDataNode(clonedItemID)
-      self.cloneModelNode.SetName('PCA Warped Volume')
+      self.cloneModelNode.SetName('PC Warped Model')
       self.cloneModelDisplayNode =  self.cloneModelNode.GetDisplayNode()
       self.cloneModelDisplayNode.SetColor([0,0,1])
       GPANodeCollection.AddItem(self.cloneModelNode)
@@ -1898,7 +1898,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     if hasattr(self, 'cloneModelNode'):
       browserLogic.AddSynchronizedNode(self.modelSequence,self.cloneModelNode,browserNode)
     browserLogic.AddSynchronizedNode(self.modelSequence,self.cloneLandmarkNode,browserNode)
-    browserLogic.AddSynchronizedNode(self.transformSequence,self.transformNode,browserNode)
+    browserLogic.AddSynchronizedNode(self.transformSequence,self.gridTransformNode,browserNode)
     browserNode.SetRecording(self.transformSequence,'true')
     browserNode.SetRecording(self.modelSequence,'true')
 
