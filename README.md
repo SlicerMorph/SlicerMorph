@@ -93,8 +93,8 @@ SlicerMorph project also maintains other extensions that offer complementary fun
 - [**Dense Correspondence Analysis (DeCA):**](https://github.com/SlicerMorph/SlicerDenseCorrespondenceAnalysis) is an extension for Dense Correspondence Analysis and to generate template-based semiLMs.
 - [**Photogrammetry:**](https://github.com/SlicerMorph/SlicerPhotogrammetry) is an extension that integrates Segment Anything Model (SAM) and OpenDroneMap software to mask foreground in large collection of photographs with the purpose of building 3D textured models.
 - [**MorphoDepot:**](https://github.com/MorphoCloud/SlicerMorphoDepot) is an extension that allows creating 3D specimen repositories on Github with focus on digital morphology classroom assignments or remote collaborative segmentation. It implements the `fork and pull` workflow for remote collaborations. (WIP)
-- [**SlicerMorphR:**](https://github.com/SlicerMorph/SlicerMorphR) R library to read output from SlicerMorph's GPA module into R. It also supports reading/writing mrk.json files from Slicer. 
-  
+- [**SlicerMorphR:**](https://github.com/SlicerMorph/SlicerMorphR) R library to read output from SlicerMorph's GPA module into R. It also supports reading/writing mrk.json files from Slicer.
+
 
 ## Other recommended extensions
 Slicer extension catalog has over 100 extensions. We  recommend the following extensions that provide useful convenience functions:
