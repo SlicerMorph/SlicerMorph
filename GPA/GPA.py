@@ -16,6 +16,7 @@ import Support.gpa_lib as gpa_lib
 import  numpy as np
 from datetime import datetime
 import scipy.linalg as sp
+from vtk.util import numpy_support
 
 #
 # GPA
@@ -144,7 +145,7 @@ class sliderGroup(qt.QGroupBox):
     self.spinBox.setValue(0)
     self.comboBox.clear()
 
-  def __init__(self, parent=None, onChanged=None):
+  def __init__(self, parent=None, onSliderChanged=None, onComboBoxChanged=None):
     super().__init__( parent)
 
     # slider
@@ -166,9 +167,10 @@ class sliderGroup(qt.QGroupBox):
     # connect to each other
     self.slider.valueChanged.connect(self.spinBox.setValue)
     self.spinBox.valueChanged.connect(self.slider.setValue)
-    if onChanged:
-      self.slider.valueChanged.connect(onChanged)
-      self.comboBox.currentIndexChanged.connect(onChanged)
+    if onSliderChanged:
+      self.slider.valueChanged.connect(onSliderChanged)
+    if onComboBoxChanged:
+      self.comboBox.currentIndexChanged.connect(onComboBoxChanged)
 
     # layout
     slidersLayout = qt.QGridLayout()
@@ -262,8 +264,20 @@ class LMData:
         tmp[:,0]=tmp[:,0]+float(scaleFactor[y])*self.vec[0:i,pcComponent]*SampleScaleFactor/3
         tmp[:,1]=tmp[:,1]+float(scaleFactor[y])*self.vec[i:2*i,pcComponent]*SampleScaleFactor/3
         tmp[:,2]=tmp[:,2]+float(scaleFactor[y])*self.vec[2*i:3*i,pcComponent]*SampleScaleFactor/3
-
     self.shift=tmp
+
+  def ExpandAlongSinglePC(self,pcNumber,scaleFactor,SampleScaleFactor):
+    b=0
+    i,j,k=self.lm.shape
+    shift=np.zeros((i,j))
+    points=np.zeros((i,j))
+    self.vec=np.real(self.vec)
+    # scale eigenvector
+    pcComponent = pcNumber - 1
+    shift[:,0]=shift[:,0]+float(scaleFactor)*self.vec[0:i,pcComponent]*SampleScaleFactor/3
+    shift[:,1]=shift[:,1]+float(scaleFactor)*self.vec[i:2*i,pcComponent]*SampleScaleFactor/3
+    shift[:,2]=shift[:,2]+float(scaleFactor)*self.vec[2*i:3*i,pcComponent]*SampleScaleFactor/3
+    return shift
 
   def writeOutData(self, outputFolder, files):
     # make headers for eigenvector matrix
@@ -728,30 +742,63 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.selectorButton.enabled = False
     self.selectorButton.connect('clicked(bool)', self.onSelect)
 
+    # PC warping helper functions
+    def setupPCTransform():
+      if self.slider1.boxValue() > 0:
+        self.displacementGridData = getGridTransform(self.slider1.boxValue())
+        if not hasattr(self, 'gridTransformNode'):
+          self.gridTransformNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLGridTransformNode", "GridTransform")
+          GPANodeCollection.AddItem(self.gridTransformNode)
+        self.gridTransformNode.GetTransformFromParent().SetDisplacementGridData(self.displacementGridData)
+        self.cloneLandmarkNode.SetAndObserveTransformNodeID(self.gridTransformNode.GetID())
+        if hasattr(self, 'cloneModelNode') and self.modelVisualizationType.checked:
+          self.cloneModelNode.SetAndObserveTransformNodeID(self.gridTransformNode.GetID())
+        updatePCScaling()
+
+    def getGridTransform(pcValue):
+      logic = GPALogic()
+      shift = self.LM.ExpandAlongSinglePC(pcValue, 1, self.sampleSizeScaleFactor)
+      target=self.rawMeanLandmarks+shift
+      targetLMVTK=logic.convertNumpyToVTK(target)
+      sourceLMVTK=logic.convertNumpyToVTK(self.rawMeanLandmarks)
+      #Set up TPS
+      VTKTPS = vtk.vtkThinPlateSplineTransform()
+      VTKTPS.SetSourceLandmarks( targetLMVTK )
+      VTKTPS.SetTargetLandmarks( sourceLMVTK )
+      VTKTPS.SetBasisToR()  # for 3D transform
+      #Convert to a grid transforms
+      modelBounds = [0]*6
+      self.cloneModelNode.GetRASBounds(modelBounds)
+      origin = (modelBounds[0], modelBounds[2], modelBounds[4])
+      size = (modelBounds[1] - modelBounds[0], modelBounds[3] - modelBounds[2], modelBounds[5] - modelBounds[4])
+      dimension = 50
+      extent = [0]*6
+      extent[1::2]=[dimension-1]*3
+      spacing = (size[0]/dimension, size[1]/dimension, size[2]/dimension)
+      transformToGrid = vtk.vtkTransformToGrid()
+      transformToGrid.SetInput(VTKTPS)
+      transformToGrid.SetGridOrigin(origin)
+      transformToGrid.SetGridSpacing(spacing)
+      transformToGrid.SetGridExtent(extent)
+      transformToGrid.Update()
+      return transformToGrid.GetOutput()
+
+    def updatePCScaling():
+      if hasattr(self, 'gridTransformNode'):
+        sf1=self.slider1.sliderValue()/100
+        self.gridTransformNode.GetTransformFromParent().SetDisplacementScale(sf1)
+
     # PC warping
-    vis=ctk.ctkCollapsibleButton()
-    vis.text='PCA Visualization Parameters'
-    visLayout= qt.QGridLayout(vis)
+    vis = ctk.ctkCollapsibleButton()
+    vis.text = 'PCA Visualization Parameters'
+    visLayout = qt.QGridLayout(vis)
     visualizeTabLayout.addRow(vis)
-
-    self.applyEnabled=False
-
-    def warpOnChangePC1(value):
-      if self.applyEnabled and self.slider1.boxValue() != 'None':
-        self.onApply()
-
-    def warpOnChangePC2(value):
-      if self.applyEnabled and self.slider2.boxValue() != 'None':
-        self.onApply()
+    self.applyEnabled = False
 
     self.PCList=[]
-    self.slider1=sliderGroup(onChanged = warpOnChangePC1)
+    self.slider1=sliderGroup(onSliderChanged = updatePCScaling, onComboBoxChanged = setupPCTransform)
     self.slider1.connectList(self.PCList)
     visLayout.addWidget(self.slider1,3,1,1,2)
-
-    self.slider2=sliderGroup(onChanged = warpOnChangePC2)
-    self.slider2.connectList(self.PCList)
-    visLayout.addWidget(self.slider2,4,1,1,2)
 
     # Create Animations
     animate=ctk.ctkCollapsibleButton()
@@ -776,7 +823,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     visualizeTabLayout.addRow(resetButton)
     resetButton.toolTip = "Push to reset all fields."
     resetButton.connect('clicked(bool)', self.reset)
-
     self.layout.addStretch(1)
 
     # Add menu buttons
@@ -786,7 +832,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
   # module update helper functions
   def assignLayoutDescription(self):
-
     customLayoutId1=500
     layoutManager = slicer.app.layoutManager()
     layoutManager.setLayout(customLayoutId1)
@@ -861,7 +906,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     i,j,k=self.LM.lm.shape
     self.PCList=[]
     self.slider1.populateComboBox(self.PCList)
-    self.slider2.populateComboBox(self.PCList)
     self.PCList.append('None')
     self.LM.val=np.real(self.LM.val)
     percentVar=self.LM.val/self.LM.val.sum()
@@ -952,7 +996,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.FudSelect.enabled = False
 
     self.slider1.clear()
-    self.slider2.clear()
 
     self.vectorOne.clear()
     self.vectorTwo.clear()
@@ -1446,7 +1489,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.landmarkVisualizationType.setChecked(True)
 
     self.slider1.clear()
-    self.slider2.clear()
 
     self.vectorOne.clear()
     self.vectorTwo.clear()
@@ -1802,14 +1844,13 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       itemIDToClone = shNode.GetItemByDataNode(self.modelNode)
       clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(shNode, itemIDToClone)
       self.cloneModelNode = shNode.GetItemDataNode(clonedItemID)
-      self.cloneModelNode.SetName('PCA Warped Volume')
+      self.cloneModelNode.SetName('PC Warped Model')
       self.cloneModelDisplayNode =  self.cloneModelNode.GetDisplayNode()
       self.cloneModelDisplayNode.SetColor([0,0,1])
       GPANodeCollection.AddItem(self.cloneModelNode)
       visibility = self.meanLandmarkNode.GetDisplayVisibility()
       self.cloneLandmarkNode.SetDisplayVisibility(visibility)
-
-      #Clean up
+      # clean up
       GPANodeCollection.RemoveItem(self.sourceLMNode)
       slicer.mrmlScene.RemoveNode(self.sourceLMNode)
 
@@ -1839,54 +1880,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     # Enable PCA warping and recording
     self.slider1.populateComboBox(self.PCList)
-    self.slider2.populateComboBox(self.PCList)
     self.applyEnabled = True
     self.startRecordButton.enabled = True
-
-  def onApply(self):
-    pc1=self.slider1.boxValue()
-    pc2=self.slider2.boxValue()
-    pcSelected=[pc1,pc2]
-
-    # get scale values for each pc.
-    sf1=self.slider1.sliderValue()
-    sf2=self.slider2.sliderValue()
-    scaleFactors=np.zeros(2)
-    scaleFactors[0]=sf1/100.0
-    scaleFactors[1]=sf2/100.0
-
-    j=0
-    for i in pcSelected:
-      if i==0:
-       scaleFactors[j]=0.0
-      j=j+1
-
-    logic = GPALogic()
-    #get target landmarks
-    self.LM.ExpandAlongPCs(pcSelected,scaleFactors, self.sampleSizeScaleFactor)
-    target=self.rawMeanLandmarks+self.LM.shift
-
-    if hasattr(self, 'cloneModelNode'):
-      targetLMVTK=logic.convertNumpyToVTK(target)
-      sourceLMVTK=logic.convertNumpyToVTK(self.rawMeanLandmarks)
-
-      #Set up TPS
-      VTKTPS = vtk.vtkThinPlateSplineTransform()
-      VTKTPS.SetSourceLandmarks( sourceLMVTK )
-      VTKTPS.SetTargetLandmarks( targetLMVTK )
-      VTKTPS.SetBasisToR()  # for 3D transform
-
-      #Connect transform to model
-      self.transformNode.SetAndObserveTransformToParent( VTKTPS )
-      self.cloneLandmarkNode.SetAndObserveTransformNodeID(self.transformNode.GetID())
-      self.cloneModelNode.SetAndObserveTransformNodeID(self.transformNode.GetID())
-
-    else:
-      index = 0
-      for targetLandmark in target:
-        self.cloneLandmarkNode.SetNthControlPointPosition(index, targetLandmark)
-        index+=1
-
 
   def onStartRecording(self):
     #set up sequences for template model and PC TPS transform
@@ -1903,7 +1898,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     if hasattr(self, 'cloneModelNode'):
       browserLogic.AddSynchronizedNode(self.modelSequence,self.cloneModelNode,browserNode)
     browserLogic.AddSynchronizedNode(self.modelSequence,self.cloneLandmarkNode,browserNode)
-    browserLogic.AddSynchronizedNode(self.transformSequence,self.transformNode,browserNode)
+    browserLogic.AddSynchronizedNode(self.transformSequence,self.gridTransformNode,browserNode)
     browserNode.SetRecording(self.transformSequence,'true')
     browserNode.SetRecording(self.modelSequence,'true')
 
