@@ -266,7 +266,7 @@ class LMData:
         tmp[:,2]=tmp[:,2]+float(scaleFactor[y])*self.vec[2*i:3*i,pcComponent]*SampleScaleFactor/3
     self.shift=tmp
 
-  def ExpandAlongSinglePC(self,pcNumber,scaleFactor,SampleScaleFactor):
+  def ExpandAlongSinglePC(self,pcNumber,pcRange,SampleScaleFactor):
     b=0
     i,j,k=self.lm.shape
     shift=np.zeros((i,j))
@@ -274,9 +274,10 @@ class LMData:
     self.vec=np.real(self.vec)
     # scale eigenvector
     pcComponent = pcNumber - 1
-    shift[:,0]=shift[:,0]+float(scaleFactor)*self.vec[0:i,pcComponent]*SampleScaleFactor/3
-    shift[:,1]=shift[:,1]+float(scaleFactor)*self.vec[i:2*i,pcComponent]*SampleScaleFactor/3
-    shift[:,2]=shift[:,2]+float(scaleFactor)*self.vec[2*i:3*i,pcComponent]*SampleScaleFactor/3
+    print("scaling factor: ", pcRange)
+    shift[:,0]=shift[:,0]+float(pcRange)*self.vec[0:i,pcComponent]*SampleScaleFactor/3
+    shift[:,1]=shift[:,1]+float(pcRange)*self.vec[i:2*i,pcComponent]*SampleScaleFactor/3
+    shift[:,2]=shift[:,2]+float(pcRange)*self.vec[2*i:3*i,pcComponent]*SampleScaleFactor/3
     return shift
 
   def writeOutData(self, outputFolder, files):
@@ -757,7 +758,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     def getGridTransform(pcValue):
       logic = GPALogic()
-      shift = self.LM.ExpandAlongSinglePC(pcValue, 1, self.sampleSizeScaleFactor)
+      pcScoreMax = np.max(self.scatterDataAll, axis=0)[pcValue-1]
+      pcScoreMin = np.min(self.scatterDataAll, axis=0)[pcValue-1]
+      pcScoreAbsMax = np.max(np.abs([pcScoreMax, pcScoreMin]))
+      magnification = self.sliderMagnification.value
+      shift = self.LM.ExpandAlongSinglePC(pcValue,pcScoreAbsMax*magnification, self.sampleSizeScaleFactor)
       target=self.rawMeanLandmarks+shift
       targetLMVTK=logic.convertNumpyToVTK(target)
       sourceLMVTK=logic.convertNumpyToVTK(self.rawMeanLandmarks)
@@ -785,8 +790,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     def updatePCScaling():
       if hasattr(self, 'gridTransformNode'):
-        sf1=self.slider1.sliderValue()/100
-        self.gridTransformNode.GetTransformFromParent().SetDisplacementScale(sf1)
+        sf=self.slider1.sliderValue()/100
+        #scaledSliderValue = 0.5 * (sf + 1)
+        #print("Slider: ", scaledSliderValue)
+        self.gridTransformNode.GetTransformFromParent().SetDisplacementScale(sf)
 
     # PC warping
     vis = ctk.ctkCollapsibleButton()
@@ -798,7 +805,57 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.PCList=[]
     self.slider1=sliderGroup(onSliderChanged = updatePCScaling, onComboBoxChanged = setupPCTransform)
     self.slider1.connectList(self.PCList)
-    visLayout.addWidget(self.slider1,3,1,1,2)
+    visLayout.addWidget(self.slider1,3,1,1,3)
+
+    # Create the slider
+    self.sliderMagnification = qt.QSlider(qt.Qt.Horizontal)
+    self.sliderMagnification.setTickInterval(1)
+    self.sliderMagnification.setTickPosition(qt.QSlider.TicksBelow)
+    self.sliderMagnification.setSingleStep(1)
+    self.sliderMagnification.setMaximum(10)
+    self.sliderMagnification.setMinimum(1)
+    self.sliderMagnification.setValue(1)
+    self.sliderMagnification.enabled = True
+
+    # Create the spinbox
+    self.spinMagnification = qt.QSpinBox()
+    self.spinMagnification.setMinimum(1)
+    self.spinMagnification.setMaximum(5)
+    self.spinMagnification.setValue(1)
+    self.spinMagnification.setFixedWidth(60)  # Optional: make it a nice compact size
+    self.sliderMagnification.setMinimumHeight(30)  # ADD THIS
+
+    # Create the label
+    magnificationLabel = qt.QLabel("Magnification factor:")
+    magnificationLabel.setAlignment(qt.Qt.AlignRight | qt.Qt.AlignVCenter)  # Right-align text
+
+    # Keep slider and spinbox synchronized
+    def onSliderValueChanged(value):
+        self.spinMagnification.setValue(value)
+        setupPCTransform()
+
+    def onSpinboxValueChanged(value):
+        self.sliderMagnification.setValue(value)
+
+    self.sliderMagnification.valueChanged.connect(onSliderValueChanged)
+    self.spinMagnification.valueChanged.connect(onSpinboxValueChanged)
+
+    # Layout: label + slider + spinbox
+    magnificationLayout = qt.QHBoxLayout()
+    magnificationLayout.addWidget(magnificationLabel)
+    magnificationLayout.addWidget(self.sliderMagnification)
+    magnificationLayout.addWidget(self.spinMagnification)
+
+    # Create a container widget
+    magnificationWidget = qt.QWidget()
+    magnificationWidget.setLayout(magnificationLayout)
+
+    # Set size policies
+    magnificationWidget.setSizePolicy(qt.QSizePolicy.Expanding, qt.QSizePolicy.Minimum)
+    magnificationWidget.setMinimumHeight(70)
+
+    # Add to visLayout
+    visLayout.addWidget(magnificationWidget, 4, 1, 1, 3)  # row 4, column 0, span across 3 columns
 
     # Create Animations
     animate=ctk.ctkCollapsibleButton()
