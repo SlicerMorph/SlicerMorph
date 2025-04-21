@@ -117,67 +117,124 @@ This module performs standard Generalized Procrustes Analysis (GPA) based on Dry
 #
 # GPAWidget
 #
+
+
+
 class sliderGroup(qt.QGroupBox):
-  def setValue(self, value):
-        self.slider.setValue(value)
+    def setValue(self, value):
+        # Set based on dynamic value
+        slider_value = self.map_dynamic_to_slider(value)
+        self.slider.setValue(slider_value)
 
-  def connectList(self,mylist):
-    self.list=mylist
+    def connectList(self, mylist):
+        self.list = mylist
 
-  def populateComboBox(self, boxlist):
-    self.comboBox.clear()
-    for i in boxlist:
-        self.comboBox.addItem(i)
+    def populateComboBox(self, boxlist):
+        self.comboBox.clear()
+        for i in boxlist:
+            self.comboBox.addItem(i)
 
-  def setLabelTest(self,i):
-    j=str(i)
-    self.label.setText(j)
+    def setLabelTest(self, i):
+        j = str(i)
+        self.label.setText(j)
 
-  def boxValue(self):
-    tmp=self.comboBox.currentIndex
-    return tmp
+    def boxValue(self):
+        tmp = self.comboBox.currentIndex
+        return tmp
 
-  def sliderValue(self):
-    tmp=self.spinBox.value
-    return tmp
+    def sliderValue(self):
+        tmp = self.spinBox.value
+        return tmp
 
-  def clear(self):
-    self.spinBox.setValue(0)
-    self.comboBox.clear()
+    def clear(self):
+        self.spinBox.setValue(0)
+        self.comboBox.clear()
 
-  def __init__(self, parent=None, onSliderChanged=None, onComboBoxChanged=None):
-    super().__init__( parent)
+    def __init__(self, parent=None, onSliderChanged=None, onComboBoxChanged=None, dynamic_min=0, dynamic_max=1):
+        super().__init__(parent)
 
-    # slider
-    self.slider = qt.QSlider(qt.Qt.Horizontal)
-    self.slider.setTickPosition(qt.QSlider.TicksBothSides)
-    self.slider.setTickInterval(10)
-    self.slider.setSingleStep(1)
-    self.slider.setMaximum(100)
-    self.slider.setMinimum(-100)
+        self.dynamic_min = dynamic_min
+        self.dynamic_max = dynamic_max
 
-    # combo box to be populated with list of PC values
-    self.comboBox=qt.QComboBox()
+        # slider
+        self.slider = qt.QSlider(qt.Qt.Horizontal)
+        self.slider.setTickPosition(qt.QSlider.TicksBothSides)
+        self.slider.setTickInterval(10)
+        self.slider.setSingleStep(1)
+        self.slider.setMaximum(100)
+        self.slider.setMinimum(-100)
 
-    # spin box to display scaling
-    self.spinBox=qt.QSpinBox()
-    self.spinBox.setMaximum(100)
-    self.spinBox.setMinimum(-100)
+        # combo box to be populated with list of PC values
+        self.comboBox = qt.QComboBox()
 
-    # connect to each other
-    self.slider.valueChanged.connect(self.spinBox.setValue)
-    self.spinBox.valueChanged.connect(self.slider.setValue)
-    if onSliderChanged:
-      self.slider.valueChanged.connect(onSliderChanged)
-    if onComboBoxChanged:
-      self.comboBox.currentIndexChanged.connect(onComboBoxChanged)
+        # spin box to display scaling
+        self.spinBox = qt.QDoubleSpinBox()
+        self.spinBox.setDecimals(3)
+        self.spinBox.setMinimum(self.dynamic_min)
+        self.spinBox.setMaximum(self.dynamic_max)
 
-    # layout
-    slidersLayout = qt.QGridLayout()
-    slidersLayout.addWidget(self.slider,1,2)
-    slidersLayout.addWidget(self.comboBox,1,1)
-    slidersLayout.addWidget(self.spinBox,1,3)
-    self.setLayout(slidersLayout)
+        # connect slider and spinbox to each other with mapped values
+        self.slider.valueChanged.connect(self.updateSpinBoxFromSlider)
+        self.spinBox.valueChanged.connect(self.updateSliderFromSpinBox)
+
+        if onSliderChanged:
+            self.slider.valueChanged.connect(onSliderChanged)
+        if onComboBoxChanged:
+            self.comboBox.currentIndexChanged.connect(onComboBoxChanged)
+
+        # layout
+        slidersLayout = qt.QGridLayout()
+        slidersLayout.addWidget(self.comboBox, 1, 1)
+        slidersLayout.addWidget(self.slider, 1, 2)
+        slidersLayout.addWidget(self.spinBox, 1, 3)
+        self.setLayout(slidersLayout)
+
+    def setRange(self, new_min, new_max):
+        """Change the dynamic min and max range on the fly and reset current value to numerical 0."""
+        self.dynamic_min = new_min
+        self.dynamic_max = new_max
+
+        # Update the spinBox bounds
+        self.spinBox.blockSignals(True)
+        self.spinBox.setMinimum(self.dynamic_min)
+        self.spinBox.setMaximum(self.dynamic_max)
+        self.spinBox.blockSignals(False)
+
+        # Calculate the slider position that matches dynamic value = 0
+        slider_value_for_zero = self.map_dynamic_to_slider(0)
+
+        # Clamp into valid slider range [-100, 100]
+        slider_value_for_zero = max(min(slider_value_for_zero, 100), -100)
+
+        # Reset slider to that position
+        self.slider.blockSignals(True)
+        self.slider.setValue(slider_value_for_zero)
+        self.slider.blockSignals(False)
+
+        self.updateSpinBoxFromSlider(slider_value_for_zero)
+
+    def map_slider_to_dynamic(self, slider_value):
+        # Map [-100, 100] → [dynamic_min, dynamic_max]
+        normalized = (slider_value + 100) / 200
+        return self.dynamic_min + normalized * (self.dynamic_max - self.dynamic_min)
+
+    def map_dynamic_to_slider(self, dynamic_value):
+        # Map [dynamic_min, dynamic_max] → [-100, 100]
+        normalized = (dynamic_value - self.dynamic_min) / (self.dynamic_max - self.dynamic_min)
+        return int(normalized * 200 - 100)
+
+    def updateSpinBoxFromSlider(self, slider_value):
+        dynamic_value = self.map_slider_to_dynamic(slider_value)
+        self.spinBox.blockSignals(True)
+        self.spinBox.setValue(dynamic_value)
+        self.spinBox.blockSignals(False)
+
+    def updateSliderFromSpinBox(self, spinbox_value):
+        slider_value = self.map_dynamic_to_slider(spinbox_value)
+        self.slider.blockSignals(True)
+        self.slider.setValue(slider_value)
+        self.slider.blockSignals(False)
+
 
 class LMData:
   def __init__(self):
@@ -746,53 +803,67 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     # PC warping helper functions
     def setupPCTransform():
       if self.slider1.boxValue() > 0:
-        self.displacementGridData = getGridTransform(self.slider1.boxValue())
-        if not hasattr(self, 'gridTransformNode'):
+        self.currentPC = self.slider1.boxValue()
+        self.pcMax = np.max(self.scatterDataAll, axis=0)[self.currentPC - 1]
+        self.pcMin = np.min(self.scatterDataAll, axis=0)[self.currentPC - 1]
+        self.pcScoreAbsMax = max(abs(self.pcMin), abs(self.pcMax))  # Maximum absolute deviation
+        self.displacementGridData = getGridTransform(self.currentPC)
+
+        needNewNode = not hasattr(self, 'gridTransformNode') or not slicer.mrmlScene.IsNodePresent(self.gridTransformNode)
+        if needNewNode:
           self.gridTransformNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLGridTransformNode", "GridTransform")
           GPANodeCollection.AddItem(self.gridTransformNode)
+
         self.gridTransformNode.GetTransformFromParent().SetDisplacementGridData(self.displacementGridData)
+
         self.cloneLandmarkNode.SetAndObserveTransformNodeID(self.gridTransformNode.GetID())
         if hasattr(self, 'cloneModelNode') and self.modelVisualizationType.checked:
           self.cloneModelNode.SetAndObserveTransformNodeID(self.gridTransformNode.GetID())
+
+        self.slider1.setRange(self.pcMin, self.pcMax)  # Dynamic range displayed
         updatePCScaling()
 
     def getGridTransform(pcValue):
       logic = GPALogic()
-      pcScoreMax = np.max(self.scatterDataAll, axis=0)[pcValue-1]
-      pcScoreMin = np.min(self.scatterDataAll, axis=0)[pcValue-1]
-      pcScoreAbsMax = np.max(np.abs([pcScoreMax, pcScoreMin]))
-      magnification = self.sliderMagnification.value
-      shift = self.LM.ExpandAlongSinglePC(pcValue,pcScoreAbsMax*magnification, self.sampleSizeScaleFactor)
-      target=self.rawMeanLandmarks+shift
-      targetLMVTK=logic.convertNumpyToVTK(target)
-      sourceLMVTK=logic.convertNumpyToVTK(self.rawMeanLandmarks)
-      #Set up TPS
+      magnification = self.spinMagnification.value
+
+      shiftMax = self.LM.ExpandAlongSinglePC(pcValue, self.pcScoreAbsMax * magnification, self.sampleSizeScaleFactor)
+      target = self.rawMeanLandmarks + shiftMax
+      targetLMVTK = logic.convertNumpyToVTK(target)
+      sourceLMVTK = logic.convertNumpyToVTK(self.rawMeanLandmarks)
+
       VTKTPS = vtk.vtkThinPlateSplineTransform()
-      VTKTPS.SetSourceLandmarks( targetLMVTK )
-      VTKTPS.SetTargetLandmarks( sourceLMVTK )
-      VTKTPS.SetBasisToR()  # for 3D transform
-      #Convert to a grid transforms
-      modelBounds = [0]*6
+      VTKTPS.SetSourceLandmarks(targetLMVTK)
+      VTKTPS.SetTargetLandmarks(sourceLMVTK)
+      VTKTPS.SetBasisToR()
+
+      modelBounds = [0] * 6
       self.cloneModelNode.GetRASBounds(modelBounds)
       origin = (modelBounds[0], modelBounds[2], modelBounds[4])
       size = (modelBounds[1] - modelBounds[0], modelBounds[3] - modelBounds[2], modelBounds[5] - modelBounds[4])
       dimension = 50
-      extent = [0]*6
-      extent[1::2]=[dimension-1]*3
+      extent = [0] * 6
+      extent[1::2] = [dimension - 1] * 3
       spacing = (size[0]/dimension, size[1]/dimension, size[2]/dimension)
+
       transformToGrid = vtk.vtkTransformToGrid()
       transformToGrid.SetInput(VTKTPS)
       transformToGrid.SetGridOrigin(origin)
       transformToGrid.SetGridSpacing(spacing)
       transformToGrid.SetGridExtent(extent)
       transformToGrid.Update()
+
       return transformToGrid.GetOutput()
 
     def updatePCScaling():
       if hasattr(self, 'gridTransformNode'):
-        sf=self.slider1.sliderValue()/100
-        #scaledSliderValue = 0.5 * (sf + 1)
-        #print("Slider: ", scaledSliderValue)
+        dynamic_value = self.slider1.sliderValue()  # Mapped PC score from spinbox
+        if self.pcScoreAbsMax > 1e-6:  # Avoid division by zero
+          sf = dynamic_value / self.pcScoreAbsMax
+        else:
+          sf = 0.0
+        # Clamp scaling factor
+        sf = max(min(sf, 1.0), -1.0)
         self.gridTransformNode.GetTransformFromParent().SetDisplacementScale(sf)
 
     # PC warping
@@ -801,61 +872,35 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     visLayout = qt.QGridLayout(vis)
     visualizeTabLayout.addRow(vis)
     self.applyEnabled = False
-
-    self.PCList=[]
-    self.slider1=sliderGroup(onSliderChanged = updatePCScaling, onComboBoxChanged = setupPCTransform)
-    self.slider1.connectList(self.PCList)
-    visLayout.addWidget(self.slider1,3,1,1,3)
-
-    # Create the slider
-    self.sliderMagnification = qt.QSlider(qt.Qt.Horizontal)
-    self.sliderMagnification.setTickInterval(1)
-    self.sliderMagnification.setTickPosition(qt.QSlider.TicksBelow)
-    self.sliderMagnification.setSingleStep(1)
-    self.sliderMagnification.setMaximum(10)
-    self.sliderMagnification.setMinimum(1)
-    self.sliderMagnification.setValue(1)
-    self.sliderMagnification.enabled = True
-
-    # Create the spinbox
-    self.spinMagnification = qt.QSpinBox()
+    
+    # Create the spinbox for magnification
+    self.spinMagnification = qt.QDoubleSpinBox()
+    self.spinMagnification.setDecimals(3)
+    self.spinMagnification.setSingleStep(0.01)
     self.spinMagnification.setMinimum(1)
     self.spinMagnification.setMaximum(5)
     self.spinMagnification.setValue(1)
-    self.spinMagnification.setFixedWidth(60)  # Optional: make it a nice compact size
-    self.sliderMagnification.setMinimumHeight(30)  # ADD THIS
 
     # Create the label
     magnificationLabel = qt.QLabel("Magnification factor:")
     magnificationLabel.setAlignment(qt.Qt.AlignRight | qt.Qt.AlignVCenter)  # Right-align text
 
-    # Keep slider and spinbox synchronized
-    def onSliderValueChanged(value):
-        self.spinMagnification.setValue(value)
-        setupPCTransform()
-
-    def onSpinboxValueChanged(value):
-        self.sliderMagnification.setValue(value)
-
-    self.sliderMagnification.valueChanged.connect(onSliderValueChanged)
-    self.spinMagnification.valueChanged.connect(onSpinboxValueChanged)
-
-    # Layout: label + slider + spinbox
+    # Layout: label + spinbox
     magnificationLayout = qt.QHBoxLayout()
     magnificationLayout.addWidget(magnificationLabel)
-    magnificationLayout.addWidget(self.sliderMagnification)
     magnificationLayout.addWidget(self.spinMagnification)
 
     # Create a container widget
     magnificationWidget = qt.QWidget()
     magnificationWidget.setLayout(magnificationLayout)
 
-    # Set size policies
-    magnificationWidget.setSizePolicy(qt.QSizePolicy.Expanding, qt.QSizePolicy.Minimum)
-    magnificationWidget.setMinimumHeight(70)
-
     # Add to visLayout
-    visLayout.addWidget(magnificationWidget, 4, 1, 1, 3)  # row 4, column 0, span across 3 columns
+    visLayout.addWidget(magnificationWidget, 3, 1, 1, 3)  # row 4, column 0, span across 3 columns
+
+    self.PCList=[]
+    self.slider1=sliderGroup(onSliderChanged = updatePCScaling, onComboBoxChanged = setupPCTransform)
+    self.slider1.connectList(self.PCList)
+    visLayout.addWidget(self.slider1,4,1,1,3)
 
     # Create Animations
     animate=ctk.ctkCollapsibleButton()
