@@ -8,8 +8,9 @@ def makeTwoDim(monsters):
     i,j,k=monsters.shape
     tmp=np.zeros((i*j,k))
     for x in range(k):
-        vec=np.reshape(monsters[:,:,x],(i*j),order='F')
-        tmp[:,x]=vec
+      vec=np.reshape(monsters[:,:,x],(i*j),order='F')
+      tmp[:,x]=vec
+    tmp -= np.mean(tmp, axis=1, keepdims=True)
     return tmp
 
 def calcMean(vec):
@@ -24,25 +25,25 @@ def calcCov(vec):
     meanVec=calcMean(vec)
     covMatrix=np.zeros((i,i))
     for x in range(j):
-        t1=((vec[:,x]-meanVec).T).reshape(i,1)
-        t2=(vec[:,x]-meanVec).reshape(1,i)
-        covMatrix+=np.dot(t1,t2)/float(j)
+      t1=((vec[:,x]-meanVec).T).reshape(i,1)
+      t2=(vec[:,x]-meanVec).reshape(1,i)
+      covMatrix+=np.dot(t1,t2)/float(j)
     return covMatrix
 
 def sortEig(eVal, eVec):
     i,j=eVec.shape
     ePair=list(range(j))
     for y in range(j):
-        ePair[y]=[(np.abs(eVal[y]), eVec[:,y])]
-        ePair[y].sort()
-        ePair[y].reverse()
+      ePair[y]=[(np.abs(eVal[y]), eVec[:,y])]
+      ePair[y].sort()
+      ePair[y].reverse()
     return ePair
 
 def pairEig(eVal, eVec):
     i,j=eVec.shape
     ePair=list(range(j))
     for y in range(j):
-        ePair[y]=[(np.abs(eVal[y]), eVec[:,y])]
+      ePair[y]=[(np.abs(eVal[y]), eVec[:,y])]
     return ePair
 
 def makeTransformMatrix(ePair,pcA,pcB):
@@ -63,9 +64,9 @@ def plotTanProj(monsters,pcA,pcB):
     mShape=calcMean(twoDim)
     covMatrix=calcCov(twoDim)
     if k > i * j:  # limit results returned if sample number is less than observations
-        self.val, self.vec = sp.eigh(covMatrix)
+      self.val, self.vec = sp.eigh(covMatrix)
     else:
-        self.val, self.vec = sp.eigh(covMatrix, eigvals=(i * j - k, i * j - 1))
+      self.val, self.vec = sp.eigh(covMatrix, eigvals=(i * j - k, i * j - 1))
     eigVal=eigVal[::-1]
     eigVec=eigVec[:, ::-1]
     eigPair=pairEig(eigVal,eigVec)
@@ -111,8 +112,8 @@ def procDist(monsters,mshape):
     i,j,k=monsters.shape
     procDists=np.zeros(k)
     for x in range(k):
-        tmp=monsters[:,:,x]-mshape
-        procDists[x]=np.linalg.norm(tmp,'fro')
+      tmp=monsters[:,:,x]-mshape
+      procDists[x]=np.linalg.norm(tmp,'fro')
     return procDists
 
 ################# GPA update
@@ -148,28 +149,35 @@ def applyCenterScale(landmarkSet):
   return landmarkSet
 
 def runGPANoScale(allLandmarkSets):
-  i,j,k=allLandmarkSets.shape
-  for index in range(k):
-    landmarkSet=allLandmarkSets[:,:,index]
-    tempSet = applyCenter(landmarkSet)
-    allLandmarkSets[:,:,index]=tempSet
-  allLandmarkSets = procrustesAlignNoScale(allLandmarkSets[:,:,0],allLandmarkSets)
-  initialMeanShape=meanShape(allLandmarkSets)
-  diff=1
-  tries=0
-  while diff>0.0001 and tries<5:
-    allLandmarkSets = procrustesAlignNoScale(initialMeanShape,allLandmarkSets)
-    currentMeanShape=meanShape(allLandmarkSets)
-    diff=np.linalg.norm(initialMeanShape-currentMeanShape)
-    initialMeanShape=currentMeanShape
-    tries=tries+1
-  return allLandmarkSets, currentMeanShape
+    i,j,k = allLandmarkSets.shape
+    for index in range(k):
+      landmarkSet = allLandmarkSets[:,:,index]
+      tempSet = applyCenter(landmarkSet)  # center only, no scaling
+      allLandmarkSets[:,:,index] = tempSet
+    allLandmarkSets = procrustesAlignNoScale(allLandmarkSets[:,:,0], allLandmarkSets)
+    initialMeanShape = meanShape(allLandmarkSets)
+    initialMeanShape = centerShape(initialMeanShape) # re-center when no scaling
+    diff = 1
+    tries = 0
+    while diff > 0.0001 and tries < 5:
+      allLandmarkSets = procrustesAlignNoScale(initialMeanShape, allLandmarkSets)
+      currentMeanShape = meanShape(allLandmarkSets)
+      currentMeanShape = centerShape(currentMeanShape)  # re-center when no scaling
+      diff = np.linalg.norm(initialMeanShape-currentMeanShape)
+      initialMeanShape = currentMeanShape
+      tries += 1
+    for index in range(k):
+      allLandmarkSets[:,:,index] = centerShape(allLandmarkSets[:,:,index])
+    return allLandmarkSets, currentMeanShape
 
 def procrustesAlignNoScale(mean, allLandmarkSets):
-  i,j,k=allLandmarkSets.shape
-  for index in range(k):
-    allLandmarkSets[:,:,index] = alignShape(mean, allLandmarkSets[:,:,index])
-  return allLandmarkSets
+    i,j,k = allLandmarkSets.shape
+    mean = centerShape(mean)  # re-center when no scaling
+    for index in range(k):
+      aligned = alignShape(mean, allLandmarkSets[:, :, index])
+      aligned = centerShape(aligned)  # re-center when no scaling
+      allLandmarkSets[:,:,index] = aligned
+    return allLandmarkSets
 
 def applyCenter(landmarkSet):
   landmarkSet=centerShape(landmarkSet)
