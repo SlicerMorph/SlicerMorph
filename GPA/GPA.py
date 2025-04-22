@@ -287,14 +287,11 @@ class LMData:
     self.centriodSize=np.zeros(k)
     for subjectNum in range(k):
       self.centriodSize[subjectNum]=np.linalg.norm(self.lmOrig[:,:,subjectNum]-self.lmOrig[:,:,subjectNum].mean(axis=0))
-    self.lm, self.mShape=gpa_lib.runGPA(self.lmOrig)
+    if not BoasOption:
+      self.lm, self.mShape=gpa_lib.runGPA(self.lmOrig)
+    else:
+      self.lm, self.mShape=gpa_lib.runGPANoScale(self.lmOrig)
     self.procdist = gpa_lib.procDist(self.lm, self.mShape)
-    if BoasOption:
-      for lmNum in range(i):
-        for dimNum in range(j):
-          for subjectNum in range(k):
-            self.lm[lmNum, dimNum, subjectNum] = self.centriodSize[subjectNum]*self.lm[lmNum, dimNum, subjectNum]
-      self.mShape=self.lm.mean(axis=2)
 
   def calcEigen(self):
     i, j, k = self.lmOrig.shape
@@ -815,12 +812,12 @@ class GPAWidget(ScriptedLoadableModuleWidget):
           GPANodeCollection.AddItem(self.gridTransformNode)
 
         self.gridTransformNode.GetTransformFromParent().SetDisplacementGridData(self.displacementGridData)
-
         self.cloneLandmarkNode.SetAndObserveTransformNodeID(self.gridTransformNode.GetID())
         if hasattr(self, 'cloneModelNode') and self.modelVisualizationType.checked:
           self.cloneModelNode.SetAndObserveTransformNodeID(self.gridTransformNode.GetID())
 
         self.slider1.setRange(self.pcMin, self.pcMax)  # Dynamic range displayed
+        self.slider1.spinBox.setValue(0)
         updatePCScaling()
 
     def getGridTransform(pcValue):
@@ -838,7 +835,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       VTKTPS.SetBasisToR()
 
       modelBounds = [0] * 6
-      self.cloneModelNode.GetRASBounds(modelBounds)
+      if hasattr(self, 'cloneModelNode') and self.cloneModelNode is not None and self.modelVisualizationType.checked:
+          modelBounds = getExpandedBounds(self.cloneModelNode)
+      else:
+          modelBounds = getExpandedBounds(self.cloneLandmarkNode)
       origin = (modelBounds[0], modelBounds[2], modelBounds[4])
       size = (modelBounds[1] - modelBounds[0], modelBounds[3] - modelBounds[2], modelBounds[5] - modelBounds[4])
       dimension = 50
@@ -855,6 +855,21 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
       return transformToGrid.GetOutput()
 
+    def getExpandedBounds(node, paddingFactor=0.1):
+        bounds = [0] * 6
+        node.GetRASBounds(bounds)
+        # Expand bounds by paddingFactor
+        xRange = bounds[1] - bounds[0]
+        yRange = bounds[3] - bounds[2]
+        zRange = bounds[5] - bounds[4]
+        bounds[0] -= xRange * paddingFactor
+        bounds[1] += xRange * paddingFactor
+        bounds[2] -= yRange * paddingFactor
+        bounds[3] += yRange * paddingFactor
+        bounds[4] -= zRange * paddingFactor
+        bounds[5] += zRange * paddingFactor
+
+        return bounds
     def updatePCScaling():
       if hasattr(self, 'gridTransformNode'):
         dynamic_value = self.slider1.sliderValue()  # Mapped PC score from spinbox
@@ -866,13 +881,16 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         sf = max(min(sf, 1.0), -1.0)
         self.gridTransformNode.GetTransformFromParent().SetDisplacementScale(sf)
 
+    def onUpdateMagnificationClicked():
+      setupPCTransform()
+
     # PC warping
     vis = ctk.ctkCollapsibleButton()
     vis.text = 'PCA Visualization Parameters'
     visLayout = qt.QGridLayout(vis)
     visualizeTabLayout.addRow(vis)
     self.applyEnabled = False
-    
+
     # Create the spinbox for magnification
     self.spinMagnification = qt.QDoubleSpinBox()
     self.spinMagnification.setDecimals(3)
@@ -885,10 +903,15 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     magnificationLabel = qt.QLabel("Magnification factor:")
     magnificationLabel.setAlignment(qt.Qt.AlignRight | qt.Qt.AlignVCenter)  # Right-align text
 
-    # Layout: label + spinbox
+    # Create apply button
+    updateMagnificationButton = qt.QPushButton("Apply")
+    updateMagnificationButton.clicked.connect(onUpdateMagnificationClicked)
+
+    # Magnification layout
     magnificationLayout = qt.QHBoxLayout()
     magnificationLayout.addWidget(magnificationLabel)
     magnificationLayout.addWidget(self.spinMagnification)
+    magnificationLayout.addWidget(updateMagnificationButton)
 
     # Create a container widget
     magnificationWidget = qt.QWidget()
@@ -1390,7 +1413,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     #set scaling factor using mean of landmarks
     self.rawMeanLandmarks = self.LM.mShape
     logic = GPALogic()
-    self.sampleSizeScaleFactor = logic.dist2(self.rawMeanLandmarks).max()
+    if self.BoasOption:
+        self.sampleSizeScaleFactor = 1.0
+    else:
+      self.sampleSizeScaleFactor = logic.dist2(self.rawMeanLandmarks).max()
     print("Scale Factor: " + str(self.sampleSizeScaleFactor))
     self.GPALogTextbox.insertPlainText(f"Scale Factor: {self.sampleSizeScaleFactor}\n")
     for landmarkNumber in range (shape[0]):
@@ -1492,7 +1518,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     #set scaling factor using mean of landmarks
     self.rawMeanLandmarks = self.LM.lmOrig.mean(2)
     logic = GPALogic()
-    self.sampleSizeScaleFactor = logic.dist2(self.rawMeanLandmarks).max()
+    if self.BoasOption:
+      self.sampleSizeScaleFactor = 1.0
+    else:
+      self.sampleSizeScaleFactor = logic.dist2(self.rawMeanLandmarks).max()
     print("Scale Factor: " + str(self.sampleSizeScaleFactor))
     self.GPALogTextbox.insertPlainText(f"Scale Factor for visualizations: {self.sampleSizeScaleFactor}\n")
 
