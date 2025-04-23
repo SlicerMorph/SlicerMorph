@@ -896,7 +896,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.spinMagnification.setDecimals(3)
     self.spinMagnification.setSingleStep(0.01)
     self.spinMagnification.setMinimum(1)
-    self.spinMagnification.setMaximum(5)
+    self.spinMagnification.setMaximum(100)
     self.spinMagnification.setValue(1)
 
     # Create the label
