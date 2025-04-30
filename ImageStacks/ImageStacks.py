@@ -121,16 +121,51 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     filesFormLayout.addRow("Reverse: ", self.reverseCheckBox)
 
     # original spacing
-    self.spacingWidget = slicer.qMRMLCoordinatesWidget()
-    self.spacingWidget.setMRMLScene(slicer.mrmlScene)
-    self.spacingWidget.decimalsOption  = ctk.ctkDoubleSpinBox.DecimalsByKey | ctk.ctkDoubleSpinBox.DecimalsByShortcuts | ctk.ctkDoubleSpinBox.DecimalsByValue
-    self.spacingWidget.minimum = 0.0
-    self.spacingWidget.maximum = 1000000000.0
-    self.spacingWidget.quantity = "length"
-    self.spacingWidget.unitAwareProperties = slicer.qMRMLCoordinatesWidget.Precision | slicer.qMRMLCoordinatesWidget.Prefix | slicer.qMRMLCoordinatesWidget.Scaling | slicer.qMRMLCoordinatesWidget.Suffix
-    self.spacingWidget.coordinates = "1,1,1"
-    self.spacingWidget.toolTip = "Set the colunm, row, slice spacing; original spacing not including downsample"
-    filesFormLayout.addRow("Spacing: ", self.spacingWidget)
+    self.spacingWidgetsLayout = qt.QHBoxLayout()
+
+    self.isotropicSpacingWidget = slicer.qMRMLSpinBox()
+    self.isotropicSpacingWidget.setMRMLScene(slicer.mrmlScene)
+    self.isotropicSpacingWidget.decimalsOption  = ctk.ctkDoubleSpinBox.DecimalsByKey | ctk.ctkDoubleSpinBox.DecimalsByShortcuts | ctk.ctkDoubleSpinBox.DecimalsByValue
+    self.isotropicSpacingWidget.minimum = 0.0
+    self.isotropicSpacingWidget.maximum = 1000000000.0
+    self.isotropicSpacingWidget.quantity = "length"
+    self.isotropicSpacingWidget.unitAwareProperties = slicer.qMRMLCoordinatesWidget.Precision | slicer.qMRMLCoordinatesWidget.Prefix | slicer.qMRMLCoordinatesWidget.Scaling | slicer.qMRMLCoordinatesWidget.Suffix
+    self.isotropicSpacingWidget.value = 0
+    self.isotropicSpacingWidget.singleStep = 0.1
+    self.isotropicSpacingWidget.decimals = 1
+    self.isotropicSpacingWidget.toolTip = "Set the same value as column, row, slice spacing; original spacing not including downsample. The value must be greater than 0."
+    self.spacingWidgetsLayout.addWidget(self.isotropicSpacingWidget)
+
+    self.anisotropicSpacingWidget = slicer.qMRMLCoordinatesWidget()
+    self.anisotropicSpacingWidget.setMRMLScene(slicer.mrmlScene)
+    self.anisotropicSpacingWidget.decimalsOption  = self.isotropicSpacingWidget.decimalsOption
+    self.anisotropicSpacingWidget.minimum = self.isotropicSpacingWidget.minimum
+    self.anisotropicSpacingWidget.maximum = self.isotropicSpacingWidget.maximum
+    self.anisotropicSpacingWidget.quantity = self.isotropicSpacingWidget.quantity
+    self.anisotropicSpacingWidget.unitAwareProperties = self.isotropicSpacingWidget.unitAwareProperties
+    self.anisotropicSpacingWidget.coordinates = f"{self.isotropicSpacingWidget.value},{self.isotropicSpacingWidget.value},{self.isotropicSpacingWidget.value}"
+    self.anisotropicSpacingWidget.singleStep = self.isotropicSpacingWidget.singleStep
+    self.anisotropicSpacingWidget.decimals = self.isotropicSpacingWidget.decimals
+    self.anisotropicSpacingWidget.toolTip = "Set the column, row, slice spacing; original spacing not including downsample. All values must be greater than 0."
+    self.anisotropicSpacingWidget.hide()
+    self.spacingWidgetsLayout.addWidget(self.anisotropicSpacingWidget)
+
+    self.isotropicSpacingButton = qt.QPushButton()
+    self.isotropicSpacingButton.setCheckable(True)
+    self.isotropicSpacingButton.checked = True
+    self.isotropicSpacingButton.setIconSize(qt.QSize(16, 16))
+    self.isotropicSpacingButton.toolTip = "Toggle between using the same spacing value for all axes and using different spacing value for each axis"
+    self.isotropicSpacingButton.setSizePolicy(qt.QSizePolicy.Fixed, qt.QSizePolicy.Fixed)
+    self.isotropicSpacingButton.setStyleSheet("QPushButton:checked { image: url(:Icons/LinkOn.png); } QPushButton:!checked { image: url(:Icons/LinkOff.png); }")
+    self.spacingWidgetsLayout.addWidget(self.isotropicSpacingButton)
+
+    self.spacingWidgetsLayout.addItem(qt.QSpacerItem(10, 10, qt.QSizePolicy.Minimum, qt.QSizePolicy.Expanding))
+
+    self.autoDetectSpacingButton = qt.QPushButton("Auto-detect")
+    self.autoDetectSpacingButton.toolTip = "Set spacing based on image metadata"
+    self.spacingWidgetsLayout.addWidget(self.autoDetectSpacingButton)
+
+    filesFormLayout.addRow("Spacing: ", self.spacingWidgetsLayout)
 
     #
     # output area
@@ -230,7 +265,10 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # connections
     self.reverseCheckBox.connect('toggled(bool)', self.updateLogicFromWidget)
     self.sliceSkipSpinBox.connect("valueChanged(int)", self.updateLogicFromWidget)
-    self.spacingWidget.connect("coordinatesChanged(double*)", self.updateLogicFromWidget)
+    self.anisotropicSpacingWidget.connect("coordinatesChanged(double*)", self.updateLogicFromWidget)
+    self.isotropicSpacingWidget.connect("valueChanged(double)", self.updateLogicFromWidget)
+    self.isotropicSpacingButton.connect('toggled(bool)', self.onIsotropicSpacingToggled)
+    self.autoDetectSpacingButton.connect('clicked()', self.onAutoDetectSpacing)
     self.qualityPreviewRadioButton.connect("toggled(bool)", lambda toggled, widget=self.qualityPreviewRadioButton: self.onQualityToggled(toggled, widget))
     self.qualityHalfRadioButton.connect("toggled(bool)", lambda toggled, widget=self.qualityHalfRadioButton: self.onQualityToggled(toggled, widget))
     self.qualityFullRadioButton.connect("toggled(bool)", lambda toggled, widget=self.qualityFullRadioButton: self.onQualityToggled(toggled, widget))
@@ -245,6 +283,7 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.layout.addStretch(1)
 
     self.loadButton.enabled = False
+    self.updateLogicFromWidget()
 
   def cleanup(self):
     self.setOutputROINode(None)
@@ -257,7 +296,7 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       and self.logic.originalVolumeDimensions[2] == 0):
       self.originalVolumeSizeLabel.text = ""
       self.outputVolumeSizeLabel.text = ""
-      self.outputSpacingWidget.coordinates = "1,1,1"
+      self.outputSpacingWidget.coordinates = "0,0,0"
       self.loadButton.enabled = False
       return
 
@@ -271,13 +310,18 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     self.loadButton.enabled = True
 
-
   def updateLogicFromWidget(self):
     self.logic.reverseSliceOrder = self.reverseCheckBox.checked
     self.logic.outputGrayscale = self.grayscaleCheckBox.checked
     self.logic.sliceSkip = self.sliceSkipSpinBox.value
-    spacingString = self.spacingWidget.coordinates
-    self.logic.setOriginalVolumeSpacing([float(element) for element in spacingString.split(",")])
+    if self.isotropicSpacingButton.checked:
+      # isotropic spacing
+      spacing = [self.isotropicSpacingWidget.value, self.isotropicSpacingWidget.value, self.isotropicSpacingWidget.value]
+    else:
+      # anisotropic spacing
+      spacingString = self.anisotropicSpacingWidget.coordinates
+      spacing = [float(element) for element in spacingString.split(",")]
+    self.logic.setOriginalVolumeSpacing(spacing)
     self.updateWidgetFromLogic()
 
   def onQualityToggled(self, toggled, widget):
@@ -306,10 +350,6 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
   def setFilePaths(self, filePaths):
     self.fileTable.plainText = '\n'.join(filePaths)
     self.logic.filePaths = filePaths
-
-    # Use the spacing that we find in the image
-    spacing = self.logic.originalVolumeRecommendedSpacing
-    self.spacingWidget.coordinates = f"{spacing[0]},{spacing[1]},{spacing[2]}"
 
     self.updateWidgetFromLogic()
 
@@ -440,6 +480,44 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     slicer.app.processEvents()
     return not self.cancelRequested
 
+  def onIsotropicSpacingToggled(self, checked):
+    """Toggle between isotropic and anisotropic spacing widgets"""
+    self.isotropicSpacingWidget.setVisible(checked)
+    self.anisotropicSpacingWidget.setVisible(not checked)
+    if checked:
+      # Copy values from anisotropic to isotropic when switching
+      self.isotropicSpacingWidget.value = float(self.anisotropicSpacingWidget.coordinates.split(",")[0])
+    else:
+      # Copy values from isotropic to anisotropic when switching
+      self.anisotropicSpacingWidget.coordinates = f"{self.isotropicSpacingWidget.value},{self.isotropicSpacingWidget.value},{self.isotropicSpacingWidget.value}"
+
+  def onAutoDetectSpacing(self):
+    """Set spacing values based on image metadata"""
+    if not self.logic.originalVolumeRecommendedSpacing:
+      return
+
+    recommendedSpacing = self.logic.originalVolumeRecommendedSpacing
+
+    if recommendedSpacing[0] == recommendedSpacing[1] and (recommendedSpacing[2] == recommendedSpacing[0] or recommendedSpacing[2] == 0.0):
+      # It seems that spacing is isotropic
+      print(f"iso {recommendedSpacing}")
+      self.isotropicSpacingButton.checked = True
+      print(f"self.isotropicSpacingWidget.value = {recommendedSpacing[0]}")
+      self.isotropicSpacingWidget.value = recommendedSpacing[0]
+      print(f"self.isotropicSpacingWidget.value post = {recommendedSpacing[0]}")
+    else:
+      # For anisotropic, use the recommended spacing directly
+      print(f"niso {recommendedSpacing}")
+      self.isotropicSpacingButton.checked = False
+      self.anisotropicSpacingWidget.coordinates = f"{recommendedSpacing[0]},{recommendedSpacing[1]},{recommendedSpacing[2]}"
+
+    if (recommendedSpacing[0] > 0.0 or recommendedSpacing[1] > 0.0) and recommendedSpacing[2] == 0.0:
+      # This is a 2D image stack
+      slicer.util.warningDisplay("2D file formats do not always report the correct image spacing."
+        " Please cross-reference the spacing value with the scan metadata provided to you and correct if necessary.",
+        dontShowAgainSettingsKey = "ImageStacks/DontShow2DImageSpacingWarning")
+
+    self.updateLogicFromWidget()
 
 #
 # File dialog to allow drag-and-drop of folders and files
@@ -536,7 +614,7 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
     self._filePaths = []
     self.originalVolumeDimensions = [0, 0, 0]
     self.originalVolumeIJKToRAS = numpy.diag([-1.0, -1.0, 1.0, 1.0])
-    self.originalVolumeRecommendedSpacing = [1.0, 1.0, 1.0]
+    self.originalVolumeRecommendedSpacing = [0.0, 0.0, 0.0]
     self.originalVolumeVoxelDataType = numpy.dtype('uint8')
     self.sliceSkip = 0
     self.reverseSliceOrder = False
@@ -579,7 +657,7 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
 
     self._filePaths = filePaths
     self.originalVolumeDimensions = [0, 0, 0]
-    self.originalVolumeRecommendedSpacing = [1.0, 1.0, 1.0]
+    self.originalVolumeRecommendedSpacing = [0.0, 0.0, 0.0]
 
     if not self._filePaths:
       return
@@ -609,12 +687,7 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
         self.originalVolumeVoxelDataType = numpy.dtype(sliceArray.dtype)
 
         firstSliceSpacing = image.GetSpacing()
-        self.originalVolumeRecommendedSpacing = [firstSliceSpacing[1], firstSliceSpacing[0], 1.0]
-
-        if firstSliceSpacing[0] == firstSliceSpacing[1]:
-          # If x and y spacing are the same then we assume that it is an isotropic volume
-          # and set z spacing to the same value
-          self.originalVolumeRecommendedSpacing[2] = firstSliceSpacing[0]
+        self.originalVolumeRecommendedSpacing = [firstSliceSpacing[1], firstSliceSpacing[0], 0.0]
 
   def setOriginalVolumeSpacing(self, spacing):
     # Volume is in LPS, therefore we invert the first two axes
@@ -674,6 +747,10 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
     ijkToRAS, extent, numberOfScalarComponents = self.outputVolumeGeometry()
     outputSpacing = [numpy.linalg.norm(ijkToRAS[0:3,i]) for i in range(3)]
     originalVolumeSpacing = [numpy.linalg.norm(self.originalVolumeIJKToRAS[0:3, i]) for i in range(3)]
+
+    validSpacing = all([spacingComponent > 0 for spacingComponent in originalVolumeSpacing])
+    if not validSpacing:
+      raise ValueError("Invalid original volume spacing. All values must be greater than 0.")
 
     stepSize = [int(outputSpacing[i] / originalVolumeSpacing[i]) for i in range(3)]
 
