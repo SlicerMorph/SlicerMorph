@@ -545,6 +545,14 @@ class SkyscanReconImportLogic(ScriptedLoadableModuleLogic):
             scalarVolumeNode.SetSpacing(spacing)
             scalarVolumeNode.SetName(imageLogFile.Prefix)
 
+        # Set export type to NRRD
+        if scalarVolumeNode.GetStorageNode().GetClassName() != 'vtkMRMLNRRDStorageNode':
+          NRRDStorageNode = slicer.vtkMRMLNRRDStorageNode()
+          NRRDStorageNode.SetWriteFileFormat('nrrd')
+          slicer.mrmlScene.AddNode(NRRDStorageNode)
+          scalarVolumeNode.SetAndObserveStorageNodeID(NRRDStorageNode.GetID())
+          NRRDStorageNode.SetFileName(scalarVolumeNode.GetName() + ".nrrd")
+
         self.applySkyscanTransform(scalarVolumeNode)
         slicer.util.resetSliceViews()  # update the field of view
 
@@ -589,6 +597,7 @@ class SkyscanReconImportLogic(ScriptedLoadableModuleLogic):
     def saveVolumes(node_name, fullRespath, dsResPath, resolution):
         volumeNode = slicer.util.getNode(node_name)
 
+
         # Save the full resolution volume
         fullRespath = os.path.join(fullRespath, node_name + ".nrrd")
         slicer.util.exportNode(volumeNode, fullRespath, {"useCompression": 0})
@@ -622,6 +631,11 @@ class SkyscanReconImportLogic(ScriptedLoadableModuleLogic):
 
             # Create the cropped volume
             croppedVolume = slicer.mrmlScene.GetNodeByID(cropVolumeParameterNode.GetOutputVolumeNodeID())
+
+            # Set export type to NRRD
+            if not croppedVolume.GetStorageNode():
+              croppedVolume.AddDefaultStorageNode()
+            croppedVolume.GetStorageNode().SetDefaultWriteFileExtension('nrrd')
 
             # Save the downsampled volume
             dsPath = os.path.join(dsResPath, f"{node_name}{suffix}.nrrd")
