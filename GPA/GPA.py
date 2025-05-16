@@ -323,17 +323,11 @@ class LMData:
   def ExpandAlongSinglePC(self,pcNumber,pcRange,SampleScaleFactor):
     b=0
     i,j,k=self.lm.shape
-    print(self.lm.shape)
     shift=np.zeros((i,j))
     points=np.zeros((i,j))
     self.vec=np.real(self.vec)
     # scale eigenvector
     pcComponent = pcNumber - 1
-    lm_index = 2  # landmark 3 (0-based index)
-    print("Raw shift for landmark 3:")
-    print("X:", self.vec[lm_index, pcComponent])
-    print("Y:", self.vec[i + lm_index, pcComponent])
-    print("Z:", self.vec[2*i + lm_index, pcComponent])
     print("scaling factor: ", pcRange)
     shift[:,0]=shift[:,0]+float(pcRange)*self.vec[0:i,pcComponent]*SampleScaleFactor/3
     shift[:,1]=shift[:,1]+float(pcRange)*self.vec[i:2*i,pcComponent]*SampleScaleFactor/3
@@ -360,8 +354,7 @@ class LMData:
     flattened = reshaped.reshape((n_landmarks * 3, n_pcs), order='C')  # from (n, 3, p) to (3n, p)
 
     for currentRow in range(flattened.shape[0]):
-        temp[currentRow + 1, :] = flattened[currentRow, :]
-    #temp = np.vstack((np.array(headerPC), self.vec))
+      temp[currentRow + 1, :] = flattened[currentRow, :]
     temp = np.column_stack((np.array(headerLM), temp))
     np.savetxt(outputFolder + os.sep + "eigenvector.csv", temp, delimiter=",", fmt='%s')
     temp = np.column_stack((np.array(headerPC), self.val))
