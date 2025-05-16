@@ -10,6 +10,7 @@ def makeTwoDim(monsters):
     for x in range(k):
       vec=np.reshape(monsters[:,:,x],(i*j),order='F')
       tmp[:,x]=vec
+    tmp -= np.mean(tmp, axis=1, keepdims=True)
     return tmp
 
 def calcMean(vec):
