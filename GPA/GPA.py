@@ -347,9 +347,14 @@ class LMData:
     r,c=self.vec.shape
     temp=np.empty(shape=(r+1,c), dtype = object)
     temp[0,:] = np.array(headerPC)
-    for currentRow in range(r):
-      temp[currentRow+1,:] = self.vec[currentRow,:]
-    #temp = np.vstack((np.array(headerPC), self.vec))
+    # Reshape to (X, Y, Z) ordering
+    n_coords, n_pcs = self.vec.shape
+    n_landmarks = n_coords // 3
+    reshaped = self.vec.reshape((n_landmarks, 3, n_pcs), order='F')  # from (3n, p) to (n, 3, p)
+    flattened = reshaped.reshape((n_landmarks * 3, n_pcs), order='C')  # from (n, 3, p) to (3n, p)
+
+    for currentRow in range(flattened.shape[0]):
+      temp[currentRow + 1, :] = flattened[currentRow, :]
     temp = np.column_stack((np.array(headerLM), temp))
     np.savetxt(outputFolder + os.sep + "eigenvector.csv", temp, delimiter=",", fmt='%s')
     temp = np.column_stack((np.array(headerPC), self.val))
