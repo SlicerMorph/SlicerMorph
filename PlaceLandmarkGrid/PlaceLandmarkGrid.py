@@ -68,12 +68,23 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         Called when the user opens the module the first time and the widget is initialized.
         """
         ScriptedLoadableModuleWidget.setup(self)
+        # set up tabs to split workflow
+        tabsWidget = qt.QTabWidget()
+        gridTab = qt.QWidget()
+        gridTabLayout = qt.QFormLayout(gridTab)
+        mergeTab = qt.QWidget()
+        mergeTabLayout = qt.QFormLayout(mergeTab)
+
+        tabsWidget.addTab(gridTab, "Place Grids")
+        tabsWidget.addTab(mergeTab, "Merge Grids")
+
+        self.layout.addWidget(tabsWidget)
         #
         # Parameters Area
         #
         parametersCollapsibleButton = ctk.ctkCollapsibleButton()
-        parametersCollapsibleButton.text = "Parameters"
-        self.layout.addWidget(parametersCollapsibleButton)
+        parametersCollapsibleButton.text = "Grid Parameters"
+        gridTabLayout.addWidget(parametersCollapsibleButton)
 
         # Layout within the dummy collapsible button
         parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
@@ -191,6 +202,79 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         self.updatingGUI = False
         shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
         self.observerTagDeleteGrid = shNode.AddObserver(shNode.SubjectHierarchyItemAboutToBeRemovedEvent, self.deleteObservers)
+
+        ################## Grid Tab
+        #
+        # Parameters Area
+        #
+        parametersGridCollapsibleButton = ctk.ctkCollapsibleButton()
+        parametersGridCollapsibleButton.text = "Grid and point list viewers"
+        mergeTabLayout.addRow(parametersGridCollapsibleButton)
+
+        # Layout within the dummy collapsible button
+        parametersGridFormLayout = qt.QFormLayout(parametersGridCollapsibleButton)
+
+        #
+        # Grid View
+        #
+        self.gridView = slicer.qMRMLSubjectHierarchyTreeView()
+        self.gridView.setMRMLScene(slicer.mrmlScene)
+        self.gridView.setMultiSelection(True)
+        self.gridView.setAlternatingRowColors(True)
+        self.gridView.setDragDropMode(qt.QAbstractItemView().DragDrop)
+        self.gridView.setColumnHidden(self.gridView.model().transformColumn, True)
+        self.gridView.sortFilterProxyModel().setNodeTypes(["vtkMRMLMarkupsGridSurfaceNode"])
+        gridLabel = qt.QLabel("Grid Surface Nodes:")
+        parametersGridFormLayout.addRow(gridLabel)
+        parametersGridFormLayout.addRow(self.gridView)
+
+        #
+        # Markups View
+        #
+        self.markupsGridView = slicer.qMRMLSubjectHierarchyTreeView()
+        self.markupsGridView.setMRMLScene(slicer.mrmlScene)
+        self.markupsGridView.setMultiSelection(True)
+        self.markupsGridView.setAlternatingRowColors(True)
+        self.markupsGridView.setDragDropMode(qt.QAbstractItemView().DragDrop)
+        self.markupsGridView.setColumnHidden(self.markupsGridView.model().transformColumn, True)
+        self.markupsGridView.sortFilterProxyModel().setNodeTypes(["vtkMRMLMarkupsFiducialNode"])
+        markupsLabel = qt.QLabel("Markups Nodes:")
+        parametersGridFormLayout.addRow(markupsLabel)
+        parametersGridFormLayout.addWidget(self.markupsGridView)
+
+        #
+        # Advanced menu
+        #
+        advancedCollapsibleButton = ctk.ctkCollapsibleButton()
+        advancedCollapsibleButton.text = "Advanced"
+        advancedCollapsibleButton.collapsed = True
+        parametersGridFormLayout.addRow(advancedCollapsibleButton)
+        # Layout within the dummy collapsible button
+        advancedFormLayout = qt.QFormLayout(advancedCollapsibleButton)
+
+        #
+        # Spatial filtering slider
+        #
+        self.projectionDistanceSlider = ctk.ctkSliderWidget()
+        self.projectionDistanceSlider.singleStep = 5
+        self.projectionDistanceSlider.minimum = 0
+        self.projectionDistanceSlider.maximum = 100
+        self.projectionDistanceSlider.value = 20
+        self.projectionDistanceSlider.setToolTip("Set the maximum point merging distance as a percentage of grid size")
+        advancedFormLayout.addRow("Set point merging distance (percentage of grid size): ", self.projectionDistanceSlider)
+
+        #
+        # Merge Button
+        #
+        self.mergeGridButton = qt.QPushButton("Merge highlighted nodes")
+        self.mergeGridButton.toolTip = "Generate a single point list from the selected nodes"
+        self.mergeGridButton.enabled = False
+        parametersGridFormLayout.addRow(self.mergeGridButton)
+
+        # Connections
+        self.mergeGridButton.connect('clicked(bool)', self.onMergeGridButton)
+        self.gridView.connect('currentItemChanged(vtkIdType)', self.updateMergeGridButton)
+        self.markupsGridView.connect('currentItemChanged(vtkIdType)', self.updateMergeGridButton)
 
     @vtk.calldata_type(vtk.VTK_INT)
     def onSampleRateChanged(self):
@@ -343,7 +427,18 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
           self.gridSelector.removeItem(index)
           self.patchList.pop(index-1)
 
-# PlaceLandmarkGridLogic
+    def onMergeGridButton(self):
+      logic =  PlaceLandmarkGridLogic()
+      toleranceValue = self.projectionDistanceSlider.value/100
+      logic.mergeGrids(self.gridView, self.markupsGridView, toleranceValue)
+
+    def updateMergeGridButton(self):
+      gridNodes=self.gridView.selectedIndexes()
+      markupsGridNodes = self.markupsGridView.selectedIndexes()
+      self.mergeGridButton.enabled = bool(gridNodes or markupsGridNodes)
+
+#
+# InteractivePatch class definition
 #
 class InteractivePatch:
   def __init__(self, closedCurve, surfaceConstraintNode, gridID):
@@ -776,3 +871,85 @@ class PlaceLandmarkGridLogic(ScriptedLoadableModuleLogic):
       for i in range(pdNewPoints.GetNumberOfPoints()):
         p = pdNewPoints.GetPoint(i)
         gridNode.SetNthControlPointPosition(i,p)
+
+    def mergeGrids(self, gridTreeView, markupsTreeView, tolerance):
+      mergedNodeName = "mergedGridMarkupsNode"
+      mergedNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode', mergedNodeName)
+      purple=[1,0,1]
+      mergedNode.GetDisplayNode().SetSelectedColor(purple)
+      mergedNode.GetDisplayNode().SetTextScale(0)
+      # get node lists
+      gridNodeIDs=gridTreeView.selectedIndexes()
+      gridNodeList = vtk.vtkCollection()
+      for id in gridNodeIDs:
+        if id.column() == 0:
+          currentNode = slicer.util.getNode(id.data())
+          gridNodeList.AddItem(currentNode)
+      markupNodeIDs=markupsTreeView.selectedIndexes()
+      markupNodeList = vtk.vtkCollection()
+      for id in markupNodeIDs:
+        if id.column() == 0:
+          currentNode = slicer.util.getNode(id.data())
+          markupNodeList.AddItem(currentNode)
+      self.mergePointsAndGrids(gridNodeList, markupNodeList, mergedNode, tolerance)
+      mergedNode.SetLocked(True)
+      return True
+
+    def getGridMinResolutionSize(self, grid):
+       p1 = grid.GetNthControlPointPosition(0)
+       p2 = grid.GetNthControlPointPosition(1)
+       p3 = grid.GetNthControlPointPosition(grid.GetGridResolution()[0])
+       length = vtk.vtkMath().Distance2BetweenPoints(p1, p2)
+       width = vtk.vtkMath().Distance2BetweenPoints(p1, p3)
+       return(min(length, width))
+
+    def mergePointsAndGrids(self, gridList, markupList, mergedNode, tolerance):
+      mergedPoints = vtk.vtkPoints()
+      resolutions = []
+      # add grid points - semi-landmarks
+      for currentNode in gridList:
+        resolution = self.getGridMinResolutionSize(currentNode)
+        resolutions.append(resolution)
+        if mergedNode.GetNumberOfControlPoints() == 0:
+          for i in range(currentNode.GetNumberOfControlPoints()):
+            mergedNode.AddControlPoint(currentNode.GetNthControlPointPosition(i))
+            currentPointIndex = mergedNode.GetNumberOfControlPoints()-1
+            mergedNode.SetNthControlPointDescription(currentPointIndex,"Semi")
+          continue
+        for i in range(currentNode.GetNumberOfControlPoints()):
+          currentPoint = currentNode.GetNthControlPointPosition(i)
+          closestPointIndex = mergedNode.GetClosestControlPointIndexToPositionWorld(currentPoint)
+          if closestPointIndex>=0:
+            closestPoint = mergedNode.GetNthControlPointPosition(closestPointIndex)
+            distance = vtk.vtkMath().Distance2BetweenPoints(currentPoint, closestPoint)
+            if distance > resolution * tolerance:
+              mergedNode.AddControlPoint(currentPoint)
+              currentPointIndex = mergedNode.GetNumberOfControlPoints()-1
+              mergedNode.SetNthControlPointDescription(currentPointIndex,"Semi")
+      overallSpatialConstraint = min(resolutions) * tolerance
+      # add markup points - fixed landmarks
+      for currentNode in markupList:
+        for i in range(currentNode.GetNumberOfControlPoints()):
+          currentPoint = currentNode.GetNthControlPointPosition(i)
+          closestPointIndex = mergedNode.GetClosestControlPointIndexToPositionWorld(currentPoint)
+          if closestPointIndex>=0:
+            closestPoint = mergedNode.GetNthControlPointPosition(closestPointIndex)
+            distance = vtk.vtkMath().Distance2BetweenPoints(currentPoint, closestPoint)
+            if distance < overallSpatialConstraint:
+              if mergedNode.GetNthControlPointDescription(closestPointIndex) != "Fixed":
+                mergedNode.RemoveNthControlPoint(closestPointIndex)
+          mergedNode.AddControlPoint(currentPoint)
+          currentPointIndex = mergedNode.GetNumberOfControlPoints()-1
+          mergedNode.SetNthControlPointDescription(currentPointIndex,"Fixed")
+      #check point numbers
+      fixedPointCount = 0
+      semiLMPointCount = 0
+      for i in range(mergedNode.GetNumberOfControlPoints()):
+        if mergedNode.GetNthControlPointDescription(i) == "Fixed":
+          fixedPointCount+=1
+        elif mergedNode.GetNthControlPointDescription(i) == "Semi":
+          semiLMPointCount+=1
+      print("Total Landmarks: ", mergedNode.GetNumberOfControlPoints())
+      print("Fixed Landmarks: ", fixedPointCount)
+      print("Semi-Landmarks: ", semiLMPointCount)
+
