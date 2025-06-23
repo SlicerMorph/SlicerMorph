@@ -115,7 +115,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
             )
             slicer.app.processEvents()
             try:
-                slicer.util.pip_install(["itk~=5.4.0"])
+                slicer.util.pip_install(["itk==5.4.3"])
                 slicer.util.pip_install(["scikit-learn"])
                 slicer.util.pip_install(["itk-fpfh~=0.2.0"])
                 slicer.util.pip_install(["itk-ransac~=0.2.1"])
