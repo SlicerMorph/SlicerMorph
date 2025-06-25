@@ -2497,7 +2497,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         maxAttempts = 1
         attempt = 0
         best_fitness = -1
-        best_rmse = np.Inf
+        best_rmse = np.inf
         while attempt < maxAttempts:
             # Perform Initial alignment using Ransac parallel iterations with no scaling
             transform_matrix, fitness, rmse = self.ransac_using_package(
