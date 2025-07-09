@@ -104,22 +104,21 @@ Slicer extension catalog has over 100 extensions. We  recommend the following ex
 
 
 ## SlicerMorph Tutorials
-[We have step-by-step module specific tutorials that is useful for people starting with Slicer and SlicerMorph.](https://github.com/SlicerMorph/Tutorials)
+[We have step-by-step module specific tutorials that is useful to get started with Slicer and SlicerMorph.](https://github.com/SlicerMorph/Tutorials)
 
-## 3D Morphometrics and Image Analysis Short Course materials
-
-We actively use SlicerMorph to teach a week-long intense [short course on 3D Morphometrics and Image analysis](http://workshop.SlicerMorph.org). The feedback of the attendees help us prioritize feature development and refinement. We are grateful for the feedback of over 200 participants. [Click for contents from the latest workshop, Spring 2022](https://github.com/SlicerMorph/Spr_2022)
+## 3D Morphometrics and Image Analysis Short Courses
+We use 3D Slicer and SlicerMorph to teach intense short courses on 3D digital morphology and morphometrics techniques and workflows. Over 300 participant has taken our courses to get familiar with 3D morphology through SlicerMorph. If you are interested in sponsoring a workshop or an intense course tailored to your needs, please [get in touch with us](mailto:slicermorph@outlook.com)
 
 ## Important Websites
 *	SlicerMorph project website: https://slicermorph.github.io (website list upcoming events, including monthly user group meeting. It also has pointers to some of the online specimen repositories).
 *	SlicerMorph Step-by-Step Tutorials: https://github.com/SlicerMorph/Tutorials
-*	Please sign up for the SlicerMorph announcement to receive notifications about SlicerMorph project, extension updates and upcoming demos and workshops http://mailman11.u.washington.edu/mailman/listinfo/slicermorph-announcements
+*	SlicerMorph (and MorphoCloud) mailing list: Sign up to get notified about SlicerMorph project, extension updates, upcoming events (like our monthly office hours) http://mailman11.u.washington.edu/mailman/listinfo/slicermorph-announcements
 * [Introduction to Slicer - Official Slicer Documentation](https://slicer.readthedocs.io/en/latest/user_guide/getting_started.html)
 * [SlicerMorph YouTube Channel](https://www.youtube.com/channel/UCy3Uz1ikRH1B7WSMfaldcjQ): provides visual tutorials for GPA, semilandmarks, and others.
 *	Slicer Forum, https://discourse.slicer.org (alternatively you can use your github or google accounts to signup)
 
 ## Funding Acknowledgement
-This project is supported by NSF Advances in Biological Informatics (1759883) and NSF/DBI Cyberinfrastructure (2301405) grants to A. Murat Maga.
+This project is supported by NSF Advances in Biological Informatics (1759883) and NSF/DBI Cyberinfrastructure (2301405) grants.
 
 <img src="./NSF_4-Color_bitmap_Logo.png" alt="NSF logo" width="256" height="256">
 
