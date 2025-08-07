@@ -120,106 +120,29 @@ This module performs standard Generalized Procrustes Analysis (GPA) based on Dry
 
 
 
-class sliderGroup(qt.QGroupBox):
-    def setValue(self, value):
-        # Set based on dynamic value
-        slider_value = self.map_dynamic_to_slider(value)
-        self.slider.setValue(slider_value)
-
-    def connectList(self, mylist):
-        self.list = mylist
-
-    def populateComboBox(self, boxlist):
-        self.comboBox.clear()
-        for i in boxlist:
-            self.comboBox.addItem(i)
-
-    def setLabelTest(self, i):
-        j = str(i)
-        self.label.setText(j)
-
-    def boxValue(self):
-        tmp = self.comboBox.currentIndex
-        return tmp
-
-    def sliderValue(self):
-        tmp = self.spinBox.value
-        return tmp
-
-    def clear(self):
-        self.spinBox.setValue(0)
-        self.comboBox.clear()
-
-    def __init__(self, parent=None, onSliderChanged=None, onComboBoxChanged=None, dynamic_min=0, dynamic_max=1):
-        super().__init__(parent)
-
+class PCSliderController:
+    def __init__(self, comboBox, slider, spinBox, dynamic_min=0.0, dynamic_max=1.0):
+        self.comboBox = comboBox
+        self.slider = slider
+        self.spinBox = spinBox
         self.dynamic_min = dynamic_min
         self.dynamic_max = dynamic_max
 
-        # slider
-        self.slider = qt.QSlider(qt.Qt.Horizontal)
-        self.slider.setTickPosition(qt.QSlider.TicksBothSides)
-        self.slider.setTickInterval(10)
-        self.slider.setSingleStep(1)
-        self.slider.setMaximum(100)
         self.slider.setMinimum(-100)
-
-        # combo box to be populated with list of PC values
-        self.comboBox = qt.QComboBox()
-
-        # spin box to display scaling
-        self.spinBox = qt.QDoubleSpinBox()
+        self.slider.setMaximum(100)
         self.spinBox.setDecimals(3)
-        self.spinBox.setMinimum(self.dynamic_min)
-        self.spinBox.setMaximum(self.dynamic_max)
+        self.spinBox.setMinimum(dynamic_min)
+        self.spinBox.setMaximum(dynamic_max)
 
-        # connect slider and spinbox to each other with mapped values
+        # Connect signals
         self.slider.valueChanged.connect(self.updateSpinBoxFromSlider)
         self.spinBox.valueChanged.connect(self.updateSliderFromSpinBox)
 
-        if onSliderChanged:
-            self.slider.valueChanged.connect(onSliderChanged)
-        if onComboBoxChanged:
-            self.comboBox.currentIndexChanged.connect(onComboBoxChanged)
-
-        # layout
-        slidersLayout = qt.QGridLayout()
-        slidersLayout.addWidget(self.comboBox, 1, 1)
-        slidersLayout.addWidget(self.slider, 1, 2)
-        slidersLayout.addWidget(self.spinBox, 1, 3)
-        self.setLayout(slidersLayout)
-
-    def setRange(self, new_min, new_max):
-        """Change the dynamic min and max range on the fly and reset current value to numerical 0."""
-        self.dynamic_min = new_min
-        self.dynamic_max = new_max
-
-        # Update the spinBox bounds
-        self.spinBox.blockSignals(True)
-        self.spinBox.setMinimum(self.dynamic_min)
-        self.spinBox.setMaximum(self.dynamic_max)
-        self.spinBox.blockSignals(False)
-
-        # Calculate the slider position that matches dynamic value = 0
-        slider_value_for_zero = self.map_dynamic_to_slider(0)
-
-        # Clamp into valid slider range [-100, 100]
-        slider_value_for_zero = max(min(slider_value_for_zero, 100), -100)
-
-        # Reset slider to that position
-        self.slider.blockSignals(True)
-        self.slider.setValue(slider_value_for_zero)
-        self.slider.blockSignals(False)
-
-        self.updateSpinBoxFromSlider(slider_value_for_zero)
-
     def map_slider_to_dynamic(self, slider_value):
-        # Map [-100, 100] → [dynamic_min, dynamic_max]
         normalized = (slider_value + 100) / 200
         return self.dynamic_min + normalized * (self.dynamic_max - self.dynamic_min)
 
     def map_dynamic_to_slider(self, dynamic_value):
-        # Map [dynamic_min, dynamic_max] → [-100, 100]
         normalized = (dynamic_value - self.dynamic_min) / (self.dynamic_max - self.dynamic_min)
         return int(normalized * 200 - 100)
 
@@ -234,6 +157,33 @@ class sliderGroup(qt.QGroupBox):
         self.slider.blockSignals(True)
         self.slider.setValue(slider_value)
         self.slider.blockSignals(False)
+
+    def setRange(self, new_min, new_max):
+        self.dynamic_min = new_min
+        self.dynamic_max = new_max
+        self.spinBox.setMinimum(new_min)
+        self.spinBox.setMaximum(new_max)
+        self.setValue(0)
+
+    def setValue(self, value):
+        """Set value using dynamic range."""
+        slider_value = self.map_dynamic_to_slider(value)
+        self.slider.setValue(slider_value)
+
+    def getValue(self):
+        return self.spinBox.value()
+
+    def clear(self):
+        self.spinBox.setValue(0)
+        self.comboBox.clear()
+
+    def populateComboBox(self, boxlist):
+        self.comboBox.clear()
+        for item in boxlist:
+            self.comboBox.addItem(item)
+
+    def comboBoxIndex(self):
+        return self.comboBox.currentIndex()
 
 
 class LMData:
@@ -266,7 +216,7 @@ class LMData:
       return 1
     except:
       print("Error loading results")
-      self.GPALogTextbox.insertPlainText("Error loading results: Failed to initialize from file \n")
+      self.ui.GPALogTextbox.insertPlainText("Error loading results: Failed to initialize from file \n")
       return 0
 
   def calcLMVariation(self, SampleScaleFactor, BoasOption):
@@ -429,6 +379,10 @@ class LMData:
 class GPAWidget(ScriptedLoadableModuleWidget):
   """Uses ScriptedLoadableModuleWidget base class, available at: https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
+  def __init__(self, parent=None):
+      ScriptedLoadableModuleWidget.__init__(self, parent)
+      self.ui = None
+
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
     # Initialize zoom factor for widget
@@ -450,362 +404,71 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         slicer.util.infoDisplay("Issue while installing Pandas Python package. Please install manually.")
         progressDialog.close()
 
-    # Set up tabs to split workflow
-    tabsWidget = qt.QTabWidget()
-    setupTab = qt.QWidget()
-    setupTabLayout = qt.QFormLayout(setupTab)
-    exploreTab = qt.QWidget()
-    exploreTabLayout = qt.QFormLayout(exploreTab)
-    visualizeTab = qt.QWidget()
-    visualizeTabLayout = qt.QFormLayout(visualizeTab)
+    # Path to the UI file
+    moduleDir = os.path.dirname(__file__)
+    uiPath = os.path.join(moduleDir, "/resources/GPA.ui")
 
-    tabsWidget.addTab(setupTab, "Setup Analysis")
-    tabsWidget.addTab(exploreTab, "Explore Data/Results")
-    tabsWidget.addTab(visualizeTab, "Interactive 3D Visualization")
-    self.layout.addWidget(tabsWidget)
+    if not os.path.exists(uiPath):
+        logging.error(f"UI file not found: {uiPath}")
+        return
 
+    # Load UI
+    self.ui = slicer.util.loadUI(uiPath)
+
+    # Add custom layout buttons to menu
+    self.addLayoutButton(500, 'GPA Module View', 'Custom layout for GPA module', 'LayoutSlicerMorphView.png', slicer.customLayoutSM)
+    self.addLayoutButton(501, 'Table Only View', 'Custom layout for GPA module', 'LayoutTableOnlyView.png', slicer.customLayoutTableOnly)
+    self.addLayoutButton(502, 'Plot Only View', 'Custom layout for GPA module', 'LayoutPlotOnlyView.png', slicer.customLayoutPlotOnly)
+    
     ################################### Setup Tab ###################################
-
-    inbutton=ctk.ctkCollapsibleButton()
-    inbutton.text="Setup Analysis"
-    inputLayout= qt.QGridLayout(inbutton)
-    setupTabLayout.addRow(inbutton)
-
-    self.LMbutton=qt.QPushButton("Select Landmark Files ...")
-    self.LMbutton.setToolTip("Select one landmark file for each subject. Files must contain the identical number of landmark points.")
-    inputLayout.addWidget(self.LMbutton,1,1,1,3)
-    self.LMbutton.connect('clicked(bool)', self.onSelectLandmarkFiles)
-
-    # File viewer box area
-    fileViewerCollapsibleButton = ctk.ctkCollapsibleButton()
-    fileViewerLayout = qt.QFormLayout(fileViewerCollapsibleButton)
-    fileViewerCollapsibleButton.text = "View selected landmark files"
-    fileViewerCollapsibleButton.collapsed = True
-    inputLayout.addWidget(fileViewerCollapsibleButton,2,1,1,3)
-
-    # File viewer box
-    self.inputFileTable = qt.QTextEdit()
-    self.inputFileTable.setTextInteractionFlags(False)
-    fileViewerLayout.addRow(self.inputFileTable)
-
-    # Clear Button
-    #
-    self.clearButton = qt.QPushButton("Clear landmark file selections")
-    self.clearButton.toolTip = "Clear the landmark files selected in the viewer boxes"
-    self.clearButton.enabled = False
-    fileViewerLayout.addRow(self.clearButton)
-    self.clearButton.connect('clicked(bool)', self.onClearButton)
-
-    # Select output directory
-    self.outText, outLabel, self.outbutton=self.textIn('Select output directory: ','', '')
-    inputLayout.addWidget(self.outText,3,2)
-    inputLayout.addWidget(outLabel,3,1)
-    inputLayout.addWidget(self.outbutton,3,3)
+    self.ui.LMbutton.connect('clicked(bool)', self.onSelectLandmarkFiles)
+    self.ui.clearButton.connect('clicked(bool)', self.onClearButton)
     self.outbutton.connect('clicked(bool)', self.onSelectOutputDirectory)
-
-    self.excludeLMLabel=qt.QLabel('Exclude landmarks:')
-    inputLayout.addWidget(self.excludeLMLabel,4,1)
-
-    self.excludeLMText=qt.QLineEdit()
-    self.excludeLMText.setToolTip("No spaces. Separate numbers by commas.  Example:  51,52")
-    inputLayout.addWidget(self.excludeLMText,4,2,1,2)
-
-    self.BoasOptionCheckBox = qt.QCheckBox()
-    self.BoasOptionCheckBox.setText("Use Boas coordinates for GPA")
-    self.BoasOptionCheckBox.checked = 0
-    self.BoasOptionCheckBox.setToolTip("If checked, GPA will skip scaling.")
-    inputLayout.addWidget(self.BoasOptionCheckBox,5,2)
-
-    # Load covariates options
-    loadCovariatesCollapsibleButton = ctk.ctkCollapsibleGroupBox()
-    loadCovariatesLayout = qt.QGridLayout(loadCovariatesCollapsibleButton)
-    loadCovariatesCollapsibleButton.title = "Covariate options"
-    loadCovariatesCollapsibleButton.collapsed = True
-    inputLayout.addWidget(loadCovariatesCollapsibleButton,6,1,1,3)
-
-    # Generate covariates button
-    generateCovariatesTableBox=ctk.ctkCollapsibleGroupBox()
-    generateCovariatesTableBox.title = "Generate new covariate table template"
-    generateCovariatesTableBoxLayout = qt.QHBoxLayout()
-    generateCovariatesTableBox.setLayout(generateCovariatesTableBoxLayout)
-    loadCovariatesLayout.addWidget(generateCovariatesTableBox,1,1)
-    self.factorNames, factorNamesLabel, self.generateCovariatesTableButton=self.textIn('Factor Names:','', 'Generate Template')
-    self.factorNames.setToolTip("Enter factor names separated with a comma")
-    self.factorNames.connect('textChanged(const QString &)', self.factorStringChanged)
-    self.generateCovariatesTableButton.checkable = False
-    self.generateCovariatesTableButton.toolTip = "Create and open a new CSV format file to enter covariate data"
-    self.generateCovariatesTableButton.enabled = False
-    generateCovariatesTableBoxLayout.addWidget(factorNamesLabel)
-    generateCovariatesTableBoxLayout.addWidget(self.factorNames)
-    generateCovariatesTableBoxLayout.addWidget(self.generateCovariatesTableButton)
-    self.generateCovariatesTableButton.connect('clicked(bool)', self.onGenerateCovariatesTable)
-
-    # Load covariates table
-    loadCovariatesTableBox=ctk.ctkCollapsibleGroupBox()
-    loadCovariatesTableBox.title = "Import covariates table to include in analysis"
-    loadCovariatesTableBoxLayout = qt.QHBoxLayout()
-    loadCovariatesTableBox.setLayout(loadCovariatesTableBoxLayout)
-    loadCovariatesLayout.addWidget(loadCovariatesTableBox,2,1)
-    self.selectCovariatesText, selectCovariatesLabel, self.selectCovariatesButton=self.textIn('Select covariates table:','', '')
-    loadCovariatesTableBoxLayout.addWidget(selectCovariatesLabel)
-    loadCovariatesTableBoxLayout.addWidget(self.selectCovariatesText)
-    loadCovariatesTableBoxLayout.addWidget(self.selectCovariatesButton)
+    self.ui.generateCovariatesTableButton.connect('clicked(bool)', self.onGenerateCovariatesTable)
     self.selectCovariatesButton.connect('clicked(bool)', self.onSelectCovariatesTable)
-
-    #Load Button
-    self.loadButton = qt.QPushButton("Execute GPA + PCA")
-    self.loadButton.checkable = False
-    inputLayout.addWidget(self.loadButton,7,1,1,3)
-    self.loadButton.toolTip = "Push to start the program. Make sure you have filled in all the data."
-    self.loadButton.enabled = False
-    self.loadButton.connect('clicked(bool)', self.onLoad)
-
-    #Open Results
-    self.openResultsButton = qt.QPushButton("View output files")
-    self.openResultsButton.checkable = False
-    inputLayout.addWidget(self.openResultsButton,8,1,1,3)
-    self.openResultsButton.toolTip = "Push to open the folder where the GPA + PCA results are stored"
-    self.openResultsButton.enabled = False
-    self.openResultsButton.connect('clicked(bool)', self.onOpenResults)
-
-    #Load from file option
-    loadFromFileCollapsibleButton = ctk.ctkCollapsibleButton()
-    loadFromFileLayout = qt.QGridLayout(loadFromFileCollapsibleButton)
-    loadFromFileCollapsibleButton.text = "Load previous analysis"
-    loadFromFileCollapsibleButton.collapsed = True
-    setupTabLayout.addRow(loadFromFileCollapsibleButton)
-
-    #Select results folder
-    self.resultsText, resultsLabel, self.resultsButton=self.textIn('Results Directory','', '')
-    loadFromFileLayout.addWidget(self.resultsText,2,2)
-    loadFromFileLayout.addWidget(resultsLabel,2,1)
-    loadFromFileLayout.addWidget(self.resultsButton,2,3)
+    self.ui.loadButton.connect('clicked(bool)', self.onLoad)
+    self.ui.openResultsButton.connect('clicked(bool)', self.onOpenResults)
     self.resultsButton.connect('clicked(bool)', self.onSelectResultsDirectory)
-
-    #Load Results Button
-    self.loadResultsButton = qt.QPushButton("Load GPA + PCA Analysis from File")
-    self.loadResultsButton.checkable = False
-    loadFromFileLayout.addWidget(self.loadResultsButton,5,1,1,3)
-    self.loadResultsButton.toolTip = "Select previous analysis from file and restore."
-    self.loadResultsButton.enabled = False
-    self.loadResultsButton.connect('clicked(bool)', self.onLoadFromFile)
-
-    # GPA Log Textbox
-    GPALogTextboxCollapsibleButton = ctk.ctkCollapsibleButton()
-    GPALogTextboxLayout = qt.QGridLayout(GPALogTextboxCollapsibleButton)
-    GPALogTextboxCollapsibleButton.text = "GPA module log"
-    GPALogTextboxCollapsibleButton.collapsed = False
-    setupTabLayout.addRow(GPALogTextboxCollapsibleButton)
-    self.GPALogTextbox = qt.QPlainTextEdit()
-    self.GPALogTextbox.insertPlainText("GPA Module Log Information\n")
-    GPALogTextboxLayout.addWidget(self.GPALogTextbox,6,1,1,3)
+    self.ui.loadResultsButton.connect('clicked(bool)', self.onLoadFromFile)
 
     ################################### Explore Tab ###################################
-    #Mean Shape display section
-    meanShapeFrame = ctk.ctkCollapsibleButton()
-    meanShapeFrame.text="Mean Shape Plot Options"
-    meanShapeLayout= qt.QGridLayout(meanShapeFrame)
-    exploreTabLayout.addRow(meanShapeFrame)
-
-    meanButtonLable=qt.QLabel("Mean shape visibility: ")
-    meanShapeLayout.addWidget(meanButtonLable,1,1)
-
-    self.plotMeanButton3D = qt.QPushButton("Toggle mean shape visibility")
-    self.plotMeanButton3D.checkable = False
-    self.plotMeanButton3D.toolTip = "Toggle visibility of mean shape plot"
-    meanShapeLayout.addWidget(self.plotMeanButton3D,1,2)
-    self.plotMeanButton3D.enabled = False
-    self.plotMeanButton3D.connect('clicked(bool)', self.toggleMeanPlot)
-
-    meanButtonLable=qt.QLabel("Mean point label visibility: ")
-    meanShapeLayout.addWidget(meanButtonLable,2,1)
-
-    self.showMeanLabelsButton = qt.QPushButton("Toggle label visibility")
-    self.showMeanLabelsButton.checkable = False
-    self.showMeanLabelsButton.toolTip = "Toggle visibility of mean point labels"
-    meanShapeLayout.addWidget(self.showMeanLabelsButton,2,2)
-    self.showMeanLabelsButton.enabled = False
-    self.showMeanLabelsButton.connect('clicked(bool)', self.toggleMeanLabels)
-
-    meanColorLable=qt.QLabel("Mean shape color: ")
-    meanShapeLayout.addWidget(meanColorLable,3,1)
-    self.meanShapeColor = ctk.ctkColorPickerButton()
-    self.meanShapeColor.displayColorName = False
-    self.meanShapeColor.color = qt.QColor(250,128,114)
-    meanShapeLayout.addWidget(self.meanShapeColor,3,2)
-    self.meanShapeColor.connect('colorChanged(QColor)', self.toggleMeanColor)
-
-    self.scaleMeanShapeSlider = ctk.ctkSliderWidget()
-    self.scaleMeanShapeSlider.singleStep = .1
-    self.scaleMeanShapeSlider.minimum = 0
-    self.scaleMeanShapeSlider.maximum = 10
-    self.scaleMeanShapeSlider.value = 3
-    self.scaleMeanShapeSlider.setToolTip("Set scale for mean shape glyphs")
-    meanShapeSliderLabel=qt.QLabel("Mean shape glyph scale")
-    meanShapeLayout.addWidget(meanShapeSliderLabel,4,1)
-    meanShapeLayout.addWidget(self.scaleMeanShapeSlider,4,2)
-    self.scaleMeanShapeSlider.connect('valueChanged(double)', self.scaleMeanGlyph)
-
-     # Landmark Variance Section
-    distributionFrame=ctk.ctkCollapsibleButton()
-    distributionFrame.text="Landmark Variance Plot Options"
-    distributionLayout= qt.QGridLayout(distributionFrame)
-    exploreTabLayout.addRow(distributionFrame)
-
-    self.EllipseType=qt.QRadioButton()
-    ellipseTypeLabel=qt.QLabel("Ellipse type")
-    self.EllipseType.setChecked(True)
-    distributionLayout.addWidget(ellipseTypeLabel,2,1)
-    distributionLayout.addWidget(self.EllipseType,2,2,1,2)
-    self.SphereType=qt.QRadioButton()
-    sphereTypeLabel=qt.QLabel("Sphere type")
-    distributionLayout.addWidget(sphereTypeLabel,3,1)
-    distributionLayout.addWidget(self.SphereType,3,2,1,2)
-    self.CloudType=qt.QRadioButton()
-    cloudTypeLabel=qt.QLabel("Point cloud type")
-    distributionLayout.addWidget(cloudTypeLabel,4,1)
-    distributionLayout.addWidget(self.CloudType,4,2,1,2)
-    self.NoneType=qt.QRadioButton()
-    noneTypeLabel=qt.QLabel("None")
-    distributionLayout.addWidget(noneTypeLabel,5,1)
-    distributionLayout.addWidget(self.NoneType,5,2,1,2)
-
-    self.scaleSlider = ctk.ctkSliderWidget()
-    self.scaleSlider.singleStep = .1
-    self.scaleSlider.minimum = 0
-    self.scaleSlider.maximum = 10
-    self.scaleSlider.value = 3
-    self.scaleSlider.enabled = False
-    self.scaleSlider.setToolTip("Set scale for variance visualization")
-    sliderLabel=qt.QLabel("Scale Glyphs")
-    distributionLayout.addWidget(sliderLabel,2,3)
-    distributionLayout.addWidget(self.scaleSlider,3,3,1,2)
-    self.scaleSlider.connect('valueChanged(double)', self.onPlotDistribution)
-
-    self.plotDistributionButton = qt.QPushButton("Plot LM variance")
-    self.plotDistributionButton.checkable = False
-    self.plotDistributionButton.toolTip = "Visualize variance of landmarks from all subjects"
-    distributionLayout.addWidget(self.plotDistributionButton,7,1,1,4)
-    self.plotDistributionButton.enabled = False
-    self.plotDistributionButton.connect('clicked(bool)', self.onPlotDistribution)
-
-    #PC plot section
-    plotFrame=ctk.ctkCollapsibleButton()
-    plotFrame.text="PCA Scatter Plot Options"
-    plotLayout= qt.QGridLayout(plotFrame)
-    exploreTabLayout.addRow(plotFrame)
-
-    self.XcomboBox=qt.QComboBox()
-    Xlabel=qt.QLabel("X Axis")
-    plotLayout.addWidget(Xlabel,1,1)
-    plotLayout.addWidget(self.XcomboBox,1,2,1,3)
-
-    self.YcomboBox=qt.QComboBox()
-    Ylabel=qt.QLabel("Y Axis")
-    plotLayout.addWidget(Ylabel,2,1)
-    plotLayout.addWidget(self.YcomboBox,2,2,1,3)
-
-    self.selectFactor=qt.QComboBox()
-    self.selectFactor.addItem("No factor data")
-    selectFactorLabel=qt.QLabel("Select factor: ")
-    plotLayout.addWidget(selectFactorLabel,4,1)
-    plotLayout.addWidget(self.selectFactor,4,2)
-
-    self.plotButton = qt.QPushButton("Scatter Plot")
-    self.plotButton.checkable = False
-    self.plotButton.toolTip = "Plot PCs"
-    plotLayout.addWidget(self.plotButton,5,1,1,5)
-    self.plotButton.enabled = False
-    self.plotButton.connect('clicked(bool)', self.plot)
-
-    # Lollipop Plot Section
-
-    lolliFrame=ctk.ctkCollapsibleButton()
-    lolliFrame.text="Lollipop Plot Options"
-    lolliLayout= qt.QGridLayout(lolliFrame)
-    exploreTabLayout.addRow(lolliFrame)
-
-    self.vectorOne=qt.QComboBox()
-    vectorOneLabel=qt.QLabel("Vector One: Red")
-    lolliLayout.addWidget(vectorOneLabel,1,1)
-    lolliLayout.addWidget(self.vectorOne,1,2,1,3)
-
-    self.vectorTwo=qt.QComboBox()
-    vector2Label=qt.QLabel("Vector Two: Green")
-    lolliLayout.addWidget(vector2Label,2,1)
-    lolliLayout.addWidget(self.vectorTwo,2,2,1,3)
-
-    self.vectorThree=qt.QComboBox()
-    vector3Label=qt.QLabel("Vector Three: Blue")
-    lolliLayout.addWidget(vector3Label,3,1)
-    lolliLayout.addWidget(self.vectorThree,3,2,1,3)
-
-    self.TwoDType=qt.QCheckBox()
-    self.TwoDType.checked = False
-    self.TwoDType.setText("Lollipop 2D Projection")
-    lolliLayout.addWidget(self.TwoDType,4,2)
-
-    self.lolliButton = qt.QPushButton("Lollipop Vector Plot")
-    self.lolliButton.checkable = False
-    self.lolliButton.toolTip = "Plot PC vectors"
-    lolliLayout.addWidget(self.lolliButton,6,1,1,6)
-    self.lolliButton.enabled = False
-    self.lolliButton.connect('clicked(bool)', self.lolliPlot)
+    self.ui.showMeanLabelsButton.connect('clicked(bool)', self.toggleMeanLabels)
+    self.ui.meanShapeColor.connect('colorChanged(QColor)', self.toggleMeanColor)
+    self.ui.scaleMeanShapeSlider.connect('valueChanged(double)', self.scaleMeanGlyph)
+    self.ui.scaleSlider.connect('valueChanged(double)', self.onPlotDistribution)
+    self.ui.plotDistributionButton.connect('clicked(bool)', self.onPlotDistribution)
+    self.ui.plotButton.connect('clicked(bool)', self.plot)
+    self.ui.lolliButton.connect('clicked(bool)', self.lolliPlot)
 
     ################################### Visualize Tab ###################################
-    # Interactive view set up tab
-    selectTemplatesButton=ctk.ctkCollapsibleButton()
-    selectTemplatesButton.text="Setup Interactive Visualization"
-    selectTemplatesLayout= qt.QGridLayout(selectTemplatesButton)
-    visualizeTabLayout.addRow(selectTemplatesButton)
+    self.ui.landmarkVisualizationType.connect('toggled(bool)', self.onToggleVisualization)
+    self.ui.modelVisualizationType.connect('toggled(bool)', self.onToggleVisualization)
+    self.ui.grayscaleSelector.connect('validInputChanged(bool)', self.onModelSelected)
+    self.ui.FudSelect.connect('validInputChanged(bool)', self.onModelSelected)
+    self.ui.selectorButton.connect('clicked(bool)', self.onSelect)
+    self.ui.startRecordButton.connect('clicked(bool)', self.onStartRecording)
+    self.ui.stopRecordButton.connect('clicked(bool)', self.onStopRecording)
+    ########fix
+    resetButton.connect('clicked(bool)', self.reset)
+    ######
+    self.ui.updateMagnificationButton.clicked.connect(onUpdateMagnificationClicked)
+    self.PCList=[]
 
-    self.landmarkVisualizationType=qt.QRadioButton()
-    landmarkVisualizationTypeLabel=qt.QLabel("Mean shape visualization")
-    self.landmarkVisualizationType.setChecked(True)
-    self.landmarkVisualizationType.enabled = False
-    selectTemplatesLayout.addWidget(landmarkVisualizationTypeLabel,2,1)
-    selectTemplatesLayout.addWidget(self.landmarkVisualizationType,2,2,1,4)
-    self.modelVisualizationType=qt.QRadioButton()
-    self.modelVisualizationType.enabled = False
-    modelVisualizationTypeLabel=qt.QLabel("3D model visualization")
-    selectTemplatesLayout.addWidget(modelVisualizationTypeLabel,3,1)
-    selectTemplatesLayout.addWidget(self.modelVisualizationType,3,2,1,4)
-    self.landmarkVisualizationType.connect('toggled(bool)', self.onToggleVisualization)
-    self.modelVisualizationType.connect('toggled(bool)', self.onToggleVisualization)
-
-    self.grayscaleSelectorLabel = qt.QLabel("Specify reference model")
-    self.grayscaleSelectorLabel.setToolTip( "Load the model for the interactive visualization")
-    self.grayscaleSelectorLabel.enabled = False
-    selectTemplatesLayout.addWidget(self.grayscaleSelectorLabel,4,2)
-
-    self.grayscaleSelector = ctk.ctkPathLineEdit()
-    self.grayscaleSelector.filters  = ctk.ctkPathLineEdit().Files
-    self.grayscaleSelector.nameFilters= ["Model (*.ply *.stl *.obj *.vtk *.vtp *.orig *.g .byu )"]
-    self.grayscaleSelector.enabled = False
-    self.grayscaleSelector.connect('validInputChanged(bool)', self.onModelSelected)
-    selectTemplatesLayout.addWidget(self.grayscaleSelector,4,3,1,3)
-
-    self.FudSelectLabel = qt.QLabel("Specify LM set for the selected model: ")
-    self.FudSelectLabel.setToolTip( "Select the landmark set that corresponds to the reference model")
-    self.FudSelectLabel.enabled = False
-    self.FudSelect = ctk.ctkPathLineEdit()
-    self.FudSelect.filters  = ctk.ctkPathLineEdit().Files
-    self.FudSelect.nameFilters=["Landmarks (*.json *.mrk.json *.fcsv )"]
-    self.FudSelect.enabled = False
-    self.FudSelect.connect('validInputChanged(bool)', self.onModelSelected)
-    selectTemplatesLayout.addWidget(self.FudSelectLabel,5,2)
-    selectTemplatesLayout.addWidget(self.FudSelect,5,3,1,3)
-
-    self.selectorButton = qt.QPushButton("Apply")
-    self.selectorButton.checkable = False
-    selectTemplatesLayout.addWidget(self.selectorButton,6,1,1,5)
-    self.selectorButton.enabled = False
-    self.selectorButton.connect('clicked(bool)', self.onSelect)
-
+    self.pcController = PCSliderController(
+        comboBox=self.ui.pcComboBox,
+        slider=self.ui.pcSlider,
+        spinBox=self.ui.pcSpinBox,
+        dynamic_min=-1.0,
+        dynamic_max=1.0
+    )
+    self.pcController.comboBoxList = self.PCList  # optional: if needed for later use
+    self.pcController.populateComboBox(self.PCList)
+        
     # PC warping helper functions
     def setupPCTransform():
-      if self.slider1.boxValue() > 0:
-        self.currentPC = self.slider1.boxValue()
+      pc_index = self.pcController.comboBoxIndex()
+      if pc_index > 0:
+        self.currentPC = pc_index
         self.pcMax = np.max(self.scatterDataAll, axis=0)[self.currentPC - 1]
         self.pcMin = np.min(self.scatterDataAll, axis=0)[self.currentPC - 1]
         self.pcScoreAbsMax = max(abs(self.pcMin), abs(self.pcMax))  # Maximum absolute deviation
@@ -818,11 +481,13 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
         self.gridTransformNode.GetTransformFromParent().SetDisplacementGridData(self.displacementGridData)
         self.cloneLandmarkNode.SetAndObserveTransformNodeID(self.gridTransformNode.GetID())
-        if hasattr(self, 'cloneModelNode') and self.modelVisualizationType.checked:
+
+        if hasattr(self, 'cloneModelNode') and self.ui.modelVisualizationType.checked:
           self.cloneModelNode.SetAndObserveTransformNodeID(self.gridTransformNode.GetID())
 
-        self.slider1.setRange(self.pcMin, self.pcMax)  # Dynamic range displayed
-        self.slider1.spinBox.setValue(0)
+        # Set dynamic range and reset spin box
+        self.pcController.setRange(self.pcMin, self.pcMax)
+        self.pcController.setValue(0)
         updatePCScaling()
 
     def getGridTransform(pcValue):
@@ -840,7 +505,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       VTKTPS.SetBasisToR()
 
       modelBounds = [0] * 6
-      if hasattr(self, 'cloneModelNode') and self.cloneModelNode is not None and self.modelVisualizationType.checked:
+      if hasattr(self, 'cloneModelNode') and self.cloneModelNode is not None and self.ui.modelVisualizationType.checked:
           modelBounds = getExpandedBounds(self.cloneModelNode)
       else:
           modelBounds = getExpandedBounds(self.cloneLandmarkNode)
@@ -877,7 +542,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         return bounds
     def updatePCScaling():
       if hasattr(self, 'gridTransformNode'):
-        dynamic_value = self.slider1.sliderValue()  # Mapped PC score from spinbox
+        dynamic_value = self.sliderController.sliderValue()  # Mapped PC score from spinbox
         if self.pcScoreAbsMax > 1e-6:  # Avoid division by zero
           sf = dynamic_value / self.pcScoreAbsMax
         else:
@@ -888,77 +553,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     def onUpdateMagnificationClicked():
       setupPCTransform()
-
-    # PC warping
-    vis = ctk.ctkCollapsibleButton()
-    vis.text = 'PCA Visualization Parameters'
-    visLayout = qt.QGridLayout(vis)
-    visualizeTabLayout.addRow(vis)
-    self.applyEnabled = False
-
-    # Create the spinbox for magnification
-    self.spinMagnification = qt.QDoubleSpinBox()
-    self.spinMagnification.setDecimals(3)
-    self.spinMagnification.setSingleStep(0.01)
-    self.spinMagnification.setMinimum(1)
-    self.spinMagnification.setMaximum(100)
-    self.spinMagnification.setValue(1)
-
-    # Create the label
-    magnificationLabel = qt.QLabel("Magnification factor:")
-    magnificationLabel.setAlignment(qt.Qt.AlignRight | qt.Qt.AlignVCenter)  # Right-align text
-
-    # Create apply button
-    updateMagnificationButton = qt.QPushButton("Apply")
-    updateMagnificationButton.clicked.connect(onUpdateMagnificationClicked)
-
-    # Magnification layout
-    magnificationLayout = qt.QHBoxLayout()
-    magnificationLayout.addWidget(magnificationLabel)
-    magnificationLayout.addWidget(self.spinMagnification)
-    magnificationLayout.addWidget(updateMagnificationButton)
-
-    # Create a container widget
-    magnificationWidget = qt.QWidget()
-    magnificationWidget.setLayout(magnificationLayout)
-
-    # Add to visLayout
-    visLayout.addWidget(magnificationWidget, 3, 1, 1, 3)  # row 4, column 0, span across 3 columns
-
-    self.PCList=[]
-    self.slider1=sliderGroup(onSliderChanged = updatePCScaling, onComboBoxChanged = setupPCTransform)
-    self.slider1.connectList(self.PCList)
-    visLayout.addWidget(self.slider1,4,1,1,3)
-
-    # Create Animations
-    animate=ctk.ctkCollapsibleButton()
-    animate.text='Create animation of PC Warping'
-    animateLayout= qt.QGridLayout(animate)
-    visualizeTabLayout.addRow(animate)
-
-    self.startRecordButton = qt.QPushButton("Start Recording")
-    self.startRecordButton.toolTip = "Start recording PCA warping applied manually using the slider bars."
-    self.startRecordButton.enabled = False
-    animateLayout.addWidget(self.startRecordButton,1,1,1,2)
-    self.startRecordButton.connect('clicked(bool)', self.onStartRecording)
-    self.stopRecordButton = qt.QPushButton("Stop Recording")
-    self.stopRecordButton.toolTip = "Stop recording PC warping and review recording in the Sequences module."
-    self.stopRecordButton.enabled = False
-    animateLayout.addWidget(self.stopRecordButton,1,5,1,2)
-    self.stopRecordButton.connect('clicked(bool)', self.onStopRecording)
-
-    # Reset button
-    resetButton = qt.QPushButton("Reset Scene")
-    resetButton.checkable = False
-    visualizeTabLayout.addRow(resetButton)
-    resetButton.toolTip = "Push to reset all fields."
-    resetButton.connect('clicked(bool)', self.reset)
-    self.layout.addStretch(1)
-
-    # Add menu buttons
-    self.addLayoutButton(500, 'GPA Module View', 'Custom layout for GPA module', 'LayoutSlicerMorphView.png', slicer.customLayoutSM)
-    self.addLayoutButton(501, 'Table Only View', 'Custom layout for GPA module', 'LayoutTableOnlyView.png', slicer.customLayoutTableOnly)
-    self.addLayoutButton(502, 'Plot Only View', 'Custom layout for GPA module', 'LayoutPlotOnlyView.png', slicer.customLayoutPlotOnly)
 
   # module update helper functions
   def assignLayoutDescription(self):
@@ -1035,7 +629,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
   def updateList(self):
     i,j,k=self.LM.lm.shape
     self.PCList=[]
-    self.slider1.populateComboBox(self.PCList)
+    self.pcController.populateComboBox(self.PCList)
     self.PCList.append('None')
     self.LM.val=np.real(self.LM.val)
     percentVar=self.LM.val/self.LM.val.sum()
@@ -1063,9 +657,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
   def factorStringChanged(self):
     if self.factorNames.text != "" and hasattr(self, 'inputFilePaths') and self.inputFilePaths is not []:
-      self.generateCovariatesTableButton.enabled = True
+      self.ui.generateCovariatesTableButton.enabled = True
     else:
-      self.generateCovariatesTableButton.enabled = False
+      self.ui.generateCovariatesTableButton.enabled = False
 
   def populateDistanceTable(self, files):
     sortedArray = np.zeros(len(files), dtype={'names':('filename', 'procdist'),'formats':('U50','f8')})
@@ -1118,14 +712,14 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.outputDirectory=None
     self.outText.setText(" ")
     self.LM_dir_name=None
-    self.openResultsButton.enabled = False
+    self.ui.openResultsButton.enabled = False
 
-    self.grayscaleSelector.setCurrentPath("")
-    self.FudSelect.setCurrentPath("")
-    self.grayscaleSelector.enabled = False
-    self.FudSelect.enabled = False
+    self.ui.grayscaleSelector.setCurrentPath("")
+    self.ui.FudSelect.setCurrentPath("")
+    self.ui.grayscaleSelector.enabled = False
+    self.ui.FudSelect.enabled = False
 
-    self.slider1.clear()
+    self.pcController.clear()
 
     self.vectorOne.clear()
     self.vectorTwo.clear()
@@ -1134,26 +728,26 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.YcomboBox.clear()
     self.selectFactor.clear()
     self.factorName.setText("")
-    self.scaleSlider.value=3
+    self.ui.scaleSlider.value=3
 
-    self.scaleMeanShapeSlider.value=3
-    self.meanShapeColor.color=qt.QColor(250,128,114)
+    self.ui.scaleMeanShapeSlider.value=3
+    self.ui.meanShapeColor.color=qt.QColor(250,128,114)
 
-    self.scaleSlider.enabled = False
+    self.ui.scaleSlider.enabled = False
 
     # Disable buttons for workflow
-    self.plotButton.enabled = False
+    self.ui.plotButton.enabled = False
     self.inputFactorButton.enabled = False
-    self.lolliButton.enabled = False
-    self.plotDistributionButton.enabled = False
-    self.plotMeanButton3D.enabled = False
-    self.showMeanLabelsButton.enabled = False
-    self.loadButton.enabled = False
-    self.landmarkVisualizationType.enabled = False
-    self.modelVisualizationType.enabled = False
-    self.selectorButton.enabled = False
-    self.stopRecordButton.enabled = False
-    self.startRecordButton.enabled = False
+    self.ui.lolliButton.enabled = False
+    self.ui.plotDistributionButton.enabled = False
+    self.ui.plotMeanButton3D.enabled = False
+    self.ui.showMeanLabelsButton.enabled = False
+    self.ui.loadButton.enabled = False
+    self.ui.landmarkVisualizationType.enabled = False
+    self.ui.modelVisualizationType.enabled = False
+    self.ui.selectorButton.enabled = False
+    self.ui.stopRecordButton.enabled = False
+    self.ui.startRecordButton.enabled = False
 
     #delete data from previous runs
     self.nodeCleanUp()
@@ -1186,7 +780,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
   def onClearButton(self):
     self.inputFileTable.clear()
     self.inputFilePaths = []
-    self.clearButton.enabled = False
+    self.ui.clearButton.enabled = False
 
   def onSelectLandmarkFiles(self):
     self.inputFileTable.clear()
@@ -1194,10 +788,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     filter = "Landmarks (*.json *.mrk.json *.fcsv )"
     self.inputFilePaths = sorted(qt.QFileDialog().getOpenFileNames(None, "Window name", "", filter))
     self.inputFileTable.plainText = '\n'.join(self.inputFilePaths)
-    self.clearButton.enabled = True
+    self.ui.clearButton.enabled = True
     #enable load button if required fields are complete
     filePathsExist = bool(self.inputFilePaths is not [] )
-    self.loadButton.enabled = bool (filePathsExist and hasattr(self, 'outputDirectory'))
+    self.ui.loadButton.enabled = bool (filePathsExist and hasattr(self, 'outputDirectory'))
     if filePathsExist:
       self.LM_dir_name = os.path.dirname(self.inputFilePaths[0])
       basename, self.extension = os.path.splitext(self.inputFilePaths[0])
@@ -1218,9 +812,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.outText.setText(self.outputDirectory)
     try:
       filePathsExist = self.inputFilePaths is not []
-      self.loadButton.enabled = bool (filePathsExist and self.outputDirectory)
+      self.ui.loadButton.enabled = bool (filePathsExist and self.outputDirectory)
     except AttributeError:
-      self.loadButton.enabled = False
+      self.ui.loadButton.enabled = False
 
   def onSelectCovariatesTable(self):
     dialog = qt.QFileDialog()
@@ -1237,7 +831,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       qt.QMessageBox.critical(slicer.util.mainWindow(),
       'Error', 'Please select landmark files for analysis before generating covariate table')
       logging.debug('No input files are selected')
-      self.GPALogTextbox.insertPlainText("Error: No input files were selected for generating the covariate table\n")
+      self.ui.GPALogTextbox.insertPlainText("Error: No input files were selected for generating the covariate table\n")
       return
     #if #check for rows, columns
     factorList = self.factorNames.text.split(",")
@@ -1245,7 +839,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       qt.QMessageBox.critical(slicer.util.mainWindow(),
       'Error', 'Please specify at least one factor name to generate a covariate table template')
       logging.debug('No factor names are provided for covariate table template')
-      self.GPALogTextbox.insertPlainText("Error: No factor names were provided for the covariate table template\n")
+      self.ui.GPALogTextbox.insertPlainText("Error: No factor names were provided for the covariate table template\n")
       return
     sortedArray = np.zeros(len(self.files), dtype={'names':('filename', 'procdist'),'formats':('U50','f8')})
     sortedArray['filename']=self.files
@@ -1269,12 +863,12 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.covariateTableFile = os.path.join(covariateFolder, "covariateTable.csv")
       slicer.util.saveNode(self.factorTableNode, self.covariateTableFile)
     except:
-      self.GPALogTextbox.insertPlainText("Covariate table output failed: Could not write {self.factorTableNode} to {self.covariateTableFile}\n")
+      self.ui.GPALogTextbox.insertPlainText("Covariate table output failed: Could not write {self.factorTableNode} to {self.covariateTableFile}\n")
     slicer.mrmlScene.RemoveNode(self.factorTableNode)
     self.selectCovariatesText.setText(self.covariateTableFile)
     qpath = qt.QUrl.fromLocalFile(os.path.dirname(covariateFolder+os.path.sep))
     qt.QDesktopServices().openUrl(qpath)
-    self.GPALogTextbox.insertPlainText(f"Covariate table template generated in folder: \n{covariateFolder}\n Please fill in covariate columns, save, and load table in the next step to proceed.\n")
+    self.ui.GPALogTextbox.insertPlainText(f"Covariate table template generated in folder: \n{covariateFolder}\n Please fill in covariate columns, save, and load table in the next step to proceed.\n")
 
   def onLoadCovariatesTable(self):
     numberOfInputFiles = len(self.inputFilePaths)
@@ -1282,7 +876,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     #columnsToRemove = []
     if numberOfInputFiles<1:
       logging.debug('No input files are selected')
-      self.GPALogTextbox.insertPlainText("Error: No input files are selected for the covariate table\n")
+      self.ui.GPALogTextbox.insertPlainText("Error: No input files are selected for the covariate table\n")
       return runAnalysis
     try:
       # refresh covariateTableFile from GUI
@@ -1302,20 +896,20 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     indexColumn = self.factorTableNode.GetTable().GetColumn(0)
     if indexColumn.GetNumberOfTuples() != numberOfInputFiles:
       logging.debug('Covariate table import failed, covariate table row number does not match number of input files')
-      self.GPALogTextbox.insertPlainText(f"Error: Covariate table import failed, covariate table row number does not match number of input files\n")
+      self.ui.GPALogTextbox.insertPlainText(f"Error: Covariate table import failed, covariate table row number does not match number of input files\n")
       runAnalysis = slicer.util.confirmYesNoDisplay(f"Error: Covariate import failed. The number of rows in the table is required to match the number of selected input files. \n\nYou can continue analysis without covariates or stop and edit your sample selection and/or covariate table. \n\nWould you like to proceed with the analysis?")
       return runAnalysis
     #check that input filenames match factor row names
     for i, inputFile in enumerate(self.inputFilePaths):
       if indexColumn.GetValue(i) not in inputFile:
         print(indexColumn.GetValue(i), inputFile)
-        self.GPALogTextbox.insertPlainText(f"Covariate import failed. Covariate filenames do not match input files \n Expected {inputFile}, got {indexColumn.GetValue(i)} \n")
+        self.ui.GPALogTextbox.insertPlainText(f"Covariate import failed. Covariate filenames do not match input files \n Expected {inputFile}, got {indexColumn.GetValue(i)} \n")
         logging.debug("Covariate table import failed, covariate filenames do not match input files")
         runAnalysis = slicer.util.confirmYesNoDisplay(f"Error: Covariate import failed. The row names in the table are required to match the selected input filenames. \n\nYou can continue analysis without covariates or stop and edit your covariate table. \n\nWould you like to proceed with the analysis?")
         return runAnalysis
     for i in range(1,numberOfColumns):
       if self.factorTableNode.GetTable().GetColumnName(i) == "":
-        self.GPALogTextbox.insertPlainText(f"Covariate import failed, covariate {i} is not labeled\n")
+        self.ui.GPALogTextbox.insertPlainText(f"Covariate import failed, covariate {i} is not labeled\n")
         logging.debug(f"Covariate import failed, covariate {i} is not labeled")
         runAnalysis = slicer.util.confirmYesNoDisplay(f"Error: Covariate import failed. Covariate {i} has no label. Covariates table is required to have a header row with covariate names. \n\nYou can continue analysis without covariates or stop and edit your table. \n\nWould you like to proceed with the analysis?")
         return runAnalysis
@@ -1323,33 +917,33 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       for j in range(self.factorTableNode.GetTable().GetNumberOfRows()):
         if self.factorTableNode.GetTable().GetValue(j,i) == "":
           subjectID = self.factorTableNode.GetTable().GetValue(j,0).ToString()
-          self.GPALogTextbox.insertPlainText(f"Covariate table import failed, covariate {self.factorTableNode.GetTable().GetColumnName(i)} has no value for {subjectID}\n")
+          self.ui.GPALogTextbox.insertPlainText(f"Covariate table import failed, covariate {self.factorTableNode.GetTable().GetColumnName(i)} has no value for {subjectID}\n")
           logging.debug(f"Covariate table import failed, covariate {self.factorTableNode.GetTable().GetColumnName(i)} has no value for {subjectID}")
           runAnalysis = slicer.util.confirmYesNoDisplay(f"Error: Covariate import failed. Covariate {self.factorTableNode.GetTable().GetColumnName(i)} has no value for {subjectID}. Missing observation(s) in the covariates table are not allowed. \n\nYou can continue analysis without covariates or stop and edit your sample selection and/or covariate table. \n\nWould you like to proceed with the analysis?")
           return runAnalysis
         if self.factorTableNode.GetTable().GetValue(j,i).ToString().isnumeric():
           hasNumericValue = True
       if hasNumericValue:
-        self.GPALogTextbox.insertPlainText(f"Covariate: {self.factorTableNode.GetTable().GetColumnName(i)} contains numeric values and will not be loaded for plotting\n")
+        self.ui.GPALogTextbox.insertPlainText(f"Covariate: {self.factorTableNode.GetTable().GetColumnName(i)} contains numeric values and will not be loaded for plotting\n")
         logging.debug(f"Covariate: {self.factorTableNode.GetTable().GetColumnName(i)} contains numeric values and will not be loaded for plotting\n")
         qt.QMessageBox.critical(slicer.util.mainWindow(),
         "Warning: ", f"Covariate: {self.factorTableNode.GetTable().GetColumnName(i)} contains numeric values and will not be loaded for plotting")
       else:
         self.selectFactor.addItem(self.factorTableNode.GetTable().GetColumnName(i))
-    self.GPALogTextbox.insertPlainText("Covariate table loaded and validated\n")
-    self.GPALogTextbox.insertPlainText(f"Table contains {self.factorTableNode.GetNumberOfColumns()-1} covariates: ")
+    self.ui.GPALogTextbox.insertPlainText("Covariate table loaded and validated\n")
+    self.ui.GPALogTextbox.insertPlainText(f"Table contains {self.factorTableNode.GetNumberOfColumns()-1} covariates: ")
     for i in range(1,self.factorTableNode.GetNumberOfColumns()):
-      self.GPALogTextbox.insertPlainText(f"{self.factorTableNode.GetTable().GetColumnName(i)} ")
-    self.GPALogTextbox.insertPlainText("\n")
+      self.ui.GPALogTextbox.insertPlainText(f"{self.factorTableNode.GetTable().GetColumnName(i)} ")
+    self.ui.GPALogTextbox.insertPlainText("\n")
     return runAnalysis
 
   def onSelectResultsDirectory(self):
     self.resultsDirectory=qt.QFileDialog().getExistingDirectory()
     self.resultsText.setText(self.resultsDirectory)
     try:
-      self.loadResultsButton.enabled = bool (self.resultsDirectory)
+      self.ui.loadResultsButton.enabled = bool (self.resultsDirectory)
     except AttributeError:
-      self.loadResultsButton.enabled = False
+      self.ui.loadResultsButton.enabled = False
 
   def onOpenResults(self):
     qpath = qt.QUrl.fromLocalFile(os.path.dirname(self.outputFolder+os.path.sep))
@@ -1373,7 +967,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       outputData = pandas.read_csv(outputDataPath)
     except:
       logging.debug('Result import failed: Missing file')
-      self.GPALogTextbox.insertPlainText(f"Result import failed: Missing file in output folder\n")
+      self.ui.GPALogTextbox.insertPlainText(f"Result import failed: Missing file in output folder\n")
       return
 
     # Try to load skip scaling and skip LM options from log file, if present
@@ -1387,7 +981,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.LMExclusionList = logData['GPALog'][0]['ExcludedLM']
     except:
       logging.debug('Log import failed: Cannot read the log file')
-      self.GPALogTextbox.insertPlainText("logging.debug('Log import failed: Cannot read the log file\n")
+      self.ui.GPALogTextbox.insertPlainText("logging.debug('Log import failed: Cannot read the log file\n")
 
     # Initialize variables
     self.LM=LMData()
@@ -1398,7 +992,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.files = outputData.Sample_name.tolist()
     shape = self.LM.lmOrig.shape
     print('Loaded ' + str(shape[2]) + ' subjects with ' + str(shape[0]) + ' landmark points.')
-    self.GPALogTextbox.insertPlainText(f"Loaded {shape[2]} subjects with {shape[0]} landmark points.\n")
+    self.ui.GPALogTextbox.insertPlainText(f"Loaded {shape[2]} subjects with {shape[0]} landmark points.\n")
     # GPA parameters
     self.pcNumber=10
     self.updateList()
@@ -1423,7 +1017,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     else:
       self.sampleSizeScaleFactor = logic.dist2(self.rawMeanLandmarks).max()
     print("Scale Factor: " + str(self.sampleSizeScaleFactor))
-    self.GPALogTextbox.insertPlainText(f"Scale Factor: {self.sampleSizeScaleFactor}\n")
+    self.ui.GPALogTextbox.insertPlainText(f"Scale Factor: {self.sampleSizeScaleFactor}\n")
     for landmarkNumber in range (shape[0]):
       name = str(landmarkNumber+1) #start numbering at 1
       self.meanLandmarkNode.AddControlPoint(self.rawMeanLandmarks[landmarkNumber,:], name)
@@ -1447,7 +1041,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     filename=self.LM.closestSample(self.files)
     self.populateDistanceTable(self.files)
     print("Closest sample to mean:" + filename)
-    self.GPALogTextbox.insertPlainText(f"Closest sample to mean: {filename}\n")
+    self.ui.GPALogTextbox.insertPlainText(f"Closest sample to mean: {filename}\n")
 
     #Setup for scatter plots
     shape = self.LM.lm.shape
@@ -1471,14 +1065,14 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.toggleMeanColor()
 
     # Enable buttons for workflow
-    self.plotButton.enabled = True
-    self.lolliButton.enabled = True
-    self.plotDistributionButton.enabled = True
-    self.plotMeanButton3D.enabled = True
-    self.showMeanLabelsButton.enabled = True
-    self.selectorButton.enabled = True
-    self.landmarkVisualizationType.enabled = True
-    self.modelVisualizationType.enabled = True
+    self.ui.plotButton.enabled = True
+    self.ui.lolliButton.enabled = True
+    self.ui.plotDistributionButton.enabled = True
+    self.ui.plotMeanButton3D.enabled = True
+    self.ui.showMeanLabelsButton.enabled = True
+    self.ui.selectorButton.enabled = True
+    self.ui.landmarkVisualizationType.enabled = True
+    self.ui.modelVisualizationType.enabled = True
 
   def onLoad(self):
     self.initializeOnLoad() #clean up module from previous runs
@@ -1494,7 +1088,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     if len(lmToExclude) != 0:
       self.LMExclusionList=lmToExclude.split(",")
       print("Excluded landmarks: ", self.LMExclusionList)
-      self.GPALogTextbox.insertPlainText(f"Excluded landmarks: {self.LMExclusionList}\n")
+      self.ui.GPALogTextbox.insertPlainText(f"Excluded landmarks: {self.LMExclusionList}\n")
       self.LMExclusionList=[int(x) for x in self.LMExclusionList]
       lmNP=np.asarray(self.LMExclusionList)
     else:
@@ -1503,21 +1097,21 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.LM.lmOrig, self.landmarkTypeArray = logic.loadLandmarks(self.inputFilePaths, self.LMExclusionList, self.extension)
     except:
       logging.debug('Load landmark data failed: Could not create an array from landmark files')
-      self.GPALogTextbox.insertPlainText(f"Load landmark data failed: Could not create an array from landmark files\n")
+      self.ui.GPALogTextbox.insertPlainText(f"Load landmark data failed: Could not create an array from landmark files\n")
       return
     shape = self.LM.lmOrig.shape
     print('Loaded ' + str(shape[2]) + ' subjects with ' + str(shape[0]) + ' landmark points.')
-    self.GPALogTextbox.insertPlainText(f"Loaded {shape[2]} subjects with {shape[0]} landmark points.\n")
+    self.ui.GPALogTextbox.insertPlainText(f"Loaded {shape[2]} subjects with {shape[0]} landmark points.\n")
 
     # Do GPA
-    self.BoasOption=self.BoasOptionCheckBox.checked
+    self.BoasOption=self.ui.BoasOptionCheckBox.checked
     self.LM.doGpa(self.BoasOption)
     self.LM.calcEigen()
     self.pcNumber=10
     self.updateList()
 
     if(self.BoasOption):
-      self.GPALogTextbox.insertPlainText("Using Boas coordinates \n")
+      self.ui.GPALogTextbox.insertPlainText("Using Boas coordinates \n")
       print("Using Boas coordinates")
 
     #set scaling factor using mean of landmarks
@@ -1528,7 +1122,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     else:
       self.sampleSizeScaleFactor = logic.dist2(self.rawMeanLandmarks).max()
     print("Scale Factor: " + str(self.sampleSizeScaleFactor))
-    self.GPALogTextbox.insertPlainText(f"Scale Factor for visualizations: {self.sampleSizeScaleFactor}\n")
+    self.ui.GPALogTextbox.insertPlainText(f"Scale Factor for visualizations: {self.sampleSizeScaleFactor}\n")
 
     # get mean landmarks as a fiducial node
     self.meanLandmarkNode=slicer.mrmlScene.GetFirstNodeByName('Mean Landmark Node')
@@ -1571,19 +1165,19 @@ class GPAWidget(ScriptedLoadableModuleWidget):
           slicer.util.saveNode(self.factorTableNode, self.outputFolder + os.sep + "covariateTable.csv")
           GPANodeCollection.AddItem(self.factorTableNode)
         except:
-          self.GPALogTextbox.insertPlainText("Covariate table output failed: Could not write {self.factorTableNode} to {self.outputFolder+os.sep}covariateTable.csv\n")
+          self.ui.GPALogTextbox.insertPlainText("Covariate table output failed: Could not write {self.factorTableNode} to {self.outputFolder+os.sep}covariateTable.csv\n")
       self.writeAnalysisLogFile(self.LM_dir_name, self.outputFolder, self.files)
-      self.openResultsButton.enabled = True
+      self.ui.openResultsButton.enabled = True
     except:
       logging.debug('Result directory failed: Could not access output folder')
       print("Error creating result directory")
-      self.GPALogTextbox.insertPlainText("Result directory failed: Could not access output folder\n")
+      self.ui.GPALogTextbox.insertPlainText("Result directory failed: Could not access output folder\n")
 
     # Get closest sample to mean
     filename=self.LM.closestSample(self.files)
     self.populateDistanceTable(self.files)
     print("Closest sample to mean:" + filename)
-    self.GPALogTextbox.insertPlainText(f"Closest sample to mean: {filename}\n")
+    self.ui.GPALogTextbox.insertPlainText(f"Closest sample to mean: {filename}\n")
 
     #Setup for scatter plots
     shape = self.LM.lm.shape
@@ -1606,25 +1200,25 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.toggleMeanColor()
 
     # Enable buttons for workflow
-    self.plotButton.enabled = True
-    self.lolliButton.enabled = True
-    self.plotDistributionButton.enabled = True
-    self.plotMeanButton3D.enabled = True
-    self.showMeanLabelsButton.enabled = True
-    self.selectorButton.enabled = True
-    self.landmarkVisualizationType.enabled = True
-    self.modelVisualizationType.enabled = True
+    self.ui.plotButton.enabled = True
+    self.ui.lolliButton.enabled = True
+    self.ui.plotDistributionButton.enabled = True
+    self.ui.plotMeanButton3D.enabled = True
+    self.ui.showMeanLabelsButton.enabled = True
+    self.ui.selectorButton.enabled = True
+    self.ui.landmarkVisualizationType.enabled = True
+    self.ui.modelVisualizationType.enabled = True
 
 
   def initializeOnLoad(self):
     # clear rest of module when starting GPA analysis
 
-    self.grayscaleSelector.setCurrentPath("")
-    self.FudSelect.setCurrentPath("")
+    self.ui.grayscaleSelector.setCurrentPath("")
+    self.ui.FudSelect.setCurrentPath("")
 
-    self.landmarkVisualizationType.setChecked(True)
+    self.ui.landmarkVisualizationType.setChecked(True)
 
-    self.slider1.clear()
+    self.pcController.clear()
 
     self.vectorOne.clear()
     self.vectorTwo.clear()
@@ -1632,9 +1226,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.XcomboBox.clear()
     self.YcomboBox.clear()
 
-    self.scaleSlider.value=3
-    self.scaleMeanShapeSlider.value=3
-    self.meanShapeColor.color=qt.QColor(250,128,114)
+    self.ui.scaleSlider.value=3
+    self.ui.scaleMeanShapeSlider.value=3
+    self.ui.meanShapeColor.color=qt.QColor(250,128,114)
 
     self.nodeCleanUp()
 
@@ -1729,13 +1323,13 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     else:
       visibility = self.meanLandmarkNode.SetDisplayVisibility(True)
       # refresh color and scale from GUI
-      self.meanLandmarkNode.GetDisplayNode().SetGlyphScale(self.scaleMeanShapeSlider.value)
-      color = self.meanShapeColor.color
+      self.meanLandmarkNode.GetDisplayNode().SetGlyphScale(self.ui.scaleMeanShapeSlider.value)
+      color = self.ui.meanShapeColor.color
       self.meanLandmarkNode.GetDisplayNode().SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
       # refresh PC warped mean node
       if hasattr(self, 'cloneLandmarkNode'):
         self.cloneLandmarkNode.SetDisplayVisibility(True)
-        self.cloneLandmarkDisplayNode.SetGlyphScale(self.scaleMeanShapeSlider.value)
+        self.cloneLandmarkDisplayNode.SetGlyphScale(self.ui.scaleMeanShapeSlider.value)
         self.cloneLandmarkDisplayNode.SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
 
   def toggleMeanLabels(self):
@@ -1752,36 +1346,36 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         self.cloneLandmarkDisplayNode.SetTextScale(3)
 
   def toggleMeanColor(self):
-    color = self.meanShapeColor.color
+    color = self.ui.meanShapeColor.color
     self.meanLandmarkNode.GetDisplayNode().SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
     if hasattr(self, 'cloneLandmarkNode'):
       self.cloneLandmarkDisplayNode.SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
 
   def scaleMeanGlyph(self):
     scaleFactor = self.sampleSizeScaleFactor/10
-    self.meanLandmarkNode.GetDisplayNode().SetGlyphScale(self.scaleMeanShapeSlider.value)
+    self.meanLandmarkNode.GetDisplayNode().SetGlyphScale(self.ui.scaleMeanShapeSlider.value)
     if hasattr(self, 'cloneLandmarkNode'):
-      self.cloneLandmarkDisplayNode.SetGlyphScale(self.scaleMeanShapeSlider.value)
+      self.cloneLandmarkDisplayNode.SetGlyphScale(self.ui.scaleMeanShapeSlider.value)
 
   def onModelSelected(self):
-    self.selectorButton.enabled = bool( self.grayscaleSelector.currentPath and self.FudSelect.currentPath)
+    self.ui.selectorButton.enabled = bool( self.ui.grayscaleSelector.currentPath and self.ui.FudSelect.currentPath)
 
   def onToggleVisualization(self):
-    if self.landmarkVisualizationType.isChecked():
-      self.selectorButton.enabled = True
+    if self.ui.landmarkVisualizationType.isChecked():
+      self.ui.selectorButton.enabled = True
     else:
-      self.grayscaleSelector.enabled = True
-      self.FudSelect.enabled = True
-      self.selectorButton.enabled = bool( self.grayscaleSelector.currentPath != "") and bool(self.FudSelect.currentPath != "")
+      self.ui.grayscaleSelector.enabled = True
+      self.ui.FudSelect.enabled = True
+      self.ui.selectorButton.enabled = bool( self.ui.grayscaleSelector.currentPath != "") and bool(self.ui.FudSelect.currentPath != "")
 
   def onPlotDistribution(self):
-    self.scaleSlider.enabled = True
+    self.ui.scaleSlider.enabled = True
     if self.NoneType.isChecked():
       self.unplotDistributions()
     elif self.CloudType.isChecked():
       self.plotDistributionCloud()
     else:
-      self.plotDistributionGlyph(2*self.scaleSlider.value)
+      self.plotDistributionGlyph(2*self.ui.scaleSlider.value)
 
   def unplotDistributions(self):
     modelNode=slicer.mrmlScene.GetFirstNodeByName('Landmark Point Cloud')
@@ -1867,7 +1461,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     # get fiducial node for mean landmarks, make just labels visible
     self.meanLandmarkNode.SetDisplayVisibility(1)
-    self.scaleMeanShapeSlider.value=0
+    self.ui.scaleMeanShapeSlider.value=0
     for landmark in range(i):
       pt=self.rawMeanLandmarks[landmark,:]
       points.SetPoint(landmark,pt)
@@ -1932,10 +1526,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.cloneLandmarkNode = self.copyLandmarkNode
     self.cloneLandmarkNode.CreateDefaultDisplayNodes()
     self.cloneLandmarkDisplayNode = self.cloneLandmarkNode.GetDisplayNode()
-    if self.modelVisualizationType.isChecked():
+    if self.ui.modelVisualizationType.isChecked():
       # get landmark node selected
       logic = GPALogic()
-      self.sourceLMNode= slicer.util.loadMarkups(self.FudSelect.currentPath)
+      self.sourceLMNode= slicer.util.loadMarkups(self.ui.FudSelect.currentPath)
       # check if landmark number is valid
       if self.sourceLMNode.GetNumberOfControlPoints() != self.LM.lmOrig.shape[0]:
         # error message
@@ -1969,7 +1563,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.transformMeanNode.SetAndObserveTransformToParent( VTKTPSMean )
 
       # load model node
-      self.modelNode=slicer.util.loadModel(self.grayscaleSelector.currentPath)
+      self.modelNode=slicer.util.loadModel(self.ui.grayscaleSelector.currentPath)
       GPANodeCollection.AddItem(self.modelNode)
       self.modelDisplayNode = self.modelNode.GetDisplayNode()
       self.modelNode.SetAndObserveTransformNodeID(self.transformMeanNode.GetID())
@@ -2002,10 +1596,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.cloneLandmarkDisplayNode.SetPointLabelsVisibility(visibility)
     self.cloneLandmarkDisplayNode.SetTextScale(3)
 
-    if self.scaleMeanShapeSlider.value == 0:  # If the scale is set to 0, reset to default scale
-      self.scaleMeanShapeSlider.value = 3
+    if self.ui.scaleMeanShapeSlider.value == 0:  # If the scale is set to 0, reset to default scale
+      self.ui.scaleMeanShapeSlider.value = 3
 
-    self.cloneLandmarkDisplayNode.SetGlyphScale(self.scaleMeanShapeSlider.value)
+    self.cloneLandmarkDisplayNode.SetGlyphScale(self.ui.scaleMeanShapeSlider.value)
 
     #apply custom layout
     self.assignLayoutDescription()
@@ -2015,9 +1609,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     GPANodeCollection.AddItem(self.transformNode)
 
     # Enable PCA warping and recording
-    self.slider1.populateComboBox(self.PCList)
+    self.sliderController.populateComboBox(self.PCList)
     self.applyEnabled = True
-    self.startRecordButton.enabled = True
+    self.ui.startRecordButton.enabled = True
 
   def onStartRecording(self):
     #set up sequences for template model and PC TPS transform
@@ -2048,16 +1642,16 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     GPANodeCollection.AddItem(browserNode)
 
     #enable stop recording
-    self.stopRecordButton.enabled = True
-    self.startRecordButton.enabled = False
+    self.ui.stopRecordButton.enabled = True
+    self.ui.startRecordButton.enabled = False
 
   def onStopRecording(self):
     browserWidget=slicer.modules.sequences.widgetRepresentation()
     recordWidget = browserWidget.findChild('qMRMLSequenceBrowserPlayWidget')
     recordWidget.setRecordingEnabled(0)
     slicer.util.selectModule(slicer.modules.sequences)
-    self.stopRecordButton.enabled = False
-    self.startRecordButton.enabled = True
+    self.ui.stopRecordButton.enabled = False
+    self.ui.startRecordButton.enabled = True
 
   def initializeOnSelect(self):
     #remove nodes from previous runs
@@ -2146,7 +1740,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
         except:
           slicer.util.messageBox(f"Error: Load file {filePathList[i]} failed:.")
           logging.debug(f"Error: Load file {filePathList[i]} failed:.")
-          self.GPALogTextbox.insertPlainText(f"Error: Load file {filePathList[i]} failed:\n")
+          self.ui.GPALogTextbox.insertPlainText(f"Error: Load file {filePathList[i]} failed:\n")
         if len(tmp1) == landmarkNumber:
           lmArray = tmp1['position'].to_numpy()
           landmarkIndex = 0
