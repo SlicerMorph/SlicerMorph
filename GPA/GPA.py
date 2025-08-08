@@ -404,22 +404,16 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         slicer.util.infoDisplay("Issue while installing Pandas Python package. Please install manually.")
         progressDialog.close()
 
-    # Path to the UI file
-    moduleDir = os.path.dirname(__file__)
-    uiPath = os.path.join(moduleDir, "/resources/GPA.ui")
-
-    if not os.path.exists(uiPath):
-        logging.error(f"UI file not found: {uiPath}")
-        return
-
-    # Load UI
-    self.ui = slicer.util.loadUI(uiPath)
+    # Load widget from .ui file (created by Qt Designer).
+    uiWidget = slicer.util.loadUI(self.resourcePath("UI/GPA.ui"))
+    self.layout.addWidget(uiWidget)
+    self.ui = slicer.util.childWidgetVariables(uiWidget)
 
     # Add custom layout buttons to menu
     self.addLayoutButton(500, 'GPA Module View', 'Custom layout for GPA module', 'LayoutSlicerMorphView.png', slicer.customLayoutSM)
     self.addLayoutButton(501, 'Table Only View', 'Custom layout for GPA module', 'LayoutTableOnlyView.png', slicer.customLayoutTableOnly)
     self.addLayoutButton(502, 'Plot Only View', 'Custom layout for GPA module', 'LayoutPlotOnlyView.png', slicer.customLayoutPlotOnly)
-    
+
     ################################### Setup Tab ###################################
     self.ui.LMbutton.connect('clicked(bool)', self.onSelectLandmarkFiles)
     self.ui.clearButton.connect('clicked(bool)', self.onClearButton)
@@ -463,7 +457,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     )
     self.pcController.comboBoxList = self.PCList  # optional: if needed for later use
     self.pcController.populateComboBox(self.PCList)
-        
+
     # PC warping helper functions
     def setupPCTransform():
       pc_index = self.pcController.comboBoxIndex()
