@@ -417,12 +417,12 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     ################################### Setup Tab ###################################
     self.ui.LMbutton.connect('clicked(bool)', self.onSelectLandmarkFiles)
     self.ui.clearButton.connect('clicked(bool)', self.onClearButton)
-    self.outbutton.connect('clicked(bool)', self.onSelectOutputDirectory)
+    self.ui.outputPathButton.connect('clicked(bool)', self.onSelectOutputDirectory)
     self.ui.generateCovariatesTableButton.connect('clicked(bool)', self.onGenerateCovariatesTable)
-    self.selectCovariatesButton.connect('clicked(bool)', self.onSelectCovariatesTable)
+    self.ui.selectCovariatesButton.connect('clicked(bool)', self.onSelectCovariatesTable)
     self.ui.loadButton.connect('clicked(bool)', self.onLoad)
     self.ui.openResultsButton.connect('clicked(bool)', self.onOpenResults)
-    self.resultsButton.connect('clicked(bool)', self.onSelectResultsDirectory)
+    self.ui.resultsButton.connect('clicked(bool)', self.onSelectResultsDirectory)
     self.ui.loadResultsButton.connect('clicked(bool)', self.onLoadFromFile)
 
     ################################### Explore Tab ###################################
@@ -442,10 +442,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.ui.selectorButton.connect('clicked(bool)', self.onSelect)
     self.ui.startRecordButton.connect('clicked(bool)', self.onStartRecording)
     self.ui.stopRecordButton.connect('clicked(bool)', self.onStopRecording)
-    ########fix
-    resetButton.connect('clicked(bool)', self.reset)
-    ######
-    self.ui.updateMagnificationButton.clicked.connect(onUpdateMagnificationClicked)
+    self.ui.resetButton.connect('clicked(bool)', self.reset)
+    self.ui.updateMagnificationButton.connect("clicked()", self.onUpdateMagnificationClicked)
     self.PCList=[]
 
     self.pcController = PCSliderController(
@@ -458,95 +456,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.pcController.comboBoxList = self.PCList  # optional: if needed for later use
     self.pcController.populateComboBox(self.PCList)
 
-    # PC warping helper functions
-    def setupPCTransform():
-      pc_index = self.pcController.comboBoxIndex()
-      if pc_index > 0:
-        self.currentPC = pc_index
-        self.pcMax = np.max(self.scatterDataAll, axis=0)[self.currentPC - 1]
-        self.pcMin = np.min(self.scatterDataAll, axis=0)[self.currentPC - 1]
-        self.pcScoreAbsMax = max(abs(self.pcMin), abs(self.pcMax))  # Maximum absolute deviation
-        self.displacementGridData = getGridTransform(self.currentPC)
-
-        needNewNode = not hasattr(self, 'gridTransformNode') or not slicer.mrmlScene.IsNodePresent(self.gridTransformNode)
-        if needNewNode:
-          self.gridTransformNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLGridTransformNode", "GridTransform")
-          GPANodeCollection.AddItem(self.gridTransformNode)
-
-        self.gridTransformNode.GetTransformFromParent().SetDisplacementGridData(self.displacementGridData)
-        self.cloneLandmarkNode.SetAndObserveTransformNodeID(self.gridTransformNode.GetID())
-
-        if hasattr(self, 'cloneModelNode') and self.ui.modelVisualizationType.checked:
-          self.cloneModelNode.SetAndObserveTransformNodeID(self.gridTransformNode.GetID())
-
-        # Set dynamic range and reset spin box
-        self.pcController.setRange(self.pcMin, self.pcMax)
-        self.pcController.setValue(0)
-        updatePCScaling()
-
-    def getGridTransform(pcValue):
-      logic = GPALogic()
-      magnification = self.spinMagnification.value
-
-      shiftMax = self.LM.ExpandAlongSinglePC(pcValue, self.pcScoreAbsMax * magnification, self.sampleSizeScaleFactor)
-      target = self.rawMeanLandmarks + shiftMax
-      targetLMVTK = logic.convertNumpyToVTK(target)
-      sourceLMVTK = logic.convertNumpyToVTK(self.rawMeanLandmarks)
-
-      VTKTPS = vtk.vtkThinPlateSplineTransform()
-      VTKTPS.SetSourceLandmarks(targetLMVTK)
-      VTKTPS.SetTargetLandmarks(sourceLMVTK)
-      VTKTPS.SetBasisToR()
-
-      modelBounds = [0] * 6
-      if hasattr(self, 'cloneModelNode') and self.cloneModelNode is not None and self.ui.modelVisualizationType.checked:
-          modelBounds = getExpandedBounds(self.cloneModelNode)
-      else:
-          modelBounds = getExpandedBounds(self.cloneLandmarkNode)
-      origin = (modelBounds[0], modelBounds[2], modelBounds[4])
-      size = (modelBounds[1] - modelBounds[0], modelBounds[3] - modelBounds[2], modelBounds[5] - modelBounds[4])
-      dimension = 50
-      extent = [0] * 6
-      extent[1::2] = [dimension - 1] * 3
-      spacing = (size[0]/dimension, size[1]/dimension, size[2]/dimension)
-
-      transformToGrid = vtk.vtkTransformToGrid()
-      transformToGrid.SetInput(VTKTPS)
-      transformToGrid.SetGridOrigin(origin)
-      transformToGrid.SetGridSpacing(spacing)
-      transformToGrid.SetGridExtent(extent)
-      transformToGrid.Update()
-
-      return transformToGrid.GetOutput()
-
-    def getExpandedBounds(node, paddingFactor=0.1):
-        bounds = [0] * 6
-        node.GetRASBounds(bounds)
-        # Expand bounds by paddingFactor
-        xRange = bounds[1] - bounds[0]
-        yRange = bounds[3] - bounds[2]
-        zRange = bounds[5] - bounds[4]
-        bounds[0] -= xRange * paddingFactor
-        bounds[1] += xRange * paddingFactor
-        bounds[2] -= yRange * paddingFactor
-        bounds[3] += yRange * paddingFactor
-        bounds[4] -= zRange * paddingFactor
-        bounds[5] += zRange * paddingFactor
-
-        return bounds
-    def updatePCScaling():
-      if hasattr(self, 'gridTransformNode'):
-        dynamic_value = self.sliderController.sliderValue()  # Mapped PC score from spinbox
-        if self.pcScoreAbsMax > 1e-6:  # Avoid division by zero
-          sf = dynamic_value / self.pcScoreAbsMax
-        else:
-          sf = 0.0
-        # Clamp scaling factor
-        sf = max(min(sf, 1.0), -1.0)
-        self.gridTransformNode.GetTransformFromParent().SetDisplacementScale(sf)
-
-    def onUpdateMagnificationClicked():
-      setupPCTransform()
 
   # module update helper functions
   def assignLayoutDescription(self):
@@ -1098,7 +1007,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.ui.GPALogTextbox.insertPlainText(f"Loaded {shape[2]} subjects with {shape[0]} landmark points.\n")
 
     # Do GPA
-    self.BoasOption=self.ui.BoasOptionCheckBox.checked
+    self.BoasOption=self.ui.BoasOptionCheckBox.isChecked()
     self.LM.doGpa(self.BoasOption)
     self.LM.calcEigen()
     self.pcNumber=10
@@ -1267,6 +1176,138 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     with open(logFilePath, 'w') as logFile:
       print(json.dumps(logData, indent=2), file=logFile)
     logFile.close()
+
+
+  # ---- PC magnification helpers (class-level) ----
+  def onUpdateMagnificationClicked(self):
+    self.setupPCTransform()
+
+  def setupPCTransform(self):
+    # Determine currently selected PC (combo index > 0 means a PC is selected)
+    pc_index = self.pcController.comboBoxIndex()
+    if pc_index <= 0:
+      return
+    self.currentPC = pc_index
+    # Determine PC score range from loaded scatter data
+    self.pcMax = float(np.max(self.scatterDataAll, axis=0)[self.currentPC - 1])
+    self.pcMin = float(np.min(self.scatterDataAll, axis=0)[self.currentPC - 1])
+    self.pcScoreAbsMax = max(abs(self.pcMin), abs(self.pcMax))
+
+    # Build displacement grid for current PC
+    self.displacementGridData = self.getGridTransform(self.currentPC)
+
+    needNewNode = (not hasattr(self, 'gridTransformNode')) or (not slicer.mrmlScene.IsNodePresent(self.gridTransformNode))
+    if needNewNode:
+      self.gridTransformNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLGridTransformNode", "GridTransform")
+      GPANodeCollection.AddItem(self.gridTransformNode)
+
+    # Assign the displacement grid
+    self.gridTransformNode.GetTransformFromParent().SetDisplacementGridData(self.displacementGridData)
+
+    # Attach transform to the warped landmark/model nodes if present
+    targetModelChecked = False
+    try:
+      targetModelChecked = bool(self.ui.modelVisualizationType.isChecked())
+    except Exception:
+      # Fall back to attribute access pattern used elsewhere
+      targetModelChecked = bool(getattr(self.ui.modelVisualizationType, "checked", False))
+
+    # Landmarks: prefer cloneLandmarkNode, fall back to copyLandmarkNode if used in older code
+    lm_node = getattr(self, "cloneLandmarkNode", None) or getattr(self, "copyLandmarkNode", None)
+    if lm_node is not None:
+      lm_node.SetAndObserveTransformNodeID(self.gridTransformNode.GetID())
+
+    # Model (if present and selected)
+    if targetModelChecked and hasattr(self, "cloneModelNode") and self.cloneModelNode is not None:
+      self.cloneModelNode.SetAndObserveTransformNodeID(self.gridTransformNode.GetID())
+
+    # Update the UI-driven range for live scaling
+    self.pcController.setRange(self.pcMin, self.pcMax)
+    self.pcController.setValue(0)
+    self.updatePCScaling()
+
+  def getGridTransform(self, pcValue: int):
+    logic = GPALogic()
+    # Read magnification from UI
+    try:
+      magnification = float(self.ui.spinMagnification.value)
+    except Exception:
+      # Defensive fallback for odd UI bindings
+      magnification = float(getattr(self.ui, "spinMagnification", 1.0))
+
+    # Shift mean landmarks along selected PC at the maximum score
+    shiftMax = self.LM.ExpandAlongSinglePC(pcValue, self.pcScoreAbsMax * magnification, self.sampleSizeScaleFactor)
+    target = self.rawMeanLandmarks + shiftMax
+    targetLMVTK = logic.convertNumpyToVTK(target)
+    sourceLMVTK = logic.convertNumpyToVTK(self.rawMeanLandmarks)
+
+    VTKTPS = vtk.vtkThinPlateSplineTransform()
+    VTKTPS.SetSourceLandmarks(targetLMVTK)
+    VTKTPS.SetTargetLandmarks(sourceLMVTK)
+    VTKTPS.SetBasisToR()
+
+    # Choose bounds from model if in model mode; otherwise from the landmark clone/copy
+    try:
+      modelChecked = bool(self.ui.modelVisualizationType.isChecked())
+    except Exception:
+      modelChecked = bool(getattr(self.ui.modelVisualizationType, "checked", False))
+
+    bounds_node = None
+    if modelChecked and hasattr(self, "cloneModelNode") and self.cloneModelNode is not None:
+      bounds_node = self.cloneModelNode
+    else:
+      bounds_node = getattr(self, "cloneLandmarkNode", None) or getattr(self, "copyLandmarkNode", None)
+
+    if bounds_node is None:
+      raise RuntimeError("No landmark or model node available to derive bounds for the grid transform.")
+
+    modelBounds = self.getExpandedBounds(bounds_node)
+
+    origin = (modelBounds[0], modelBounds[2], modelBounds[4])
+    size = (modelBounds[1] - modelBounds[0], modelBounds[3] - modelBounds[2], modelBounds[5] - modelBounds[4])
+    dimension = 50
+    extent = [0, dimension - 1, 0, dimension - 1, 0, dimension - 1]
+    spacing = (size[0] / dimension, size[1] / dimension, size[2] / dimension)
+
+    transformToGrid = vtk.vtkTransformToGrid()
+    transformToGrid.SetInput(VTKTPS)
+    transformToGrid.SetGridOrigin(origin)
+    transformToGrid.SetGridSpacing(spacing)
+    transformToGrid.SetGridExtent(extent)
+    transformToGrid.Update()
+
+    return transformToGrid.GetOutput()
+
+  def getExpandedBounds(self, node, paddingFactor: float = 0.1):
+    bounds = [0.0] * 6
+    node.GetRASBounds(bounds)
+    xRange = bounds[1] - bounds[0]
+    yRange = bounds[3] - bounds[2]
+    zRange = bounds[5] - bounds[4]
+    bounds[0] -= xRange * paddingFactor
+    bounds[1] += xRange * paddingFactor
+    bounds[2] -= yRange * paddingFactor
+    bounds[3] += yRange * paddingFactor
+    bounds[4] -= zRange * paddingFactor
+    bounds[5] += zRange * paddingFactor
+    return bounds
+
+  def updatePCScaling(self):
+    if not hasattr(self, "gridTransformNode"):
+      return
+    # Use the controller's current value mapped to the PC score range
+    try:
+      dynamic_value = float(self.pcController.getValue())
+    except Exception:
+      # Backward compatibility if someone left an old name around
+      dynamic_value = float(getattr(self.pcController, "sliderValue", lambda: 0)())
+    if getattr(self, "pcScoreAbsMax", 0) and self.pcScoreAbsMax > 1e-6:
+      sf = dynamic_value / self.pcScoreAbsMax
+    else:
+      sf = 0.0
+    sf = max(min(sf, 1.0), -1.0)
+    self.gridTransformNode.GetTransformFromParent().SetDisplacementScale(sf)
+
 
   # Explore Data callbacks and helpers
   def plot(self):
