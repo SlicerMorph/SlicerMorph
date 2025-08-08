@@ -426,6 +426,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.ui.loadResultsButton.connect('clicked(bool)', self.onLoadFromFile)
 
     ################################### Explore Tab ###################################
+    self.ui.plotMeanButton3D.connect('clicked(bool)', self.toggleMeanPlot)
     self.ui.showMeanLabelsButton.connect('clicked(bool)', self.toggleMeanLabels)
     self.ui.meanShapeColor.connect('colorChanged(QColor)', self.toggleMeanColor)
     self.ui.scaleMeanShapeSlider.connect('valueChanged(double)', self.scaleMeanGlyph)
@@ -456,6 +457,46 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.pcController.comboBoxList = self.PCList  # optional: if needed for later use
     self.pcController.populateComboBox(self.PCList)
 
+    # Core state defaults (safe None/empty values)
+    self.LM = None
+    self.sampleSizeScaleFactor = 1.0
+    self.meanLandmarkNode = None
+    self.cloneLandmarkNode = None
+    self.copyLandmarkNode = None
+    self.cloneModelNode = None
+    self.modelDisplayNode = None
+    self.cloneModelDisplayNode = None
+    self.factorTableNode = None
+    self.gridTransformNode = None
+    self.files = []
+    self.inputFilePaths = []
+    self.outputDirectory = None
+    self.resultsDirectory = None
+    self.scatterDataAll = np.zeros((0, 3))
+    self.currentPC = 1
+    self.pcMin = 0.0
+    self.pcMax = 0.0
+    self.pcScoreAbsMax = 0.0
+    self._resetting = False
+
+
+  # ---- Safe node helpers ----
+  def _node(self, attr_name):
+    n = getattr(self, attr_name, None)
+    if n and slicer.mrmlScene.IsNodePresent(n):
+      return n
+    return None
+
+  def _display(self, node_or_attr):
+    node = node_or_attr
+    if isinstance(node_or_attr, str):
+      node = self._node(node_or_attr)
+    if not node:
+      return None
+    try:
+      return node.GetDisplayNode()
+    except Exception:
+      return None
 
   # module update helper functions
   def assignLayoutDescription(self):
@@ -473,15 +514,20 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     # Assign nodes to appropriate views
     redNode = layoutManager.sliceWidget('Red').sliceView().mrmlSliceNode()
-    self.meanLandmarkNode.GetDisplayNode().SetViewNodeIDs([viewNode1.GetID(),redNode.GetID()])
-    if hasattr(self, 'cloneLandmarkDisplayNode'):
-      self.cloneLandmarkDisplayNode.SetViewNodeIDs([viewNode2.GetID()])
+    dn = self._display('meanLandmarkNode')
+    if dn:
+      dn.SetViewNodeIDs([viewNode1.GetID(), redNode.GetID()])
+    cd = self._display('cloneLandmarkNode')
+    if cd:
+      cd.SetViewNodeIDs([viewNode2.GetID()])
 
     # check for loaded reference model
-    if hasattr(self, 'modelDisplayNode'):
-      self.modelDisplayNode.SetViewNodeIDs([viewNode1.GetID()])
-    if hasattr(self, 'cloneModelDisplayNode'):
-      self.cloneModelDisplayNode.SetViewNodeIDs([viewNode2.GetID()])
+    model_disp = getattr(self, 'modelDisplayNode', None)
+    if model_disp:
+      model_disp.SetViewNodeIDs([viewNode1.GetID()])
+    clone_model_disp = getattr(self, 'cloneModelDisplayNode', None)
+    if clone_model_disp:
+      clone_model_disp.SetViewNodeIDs([viewNode2.GetID()])
 
     # fit the red slice node to show the plot projections
     rasBounds = [0,]*6
@@ -536,30 +582,29 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.PCList.append('None')
     self.LM.val=np.real(self.LM.val)
     percentVar=self.LM.val/self.LM.val.sum()
-    self.vectorOne.clear()
-    self.vectorTwo.clear()
-    self.vectorThree.clear()
-    self.XcomboBox.clear()
-    self.XcomboBox.clear()
-    self.YcomboBox.clear()
+    self.ui.vectorOne.clear()
+    self.ui.vectorTwo.clear()
+    self.ui.vectorThree.clear()
+    self.ui.XcomboBox.clear()
+    self.ui.YcomboBox.clear()
 
-    self.vectorOne.addItem('None')
-    self.vectorTwo.addItem('None')
-    self.vectorThree.addItem('None')
+    self.ui.vectorOne.addItem('None')
+    self.ui.vectorTwo.addItem('None')
+    self.ui.vectorThree.addItem('None')
     if len(percentVar)<self.pcNumber:
       self.pcNumber=len(percentVar)
     for x in range(self.pcNumber):
       tmp=f"{percentVar[x]*100:.1f}"
       string='PC '+str(x+1)+': '+str(tmp)+"%" +" var"
       self.PCList.append(string)
-      self.XcomboBox.addItem(string)
-      self.YcomboBox.addItem(string)
-      self.vectorOne.addItem(string)
-      self.vectorTwo.addItem(string)
-      self.vectorThree.addItem(string)
+      self.ui.XcomboBox.addItem(string)
+      self.ui.YcomboBox.addItem(string)
+      self.ui.vectorOne.addItem(string)
+      self.ui.vectorTwo.addItem(string)
+      self.ui.vectorThree.addItem(string)
 
   def factorStringChanged(self):
-    if self.factorNames.text != "" and hasattr(self, 'inputFilePaths') and self.inputFilePaths is not []:
+    if self.ui.factorNames.text != "" and getattr(self, 'inputFilePaths', None) and self.inputFilePaths is not []:
       self.ui.generateCovariatesTableButton.enabled = True
     else:
       self.ui.generateCovariatesTableButton.enabled = False
@@ -613,7 +658,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     # reset text fields
     self.outputDirectory=None
-    self.outText.setText(" ")
+    self.ui.outText.setText(" ")
     self.LM_dir_name=None
     self.ui.openResultsButton.enabled = False
 
@@ -624,13 +669,13 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     self.pcController.clear()
 
-    self.vectorOne.clear()
-    self.vectorTwo.clear()
-    self.vectorThree.clear()
-    self.XcomboBox.clear()
-    self.YcomboBox.clear()
-    self.selectFactor.clear()
-    self.factorName.setText("")
+    self.ui.vectorOne.clear()
+    self.ui.vectorTwo.clear()
+    self.ui.vectorThree.clear()
+    self.ui.XcomboBox.clear()
+    self.ui.YcomboBox.clear()
+    self.ui.selectFactor.clear()
+    self.ui.factorNames.setText("")
     self.ui.scaleSlider.value=3
 
     self.ui.scaleMeanShapeSlider.value=3
@@ -681,20 +726,20 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
   # Setup Analysis callbacks and helpers
   def onClearButton(self):
-    self.inputFileTable.clear()
+    self.ui.inputFileTable.clear()
     self.inputFilePaths = []
     self.ui.clearButton.enabled = False
 
   def onSelectLandmarkFiles(self):
-    self.inputFileTable.clear()
+    self.ui.inputFileTable.clear()
     self.inputFilePaths = []
     filter = "Landmarks (*.json *.mrk.json *.fcsv )"
     self.inputFilePaths = sorted(qt.QFileDialog().getOpenFileNames(None, "Window name", "", filter))
-    self.inputFileTable.plainText = '\n'.join(self.inputFilePaths)
+    self.ui.inputFileTable.plainText = '\n'.join(self.inputFilePaths)
     self.ui.clearButton.enabled = True
     #enable load button if required fields are complete
     filePathsExist = bool(self.inputFilePaths is not [] )
-    self.ui.loadButton.enabled = bool (filePathsExist and hasattr(self, 'outputDirectory'))
+    self.ui.loadButton.enabled = bool (filePathsExist and getattr(self, 'outputDirectory', None))
     if filePathsExist:
       self.LM_dir_name = os.path.dirname(self.inputFilePaths[0])
       basename, self.extension = os.path.splitext(self.inputFilePaths[0])
@@ -712,7 +757,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
   def onSelectOutputDirectory(self):
     self.outputDirectory=qt.QFileDialog().getExistingDirectory()
-    self.outText.setText(self.outputDirectory)
+    self.ui.outText.setText(self.outputDirectory)
     try:
       filePathsExist = self.inputFilePaths is not []
       self.ui.loadButton.enabled = bool (filePathsExist and self.outputDirectory)
@@ -724,9 +769,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     filter = "csv(*.csv)"
     self.covariateTableFile = qt.QFileDialog.getOpenFileName(dialog, "", "", filter)
     if self.covariateTableFile:
-      self.selectCovariatesText.setText(self.covariateTableFile)
+      self.ui.selectCovariatesText.setText(self.covariateTableFile)
     else:
-     self.covariateTableFile =  self.selectCovariatesText.text
+     self.covariateTableFile =  self.ui.selectCovariatesText.text
 
   def onGenerateCovariatesTable(self):
     numberOfInputFiles = len(self.inputFilePaths)
@@ -747,7 +792,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     sortedArray = np.zeros(len(self.files), dtype={'names':('filename', 'procdist'),'formats':('U50','f8')})
     sortedArray['filename']=self.files
     ##check for an existing factor table, if so remove
-    #if hasattr(self, 'factorTableNode'):
+    #if getattr(self, 'factorTableNode', None):
     #  slicer.mrmlScene.RemoveNode(self.factorTableNode)
     self.factorTableNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTableNode', 'Factor Table')
     col=self.factorTableNode.AddColumn()
@@ -768,7 +813,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     except:
       self.ui.GPALogTextbox.insertPlainText("Covariate table output failed: Could not write {self.factorTableNode} to {self.covariateTableFile}\n")
     slicer.mrmlScene.RemoveNode(self.factorTableNode)
-    self.selectCovariatesText.setText(self.covariateTableFile)
+    self.ui.selectCovariatesText.setText(self.covariateTableFile)
     qpath = qt.QUrl.fromLocalFile(os.path.dirname(covariateFolder+os.path.sep))
     qt.QDesktopServices().openUrl(qpath)
     self.ui.GPALogTextbox.insertPlainText(f"Covariate table template generated in folder: \n{covariateFolder}\n Please fill in covariate columns, save, and load table in the next step to proceed.\n")
@@ -783,7 +828,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       return runAnalysis
     try:
       # refresh covariateTableFile from GUI
-      self.covariateTableFile =  self.selectCovariatesText.text
+      self.covariateTableFile =  self.ui.selectCovariatesText.text
       self.factorTableNode = slicer.util.loadTable(self.covariateTableFile)
     except AttributeError:
       logging.debug(f'Covariate table import failed for: {self.covariateTableFile}')
@@ -832,7 +877,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         qt.QMessageBox.critical(slicer.util.mainWindow(),
         "Warning: ", f"Covariate: {self.factorTableNode.GetTable().GetColumnName(i)} contains numeric values and will not be loaded for plotting")
       else:
-        self.selectFactor.addItem(self.factorTableNode.GetTable().GetColumnName(i))
+        self.ui.selectFactor.addItem(self.factorTableNode.GetTable().GetColumnName(i))
     self.ui.GPALogTextbox.insertPlainText("Covariate table loaded and validated\n")
     self.ui.GPALogTextbox.insertPlainText(f"Table contains {self.factorTableNode.GetNumberOfColumns()-1} covariates: ")
     for i in range(1,self.factorTableNode.GetNumberOfColumns()):
@@ -981,13 +1026,13 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.initializeOnLoad() #clean up module from previous runs
     logic = GPALogic()
     # check for loaded covariate table if table path is specified
-    if self.selectCovariatesText.text != "":
+    if self.ui.selectCovariatesText.text != "":
       runAnalysis = self.onLoadCovariatesTable()
       if not runAnalysis:
         return
     # get landmarks
     self.LM=LMData()
-    lmToExclude=self.excludeLMText.text
+    lmToExclude=self.ui.excludeLMText.text
     if len(lmToExclude) != 0:
       self.LMExclusionList=lmToExclude.split(",")
       print("Excluded landmarks: ", self.LMExclusionList)
@@ -1030,6 +1075,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     # get mean landmarks as a fiducial node
     self.meanLandmarkNode=slicer.mrmlScene.GetFirstNodeByName('Mean Landmark Node')
     if self.meanLandmarkNode is None:
+      print("creating mean node for the first time")
       self.meanLandmarkNode = slicer.vtkMRMLMarkupsFiducialNode()
       self.meanLandmarkNode.SetName('Mean Landmark Node')
       slicer.mrmlScene.AddNode(self.meanLandmarkNode)
@@ -1062,7 +1108,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       os.makedirs(self.outputFolder)
       self.LM.writeOutData(self.outputFolder, self.files)
       # covariate table
-      if hasattr(self, 'factorTableNode'):
+      if getattr(self, 'factorTableNode', None):
         try:
           print(f"saving {self.factorTableNode.GetID()} to {self.outputFolder + os.sep}covariateTable.csv")
           slicer.util.saveNode(self.factorTableNode, self.outputFolder + os.sep + "covariateTable.csv")
@@ -1099,6 +1145,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         camera.GetCamera().Zoom(self.widgetZoomFactor)
 
     #initialize mean LM display
+    print("Mean lm node: ", self.meanLandmarkNode.name)
     self.scaleMeanGlyph()
     self.toggleMeanColor()
 
@@ -1123,11 +1170,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     self.pcController.clear()
 
-    self.vectorOne.clear()
-    self.vectorTwo.clear()
-    self.vectorThree.clear()
-    self.XcomboBox.clear()
-    self.YcomboBox.clear()
+    self.ui.vectorOne.clear()
+    self.ui.vectorTwo.clear()
+    self.ui.vectorThree.clear()
+    self.ui.XcomboBox.clear()
+    self.ui.YcomboBox.clear()
 
     self.ui.scaleSlider.value=3
     self.ui.scaleMeanShapeSlider.value=3
@@ -1145,7 +1192,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
   def writeAnalysisLogFile(self, inputPath, outputPath, files):
     # generate log file
     [pointNumber, dim, subjectNumber] = self.LM.lmOrig.shape
-    if hasattr(self, 'factorTableNode'):
+    if getattr(self, 'factorTableNode', None):
       covariatePath = "covariateTable.csv"
     else:
       covariatePath = ""
@@ -1196,7 +1243,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     # Build displacement grid for current PC
     self.displacementGridData = self.getGridTransform(self.currentPC)
 
-    needNewNode = (not hasattr(self, 'gridTransformNode')) or (not slicer.mrmlScene.IsNodePresent(self.gridTransformNode))
+    needNewNode = (self._node('gridTransformNode') is None)
     if needNewNode:
       self.gridTransformNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLGridTransformNode", "GridTransform")
       GPANodeCollection.AddItem(self.gridTransformNode)
@@ -1218,7 +1265,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       lm_node.SetAndObserveTransformNodeID(self.gridTransformNode.GetID())
 
     # Model (if present and selected)
-    if targetModelChecked and hasattr(self, "cloneModelNode") and self.cloneModelNode is not None:
+    if targetModelChecked and getattr(self, "cloneModelNode", None) and self.cloneModelNode is not None:
       self.cloneModelNode.SetAndObserveTransformNodeID(self.gridTransformNode.GetID())
 
     # Update the UI-driven range for live scaling
@@ -1251,16 +1298,13 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       modelChecked = bool(self.ui.modelVisualizationType.isChecked())
     except Exception:
       modelChecked = bool(getattr(self.ui.modelVisualizationType, "checked", False))
-
     bounds_node = None
-    if modelChecked and hasattr(self, "cloneModelNode") and self.cloneModelNode is not None:
+    if modelChecked and getattr(self, "cloneModelNode", None) and self.cloneModelNode is not None:
       bounds_node = self.cloneModelNode
     else:
       bounds_node = getattr(self, "cloneLandmarkNode", None) or getattr(self, "copyLandmarkNode", None)
-
     if bounds_node is None:
       raise RuntimeError("No landmark or model node available to derive bounds for the grid transform.")
-
     modelBounds = self.getExpandedBounds(bounds_node)
 
     origin = (modelBounds[0], modelBounds[2], modelBounds[4])
@@ -1293,7 +1337,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     return bounds
 
   def updatePCScaling(self):
-    if not hasattr(self, "gridTransformNode"):
+    if not getattr(self, 'gridTransformNode', None):
       return
     # Use the controller's current value mapped to the PC score range
     try:
@@ -1313,12 +1357,12 @@ class GPAWidget(ScriptedLoadableModuleWidget):
   def plot(self):
     logic = GPALogic()
     # get values from box
-    xValue=self.XcomboBox.currentIndex
-    yValue=self.YcomboBox.currentIndex
+    xValue=self.ui.XcomboBox.currentIndex
+    yValue=self.ui.YcomboBox.currentIndex
     shape = self.LM.lm.shape
 
-    if (self.selectFactor.currentIndex > 0) and hasattr(self, 'factorTableNode'):
-      factorName = self.selectFactor.currentText
+    if (self.ui.selectFactor.currentIndex > 0) and getattr(self, 'factorTableNode', None):
+      factorName = self.ui.selectFactor.currentText
       factorCol = self.factorTableNode.GetTable().GetColumnByName(factorName)
       factorArray=[]
       for i in range(factorCol.GetNumberOfTuples()):
@@ -1335,9 +1379,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       logic.makeScatterPlot(self.scatterDataAll,self.files,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1),self.pcNumber)
 
   def lolliPlot(self):
-    pb1=self.vectorOne.currentIndex
-    pb2=self.vectorTwo.currentIndex
-    pb3=self.vectorThree.currentIndex
+    pb1=self.ui.vectorOne.currentIndex
+    pb2=self.ui.vectorTwo.currentIndex
+    pb3=self.ui.vectorThree.currentIndex
 
     pcList=[pb1,pb2,pb3]
     logic = GPALogic()
@@ -1346,51 +1390,87 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     meanLandmarkNode.SetDisplayVisibility(1)
     componentNumber = 1
     for pc in pcList:
-      logic.lollipopGraph(self.LM, self.rawMeanLandmarks, pc, self.sampleSizeScaleFactor, componentNumber, self.TwoDType.isChecked())
+      logic.lollipopGraph(self.LM, self.rawMeanLandmarks, pc, self.sampleSizeScaleFactor, componentNumber, self.ui.TwoDType.isChecked())
       componentNumber+=1
 
   def toggleMeanPlot(self):
-    visibility = self.meanLandmarkNode.GetDisplayVisibility()
-    if visibility:
-      visibility = self.meanLandmarkNode.SetDisplayVisibility(False)
-      if hasattr(self, 'cloneLandmarkNode'):
-        self.cloneLandmarkNode.SetDisplayVisibility(False)
+    node = self._node('meanLandmarkNode')
+    if not node:
+      return
+    vis = node.GetDisplayVisibility()
+    if vis:
+      node.SetDisplayVisibility(False)
+      clone = self._node('cloneLandmarkNode')
+      if clone:
+        clone.SetDisplayVisibility(False)
     else:
-      visibility = self.meanLandmarkNode.SetDisplayVisibility(True)
-      # refresh color and scale from GUI
-      self.meanLandmarkNode.GetDisplayNode().SetGlyphScale(self.ui.scaleMeanShapeSlider.value)
-      color = self.ui.meanShapeColor.color
-      self.meanLandmarkNode.GetDisplayNode().SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
-      # refresh PC warped mean node
-      if hasattr(self, 'cloneLandmarkNode'):
-        self.cloneLandmarkNode.SetDisplayVisibility(True)
-        self.cloneLandmarkDisplayNode.SetGlyphScale(self.ui.scaleMeanShapeSlider.value)
-        self.cloneLandmarkDisplayNode.SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
+      node.SetDisplayVisibility(True)
+      disp = self._display(node)
+      if disp:
+        disp.SetGlyphScale(self.ui.scaleMeanShapeSlider.value)
+        color = self.ui.meanShapeColor.color
+        disp.SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
+      clone = self._node('cloneLandmarkNode')
+      if clone:
+        clone.SetDisplayVisibility(True)
+        cdisp = self._display(clone)
+        if cdisp:
+          cdisp.SetGlyphScale(self.ui.scaleMeanShapeSlider.value)
+          cdisp.SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
 
   def toggleMeanLabels(self):
-    visibility = self.meanLandmarkNode.GetDisplayNode().GetPointLabelsVisibility()
+    node = self._node('meanLandmarkNode')
+    if not node:
+      return
+    disp = self._display(node)
+    if not disp:
+      return
+    visibility = disp.GetPointLabelsVisibility()
     if visibility:
-      self.meanLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(0)
-      if hasattr(self, 'cloneLandmarkNode'):
-        self.cloneLandmarkDisplayNode.SetPointLabelsVisibility(0)
+      disp.SetPointLabelsVisibility(0)
+      clone = self._node('cloneLandmarkNode')
+      if clone:
+        cdisp = self._display(clone)
+        if cdisp:
+          cdisp.SetPointLabelsVisibility(0)
     else:
-      self.meanLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(1)
-      self.meanLandmarkNode.GetDisplayNode().SetTextScale(3)
-      if hasattr(self, 'cloneLandmarkNode'):
-        self.cloneLandmarkDisplayNode.SetPointLabelsVisibility(1)
-        self.cloneLandmarkDisplayNode.SetTextScale(3)
+      disp.SetPointLabelsVisibility(1)
+      disp.SetTextScale(3)
+      clone = self._node('cloneLandmarkNode')
+      if clone:
+        cdisp = self._display(clone)
+        if cdisp:
+          cdisp.SetPointLabelsVisibility(1)
+          cdisp.SetTextScale(3)
 
   def toggleMeanColor(self):
+    node = self._node('meanLandmarkNode')
+    if not node:
+      return
+    disp = self._display(node)
+    if not disp:
+      return
     color = self.ui.meanShapeColor.color
-    self.meanLandmarkNode.GetDisplayNode().SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
-    if hasattr(self, 'cloneLandmarkNode'):
-      self.cloneLandmarkDisplayNode.SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
+    disp.SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
+    clone = self._node('cloneLandmarkNode')
+    if clone:
+      cdisp = self._display(clone)
+      if cdisp:
+        cdisp.SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
 
   def scaleMeanGlyph(self):
-    scaleFactor = self.sampleSizeScaleFactor/10
-    self.meanLandmarkNode.GetDisplayNode().SetGlyphScale(self.ui.scaleMeanShapeSlider.value)
-    if hasattr(self, 'cloneLandmarkNode'):
-      self.cloneLandmarkDisplayNode.SetGlyphScale(self.ui.scaleMeanShapeSlider.value)
+    node = self._node('meanLandmarkNode')
+    if not node:
+      return
+    disp = self._display(node)
+    if not disp:
+      return
+    disp.SetGlyphScale(self.ui.scaleMeanShapeSlider.value)
+    clone = self._node('cloneLandmarkNode')
+    if clone:
+      cdisp = self._display(clone)
+      if cdisp:
+        cdisp.SetGlyphScale(self.ui.scaleMeanShapeSlider.value)
 
   def onModelSelected(self):
     self.ui.selectorButton.enabled = bool( self.ui.grayscaleSelector.currentPath and self.ui.FudSelect.currentPath)
@@ -1404,10 +1484,12 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.ui.selectorButton.enabled = bool( self.ui.grayscaleSelector.currentPath != "") and bool(self.ui.FudSelect.currentPath != "")
 
   def onPlotDistribution(self):
+    if self.LM is None:
+      return
     self.ui.scaleSlider.enabled = True
-    if self.NoneType.isChecked():
+    if self.ui.NoneType.isChecked():
       self.unplotDistributions()
-    elif self.CloudType.isChecked():
+    elif self.ui.CloudType.isChecked():
       self.plotDistributionCloud()
     else:
       self.plotDistributionGlyph(2*self.ui.scaleSlider.value)
@@ -1476,6 +1558,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     modelNode.SetAndObservePolyData(glyph.GetOutput())
 
   def plotDistributionGlyph(self, sliderScale):
+    if self.LM is None:
+      return
     self.unplotDistributions()
     varianceMat = self.LM.calcLMVariation(self.sampleSizeScaleFactor, self.BoasOption)
     i,j,k=self.LM.lmOrig.shape
@@ -1508,7 +1592,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     polydata.SetPoints(points)
     polydata.GetPointData().AddArray(index)
 
-    if self.EllipseType.isChecked():
+    if self.ui.EllipseType.isChecked():
       polydata.GetPointData().SetScalars(index)
       polydata.GetPointData().SetTensors(tensors)
       glyph = vtk.vtkTensorGlyph()
@@ -1560,7 +1644,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
   def onSelect(self):
     self.cloneLandmarkNode = self.copyLandmarkNode
     self.cloneLandmarkNode.CreateDefaultDisplayNodes()
-    self.cloneLandmarkDisplayNode = self.cloneLandmarkNode.GetDisplayNode()
     if self.ui.modelVisualizationType.isChecked():
       # get landmark node selected
       logic = GPALogic()
@@ -1628,13 +1711,13 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.scaleMeanGlyph()
     self.toggleMeanColor()
     visibility = self.meanLandmarkNode.GetDisplayNode().GetPointLabelsVisibility()
-    self.cloneLandmarkDisplayNode.SetPointLabelsVisibility(visibility)
-    self.cloneLandmarkDisplayNode.SetTextScale(3)
+    self.cloneLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(visibility)
+    self.cloneLandmarkNode.GetDisplayNode().SetTextScale(3)
 
     if self.ui.scaleMeanShapeSlider.value == 0:  # If the scale is set to 0, reset to default scale
       self.ui.scaleMeanShapeSlider.value = 3
 
-    self.cloneLandmarkDisplayNode.SetGlyphScale(self.ui.scaleMeanShapeSlider.value)
+    self.cloneLandmarkNode.GetDisplayNode().SetGlyphScale(self.ui.scaleMeanShapeSlider.value)
 
     #apply custom layout
     self.assignLayoutDescription()
@@ -1644,7 +1727,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     GPANodeCollection.AddItem(self.transformNode)
 
     # Enable PCA warping and recording
-    self.sliderController.populateComboBox(self.PCList)
+    self.pcController.populateComboBox(self.PCList)
     self.applyEnabled = True
     self.ui.startRecordButton.enabled = True
 
@@ -1660,7 +1743,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     #Set up a new sequence browser and add sequences
     browserNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSequenceBrowserNode", "GPASequenceBrowser")
     browserLogic=slicer.modules.sequences.logic()
-    if hasattr(self, 'cloneModelNode'):
+    if getattr(self, 'cloneModelNode', None):
       browserLogic.AddSynchronizedNode(self.modelSequence,self.cloneModelNode,browserNode)
     browserLogic.AddSynchronizedNode(self.modelSequence,self.cloneLandmarkNode,browserNode)
     browserLogic.AddSynchronizedNode(self.transformSequence,self.gridTransformNode,browserNode)
@@ -2226,7 +2309,6 @@ class GPATest(ScriptedLoadableModuleTest):
     self.delayDisplay("Starting the test")
 
     # Get/create input data
-
     import SampleData
     registerSampleData()
     inputVolume = SampleData.downloadSample('TemplateKey1')
