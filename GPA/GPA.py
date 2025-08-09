@@ -106,45 +106,99 @@ This module performs standard Generalized Procrustes Analysis (GPA) based on Dry
        </item>"
       </layout>
   """
-    # Additional initialization step after application startup is complete
-    #slicer.app.connect("startupCompleted()", registerSampleData)
-
-
-#
-# Register sample data sets in Sample Data module
-#
-
-#
-# GPAWidget
-#
-
-
 
 class PCSliderController:
-    def __init__(self, comboBox, slider, spinBox, dynamic_min=0.0, dynamic_max=1.0):
+    """
+    Controller that links an existing QComboBox, QSlider, and QDoubleSpinBox.
+    - Keeps slider and spinbox in sync via mapped values
+    - Exposes optional callbacks:
+        onSliderChanged -> called on slider.valueChanged
+        onComboBoxChanged -> called on comboBox.currentIndexChanged
+    - Provides helpers: setRange, setValue, sliderValue, comboBoxIndex, populateComboBox, clear
+    """
+    def __init__(self, comboBox, slider, spinBox, dynamic_min=0.0, dynamic_max=1.0,
+                 onSliderChanged=None, onComboBoxChanged=None):
         self.comboBox = comboBox
         self.slider = slider
         self.spinBox = spinBox
-        self.dynamic_min = dynamic_min
-        self.dynamic_max = dynamic_max
+        self.dynamic_min = float(dynamic_min)
+        self.dynamic_max = float(dynamic_max)
 
+        # Configure widgets but do not create them
         self.slider.setMinimum(-100)
         self.slider.setMaximum(100)
         self.spinBox.setDecimals(3)
-        self.spinBox.setMinimum(dynamic_min)
-        self.spinBox.setMaximum(dynamic_max)
+        self.spinBox.setMinimum(self.dynamic_min)
+        self.spinBox.setMaximum(self.dynamic_max)
 
-        # Connect signals
+        # Keep slider and spinbox mapped to each other
         self.slider.valueChanged.connect(self.updateSpinBoxFromSlider)
         self.spinBox.valueChanged.connect(self.updateSliderFromSpinBox)
 
+        # Optional external callbacks, matching legacy SliderGroup behavior
+        if onSliderChanged:
+            self.slider.valueChanged.connect(onSliderChanged)
+        if onComboBoxChanged:
+            self.comboBox.currentIndexChanged.connect(onComboBoxChanged)
+
+    def setRange(self, new_min, new_max):
+        """Update dynamic range and reset the mapped value to 0 in dynamic space."""
+        self.dynamic_min = float(new_min)
+        self.dynamic_max = float(new_max)
+
+        self.spinBox.blockSignals(True)
+        self.spinBox.setMinimum(self.dynamic_min)
+        self.spinBox.setMaximum(self.dynamic_max)
+        self.spinBox.blockSignals(False)
+
+        slider_zero = self.map_dynamic_to_slider(0.0)
+        slider_zero = max(min(slider_zero, 100), -100)
+
+        self.slider.blockSignals(True)
+        self.slider.setValue(slider_zero)
+        self.slider.blockSignals(False)
+
+        self.updateSpinBoxFromSlider(slider_zero)
+
+    def setValue(self, dynamic_value):
+        """Set using the dynamic value domain."""
+        sv = self.map_dynamic_to_slider(float(dynamic_value))
+        self.slider.setValue(sv)
+
+    def sliderValue(self):
+        """Return the current dynamic value shown in the spinbox."""
+        try:
+            return float(self.spinBox.value())
+        except TypeError:
+            return float(self.spinBox.value)
+
+    def comboBoxIndex(self):
+        """Return current combobox index as int."""
+        try:
+            return int(self.comboBox.currentIndex())
+        except TypeError:
+            return int(self.comboBox.currentIndex)
+
+    def populateComboBox(self, items):
+        self.comboBox.clear()
+        for it in items:
+            self.comboBox.addItem(str(it))
+
+    def clear(self):
+        self.spinBox.setValue(0.0)
+        self.comboBox.clear()
+
     def map_slider_to_dynamic(self, slider_value):
-        normalized = (slider_value + 100) / 200
+        """Map [-100, 100] to [dynamic_min, dynamic_max]."""
+        normalized = (float(slider_value) + 100.0) / 200.0
         return self.dynamic_min + normalized * (self.dynamic_max - self.dynamic_min)
 
     def map_dynamic_to_slider(self, dynamic_value):
-        normalized = (dynamic_value - self.dynamic_min) / (self.dynamic_max - self.dynamic_min)
-        return int(normalized * 200 - 100)
+        """Map [dynamic_min, dynamic_max] to [-100, 100]."""
+        if self.dynamic_max == self.dynamic_min:
+            return 0
+        normalized = (float(dynamic_value) - self.dynamic_min) / (self.dynamic_max - self.dynamic_min)
+        return int(round(normalized * 200.0 - 100.0))
 
     def updateSpinBoxFromSlider(self, slider_value):
         dynamic_value = self.map_slider_to_dynamic(slider_value)
@@ -157,34 +211,6 @@ class PCSliderController:
         self.slider.blockSignals(True)
         self.slider.setValue(slider_value)
         self.slider.blockSignals(False)
-
-    def setRange(self, new_min, new_max):
-        self.dynamic_min = new_min
-        self.dynamic_max = new_max
-        self.spinBox.setMinimum(new_min)
-        self.spinBox.setMaximum(new_max)
-        self.setValue(0)
-
-    def setValue(self, value):
-        """Set value using dynamic range."""
-        slider_value = self.map_dynamic_to_slider(value)
-        self.slider.setValue(slider_value)
-
-    def getValue(self):
-        return self.spinBox.value()
-
-    def clear(self):
-        self.spinBox.setValue(0)
-        self.comboBox.clear()
-
-    def populateComboBox(self, boxlist):
-        self.comboBox.clear()
-        for item in boxlist:
-            self.comboBox.addItem(item)
-
-    def comboBoxIndex(self):
-        return self.comboBox.currentIndex()
-
 
 class LMData:
   def __init__(self):
@@ -376,6 +402,9 @@ class LMData:
     tmp[:,2]=self.vec[2*i:3*i,pc]
     return LM+tmp*scaleFactor/3.0
 
+#
+# GPAWidget
+#
 class GPAWidget(ScriptedLoadableModuleWidget):
   """Uses ScriptedLoadableModuleWidget base class, available at: https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
@@ -414,7 +443,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.addLayoutButton(501, 'Table Only View', 'Custom layout for GPA module', 'LayoutTableOnlyView.png', slicer.customLayoutTableOnly)
     self.addLayoutButton(502, 'Plot Only View', 'Custom layout for GPA module', 'LayoutPlotOnlyView.png', slicer.customLayoutPlotOnly)
 
-    ################################### Setup Tab ###################################
+    ################################### Setup tab connections
     self.ui.LMbutton.connect('clicked(bool)', self.onSelectLandmarkFiles)
     self.ui.clearButton.connect('clicked(bool)', self.onClearButton)
     self.ui.outputPathButton.connect('clicked(bool)', self.onSelectOutputDirectory)
@@ -425,7 +454,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.ui.resultsButton.connect('clicked(bool)', self.onSelectResultsDirectory)
     self.ui.loadResultsButton.connect('clicked(bool)', self.onLoadFromFile)
 
-    ################################### Explore Tab ###################################
+    ################################### Explore tab connections
     self.ui.plotMeanButton3D.connect('clicked(bool)', self.toggleMeanPlot)
     self.ui.showMeanLabelsButton.connect('clicked(bool)', self.toggleMeanLabels)
     self.ui.meanShapeColor.connect('colorChanged(QColor)', self.toggleMeanColor)
@@ -435,7 +464,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.ui.plotButton.connect('clicked(bool)', self.plot)
     self.ui.lolliButton.connect('clicked(bool)', self.lolliPlot)
 
-    ################################### Visualize Tab ###################################
+    ################################### Visualize tab connections
     self.ui.landmarkVisualizationType.connect('toggled(bool)', self.onToggleVisualization)
     self.ui.modelVisualizationType.connect('toggled(bool)', self.onToggleVisualization)
     self.ui.grayscaleSelector.connect('validInputChanged(bool)', self.onModelSelected)
@@ -447,17 +476,23 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.ui.updateMagnificationButton.connect("clicked()", self.onUpdateMagnificationClicked)
     self.PCList=[]
 
+    # Keep a persistent controller instance
     self.pcController = PCSliderController(
         comboBox=self.ui.pcComboBox,
         slider=self.ui.pcSlider,
         spinBox=self.ui.pcSpinBox,
         dynamic_min=-1.0,
-        dynamic_max=1.0
+        dynamic_max=1.0,
+        onSliderChanged=lambda _: self.updatePCScaling(),
+        onComboBoxChanged=lambda _: self.setupPCTransform(),
     )
-    self.pcController.comboBoxList = self.PCList  # optional: if needed for later use
     self.pcController.populateComboBox(self.PCList)
+    self.ui.pcComboBox.setCurrentIndex(0)
+    self.setupPCTransform()
+    self.updatePCScaling()
 
-    # Core state defaults (safe None/empty values)
+
+    # Core state defaults
     self.LM = None
     self.sampleSizeScaleFactor = 1.0
     self.meanLandmarkNode = None
@@ -478,6 +513,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.pcMax = 0.0
     self.pcScoreAbsMax = 0.0
     self._resetting = False
+    self.ui.spinMagnification.setValue(1.0)
 
 
   # ---- Safe node helpers ----
@@ -945,7 +981,14 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.pcNumber=10
     self.updateList()
 
-    # get mean landmarks as a fiducial node
+    # Default to PC1 and initialize transform so slider works immediately
+    try:
+        if self.ui.pcComboBox.count > 1:
+            self.ui.pcComboBox.setCurrentIndex(1)
+        self.setupPCTransform()
+    except Exception:
+        pass
+# get mean landmarks as a fiducial node
     self.meanLandmarkNode=slicer.mrmlScene.GetFirstNodeByName('Mean Landmark Node')
     if self.meanLandmarkNode is None:
       self.meanLandmarkNode = slicer.vtkMRMLMarkupsFiducialNode()
@@ -1058,9 +1101,18 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.pcNumber=10
     self.updateList()
 
+
+
+    # Default to PC1 and initialize transform so slider works immediately
+    try:
+        if self.ui.pcComboBox.count > 1:
+            self.ui.pcComboBox.setCurrentIndex(1)
+        self.setupPCTransform()
+    except Exception:
+        pass
     if(self.BoasOption):
-      self.ui.GPALogTextbox.insertPlainText("Using Boas coordinates \n")
-      print("Using Boas coordinates")
+          self.ui.GPALogTextbox.insertPlainText("Using Boas coordinates \n")
+          print("Using Boas coordinates")
 
     #set scaling factor using mean of landmarks
     self.rawMeanLandmarks = self.LM.lmOrig.mean(2)
@@ -1075,7 +1127,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     # get mean landmarks as a fiducial node
     self.meanLandmarkNode=slicer.mrmlScene.GetFirstNodeByName('Mean Landmark Node')
     if self.meanLandmarkNode is None:
-      print("creating mean node for the first time")
       self.meanLandmarkNode = slicer.vtkMRMLMarkupsFiducialNode()
       self.meanLandmarkNode.SetName('Mean Landmark Node')
       slicer.mrmlScene.AddNode(self.meanLandmarkNode)
@@ -1145,7 +1196,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         camera.GetCamera().Zoom(self.widgetZoomFactor)
 
     #initialize mean LM display
-    print("Mean lm node: ", self.meanLandmarkNode.name)
     self.scaleMeanGlyph()
     self.toggleMeanColor()
 
@@ -1352,6 +1402,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     sf = max(min(sf, 1.0), -1.0)
     self.gridTransformNode.GetTransformFromParent().SetDisplacementScale(sf)
 
+
+    try:
+      self.gridTransformNode.Modified()
+    except Exception:
+      pass
 
   # Explore Data callbacks and helpers
   def plot(self):
