@@ -130,6 +130,7 @@ class PCSliderController:
         self.spinBox.setDecimals(3)
         self.spinBox.setMinimum(self.dynamic_min)
         self.spinBox.setMaximum(self.dynamic_max)
+        self.spinBox.setSingleStep(0.01)  # for finer keyboard control
 
         # Keep slider and spinbox mapped to each other
         self.slider.valueChanged.connect(self.updateSpinBoxFromSlider)
@@ -159,6 +160,8 @@ class PCSliderController:
         self.slider.blockSignals(False)
 
         self.updateSpinBoxFromSlider(slider_zero)
+        if abs(self.spinBox.value) < 1e-6:
+            self.spinBox.setValue(0.0)
 
     def setValue(self, dynamic_value):
         """Set using the dynamic value domain."""
@@ -189,12 +192,15 @@ class PCSliderController:
         self.comboBox.clear()
 
     def map_slider_to_dynamic(self, slider_value):
-        """Map [-100, 100] to [dynamic_min, dynamic_max]."""
+        """Map [-100, 100] to [dynamic_min, dynamic_max], snapping near zero."""
         normalized = (float(slider_value) + 100.0) / 200.0
-        return self.dynamic_min + normalized * (self.dynamic_max - self.dynamic_min)
+        val = self.dynamic_min + normalized * (self.dynamic_max - self.dynamic_min)
+        if abs(val) < 1e-12:
+            return 0.0
+        return val
 
     def map_dynamic_to_slider(self, dynamic_value):
-        """Map [dynamic_min, dynamic_max] to [-100, 100]."""
+        """Map [dynamic_min, dynamic_max] to [-100, 100] with rounding."""
         if self.dynamic_max == self.dynamic_min:
             return 0
         normalized = (float(dynamic_value) - self.dynamic_min) / (self.dynamic_max - self.dynamic_min)
@@ -818,7 +824,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.ui.GPALogTextbox.insertPlainText("Error: No input files were selected for generating the covariate table\n")
       return
     #if #check for rows, columns
-    factorList = self.factorNames.text.split(",")
+    factorList = self.ui.factorNames.text.split(",")
     if len(factorList)<1:
       qt.QMessageBox.critical(slicer.util.mainWindow(),
       'Error', 'Please specify at least one factor name to generate a covariate table template')
@@ -923,7 +929,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
   def onSelectResultsDirectory(self):
     self.resultsDirectory=qt.QFileDialog().getExistingDirectory()
-    self.resultsText.setText(self.resultsDirectory)
+    self.ui.resultsText.setText(self.resultsDirectory)
     try:
       self.ui.loadResultsButton.enabled = bool (self.resultsDirectory)
     except AttributeError:
