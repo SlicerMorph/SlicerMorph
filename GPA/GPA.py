@@ -453,6 +453,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.ui.LMbutton.connect('clicked(bool)', self.onSelectLandmarkFiles)
     self.ui.clearButton.connect('clicked(bool)', self.onClearButton)
     self.ui.outputPathButton.connect('clicked(bool)', self.onSelectOutputDirectory)
+    self.ui.factorNames.connect('textChanged(const QString &)', self.factorStringChanged)
     self.ui.generateCovariatesTableButton.connect('clicked(bool)', self.onGenerateCovariatesTable)
     self.ui.selectCovariatesButton.connect('clicked(bool)', self.onSelectCovariatesTable)
     self.ui.loadButton.connect('clicked(bool)', self.onLoad)
@@ -708,9 +709,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.ui.FudSelect.setCurrentPath("")
     self.ui.grayscaleSelector.enabled = False
     self.ui.FudSelect.enabled = False
-
     self.pcController.clear()
-
     self.ui.vectorOne.clear()
     self.ui.vectorTwo.clear()
     self.ui.vectorThree.clear()
@@ -719,10 +718,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.ui.selectFactor.clear()
     self.ui.factorNames.setText("")
     self.ui.scaleSlider.value=3
-
     self.ui.scaleMeanShapeSlider.value=3
     self.ui.meanShapeColor.color=qt.QColor(250,128,114)
-
     self.ui.scaleSlider.enabled = False
 
     # Disable buttons for workflow
@@ -1107,8 +1104,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.pcNumber=10
     self.updateList()
 
-
-
     # Default to PC1 and initialize transform so slider works immediately
     try:
         if self.ui.pcComboBox.count > 1:
@@ -1429,7 +1424,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       for i in range(factorCol.GetNumberOfTuples()):
         factorArray.append(factorCol.GetValue(i).rstrip())
       factorArrayNP = np.array(factorArray)
-      print("Factor array: ", factorArrayNP)
       if(len(np.unique(factorArrayNP))>1 ): #check values of factors for scatter plot
         logic.makeScatterPlotWithFactors(self.scatterDataAll,self.files,factorArrayNP,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1),self.pcNumber)
       else:   #if the user input a factor requiring more than 3 groups, do not use factor
@@ -1551,7 +1545,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     if self.ui.NoneType.isChecked():
       self.unplotDistributions()
     elif self.ui.CloudType.isChecked():
-      self.plotDistributionCloud()
+      self.plotDistributionCloud(2*self.ui.scaleSlider.value)
     else:
       self.plotDistributionGlyph(2*self.ui.scaleSlider.value)
 
@@ -1566,7 +1560,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     if modelNode:
       slicer.mrmlScene.RemoveNode(modelNode)
 
-  def plotDistributionCloud(self):
+  def plotDistributionCloud(self, sliderScale):
     self.unplotDistributions()
     i,j,k=self.LM.lmOrig.shape
     pt=[0,0,0]
@@ -1591,7 +1585,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     #set up glyph for visualizing point cloud
     sphereSource = vtk.vtkSphereSource()
-    sphereSource.SetRadius(self.sampleSizeScaleFactor/300)
+    if sliderScale != 1: # if scaling for visualization
+      sphereSource.SetRadius(sliderScale*self.sampleSizeScaleFactor/500)
+    else:
+      sphereSource.SetRadius(sliderScale*self.sampleSizeScaleFactor/300)
     glyph = vtk.vtkGlyph3D()
     glyph.SetSourceConnection(sphereSource.GetOutputPort())
     glyph.SetInputData(polydata)
@@ -2171,6 +2168,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
     plotViewNode.SetPlotChartNodeID(plotChartNode.GetID())
 
   def lollipopGraph(self, LMObj,LM, pc, scaleFactor, componentNumber, TwoDOption):
+    print("lolli scale: ", scaleFactor)
     # set options for 3 vector displays
     if componentNumber == 1:
       color = [1,0,0]
@@ -2212,7 +2210,10 @@ class GPALogic(ScriptedLoadableModuleLogic):
 
       tubeFilter = vtk.vtkTubeFilter()
       tubeFilter.SetInputData(polydata)
-      tubeFilter.SetRadius(scaleFactor/500)
+      if scaleFactor != 1: #if using scaling for morphospace
+        tubeFilter.SetRadius(scaleFactor/500)
+      else:
+        tubeFilter.SetRadius(scaleFactor/100)
       tubeFilter.SetNumberOfSides(20)
       tubeFilter.CappingOn()
       tubeFilter.Update()
@@ -2258,7 +2259,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
     tmp[:,0]=LMObj.vec[0:i,pc]
     tmp[:,1]=LMObj.vec[i:2*i,pc]
     tmp[:,2]=LMObj.vec[2*i:3*i,pc]
-    return LM+tmp*scaleFactor/3.0
+    return LM+tmp*scaleFactor/3
 
   def convertFudicialToVTKPoint(self, fnode):
     import numpy as np
