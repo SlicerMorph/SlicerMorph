@@ -212,7 +212,7 @@ class PCSliderController:
     def updateSpinBoxFromSlider(self, slider_value):
         dynamic_value = self.map_slider_to_dynamic(slider_value)
         # If the slider is exactly centered, force a clean 0.0
-        if int(slider_value) == 0 or abs(dynamic_value) < 1e-12:
+        if int(slider_value) == 0 or abs(dynamic_value) < 1e-6:
             dynamic_value = 0.0
         self.spinBox.blockSignals(True)
         self.spinBox.setValue(dynamic_value)
