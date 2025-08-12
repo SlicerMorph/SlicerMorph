@@ -942,6 +942,44 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     qpath = qt.QUrl.fromLocalFile(os.path.dirname(self.outputFolder+os.path.sep))
     qt.QDesktopServices().openUrl(qpath)
 
+  def setupCovariatesFromResults(self, tablePath):
+    # Load table
+    try:
+      self.factorTableNode = slicer.util.loadTable(tablePath)
+    except Exception:
+      self.ui.GPALogTextbox.insertPlainText(
+        f"Covariate import failed. Table could not be loaded from {tablePath}\n"
+      )
+      return False
+    numRows = self.factorTableNode.GetTable().GetColumn(0).GetNumberOfTuples()
+    if numRows != len(self.files):
+      self.ui.GPALogTextbox.insertPlainText(
+        "Error: Covariate table import failed. Row count does not match number of samples in results.\n"
+      )
+      return False
+    indexCol = self.factorTableNode.GetTable().GetColumn(0)
+    for i, fname in enumerate(self.files):
+      if indexCol.GetValue(i) not in fname:
+        self.ui.GPALogTextbox.insertPlainText(
+          f"Covariate import failed. Expected row like {fname}, got {indexCol.GetValue(i)}\n"
+        )
+        return False
+    self.ui.selectFactor.clear()
+    self.ui.selectFactor.addItem("")  # “no factor”
+    for c in range(1, self.factorTableNode.GetNumberOfColumns()):
+      name = self.factorTableNode.GetTable().GetColumnName(c)
+      # if any cell in column is numeric, treat as numeric and skip
+      has_numeric = False
+      for r in range(numRows):
+        if self.factorTableNode.GetTable().GetValue(r, c).ToString().isnumeric():
+          has_numeric = True
+          break
+      if not has_numeric and name:
+        self.ui.selectFactor.addItem(name)
+
+    self.ui.GPALogTextbox.insertPlainText("Covariate table loaded for results session\n")
+    return True
+
   def onLoadFromFile(self):
     self.initializeOnLoad() #clean up module from previous runs
     logic = GPALogic()
@@ -986,6 +1024,16 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     shape = self.LM.lmOrig.shape
     print('Loaded ' + str(shape[2]) + ' subjects with ' + str(shape[0]) + ' landmark points.')
     self.ui.GPALogTextbox.insertPlainText(f"Loaded {shape[2]} subjects with {shape[0]} landmark points.\n")
+
+    # If a covariate table was written with these results, load and setup
+    covariatePath = os.path.join(self.resultsDirectory, "covariateTable.csv")
+    if os.path.exists(covariatePath):
+      self.ui.selectCovariatesText.setText(covariatePath)  # show path in UI
+      if self.setupCovariatesFromResults(covariatePath):
+        try:
+          self.ui.selectFactor.currentIndexChanged.connect(lambda _: self.plot())
+        except Exception:
+          pass
     # GPA parameters
     self.pcNumber=10
     self.updateList()
