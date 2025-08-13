@@ -143,28 +143,28 @@ class PCSliderController:
             self.comboBox.currentIndexChanged.connect(onComboBoxChanged)
 
     def setRange(self, new_min, new_max):
-        self.dynamic_min = float(new_min)
-        self.dynamic_max = float(new_max)
+      self.dynamic_min = float(new_min)
+      self.dynamic_max = float(new_max)
 
-        self.spinBox.blockSignals(True)
-        self.spinBox.setMinimum(self.dynamic_min)
-        self.spinBox.setMaximum(self.dynamic_max)
-        self.spinBox.blockSignals(False)
+      # Update spinbox bounds
+      self.spinBox.blockSignals(True)
+      self.spinBox.setMinimum(self.dynamic_min)
+      self.spinBox.setMaximum(self.dynamic_max)
+      self.spinBox.blockSignals(False)
 
-        # Center the slider at exactly 0
-        slider_zero = self.map_dynamic_to_slider(0.0)
-        slider_zero = max(min(slider_zero, 100), -100)
+      # Compute where slider should be for dynamic value 0 (works for asymmetric ranges)
+      s0 = self.map_dynamic_to_slider(0.0)
+      s0 = max(min(s0, self.slider.maximum), self.slider.minimum)
 
-        self.slider.blockSignals(True)
-        self.slider.setValue(slider_zero)
-        self.slider.blockSignals(False)
-
-        self.updateSpinBoxFromSlider(slider_zero)
-        # FIX: call .value() here
-        if abs(float(self.spinBox.value)) < 1e-6:
-            self.spinBox.blockSignals(True)
-            self.spinBox.setValue(0.0)
-            self.spinBox.blockSignals(False)
+      # Final reset: set exact 0.0 via spinbox, and align slider to s0
+      self.spinBox.blockSignals(True)
+      self.slider.blockSignals(True)
+      try:
+          self.spinBox.setValue(0.0)
+          self.slider.setValue(s0)
+      finally:
+          self.slider.blockSignals(False)
+          self.spinBox.blockSignals(False)
 
     def setValue(self, dynamic_value):
         """Set using the dynamic value domain."""
