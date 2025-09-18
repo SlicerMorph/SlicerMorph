@@ -450,6 +450,26 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.layout.addWidget(uiWidget)
     self.ui = slicer.util.childWidgetVariables(uiWidget)
 
+    # Ensure patsy is available (just like you do for pandas)
+    try:
+      import patsy  # noqa
+    except Exception:
+      try:
+        progressDialog = slicer.util.createProgressDialog(windowTitle="Installing...",
+                                                          labelText="Installing patsy (formula parser)...",
+                                                          maximum=0)
+        slicer.app.processEvents()
+        slicer.util.pip_install(["patsy"])
+        progressDialog.close()
+      except Exception:
+        try:
+          progressDialog.close()
+        except Exception:
+          pass
+
+    # Initialize the LR tab UI (safe no-op if tab not present)
+    self._lr_initTab()
+
     # Add custom layout buttons to menu
     self.addLayoutButton(500, 'GPA Module View', 'Custom layout for GPA module', 'LayoutSlicerMorphView.png', slicer.customLayoutSM)
     self.addLayoutButton(501, 'Table Only View', 'Custom layout for GPA module', 'LayoutTableOnlyView.png', slicer.customLayoutTableOnly)
@@ -928,6 +948,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     for i in range(1,self.factorTableNode.GetNumberOfColumns()):
       self.ui.GPALogTextbox.insertPlainText(f"{self.factorTableNode.GetTable().GetColumnName(i)} ")
     self.ui.GPALogTextbox.insertPlainText("\n")
+
+    if hasattr(self, '_lr_refreshFromCovariates'):
+      self._lr_refreshFromCovariates()
+
     return runAnalysis
 
   def onSelectResultsDirectory(self):
@@ -978,6 +1002,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         self.ui.selectFactor.addItem(name)
 
     self.ui.GPALogTextbox.insertPlainText("Covariate table loaded for results session\n")
+
+    if hasattr(self, '_lr_refreshFromCovariates'):
+      self._lr_refreshFromCovariates()
+
     return True
 
   def onLoadFromFile(self):
@@ -1122,6 +1150,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.ui.landmarkVisualizationType.enabled = True
     self.ui.modelVisualizationType.enabled = True
 
+    if hasattr(self, '_lr_refreshFromCovariates'):
+      self._lr_refreshFromCovariates()
+
   def onLoad(self):
     self.initializeOnLoad() #clean up module from previous runs
     logic = GPALogic()
@@ -1263,6 +1294,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.ui.selectorButton.enabled = True
     self.ui.landmarkVisualizationType.enabled = True
     self.ui.modelVisualizationType.enabled = True
+
+    if hasattr(self, '_lr_refreshFromCovariates'):
+      self._lr_refreshFromCovariates()
 
 
   def initializeOnLoad(self):
@@ -1899,6 +1933,400 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     if(temporaryNode):
       GPANodeCollection.RemoveItem(temporaryNode)
       slicer.mrmlScene.RemoveNode(temporaryNode)
+
+  # ---------------------- Geomorph LR: Autocomplete + Validation ----------------------
+
+  def _lr_qt_text(self, obj):
+    """Return a clean string whether .text is a slot or a value."""
+    t = getattr(obj, 'text', None)
+    if callable(t):
+      try:
+        return str(t())
+      except Exception:
+        pass
+    if t is not None:
+      return str(t)
+    return str(obj)
+
+  def _lr_ensurePatsy(self):
+    try:
+      import patsy  # noqa
+      return True
+    except Exception:
+      try:
+        progress = slicer.util.createProgressDialog(windowTitle="Installing...",
+                                                    labelText="Installing patsy (formula parser)...",
+                                                    maximum=0)
+        slicer.app.processEvents()
+        slicer.util.pip_install(["patsy"])
+        progress.close()
+        import patsy  # noqa
+        return True
+      except Exception:
+        try:
+          progress.close()
+        except Exception:
+          pass
+        return False
+
+  def _lr_initTab(self):
+    if not hasattr(self.ui, 'geomorphLRTab'):
+      return
+
+    # Map controls created by the .ui
+    self._lr_formula = getattr(self.ui, 'lrFormulaLine', None)  # will be upgraded
+    self._lr_status = self.ui.lrStatusLabel
+    self._lr_validateBtn = self.ui.lrValidateButton
+    self._lr_copyBtn = self.ui.lrCopyButton
+    self._lr_resetBtn = self.ui.lrResetButton
+    self._lr_includeInter = self.ui.lrIncludeInteractionsCheck
+    self._lr_possibleList = self.ui.lrPossibleCovariatesList
+
+    # >>> NEW: swap the single-line input for a multi-line editor
+    self._lr_upgradeFormulaWidget()
+    # >>> NEW: clamp the covariate list height
+    self._lr_shrinkCovariateList(max_height_px=140)
+
+    # Baseline defaults
+    self._lr_copyBtn.setEnabled(False)
+    self._lr_setStatus("Waiting for input…", ok=None)
+    try:
+      # QPlainTextEdit uses setPlainText; our helper below handles both
+      self._lr_setFormulaText("Coords ~ Size")
+    except Exception:
+      pass
+
+    # Buttons
+    self._lr_validateBtn.clicked.connect(self._lr_onValidateClicked)
+    self._lr_copyBtn.clicked.connect(self._lr_onCopyClicked)
+    self._lr_resetBtn.clicked.connect(self._lr_onResetClicked)
+    self._lr_includeInter.toggled.connect(self._lr_onIncludeInteractionsToggled)
+
+    # Build whitelist + autocomplete + initial validate
+    self._lr_refreshFromCovariates()
+
+  def _lr_setStatus(self, msg, ok=None):
+    """ok=True -> green, ok=False -> red, ok=None -> neutral."""
+    self._lr_status.setText(msg)
+    if ok is True:
+      self._lr_formula.setStyleSheet("QLineEdit, QPlainTextEdit { border: 2px solid #2e7d32; border-radius: 3px; }")
+      self._lr_copyBtn.setEnabled(True)
+    elif ok is False:
+      self._lr_formula.setStyleSheet("QLineEdit, QPlainTextEdit { border: 2px solid #c62828; border-radius: 3px; }")
+      self._lr_copyBtn.setEnabled(False)
+    else:
+      self._lr_formula.setStyleSheet("")
+      self._lr_copyBtn.setEnabled(False)
+
+  def _lr_onResetClicked(self):
+    self._lr_formula.blockSignals(True)
+    self._lr_setFormulaText("Coords ~ Size")
+    self._lr_formula.blockSignals(False)
+    self._lr_onFormulaEdited()
+
+  def _lr_onCopyClicked(self):
+    qt.QApplication.clipboard().setText(self._lr_getFormulaText())
+
+  def _lr_onValidateClicked(self):
+    self._lr_onFormulaEdited(force=True)
+
+  def _lr_onIncludeInteractionsToggled(self, checked):
+    self._lr_applyCompleter()
+    # Keep current text, just re-validate against new whitelist
+    self._lr_onFormulaEdited()
+
+
+  def _lr_getCovariateNames(self):
+    """Fetch covariate names from factorTableNode (skip the first ID column)."""
+    names = []
+    ftn = getattr(self, 'factorTableNode', None)
+    if not ftn:
+      return names
+    try:
+      table = ftn.GetTable()
+      ncols = ftn.GetNumberOfColumns()
+      for c in range(1, ncols):
+        nm = str(table.GetColumnName(c)).strip()
+        if nm:
+          names.append(nm)
+    except Exception:
+      pass
+    return names
+
+  def _lr_computeWhitelist(self):
+    """Return (main_effects, interactions) given current covariates and Size."""
+    covs = self._lr_getCovariateNames()
+    mains = ["Size"] + covs
+
+    inters = set()
+    if bool(self._lr_includeInter.isChecked()):
+      vars_all = mains[:]  # keep Size first
+      for i in range(len(vars_all)):
+        for j in range(i + 1, len(vars_all)):
+          a, b = vars_all[i], vars_all[j]
+          inters.add(f"{a}:{b}")
+          inters.add(f"{b}:{a}")  # accept either order
+    return mains, sorted(inters)
+
+  def _lr_applyCompleter(self):
+    """Attach a QCompleter; robust against GC (parents + strong refs)."""
+    # Clean up any previous completer to avoid stale C++ pointers
+    try:
+      old = getattr(self, '_lr_completer', None)
+      if old is not None:
+        old.setParent(None)
+        old.deleteLater()
+    except Exception:
+      pass
+    self._lr_completer = None
+    self._lr_completer_model = None
+
+    mains, inters = self._lr_computeWhitelist()
+    tokens = ["Coords", "~", "+", ":", "-1"] + mains + inters
+
+    # Parent both model and completer to the editor so Qt keeps them alive
+    model = qt.QStringListModel(self._lr_formula)
+    model.setStringList(tokens)
+    comp = qt.QCompleter(model, self._lr_formula)
+    comp.setCaseSensitivity(qt.Qt.CaseSensitive)
+    try:
+      comp.setCompletionMode(qt.QCompleter.PopupCompletion)
+    except Exception:
+      pass
+
+    # Keep strong references on self (prevents Python GC)
+    self._lr_completer_model = model
+    self._lr_completer = comp
+
+    if hasattr(self._lr_formula, 'setCompleter'):
+      # QLineEdit path
+      self._lr_formula.setCompleter(comp)
+    else:
+      # QPlainTextEdit path: manual insertion
+      comp.setWidget(self._lr_formula)
+      try:
+        comp.activated[str].connect(self._lr_insertCompletion)
+      except Exception:
+        comp.activated.connect(lambda s: self._lr_insertCompletion(str(s)))
+
+    # Hook the “show popup while typing” only once for this editor
+    if not getattr(self, '_lr_popup_connected', False):
+      try:
+        self._lr_formula.textChanged.connect(lambda: self._lr_completerMaybePopup())
+        self._lr_popup_connected = True
+      except Exception:
+        pass
+
+  def _lr_refreshFromCovariates(self):
+    """Rebuild possible list + completer. Called on init and after covariates load."""
+    mains, _ = self._lr_computeWhitelist()
+    self._lr_possibleList.clear()
+    for nm in mains:
+      self._lr_possibleList.addItem(nm)
+    self._lr_applyCompleter()
+    # Validate whatever is in the box
+    self._lr_onFormulaEdited()
+
+  def _lr_extract_term_names(self, patsy_term):
+    """Return list of plain factor names for a patsy term (robust across versions)."""
+    names = []
+    for fac in getattr(patsy_term, 'factors', []):
+      # Prefer .code (raw string), fall back to str() scraping
+      nm = getattr(fac, 'code', None)
+      if nm is None:
+        nm = getattr(fac, 'name', None)
+        if callable(nm):
+          try:
+            nm = nm()
+          except Exception:
+            nm = None
+      if nm is None:
+        nm = str(fac)
+        # Try to strip wrapper like EvalFactor('X')
+        if "EvalFactor(" in nm and "'" in nm:
+          try:
+            nm = nm.split("'", 2)[1]
+          except Exception:
+            pass
+      names.append(str(nm).strip())
+    return names
+
+  def _lr_validateFormula(self, formula):
+    """
+    Validate with patsy:
+    - LHS must be 'Coords' (case-sensitive).
+    - Each RHS term must be built from allowed variables.
+    - Pairwise interactions must be allowed if present.
+    Returns (ok: bool, message: str)
+    """
+    if not self._lr_ensurePatsy():
+      return (False, "patsy is not available and could not be installed.")
+
+    import patsy
+    # Basic shape
+    txt = (formula or "").strip()
+    if not txt:
+      return (False, "Enter a formula, e.g., Coords ~ Size + Sex.")
+
+    # Quick guard: require tilde
+    if "~" not in txt:
+      return (False, "Formula must contain '~'. Example: Coords ~ Size + Sex.")
+
+    # Parse
+    try:
+      desc = patsy.ModelDesc.from_formula(txt)
+    except Exception as e:
+      return (False, f"Syntax error: {e}")
+
+    # LHS check (accept 'Coords' only; optionally allow 'Shape' aliases)
+    lhs_terms = getattr(desc, "lhs_termlist", [])
+    if len(lhs_terms) != 1:
+      return (False, "Left-hand side must be a single variable: 'Coords'.")
+    lhs_names = self._lr_extract_term_names(lhs_terms[0])
+    if len(lhs_names) != 1 or lhs_names[0] not in ["Coords", "Shape", "SHAPE", "shape"]:
+      return (False, "LHS should be 'Coords'. If you used 'Shape', it will be treated as an alias.")
+
+    # Whitelist
+    mains_allowed, inters_allowed = self._lr_computeWhitelist()
+    mains_allowed = set(mains_allowed)
+    inters_allowed = set(inters_allowed)
+
+    # Validate RHS terms
+    for term in getattr(desc, "rhs_termlist", []):
+      names = self._lr_extract_term_names(term)
+      # Skip intercept-only term if present
+      if len(names) == 0:
+        continue
+      if len(names) == 1:
+        if names[0] not in mains_allowed:
+          return (False, f"Unknown variable: '{names[0]}'.")
+      else:
+        joined = ":".join(names)
+        if joined not in inters_allowed:
+          # Try reversed for good measure
+          rev = ":".join(reversed(names))
+          if rev not in inters_allowed:
+            return (False, f"Interaction not allowed: '{joined}'. Toggle 'Include pairwise interactions' or edit.")
+    return (True, "OK")
+
+  def _lr_onFormulaEdited(self, force=False):
+    txt = self._lr_getFormulaText()
+    ok, msg = self._lr_validateFormula(txt)
+    self._lr_setStatus(msg, ok=ok)
+
+  # ---------- LR UI sizing + multi-line input (no .ui changes needed) ----------
+
+  def _lr_upgradeFormulaWidget(self):
+      """
+    Replace single-line lrFormulaLine with a multi-line QPlainTextEdit in the same
+    grid cell (row 0, col 1 as defined in the .ui). Works across PythonQt.
+    """
+      # Already upgraded?
+      if hasattr(self.ui, 'lrFormulaEdit'):
+          self._lr_formula = self.ui.lrFormulaEdit
+          return
+
+      if not (hasattr(self.ui, 'lrFormulaLine') and hasattr(self.ui, 'lrFormulaGrid')):
+          return
+
+      edit = qt.QPlainTextEdit()
+      edit.setObjectName('lrFormulaEdit')
+      edit.setMinimumHeight(72)
+      edit.setMaximumHeight(120)
+      edit.setSizePolicy(qt.QSizePolicy.Policy.Expanding, qt.QSizePolicy.Policy.Fixed)
+      try:
+          edit.setPlaceholderText("Coords ~ Size + Sex + Species")
+      except Exception:
+          pass
+
+      grid = self.ui.lrFormulaGrid
+
+      # Remove old widget and insert new one at the known position (row 0, col 1)
+      old = self.ui.lrFormulaLine
+      try:
+          grid.removeWidget(old)
+      except Exception:
+          pass
+      old.deleteLater()
+      grid.addWidget(edit, 0, 1, 1, 1)
+
+      self.ui.lrFormulaEdit = edit
+      self._lr_formula = edit
+      edit.textChanged.connect(lambda: self._lr_onFormulaEdited())
+
+      # Optional: monospace font
+      try:
+          f = edit.font
+          f.setFamily("Menlo")
+          edit.setFont(f)
+      except Exception:
+          pass
+
+  def _lr_shrinkCovariateList(self, max_height_px=140):
+    """Make the 'Possible Covariates' box compact."""
+    if hasattr(self.ui, 'lrPossibleCovariatesList'):
+      self.ui.lrPossibleCovariatesList.setMaximumHeight(int(max_height_px))
+      self.ui.lrPossibleCovariatesList.setSizePolicy(
+        qt.QSizePolicy.Policy.Preferred, qt.QSizePolicy.Policy.Fixed
+      )
+    if hasattr(self.ui, 'lrReferenceGroup'):
+      self.ui.lrReferenceGroup.setSizePolicy(
+        qt.QSizePolicy.Policy.Preferred, qt.QSizePolicy.Policy.Fixed
+      )
+
+  def _lr_getFormulaText(self):
+    w = self._lr_formula
+    # QTextEdit/QPlainTextEdit vs QLineEdit
+    if hasattr(w, 'toPlainText'):
+      return str(w.toPlainText())
+    if hasattr(w, 'text'):
+      try:
+        return str(w.text())
+      except Exception:
+        return str(w.text)
+    return ""
+
+  def _lr_setFormulaText(self, s):
+    w = self._lr_formula
+    if hasattr(w, 'setPlainText'):
+      w.setPlainText(s)
+    elif hasattr(w, 'setText'):
+      try:
+        w.setText(s)
+      except Exception:
+        w.setText = s  # PythonQt oddity fallback
+
+  def _lr_completerMaybePopup(self):
+    comp = getattr(self, '_lr_completer', None)
+    if comp is None:
+      return
+    # If PythonQt wrapper is stale, the call below would throw; guard it
+    prefix = self._lr_currentTokenPrefix()
+    try:
+      comp.setCompletionPrefix(prefix)
+    except Exception:
+      return
+    if len(prefix) >= 1:
+      try:
+        rect = self._lr_formula.cursorRect()
+        global_pos = self._lr_formula.viewport().mapToGlobal(rect.bottomRight())
+        comp.complete(qt.QRect(global_pos, qt.QSize(300, 200)))
+      except Exception:
+        comp.complete()
+
+  def _lr_currentTokenPrefix(self):
+    import re
+    text = self._lr_getFormulaText()
+    # up to the cursor
+    try:
+      cursor = self._lr_formula.textCursor()
+      pos = cursor.position()
+      left = text[:pos]
+    except Exception:
+      left = text
+    # split on operators and whitespace
+    token = re.split(r'[\s\+\:\~\*\(\)]+', left)[-1]
+    return token or ""
 #
 # GPALogic
 #
