@@ -390,7 +390,7 @@
         <!-- Reference list: mains + pairwise interactions (read-only) -->
         <item>
           <widget class="QGroupBox" name="lrReferenceGroup">
-            <property name="title"><string>Possible Main Effect and Interaction Terms</string></property>
+            <property name="title"><string>Possible Main Effect Terms</string></property>
             <layout class="QGridLayout" name="lrReferenceGrid">
               <property name="leftMargin"><number>6</number></property>
               <property name="topMargin"><number>2</number></property>
@@ -400,7 +400,7 @@
               <item row="0" column="0">
                 <widget class="QLabel" name="lrPossibleLabel">
                   <property name="text">
-                    <string>These names and all pairwise interactions (plus “Size”) are valid in formulas:</string>
+                    <string>These Covariates (including “Size”) are valid in formulas:</string>
                   </property>
                   <property name="styleSheet">
                     <string notr="true">margin:0px;padding:0px;</string>

@@ -2047,82 +2047,69 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
   def _lr_computeWhitelist(self):
     """
-    Return (main_effects, interactions) given current covariates and Size.
-    Pairwise interactions are ALWAYS included (A:B for all unordered pairs).
+    Return just the allowed main-effect names (mains).
+    Interactions are validated on-the-fly by checking that both sides are mains.
     """
     covs = self._lr_getCovariateNames()
     mains = ["Size"] + covs
-
-    inters = []
-    vars_all = mains[:]  # keep Size first
-    for i in range(len(vars_all)):
-      for j in range(i + 1, len(vars_all)):
-        a, b = vars_all[i], vars_all[j]
-        inters.append(f"{a}:{b}")  # canonical order only
-    return mains, inters
+    return mains
 
   def _lr_applyCompleter(self):
-    """Attach a QCompleter to the multi-line editor and keep it alive."""
-    # Cleanup old completer to avoid stale C++ objects
-    try:
-      old = getattr(self, '_lr_completer', None)
-      if old is not None:
-        old.setParent(None)
-        old.deleteLater()
-    except Exception:
-      pass
-    self._lr_completer = None
-    self._lr_completer_model = None
-
-    mains, inters = self._lr_computeWhitelist()
-    tokens = ["Coords", "~", "+", ":", "-1"] + mains + inters
-
-    model = qt.QStringListModel(self._lr_formula)
-    model.setStringList(tokens)
-    comp = qt.QCompleter(model, self._lr_formula)
-    comp.setCaseSensitivity(qt.Qt.CaseSensitive)
-    try:
-      comp.setCompletionMode(qt.QCompleter.PopupCompletion)
-    except Exception:
-      pass
-
-    # Keep Python refs alive and parent properly
-    self._lr_completer_model = model
-    self._lr_completer = comp
-
-    # QPlainTextEdit path: we must insert manually
-    comp.setWidget(self._lr_formula)
-    try:
-      comp.activated[str].connect(self._lr_insertCompletion)
-    except Exception:
-      comp.activated.connect(lambda s: self._lr_insertCompletion(str(s)))
-
-    # Show popup near caret while typing (connect once)
-    if not getattr(self, '_lr_popup_connected', False):
+      """Create a QCompleter once; we'll update its model on each keystroke."""
+      # Dispose any prior instance to avoid stale C++ wrappers
       try:
-        self._lr_formula.textChanged.connect(self._lr_completerMaybePopup)
-        self._lr_popup_connected = True
+          old = getattr(self, '_lr_completer', None)
+          if old is not None:
+              old.setParent(None)
+              old.deleteLater()
       except Exception:
-        pass
+          pass
+      self._lr_completer = None
+      self._lr_completer_model = None
+
+      model = qt.QStringListModel(self._lr_formula)  # parent to editor so it lives
+      comp = qt.QCompleter(model, self._lr_formula)
+      comp.setCaseSensitivity(qt.Qt.CaseSensitive)
+      try:
+          comp.setCompletionMode(qt.QCompleter.PopupCompletion)
+      except Exception:
+          pass
+
+      self._lr_completer_model = model
+      self._lr_completer = comp
+      comp.setWidget(self._lr_formula)
+
+      # Insert completion on pick
+      try:
+          comp.activated[str].connect(self._lr_insertCompletion)
+      except Exception:
+          comp.activated.connect(lambda s: self._lr_insertCompletion(str(s)))
+
+      # Update the model and show popup near caret as the user types (connect once)
+      if not getattr(self, '_lr_popup_connected', False):
+          try:
+              self._lr_formula.textChanged.connect(self._lr_completerMaybePopup)
+              self._lr_popup_connected = True
+          except Exception:
+              pass
+
+      # Seed the model initially
+      self._lr_updateCompleterModel()
 
   def _lr_refreshFromCovariates(self):
-    """Rebuild reference list and completer. Called on init and after covariates load."""
-    mains, inters = self._lr_computeWhitelist()
+      """Rebuild the reference list and (re)attach the completer."""
+      mains = self._lr_computeWhitelist()
 
-    # Populate the read-only list: mains first, then interactions
-    self._lr_possibleList.clear()
-    for nm in mains:
-      self._lr_possibleList.addItem(nm)
-    if inters:
-      self._lr_possibleList.addItem("— interactions —")
-      for t in inters:
-        self._lr_possibleList.addItem(t)
+      # Read-only list: show mains only
+      self._lr_possibleList.clear()
+      for nm in mains:
+          self._lr_possibleList.addItem(nm)
 
-    # Rebuild completer
-    self._lr_applyCompleter()
+      # (Re)attach a completer; its model will be updated dynamically as you type
+      self._lr_applyCompleter()
 
-    # Validate whatever is in the box
-    self._lr_onFormulaEdited()
+      # Validate whatever is in the box
+      self._lr_onFormulaEdited()
 
   def _lr_extract_term_names(self, patsy_term):
     """Return list of plain factor names for a patsy term (robust across versions)."""
@@ -2149,62 +2136,53 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     return names
 
   def _lr_validateFormula(self, formula):
-    """
+      """
     Validate with patsy:
-    - LHS must be 'Coords' (case-sensitive).
-    - Each RHS term must be built from allowed variables.
-    - Pairwise interactions must be allowed if present.
-    Returns (ok: bool, message: str)
+    - LHS must be 'Coords' (case-sensitive, allow 'Shape' alias textually).
+    - RHS mains must be in mains whitelist.
+    - RHS interactions must be PAIRWISE (len == 2) and each factor in mains whitelist.
     """
-    if not self._lr_ensurePatsy():
-      return (False, "patsy is not available and could not be installed.")
+      if not self._lr_ensurePatsy():
+          return (False, "patsy is not available and could not be installed.")
 
-    import patsy
-    # Basic shape
-    txt = (formula or "").strip()
-    if not txt:
-      return (False, "Enter a formula, e.g., Coords ~ Size + Sex.")
+      import patsy
+      txt = (formula or "").strip()
+      if not txt:
+          return (False, "Enter a formula, e.g., Coords ~ Size + Sex.")
+      if "~" not in txt:
+          return (False, "Formula must contain '~'. Example: Coords ~ Size + Sex.")
 
-    # Quick guard: require tilde
-    if "~" not in txt:
-      return (False, "Formula must contain '~'. Example: Coords ~ Size + Sex.")
+      try:
+          desc = patsy.ModelDesc.from_formula(txt)
+      except Exception as e:
+          return (False, f"Syntax error: {e}")
 
-    # Parse
-    try:
-      desc = patsy.ModelDesc.from_formula(txt)
-    except Exception as e:
-      return (False, f"Syntax error: {e}")
+      lhs_terms = getattr(desc, "lhs_termlist", [])
+      if len(lhs_terms) != 1:
+          return (False, "Left-hand side must be a single variable: 'Coords'.")
+      lhs_names = self._lr_extract_term_names(lhs_terms[0])
+      if len(lhs_names) != 1 or lhs_names[0] not in ["Coords", "Shape", "SHAPE", "shape"]:
+          return (False, "LHS should be 'Coords'. If you used 'Shape', it will be treated as an alias.")
 
-    # LHS check (accept 'Coords' only; optionally allow 'Shape' aliases)
-    lhs_terms = getattr(desc, "lhs_termlist", [])
-    if len(lhs_terms) != 1:
-      return (False, "Left-hand side must be a single variable: 'Coords'.")
-    lhs_names = self._lr_extract_term_names(lhs_terms[0])
-    if len(lhs_names) != 1 or lhs_names[0] not in ["Coords", "Shape", "SHAPE", "shape"]:
-      return (False, "LHS should be 'Coords'. If you used 'Shape', it will be treated as an alias.")
+      mains_allowed = set(self._lr_computeWhitelist())
 
-    # Whitelist
-    mains_allowed, inters_allowed = self._lr_computeWhitelist()
-    mains_allowed = set(mains_allowed)
-    inters_allowed = set(inters_allowed)
-
-    # Validate RHS terms
-    for term in getattr(desc, "rhs_termlist", []):
-      names = self._lr_extract_term_names(term)
-      # Skip intercept-only term if present
-      if len(names) == 0:
-        continue
-      if len(names) == 1:
-        if names[0] not in mains_allowed:
-          return (False, f"Unknown variable: '{names[0]}'.")
-      else:
-        joined = ":".join(names)
-        if joined not in inters_allowed:
-          # Try reversed for good measure
-          rev = ":".join(reversed(names))
-          if rev not in inters_allowed:
-            return (False, f"Interaction not allowed: '{joined}'. Only pairwise A:B terms are permitted.")
-    return (True, "OK")
+      for term in getattr(desc, "rhs_termlist", []):
+          names = self._lr_extract_term_names(term)
+          # Intercept-only term -> skip
+          if len(names) == 0:
+              continue
+          # Main
+          if len(names) == 1:
+              if names[0] not in mains_allowed:
+                  return (False, f"Unknown variable: '{names[0]}'.")
+              continue
+          # Interaction: we only allow pairwise factor:factor
+          if len(names) != 2:
+              return (False, "Only pairwise interactions (A:B) are allowed.")
+          if not all(n in mains_allowed for n in names):
+              bad = [n for n in names if n not in mains_allowed]
+              return (False, f"Interaction contains unknown variable(s): {', '.join(bad)}.")
+      return (True, "OK")
 
   def _lr_onFormulaEdited(self, force=False):
     txt = self._lr_getFormulaText()
@@ -2294,18 +2272,20 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         w.setText = s  # PythonQt oddity fallback
 
   def _lr_completerMaybePopup(self):
-    """Popup the completer next to the caret in widget-local coordinates."""
     comp = getattr(self, '_lr_completer', None)
     if comp is None:
       return
 
+    # Recompute candidates for the current context
+    self._lr_updateCompleterModel()
+
+    # Set the prefix to the current token; hide if empty
     prefix = self._lr_currentTokenPrefix()
     try:
       comp.setCompletionPrefix(prefix)
     except Exception:
       return
 
-    # Hide if no useful prefix
     if not prefix:
       try:
         comp.popup().hide()
@@ -2313,7 +2293,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         pass
       return
 
-    # Anchor to caret: get rect in viewport coords, convert to editor coords.
+    # Anchor popup near caret in widget-local coordinates
     try:
       r = self._lr_formula.cursorRect(self._lr_formula.textCursor())
     except Exception:
@@ -2326,11 +2306,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       top_left_in_editor = self._lr_formula.viewport().mapTo(self._lr_formula, r.bottomLeft())
       r = qt.QRect(top_left_in_editor, qt.QSize(max(280, r.width()), max(22, r.height())))
     except Exception:
-      # Fall back to a small rect near (0,0)
       r = qt.QRect(0, 0, 280, 22)
 
-    # IMPORTANT: QCompleter.complete expects widget-local rect (NOT global)
-    comp.complete(r)
+    comp.complete(r)  # expects widget-local rect
 
   def _lr_currentTokenPrefix(self):
     import re
@@ -2360,6 +2338,47 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         self._lr_formula.insertPlainText(completion)
       except Exception:
         pass
+
+  def _lr_contextBeforePrefix(self):
+    """
+    Return the single char immediately before the current token prefix
+    (e.g., ':', '*', '+', '~'), or '' if none.
+    """
+    text = self._lr_getFormulaText()
+    try:
+      cursor = self._lr_formula.textCursor()
+      pos = cursor.position()
+      left = text[:pos]
+    except Exception:
+      left = text
+
+    import re
+    # Current token (chars since last operator/space)
+    token = re.split(r'[\s\+\:\~\*\(\)]+', left)[-1]
+    before = left[:-len(token)] if token else left
+    return before[-1:] if before else ''
+
+  def _lr_updateCompleterModel(self):
+    """
+    Compute context-aware completion candidates without enumerating A:B pairs.
+    - Always offer operators ['~', '+', ':', '-1'].
+    - Offer mains (Size + loaded covariates).
+    - If the char before the current prefix is one of (':', '*', '+', '~'),
+      prioritize mains (so users can complete interactions or add another term).
+    """
+    mains = self._lr_computeWhitelist()
+    ops = ["~", "+", ":", "-1"]
+
+    context_char = self._lr_contextBeforePrefix()
+    # If we just typed an operator, focus on names; otherwise propose both
+    if context_char in (":", "*", "+", "~"):
+      candidates = mains[:]  # names only
+    else:
+      candidates = ops + mains
+
+    # Update model strings
+    if self._lr_completer_model is not None:
+      self._lr_completer_model.setStringList(candidates)
 #
 # GPALogic
 #
