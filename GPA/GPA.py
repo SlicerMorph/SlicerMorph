@@ -2136,53 +2136,73 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     return names
 
   def _lr_validateFormula(self, formula):
-      """
-    Validate with patsy:
-    - LHS must be 'Coords' (case-sensitive, allow 'Shape' alias textually).
-    - RHS mains must be in mains whitelist.
-    - RHS interactions must be PAIRWISE (len == 2) and each factor in mains whitelist.
     """
-      if not self._lr_ensurePatsy():
-          return (False, "patsy is not available and could not be installed.")
+    Validate with patsy (parse-only):
+    - LHS must be 'Coords' (accept string aliases 'Shape', etc.).
+    - Each RHS main effect must be either a bare main ('Size', 'Species', ...)
+      or a supported transform of a main (e.g., log(Size), I(Size**2), C(Species), bs(Age, df=4)).
+    - Interactions must be PAIRWISE (A:B). Each side may be a transform,
+      but all underlying base variables must be in mains.
+    Returns (ok: bool, message: str).
+    """
+    if not self._lr_ensurePatsy():
+      return (False, "patsy is not available and could not be installed.")
 
-      import patsy
-      txt = (formula or "").strip()
-      if not txt:
-          return (False, "Enter a formula, e.g., Coords ~ Size + Sex.")
-      if "~" not in txt:
-          return (False, "Formula must contain '~'. Example: Coords ~ Size + Sex.")
+    import patsy
+    txt = (formula or "").strip()
+    if not txt:
+      return (False, "Enter a formula, e.g., Coords ~ Size + Sex.")
+    if "~" not in txt:
+      return (False, "Formula must contain '~'. Example: Coords ~ Size + Sex.")
 
-      try:
-          desc = patsy.ModelDesc.from_formula(txt)
-      except Exception as e:
-          return (False, f"Syntax error: {e}")
+    try:
+      desc = patsy.ModelDesc.from_formula(txt)
+    except Exception as e:
+      return (False, f"Syntax error: {e}")
 
-      lhs_terms = getattr(desc, "lhs_termlist", [])
-      if len(lhs_terms) != 1:
-          return (False, "Left-hand side must be a single variable: 'Coords'.")
-      lhs_names = self._lr_extract_term_names(lhs_terms[0])
-      if len(lhs_names) != 1 or lhs_names[0] not in ["Coords", "Shape", "SHAPE", "shape"]:
-          return (False, "LHS should be 'Coords'. If you used 'Shape', it will be treated as an alias.")
+    # LHS checks
+    lhs_terms = getattr(desc, "lhs_termlist", [])
+    if len(lhs_terms) != 1:
+      return (False, "Left-hand side must be a single variable: 'Coords'.")
+    lhs_names = self._lr_extract_term_names(lhs_terms[0])
+    if len(lhs_names) != 1 or lhs_names[0] not in ["Coords", "Shape", "SHAPE", "shape"]:
+      return (False, "LHS should be 'Coords'. If you used 'Shape', it will be treated as an alias.")
 
-      mains_allowed = set(self._lr_computeWhitelist())
+    # Allowed mains (whitelist)
+    mains_allowed = set(self._lr_computeWhitelist())
 
-      for term in getattr(desc, "rhs_termlist", []):
-          names = self._lr_extract_term_names(term)
-          # Intercept-only term -> skip
-          if len(names) == 0:
-              continue
-          # Main
-          if len(names) == 1:
-              if names[0] not in mains_allowed:
-                  return (False, f"Unknown variable: '{names[0]}'.")
-              continue
-          # Interaction: we only allow pairwise factor:factor
-          if len(names) != 2:
-              return (False, "Only pairwise interactions (A:B) are allowed.")
-          if not all(n in mains_allowed for n in names):
-              bad = [n for n in names if n not in mains_allowed]
-              return (False, f"Interaction contains unknown variable(s): {', '.join(bad)}.")
-      return (True, "OK")
+    # Validate RHS terms
+    for term in getattr(desc, "rhs_termlist", []):
+      names = self._lr_extract_term_names(term)
+      # Intercept-only terms (e.g., '+ 1' or '-1') come through as empty name lists
+      if len(names) == 0:
+        continue
+
+      # MAIN EFFECT
+      if len(names) == 1:
+        fac = names[0]
+        bases = self._lr_factor_base_vars(fac, mains_allowed)
+        if not bases:
+          return (False, f"Unknown variable or unsupported transform: '{fac}'.")
+        # If someone wrote I(Size+Age), bases would be {'Size','Age'}; that's ambiguous as a single main.
+        if len(bases) > 1:
+          return (False, f"Ambiguous transformed main effect '{fac}'. Use one variable or split the term.")
+        continue
+
+      # INTERACTION (pairwise only)
+      if not self._lr_is_pairwise_term(names):
+        return (False, "Only pairwise interactions (A:B) are allowed.")
+
+      left_bases = self._lr_factor_base_vars(names[0], mains_allowed)
+      right_bases = self._lr_factor_base_vars(names[1], mains_allowed)
+      if not left_bases:
+        return (False, f"Unknown variable or transform on left side of interaction: '{names[0]}'.")
+      if not right_bases:
+        return (False, f"Unknown variable or transform on right side of interaction: '{names[1]}'.")
+      if len(left_bases) > 1 or len(right_bases) > 1:
+        return (False, f"Ambiguous transformed interaction '{':'.join(names)}'. Use one base variable per side.")
+
+    return (True, "OK")
 
   def _lr_onFormulaEdited(self, force=False):
     txt = self._lr_getFormulaText()
@@ -2360,25 +2380,79 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
   def _lr_updateCompleterModel(self):
     """
-    Compute context-aware completion candidates without enumerating A:B pairs.
+    Compute context-aware candidates without enumerating A:B pairs:
     - Always offer operators ['~', '+', ':', '-1'].
     - Offer mains (Size + loaded covariates).
-    - If the char before the current prefix is one of (':', '*', '+', '~'),
-      prioritize mains (so users can complete interactions or add another term).
+    - When a new term is starting (after '~', '+', ':', '*'), also offer common transform openers 'log(', 'C(', 'I(', 'bs(' ...).
     """
     mains = self._lr_computeWhitelist()
     ops = ["~", "+", ":", "-1"]
 
+    # function openers for convenience
+    func_tokens = [f + "(" for f in sorted(self._lr_allowed_function_names())]
+
     context_char = self._lr_contextBeforePrefix()
-    # If we just typed an operator, focus on names; otherwise propose both
-    if context_char in (":", "*", "+", "~"):
-      candidates = mains[:]  # names only
+    if context_char in (":", "*", "+", "~", "(") or self._lr_currentTokenPrefix() == "":
+      candidates = ops + func_tokens + mains
     else:
       candidates = ops + mains
 
-    # Update model strings
     if self._lr_completer_model is not None:
       self._lr_completer_model.setStringList(candidates)
+
+  def _lr_allowed_function_names(self):
+    """Names of transforms we accept syntactically in validation."""
+    return {
+      "log", "log10", "log1p", "exp", "sqrt",  # common math transforms
+      "I",  # identity for arithmetic
+      "C",  # categorical
+      "scale", "center",  # centering/scaling helpers
+      "bs", "cr", "poly"  # spline/basis helpers
+    }
+
+  def _lr_factor_base_vars(self, factor_str, mains_allowed):
+    """
+    Return the set of underlying variable names referenced by a factor string.
+    Examples:
+      'Size'            -> {'Size'}
+      'log(Size)'       -> {'Size'}
+      'C(Species)'      -> {'Species'}
+      'I(Size**2)'      -> {'Size'}
+      'bs(Age, df=4)'   -> {'Age'}
+      'scale(log(Size))'-> {'Size'}
+    If we cannot find any base variable from mains, returns empty set.
+    """
+    s = str(factor_str).strip()
+
+    # Plain main effect
+    if s in mains_allowed:
+      return {s}
+
+    # Fast path for single-arg helpers: func(Var, ...)
+    import re
+    func_call = re.match(r'\s*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*\((.*)\)\s*$', s)
+    if func_call:
+      func_name = func_call.group(1).split('.')[-1]  # allow np.log, numpy.log etc.
+      inner = func_call.group(2)
+      # If this is a known helper, look for the *first identifier* inside and accept it if it's a main
+      if func_name in self._lr_allowed_function_names():
+        # Grab all identifiers in the inner expression; keep only ones that are mains
+        ids = set(re.findall(r'[A-Za-z_]\w*', inner))
+        ids = {tok for tok in ids if tok in mains_allowed}
+        if ids:
+          return ids  # may have >1 if someone wrote I(Size+Age); we'll flag later if needed
+
+    # Generic fallback: pull identifiers and keep the ones that are mains
+    ids = set(re.findall(r'[A-Za-z_]\w*', s))
+    ids = {tok for tok in ids if tok in mains_allowed}
+    return ids
+
+  def _lr_is_pairwise_term(self, names):
+    """
+    Return True if this is a pairwise interaction term (exactly two factors).
+    'names' are the factor strings from patsy for one term.
+    """
+    return len(names) == 2
 #
 # GPALogic
 #
