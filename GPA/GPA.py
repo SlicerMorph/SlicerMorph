@@ -1970,29 +1970,21 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         return False
 
   def _lr_initTab(self):
+    """Wire up the Geomorph LR tab to the multi-line UI."""
     if not hasattr(self.ui, 'geomorphLRTab'):
       return
 
-    # Map controls created by the .ui
-    self._lr_formula = getattr(self.ui, 'lrFormulaLine', None)  # will be upgraded
+    # Map controls declared in the .ui
+    self._lr_formula = self.ui.lrFormulaEdit  # QPlainTextEdit
     self._lr_status = self.ui.lrStatusLabel
     self._lr_validateBtn = self.ui.lrValidateButton
     self._lr_copyBtn = self.ui.lrCopyButton
     self._lr_resetBtn = self.ui.lrResetButton
-    self._lr_includeInter = self.ui.lrIncludeInteractionsCheck
     self._lr_possibleList = self.ui.lrPossibleCovariatesList
 
-    # >>> NEW: swap the single-line input for a multi-line editor
-    self._lr_upgradeFormulaWidget()
-    # >>> NEW: clamp the covariate list height
-    self._lr_shrinkCovariateList(max_height_px=140)
-
-    # Baseline defaults
-    self._lr_copyBtn.setEnabled(False)
-    self._lr_setStatus("Waiting for input…", ok=None)
+    # Live validation on each keystroke (fixes red/green not updating)
     try:
-      # QPlainTextEdit uses setPlainText; our helper below handles both
-      self._lr_setFormulaText("Coords ~ Size")
+      self._lr_formula.textChanged.connect(self._lr_onFormulaEdited)
     except Exception:
       pass
 
@@ -2000,22 +1992,27 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self._lr_validateBtn.clicked.connect(self._lr_onValidateClicked)
     self._lr_copyBtn.clicked.connect(self._lr_onCopyClicked)
     self._lr_resetBtn.clicked.connect(self._lr_onResetClicked)
-    self._lr_includeInter.toggled.connect(self._lr_onIncludeInteractionsToggled)
 
-    # Build whitelist + autocomplete + initial validate
+    # Defaults
+    self._lr_copyBtn.setEnabled(False)
+    self._lr_setStatus("Waiting for input…", ok=None)
+    self._lr_setFormulaText("Coords ~ Size")
+
+    # Build whitelist, completer, and validate once
     self._lr_refreshFromCovariates()
 
   def _lr_setStatus(self, msg, ok=None):
-    """ok=True -> green, ok=False -> red, ok=None -> neutral."""
     self._lr_status.setText(msg)
+    css_ok = "QLineEdit, QPlainTextEdit { border: 2px solid #2e7d32; border-radius: 3px; }"
+    css_bad = "QLineEdit, QPlainTextEdit { border: 2px solid #c62828; border-radius: 3px; }"
     if ok is True:
-      self._lr_formula.setStyleSheet("QLineEdit, QPlainTextEdit { border: 2px solid #2e7d32; border-radius: 3px; }")
+      self._lr_formula.setStyleSheet(css_ok);
       self._lr_copyBtn.setEnabled(True)
     elif ok is False:
-      self._lr_formula.setStyleSheet("QLineEdit, QPlainTextEdit { border: 2px solid #c62828; border-radius: 3px; }")
+      self._lr_formula.setStyleSheet(css_bad);
       self._lr_copyBtn.setEnabled(False)
     else:
-      self._lr_formula.setStyleSheet("")
+      self._lr_formula.setStyleSheet("");
       self._lr_copyBtn.setEnabled(False)
 
   def _lr_onResetClicked(self):
@@ -2029,11 +2026,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
   def _lr_onValidateClicked(self):
     self._lr_onFormulaEdited(force=True)
-
-  def _lr_onIncludeInteractionsToggled(self, checked):
-    self._lr_applyCompleter()
-    # Keep current text, just re-validate against new whitelist
-    self._lr_onFormulaEdited()
 
 
   def _lr_getCovariateNames(self):
@@ -2054,23 +2046,24 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     return names
 
   def _lr_computeWhitelist(self):
-    """Return (main_effects, interactions) given current covariates and Size."""
+    """
+    Return (main_effects, interactions) given current covariates and Size.
+    Pairwise interactions are ALWAYS included (A:B for all unordered pairs).
+    """
     covs = self._lr_getCovariateNames()
     mains = ["Size"] + covs
 
-    inters = set()
-    if bool(self._lr_includeInter.isChecked()):
-      vars_all = mains[:]  # keep Size first
-      for i in range(len(vars_all)):
-        for j in range(i + 1, len(vars_all)):
-          a, b = vars_all[i], vars_all[j]
-          inters.add(f"{a}:{b}")
-          inters.add(f"{b}:{a}")  # accept either order
-    return mains, sorted(inters)
+    inters = []
+    vars_all = mains[:]  # keep Size first
+    for i in range(len(vars_all)):
+      for j in range(i + 1, len(vars_all)):
+        a, b = vars_all[i], vars_all[j]
+        inters.append(f"{a}:{b}")  # canonical order only
+    return mains, inters
 
   def _lr_applyCompleter(self):
-    """Attach a QCompleter; robust against GC (parents + strong refs)."""
-    # Clean up any previous completer to avoid stale C++ pointers
+    """Attach a QCompleter to the multi-line editor and keep it alive."""
+    # Cleanup old completer to avoid stale C++ objects
     try:
       old = getattr(self, '_lr_completer', None)
       if old is not None:
@@ -2084,7 +2077,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     mains, inters = self._lr_computeWhitelist()
     tokens = ["Coords", "~", "+", ":", "-1"] + mains + inters
 
-    # Parent both model and completer to the editor so Qt keeps them alive
     model = qt.QStringListModel(self._lr_formula)
     model.setStringList(tokens)
     comp = qt.QCompleter(model, self._lr_formula)
@@ -2094,36 +2086,41 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     except Exception:
       pass
 
-    # Keep strong references on self (prevents Python GC)
+    # Keep Python refs alive and parent properly
     self._lr_completer_model = model
     self._lr_completer = comp
 
-    if hasattr(self._lr_formula, 'setCompleter'):
-      # QLineEdit path
-      self._lr_formula.setCompleter(comp)
-    else:
-      # QPlainTextEdit path: manual insertion
-      comp.setWidget(self._lr_formula)
-      try:
-        comp.activated[str].connect(self._lr_insertCompletion)
-      except Exception:
-        comp.activated.connect(lambda s: self._lr_insertCompletion(str(s)))
+    # QPlainTextEdit path: we must insert manually
+    comp.setWidget(self._lr_formula)
+    try:
+      comp.activated[str].connect(self._lr_insertCompletion)
+    except Exception:
+      comp.activated.connect(lambda s: self._lr_insertCompletion(str(s)))
 
-    # Hook the “show popup while typing” only once for this editor
+    # Show popup near caret while typing (connect once)
     if not getattr(self, '_lr_popup_connected', False):
       try:
-        self._lr_formula.textChanged.connect(lambda: self._lr_completerMaybePopup())
+        self._lr_formula.textChanged.connect(self._lr_completerMaybePopup)
         self._lr_popup_connected = True
       except Exception:
         pass
 
   def _lr_refreshFromCovariates(self):
-    """Rebuild possible list + completer. Called on init and after covariates load."""
-    mains, _ = self._lr_computeWhitelist()
+    """Rebuild reference list and completer. Called on init and after covariates load."""
+    mains, inters = self._lr_computeWhitelist()
+
+    # Populate the read-only list: mains first, then interactions
     self._lr_possibleList.clear()
     for nm in mains:
       self._lr_possibleList.addItem(nm)
+    if inters:
+      self._lr_possibleList.addItem("— interactions —")
+      for t in inters:
+        self._lr_possibleList.addItem(t)
+
+    # Rebuild completer
     self._lr_applyCompleter()
+
     # Validate whatever is in the box
     self._lr_onFormulaEdited()
 
@@ -2206,7 +2203,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
           # Try reversed for good measure
           rev = ":".join(reversed(names))
           if rev not in inters_allowed:
-            return (False, f"Interaction not allowed: '{joined}'. Toggle 'Include pairwise interactions' or edit.")
+            return (False, f"Interaction not allowed: '{joined}'. Only pairwise A:B terms are permitted.")
     return (True, "OK")
 
   def _lr_onFormulaEdited(self, force=False):
@@ -2297,36 +2294,72 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         w.setText = s  # PythonQt oddity fallback
 
   def _lr_completerMaybePopup(self):
+    """Popup the completer next to the caret in widget-local coordinates."""
     comp = getattr(self, '_lr_completer', None)
     if comp is None:
       return
-    # If PythonQt wrapper is stale, the call below would throw; guard it
+
     prefix = self._lr_currentTokenPrefix()
     try:
       comp.setCompletionPrefix(prefix)
     except Exception:
       return
-    if len(prefix) >= 1:
+
+    # Hide if no useful prefix
+    if not prefix:
       try:
-        rect = self._lr_formula.cursorRect()
-        global_pos = self._lr_formula.viewport().mapToGlobal(rect.bottomRight())
-        comp.complete(qt.QRect(global_pos, qt.QSize(300, 200)))
+        comp.popup().hide()
       except Exception:
-        comp.complete()
+        pass
+      return
+
+    # Anchor to caret: get rect in viewport coords, convert to editor coords.
+    try:
+      r = self._lr_formula.cursorRect(self._lr_formula.textCursor())
+    except Exception:
+      try:
+        r = self._lr_formula.cursorRect()
+      except Exception:
+        r = qt.QRect(0, 0, 1, 1)
+
+    try:
+      top_left_in_editor = self._lr_formula.viewport().mapTo(self._lr_formula, r.bottomLeft())
+      r = qt.QRect(top_left_in_editor, qt.QSize(max(280, r.width()), max(22, r.height())))
+    except Exception:
+      # Fall back to a small rect near (0,0)
+      r = qt.QRect(0, 0, 280, 22)
+
+    # IMPORTANT: QCompleter.complete expects widget-local rect (NOT global)
+    comp.complete(r)
 
   def _lr_currentTokenPrefix(self):
     import re
     text = self._lr_getFormulaText()
-    # up to the cursor
     try:
       cursor = self._lr_formula.textCursor()
       pos = cursor.position()
       left = text[:pos]
     except Exception:
       left = text
-    # split on operators and whitespace
     token = re.split(r'[\s\+\:\~\*\(\)]+', left)[-1]
     return token or ""
+
+  def _lr_insertCompletion(self, completion: str):
+    """Insert the selected completion at the caret, replacing the partial token."""
+    try:
+      cursor = self._lr_formula.textCursor()
+      # Delete the current token prefix to the left of the caret
+      prefix = self._lr_currentTokenPrefix()
+      if prefix:
+        cursor.movePosition(qt.QTextCursor.Left, qt.QTextCursor.KeepAnchor, len(prefix))
+      cursor.insertText(completion)
+      self._lr_formula.setTextCursor(cursor)
+    except Exception:
+      # Very defensive fall back
+      try:
+        self._lr_formula.insertPlainText(completion)
+      except Exception:
+        pass
 #
 # GPALogic
 #

@@ -161,7 +161,7 @@
       </layout>
     </widget>
 
-    <!-- ===================== TAB 2: Explore Data/Results (UNCHANGED) ===================== -->
+    <!-- ===================== TAB 2: Explore Data/Results (UNCHANGED, lollipop RESTORED) ===================== -->
     <widget class="QWidget" name="exploreDataResultsTab">
       <attribute name="title"><string>Explore Data/Results</string></attribute>
       <layout class="QVBoxLayout" name="exploreTabLayout">
@@ -220,6 +220,7 @@
           </widget>
         </item>
 
+        <!-- Lollipop Plot Options (RESTORED) -->
         <item>
           <widget class="ctkCollapsibleButton" name="lolliFrame">
             <property name="collapsed"><bool>false</bool></property>
@@ -306,79 +307,107 @@
       <attribute name="title"><string>Geomorph Linear Regression</string></attribute>
       <layout class="QVBoxLayout" name="geomorphLRTabLayout">
 
-        <!-- Formula line with autocomplete and validation -->
+        <!-- Formula with buttons and validation -->
         <item>
           <widget class="QGroupBox" name="lrFormulaGroup">
             <property name="title"><string>R Formula</string></property>
             <layout class="QGridLayout" name="lrFormulaGrid">
+
+              <!-- Row 0: Label + multi-line editor spanning full width -->
               <item row="0" column="0">
                 <widget class="QLabel" name="lrFormulaLabel">
                   <property name="text"><string>Formula:</string></property>
                 </widget>
               </item>
-              <item row="0" column="1">
-                <widget class="QLineEdit" name="lrFormulaLine">
-                  <property name="placeholderText"><string>Coords ~ Size + Sex + Species</string></property>
-                  <property name="toolTip"><string>Type an R-like formula. Allowed tokens are autocompleted. Use + for main effects and : for pairwise interactions. Optionally add -1 to remove intercept.</string></property>
-                  <property name="clearButtonEnabled"><bool>true</bool></property>
-                </widget>
-              </item>
-              <item row="0" column="2">
-                <widget class="QPushButton" name="lrValidateButton">
-                  <property name="text"><string>Validate</string></property>
-                  <property name="toolTip"><string>Validate syntax and allowed terms (uses patsy).</string></property>
-                </widget>
-              </item>
-              <item row="0" column="3">
-                <widget class="QPushButton" name="lrCopyButton">
-                  <property name="text"><string>Copy</string></property>
-                  <property name="toolTip"><string>Copy current formula to clipboard.</string></property>
-                </widget>
-              </item>
-              <item row="0" column="4">
-                <widget class="QPushButton" name="lrResetButton">
-                  <property name="text"><string>Reset to “Coords ~ Size”</string></property>
+              <item row="0" column="1" colspan="4">
+                <widget class="QPlainTextEdit" name="lrFormulaEdit">
+                  <property name="minimumHeight"><number>120</number></property>
+                  <property name="maximumHeight"><number>200</number></property>
+                  <property name="toolTip"><string>Type an R-like formula (e.g., Coords ~ Size + Sex + Size:Sex). Use + for main effects and : for pairwise interactions. Add -1 to remove the intercept.</string></property>
+                  <property name="placeholderText"><string>Coords ~ Size</string></property>
                 </widget>
               </item>
 
-              <item row="1" column="0">
+              <!-- Row 1: Buttons underneath the formula -->
+              <item row="1" column="1" colspan="3">
+                <layout class="QHBoxLayout" name="lrButtonsRow">
+                  <item>
+                    <widget class="QPushButton" name="lrValidateButton">
+                      <property name="text"><string>Validate</string></property>
+                      <property name="toolTip"><string>Validate syntax and allowed terms (uses patsy).</string></property>
+                    </widget>
+                  </item>
+                  <item>
+                    <widget class="QPushButton" name="lrCopyButton">
+                      <property name="text"><string>Copy</string></property>
+                      <property name="toolTip"><string>Copy current formula to clipboard.</string></property>
+                    </widget>
+                  </item>
+                  <item>
+                    <widget class="QPushButton" name="lrResetButton">
+                      <property name="text"><string>Reset to “Coords ~ Size”</string></property>
+                    </widget>
+                  </item>
+                  <item>
+                    <spacer name="lrButtonsSpacer">
+                      <property name="orientation"><enum>Qt::Horizontal</enum></property>
+                      <property name="sizeHint" stdset="0"><size><width>40</width><height>10</height></size></property>
+                    </spacer>
+                  </item>
+                </layout>
+              </item>
+
+              <!-- Row 2: Status line -->
+              <item row="2" column="0">
                 <widget class="QLabel" name="lrStatusLabelTitle">
                   <property name="text"><string>Status:</string></property>
                 </widget>
               </item>
-              <item row="1" column="1" colspan="4">
+              <item row="2" column="1" colspan="4">
                 <widget class="QLabel" name="lrStatusLabel">
                   <property name="text"><string>Waiting for input…</string></property>
                   <property name="wordWrap"><bool>true</bool></property>
                 </widget>
               </item>
 
-              <item row="2" column="0">
-                <widget class="QCheckBox" name="lrIncludeInteractionsCheck">
-                  <property name="text"><string>Include pairwise interactions in autocomplete</string></property>
-                  <property name="checked"><bool>true</bool></property>
-                </widget>
-              </item>
-              <item row="2" column="1" colspan="4">
+              <!-- Row 3: Tip (tight margins) -->
+              <item row="3" column="1" colspan="4">
                 <widget class="QLabel" name="lrHelpLabel">
                   <property name="text">
                     <string>Tip: Start typing and pick from suggestions. Allowed operators: “+” (add), “:” (interaction), “-1” (remove intercept). LHS should be “Coords”.</string>
                   </property>
                   <property name="wordWrap"><bool>true</bool></property>
+                  <property name="styleSheet">
+                    <string notr="true">margin-top:2px;margin-bottom:2px;</string>
+                  </property>
                 </widget>
               </item>
+
             </layout>
           </widget>
         </item>
 
-        <!-- Reference: possible covariates (read-only) -->
+        <!-- Reference list: mains + pairwise interactions (read-only) -->
         <item>
           <widget class="QGroupBox" name="lrReferenceGroup">
-            <property name="title"><string>Possible Covariates (read-only)</string></property>
+            <property name="title"><string>Possible Main Effect and Interaction Terms</string></property>
             <layout class="QGridLayout" name="lrReferenceGrid">
+              <property name="leftMargin"><number>6</number></property>
+              <property name="topMargin"><number>2</number></property>
+              <property name="rightMargin"><number>6</number></property>
+              <property name="bottomMargin"><number>6</number></property>
+              <property name="verticalSpacing"><number>2</number></property>
               <item row="0" column="0">
                 <widget class="QLabel" name="lrPossibleLabel">
-                  <property name="text"><string>These names (plus “Size”) are valid in formulas:</string></property>
+                  <property name="text">
+                    <string>These names and all pairwise interactions (plus “Size”) are valid in formulas:</string>
+                  </property>
+                  <property name="styleSheet">
+                    <string notr="true">margin:0px;padding:0px;</string>
+                  </property>
+                  <property name="sizePolicy">
+                    <sizepolicy hsizetype="Preferred" vsizetype="Minimum"/>
+                  </property>
                 </widget>
               </item>
               <item row="1" column="0">
@@ -386,6 +415,7 @@
                   <property name="selectionMode"><enum>QAbstractItemView::NoSelection</enum></property>
                   <property name="dragDropMode"><enum>QAbstractItemView::NoDragDrop</enum></property>
                   <property name="alternatingRowColors"><bool>true</bool></property>
+                  <property name="maximumHeight"><number>220</number></property>
                 </widget>
               </item>
             </layout>
@@ -395,7 +425,7 @@
         <item>
           <spacer name="lrSpacer">
             <property name="orientation"><enum>Qt::Vertical</enum></property>
-            <property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property>
+            <property name="sizeHint" stdset="0"><size><width>20</width><height>20</height></size></property>
           </spacer>
         </item>
       </layout>
