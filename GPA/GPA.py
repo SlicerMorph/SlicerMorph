@@ -4,6 +4,7 @@ import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
 import logging
 import math
+import subprocess, shutil, socket, platform, time, os
 
 import re
 import csv
@@ -469,6 +470,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     # Initialize the LR tab UI (safe no-op if tab not present)
     self._lr_initTab()
+    self._r_initPanel()
 
     # Add custom layout buttons to menu
     self.addLayoutButton(500, 'GPA Module View', 'Custom layout for GPA module', 'LayoutSlicerMorphView.png', slicer.customLayoutSM)
@@ -1970,11 +1972,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         return False
 
   def _lr_initTab(self):
-    """Wire up the Geomorph LR tab to the multi-line UI."""
+    """Wire up the Geomorph LR tab to the multi-line UI (with Fit button)."""
     if not hasattr(self.ui, 'geomorphLRTab'):
       return
 
-    # Map controls declared in the .ui
+    # Map controls
     self._lr_formula = self.ui.lrFormulaEdit  # QPlainTextEdit
     self._lr_status = self.ui.lrStatusLabel
     self._lr_validateBtn = self.ui.lrValidateButton
@@ -1982,7 +1984,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self._lr_resetBtn = self.ui.lrResetButton
     self._lr_possibleList = self.ui.lrPossibleCovariatesList
 
-    # Live validation on each keystroke (fixes red/green not updating)
+    # NEW: fit widgets
+    self._lr_fitBtn = self.ui.lrFitButton
+    self._lr_fitStatus = self.ui.lrFitStatusLabel
+
+    # Live validation on keystroke
     try:
       self._lr_formula.textChanged.connect(self._lr_onFormulaEdited)
     except Exception:
@@ -1992,14 +1998,18 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self._lr_validateBtn.clicked.connect(self._lr_onValidateClicked)
     self._lr_copyBtn.clicked.connect(self._lr_onCopyClicked)
     self._lr_resetBtn.clicked.connect(self._lr_onResetClicked)
+    self._lr_fitBtn.clicked.connect(self._lr_onFitInRClicked)
 
     # Defaults
     self._lr_copyBtn.setEnabled(False)
     self._lr_setStatus("Waiting for input…", ok=None)
     self._lr_setFormulaText("Coords ~ Size")
+    self._lr_fitBtn.setEnabled(False)
+    self._lr_fitStatus.setText("Not ready")
 
-    # Build whitelist, completer, and validate once
+    # Whitelist, completer, first validation
     self._lr_refreshFromCovariates()
+    self._lr_refreshFitButton()
 
   def _lr_setStatus(self, msg, ok=None):
     self._lr_status.setText(msg)
@@ -2208,6 +2218,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     txt = self._lr_getFormulaText()
     ok, msg = self._lr_validateFormula(txt)
     self._lr_setStatus(msg, ok=ok)
+    self._lr_refreshFitButton()
 
   # ---------- LR UI sizing + multi-line input (no .ui changes needed) ----------
 
@@ -2453,6 +2464,963 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     'names' are the factor strings from patsy for one term.
     """
     return len(names) == 2
+
+  # ---------------------- R / Rserve bridge (pyRserve) ----------------------
+
+  def _r_initPanel(self):
+    """Wire the R/Rserve controls if they exist in the UI."""
+    if not hasattr(self.ui, "rserveGroup"):
+      return  # UI not updated yet; safe no-op
+
+    # Runtime state
+    self._rserve_proc = None
+    self._rserve_started_by_us = False
+    self._r_conn = None
+    self._r_last_error = ""
+    self._geomorph_ok = False  # gate for Launch Rserve
+
+    # Set sensible defaults
+    try:
+      self.ui.rPortSpin.setMinimum(1024)
+      self.ui.rPortSpin.setMaximum(65535)
+      if int(self.ui.rPortSpin.value) == 0:
+        self.ui.rPortSpin.setValue(6311)
+    except Exception:
+      pass
+
+    # Hook buttons
+    self.ui.rDetectButton.clicked.connect(self._r_onDetectR)
+    self.ui.rLaunchButton.clicked.connect(self._r_onLaunchClicked)
+    self.ui.rShutdownButton.clicked.connect(self._r_onShutdownClicked)
+    self.ui.rConnectButton.clicked.connect(self._r_onConnectClicked)
+    self.ui.rDisconnectButton.clicked.connect(self._r_onDisconnectClicked)
+    self.ui.rRefreshButton.clicked.connect(self._r_refreshRStatus)
+    # Check-only for geomorph
+    self.ui.rCheckGeomorphButton.clicked.connect(self._r_onCheckGeomorph)
+
+    # Initial status
+    self._r_onDetectR()  # finds Rscript and sets label
+    self._r_onCheckGeomorph()  # populates geomorph status + gating
+    self._refreshButtons()
+    self._refreshStatusLabels()
+
+  def _r_onDetectR(self):
+    """Try to auto-locate Rscript; fill the path box and update status."""
+    path = self._r_find_rscript()
+    if path:
+        try:
+            self.ui.rscriptPath.setCurrentPath(path)
+        except Exception:
+            try:
+                self.ui.rscriptPath.currentPath = path
+            except Exception:
+                pass
+        self._setLabel(self.ui.rExeStatusLabel, f"Found: {path}")
+    else:
+        self._setLabel(self.ui.rExeStatusLabel, "Not found on PATH/R_HOME; set path manually.")
+
+    # Immediately re-check geomorph with the new Rscript
+    self._r_onCheckGeomorph()
+    self._refreshStatusLabels()
+    self._refreshButtons()
+
+  def _r_onLaunchClicked(self):
+    """Start Rserve on the chosen port using the selected Rscript, with rgl headless."""
+    port = int(self.ui.rPortSpin.value)
+    allow_remote = bool(getattr(self.ui.rAllowRemote, "isChecked", lambda: False)())
+    rscript = self._r_getRscriptFromUI()
+    if not rscript or not os.path.exists(rscript):
+        self._setLabel(self.ui.rRserveStatusLabel, "Cannot launch: Rscript path invalid.")
+        return
+
+    # Launch Rserve after forcing rgl into headless/null backend for the whole session
+    args = f"--RS-port {port} --no-save" + (" --RS-enable-remote" if allow_remote else "")
+    code = (
+        "Sys.setenv(RGL_USE_NULL='TRUE'); "
+        "options(rgl.useNULL=TRUE); "
+        f"Rserve::Rserve(args='{args}')"
+    )
+    cmd = [rscript, "-e", code]
+
+    try:
+        flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if platform.system()=="Windows" else 0
+        self._rserve_proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=flags)
+        self._rserve_started_by_us = True
+
+        # Wait briefly for the port to open
+        t0 = time.time()
+        while time.time() - t0 < 8.0:
+            if self._is_port_open("127.0.0.1", port):
+                self._setLabel(self.ui.rRserveStatusLabel, f"Rserve is running on port {port}.")
+                break
+            time.sleep(0.25)
+        else:
+            self._setLabel(self.ui.rRserveStatusLabel, "Launch attempted, but port not open yet.")
+    except Exception as e:
+        self._setLabel(self.ui.rRserveStatusLabel, f"Launch failed: {e}")
+    finally:
+        self._refreshButtons()
+
+
+  def _r_onShutdownClicked(self):
+    """Attempt a graceful shutdown; fall back to killing the child we spawned."""
+    port = int(self.ui.rPortSpin.value)
+    ok = False
+
+    # Try via pyRserve shutdown if possible
+    try:
+      pyR = self._r_ensure_pyRserve()
+      if pyR:
+        conn = self._r_conn or pyR.connect(host="127.0.0.1", port=port, timeout=2.0)
+        try:
+          if hasattr(conn, "shutdown"):
+            conn.shutdown()
+            ok = True
+          conn.close()
+        except Exception:
+          pass
+    except Exception:
+      pass
+
+    # If we started it and it's still listening, kill the process
+    if not ok and self._rserve_started_by_us and self._rserve_proc is not None:
+      try:
+        if platform.system() == "Windows":
+          self._rserve_proc.terminate()
+        else:
+          self._rserve_proc.terminate()
+        self._rserve_proc.wait(timeout=4.0)
+        ok = True
+      except Exception:
+        try:
+          self._rserve_proc.kill()
+        except Exception:
+          pass
+
+    # Cleanup flags
+    self._rserve_proc = None
+    self._rserve_started_by_us = False
+
+    # Update status
+    if ok:
+      self._setLabel(self.ui.rRserveStatusLabel, "Rserve shut down.")
+    else:
+      self._setLabel(self.ui.rRserveStatusLabel, "Shutdown request sent (or process kill attempted).")
+    # Close any lingering connection
+    self._safeCloseRConn()
+    self._refreshButtons()
+    self._refreshStatusLabels()
+
+  def _r_onConnectClicked(self):
+    """Open a pyRserve connection; prefer IPv4 and show clear errors."""
+    self._setLabel(self.ui.rConnStatusLabel, "Connecting…")
+    pyR = self._r_ensure_pyRserve()
+    if not pyR:
+      self._setLabel(self.ui.rConnStatusLabel, f"pyRserve not available. {getattr(self, '_r_last_error', '')}")
+      self._refreshButtons()
+      self._refreshStatusLabels()
+      return
+
+    port = int(self.ui.rPortSpin.value)
+    last_exc = None
+    for host in ("127.0.0.1", "localhost", "::1"):
+      try:
+        self._safeCloseRConn()
+        self._r_conn = pyR.connect(host, port) if hasattr(pyR, "connect") else pyR.rconnect(host, port)
+        try:
+          _ = self._r_conn.eval("1+1")
+        except Exception:
+          pass
+        self._setLabel(self.ui.rConnStatusLabel, f"Connected to {host}:{port}")
+        # NEW: immediately check geomorph INSIDE this Rserve
+        self._r_onCheckGeomorph()
+        self._refreshButtons()
+        self._refreshStatusLabels()
+        return
+      except Exception as e:
+        last_exc = e
+
+    self._r_conn = None
+    self._setLabel(self.ui.rConnStatusLabel, f"Connect failed on port {port}: {last_exc}")
+    self.ui.GPALogTextbox.insertPlainText(f"[Rserve] Connect failed on {port}: {last_exc}\n")
+    self._refreshButtons()
+    self._refreshStatusLabels()
+
+  def _r_onDisconnectClicked(self):
+    """Close the pyRserve connection only."""
+    self._safeCloseRConn()
+    self._setLabel(self.ui.rConnStatusLabel, "Disconnected.")
+    self._refreshButtons()
+    self._refreshStatusLabels()
+
+  def _r_refreshRStatus(self):
+    """Manual refresh of status labels."""
+    self._refreshStatusLabels()
+    self._refreshButtons()
+
+  def _refreshStatusLabels(self):
+    # Rscript status
+    rscript = self._r_getRscriptFromUI()
+    if rscript and os.path.exists(rscript):
+      self._setLabel(self.ui.rExeStatusLabel, f"Found: {rscript}")
+    else:
+      self._setLabel(self.ui.rExeStatusLabel, "Not found; set path and 'Auto-detect' if needed.")
+
+    # Rserve status
+    port = int(self.ui.rPortSpin.value)
+    running = self._is_port_open("127.0.0.1", port)
+    self._setLabel(self.ui.rRserveStatusLabel, f"Listening on {port}" if running else "Not listening")
+
+    # Connection status
+    if self._r_conn:
+      try:
+        _ = self._r_conn.eval("1+1")  # small ping
+        self._setLabel(self.ui.rConnStatusLabel, "Connected")
+      except Exception:
+        self._setLabel(self.ui.rConnStatusLabel, "Connection lost")
+        self._safeCloseRConn()
+    else:
+      self._setLabel(self.ui.rConnStatusLabel, "Not connected")
+
+    # Also refresh LR Fit gating when anything here changes
+    try:
+      self._lr_refreshFitButton()
+    except Exception:
+      pass
+
+  def _refreshButtons(self):
+    """Enable/disable buttons according to current state (no geomorph gate for launch)."""
+    port = int(self.ui.rPortSpin.value)
+    rscript_ok     = bool(self._r_getRscriptFromUI() and os.path.exists(self._r_getRscriptFromUI()))
+    rserve_running = self._is_port_open("127.0.0.1", port)
+    connected      = bool(self._r_conn)
+    self._setEnabled(self.ui.rLaunchButton,   rscript_ok and not rserve_running)
+    self._setEnabled(self.ui.rShutdownButton, rserve_running)
+    self._setEnabled(self.ui.rConnectButton,  rserve_running and not connected)
+    self._setEnabled(self.ui.rDisconnectButton, connected)
+    self._setEnabled(self.ui.rCheckGeomorphButton, rscript_ok or connected)
+
+  def _r_getRscriptFromUI(self):
+    """Read and normalize the Rscript path from the UI."""
+    p = None
+    try:
+        p = self.ui.rscriptPath.currentPath
+    except Exception:
+        try:
+            p = str(self.ui.rscriptPath.text())
+        except Exception:
+            p = None
+    if not p:
+        return None
+    # normalize: expand ~, strip whitespace, resolve symlinks
+    p = os.path.expanduser(str(p).strip())
+    p = os.path.realpath(p)
+    return p
+
+
+  def _r_find_rscript(self):
+    """Try PATH, R_HOME and common install locations for Rscript."""
+    # 1. PATH
+    p = shutil.which("Rscript") or shutil.which("Rscript.exe")
+    if p:
+      return p
+
+    # 2. R_HOME
+    r_home = os.environ.get("R_HOME", "")
+    if r_home:
+      candidates = [
+        os.path.join(r_home, "bin", "Rscript"),
+        os.path.join(r_home, "bin", "Rscript.exe"),
+        os.path.join(r_home, "bin", "x64", "Rscript.exe"),
+      ]
+      for c in candidates:
+        if os.path.exists(c):
+          return c
+
+    # 3. Typical locations
+    if platform.system() == "Windows":
+      roots = [
+        os.environ.get("ProgramFiles", ""),
+        os.environ.get("ProgramFiles(x86)", ""),
+      ]
+      for root in roots:
+        if not root:
+          continue
+        try:
+          # Look for R\R-*\bin\Rscript.exe
+          for ver in os.listdir(os.path.join(root, "R")):
+            c1 = os.path.join(root, "R", ver, "bin", "Rscript.exe")
+            c2 = os.path.join(root, "R", ver, "bin", "x64", "Rscript.exe")
+            if os.path.exists(c2):
+              return c2
+            if os.path.exists(c1):
+              return c1
+        except Exception:
+          pass
+    else:
+      for c in ("/opt/homebrew/bin/Rscript", "/usr/local/bin/Rscript", "/usr/bin/Rscript"):
+        if os.path.exists(c):
+          return c
+
+    return None
+
+  def _is_port_open(self, host, port, timeout=0.25):
+    """True if something is listening on host:port."""
+    try:
+      with socket.create_connection((host, int(port)), timeout=timeout):
+        return True
+    except Exception:
+      return False
+
+  def _safeCloseRConn(self):
+    """Close pyRserve connection safely."""
+    if getattr(self, "_r_conn", None) is not None:
+      try:
+        self._r_conn.close()
+      except Exception:
+        pass
+      self._r_conn = None
+
+  def _setLabel(self, labelWidget, text):
+    try:
+      labelWidget.setText(str(text))
+    except Exception:
+      try:
+        labelWidget.text = str(text)
+      except Exception:
+        pass
+
+  def _setEnabled(self, widget, enabled: bool):
+    try:
+      widget.setEnabled(bool(enabled))
+    except Exception:
+      try:
+        widget.enabled = bool(enabled)
+      except Exception:
+        pass
+
+  def _r_ensure_pyRserve(self):
+    """Import (or auto-install) pyRserve for connection management, with a NumPy 2.0
+    compatibility shim applied **before** importing pyRserve (matches your working script)."""
+    # --- NumPy 2.0 compat shim for pyRserve (must be set before importing pyRserve) ---
+    try:
+      import numpy as _np
+      from types import SimpleNamespace as _SimpleNamespace
+      if not hasattr(_np, "string_"):  _np.string_ = _np.bytes_
+      if not hasattr(_np, "unicode_"): _np.unicode_ = str
+      if not hasattr(_np, "int"):      _np.int = int
+      if not hasattr(_np, "bool"):     _np.bool = bool
+      if not hasattr(_np, "float"):    _np.float = float
+      if not hasattr(_np, "object"):   _np.object = object
+      if not hasattr(_np, "compat"):
+        _np.compat = _SimpleNamespace(long=int)
+      elif not hasattr(_np.compat, "long"):
+        _np.compat.long = int
+    except Exception:
+      pass
+    # -------------------------------------------------------------------------------
+
+    # Already imported?
+    try:
+      import sys
+      if "pyRserve" in sys.modules:
+        import pyRserve as _pyRserve  # noqa
+        return _pyRserve
+    except Exception:
+      pass
+
+    # Try normal import, else auto-install
+    try:
+      import pyRserve as _pyRserve  # noqa
+      return _pyRserve
+    except Exception:
+      try:
+        progress = slicer.util.createProgressDialog(
+          windowTitle="Installing...",
+          labelText="Installing pyRserve...",
+          maximum=0,
+        )
+        slicer.app.processEvents()
+        slicer.util.pip_install(["pyRserve"])
+        progress.close()
+        import pyRserve as _pyRserve  # noqa
+        return _pyRserve
+      except Exception as e:
+        try:
+          progress.close()
+        except Exception:
+          pass
+        self._r_last_error = str(e)
+        return None
+
+  def _r_onCheckGeomorph(self):
+    """
+    Status: RRPP is required; geomorph is optional.
+    - Rscript self-test is informative only (won't block fitting).
+    - If connected to Rserve, we list versions from installed.packages() (no loading).
+    """
+
+    def _fmt(xs):
+      return ("\n  - " + "\n  - ".join(xs)) if xs else " (none)"
+
+    # Safe CLI load test (robust parser)
+    cli_ok, cli_info = self._r_cli_pkg_selftest()
+    cli_rhome = cli_info.get("r_home", "?")
+    cli_libs = cli_info.get("libpaths", [])
+    cli_okG = cli_info.get("load_ok", {}).get("geomorph", False)
+    cli_okR = cli_info.get("load_ok", {}).get("RRPP", False)
+    cli_vG = cli_info.get("geomorph", "")
+    cli_vR = cli_info.get("RRPP", "")
+
+    # Rserve: what's installed (no load)
+    conn = getattr(self, "_r_conn", None)
+    rsrv_vG = rsrv_vR = ""
+    rsrv_rhome = "?"
+    rsrv_libs = []
+    if conn:
+      try:
+        s = str(conn.eval(
+          "ip <- rownames(installed.packages());"
+          "g <- if ('geomorph' %in% ip) as.character(packageVersion('geomorph')) else '';"
+          "r <- if ('RRPP'     %in% ip) as.character(packageVersion('RRPP'))     else '';"
+          "paste(g, r, R.home('bin'), paste(.libPaths(), collapse=';'), sep='|')"
+        )).strip()
+        parts = s.split("|")
+        if len(parts) >= 4:
+          rsrv_vG = parts[0]
+          rsrv_vR = parts[1]
+          rsrv_rhome = parts[2]
+          rsrv_libs = parts[3].split(";") if parts[3] else []
+      except Exception as e:
+        self.ui.GPALogTextbox.insertPlainText(f"[Rserve] installed.packages() failed: {e}\n")
+
+    # Label
+    bits = []
+    bits.append("Rserve connected" if conn else "Rserve not connected")
+    if cli_ok:
+      bits.append(f"Rscript load test: RRPP {'OK' if cli_okR else 'FAIL'}, geomorph {'OK' if cli_okG else 'FAIL'}")
+    else:
+      bits.append("Rscript check failed")
+
+    if conn:
+      if rsrv_vR:
+        bits.append(f"Rserve has RRPP {rsrv_vR}")
+      else:
+        bits.append("Rserve missing RRPP")
+      if rsrv_vG:
+        bits.append(f"geomorph {rsrv_vG} (optional)")
+      else:
+        bits.append("geomorph not installed (optional)")
+
+    self._setLabel(self.ui.rGeomorphStatusLabel, " | ".join(bits))
+
+    # Detailed paths
+    self.ui.GPALogTextbox.insertPlainText(
+      f"[Rscript] R.home(bin): {cli_rhome}\n"
+      f"[Rscript] .libPaths():{_fmt(cli_libs)}\n"
+    )
+    if not cli_ok:
+      self.ui.GPALogTextbox.insertPlainText(f"[Rscript] raw:\n{cli_info.get('raw', '(no output)')}\n")
+    if conn:
+      self.ui.GPALogTextbox.insertPlainText(
+        f"[Rserve ] R.home(bin): {rsrv_rhome}\n"
+        f"[Rserve ] .libPaths():{_fmt(rsrv_libs)}\n"
+      )
+
+    # Gate: RRPP present in Rserve is sufficient to proceed
+    self._geomorph_ok = bool(conn) and bool(rsrv_vR)
+    self._refreshButtons()
+    try:
+      self._lr_refreshFitButton()
+    except Exception:
+      pass
+
+  def _r_check_geomorph_via_rscript(self):
+    """
+    Check geomorph using the currently selected Rscript (CLI) WITHOUT loading it.
+    Returns (installed: bool, version: str, r_home_bin: str, raw: str).
+    """
+    rscript = self._r_getRscriptFromUI()
+    if not (rscript and os.path.exists(rscript)):
+        return (False, "", "", "Rscript not set or not found")
+
+    code = (
+      "ip <- rownames(installed.packages());"
+      "if ('geomorph' %in% ip) {"
+      "  cat('OK|', as.character(packageVersion('geomorph')), '|', R.home('bin'), sep='')"
+      "} else cat('MISS')"
+    )
+    try:
+        p = subprocess.run([rscript, "-e", code], capture_output=True, text=True)
+        out = ((p.stdout or "") + (p.stderr or "")).strip()
+        # Startup chatter may precede our marker; search for OK| / MISS anywhere.
+        ok_pos = out.find("OK|")
+        if ok_pos >= 0:
+            tail = out[ok_pos+3:]
+            parts = tail.split("|")
+            ver   = parts[0] if len(parts) > 0 else "?"
+            rhome = parts[1] if len(parts) > 1 else "?"
+            return (True, ver, rhome, out)
+        if out.find("MISS") >= 0:
+            return (False, "", "", out)
+        # Unknown output → treat as not installed but show raw
+        return (False, "", "", out if out else "MISS")
+    except Exception as e:
+        return (False, "", "", f"Rscript check error: {e}")
+
+  def _r_check_geomorph_via_rserve(self):
+    """
+    Check geomorph inside the CONNECTED Rserve session WITHOUT loading it.
+    Returns (installed: bool, version: str, r_home_bin: str, libpaths: list[str], raw: str).
+    If not connected, installed == None.
+    """
+    conn = getattr(self, "_r_conn", None)
+    if not conn:
+        return (None, "", "", [], "not connected")
+    try:
+        s = str(conn.eval(
+            "ip <- rownames(installed.packages());"
+            "if ('geomorph' %in% ip) {"
+            "  paste0('OK|', as.character(packageVersion('geomorph')), '|',"
+            "         R.home('bin'), '|', paste(.libPaths(), collapse=';'))"
+            "} else {"
+            "  paste0('MISS|', R.home('bin'), '|', paste(.libPaths(), collapse=';'))"
+            "}"
+        )).strip()
+        parts = s.split("|")
+        if s.startswith("OK|"):
+            ver  = parts[1] if len(parts) > 1 else "?"
+            rbin = parts[2] if len(parts) > 2 else "?"
+            libs = parts[3].split(";") if len(parts) > 3 else []
+            return (True, ver, rbin, libs, s)
+        # MISS path
+        rbin = parts[1] if len(parts) > 1 else "?"
+        libs = parts[2].split(";") if len(parts) > 2 else []
+        return (False, "", rbin, libs, s)
+    except Exception as e:
+        return (False, "", "", [], f"Rserve check error: {e}")
+
+
+  def _r_onInstallGeomorph(self):
+    """Install 'geomorph' from CRAN using Rscript, then re-check."""
+    rscript = self._r_getRscriptFromUI()
+    if not (rscript and os.path.exists(rscript)):
+      self._setLabel(self.ui.rGeomorphStatusLabel, "Rscript not set")
+      return
+
+    progress = None
+    try:
+      progress = slicer.util.createProgressDialog(windowTitle="Installing R package",
+                                                  labelText="Installing 'geomorph' from CRAN…",
+                                                  maximum=0)
+      slicer.app.processEvents()
+      cmd = [rscript, "-e", "install.packages('geomorph', repos='https://cloud.r-project.org', dependencies=TRUE)"]
+      rc = subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+      if rc == 0:
+        self._setLabel(self.ui.rGeomorphStatusLabel, "Install completed; re-checking…")
+        self.ui.GPALogTextbox.insertPlainText("[R] geomorph install completed.\n")
+      else:
+        self._setLabel(self.ui.rGeomorphStatusLabel, f"Install exited with code {rc}")
+        self.ui.GPALogTextbox.insertPlainText(f"[R] geomorph install returned code {rc}\n")
+    except Exception as e:
+      self._setLabel(self.ui.rGeomorphStatusLabel, f"Install failed: {e}")
+      self.ui.GPALogTextbox.insertPlainText(f"[R] geomorph install failed: {e}\n")
+    finally:
+      try:
+        progress.close()
+      except Exception:
+        pass
+      # Re-check and refresh buttons after any attempt
+      self._r_onCheckGeomorph()
+      self._refreshButtons()
+
+  def _lr_canFit(self) -> bool:
+    """True if formula is valid and Rserve is connected."""
+    # Check formula validity
+    try:
+      fml = self._lr_getFormulaText()
+      ok, _msg = self._lr_validateFormula(fml)
+    except Exception:
+      ok = False
+    if not ok:
+      return False
+    # Check connection
+    return bool(getattr(self, "_r_conn", None))
+
+  def _lr_refreshFitButton(self):
+    """Enable/disable Fit button based on prerequisites; update label lightly."""
+    try:
+      can = self._lr_canFit()
+      self.ui.lrFitButton.setEnabled(bool(can))
+      if can:
+        self.ui.lrFitStatusLabel.setText("Ready")
+      else:
+        self.ui.lrFitStatusLabel.setText("Not ready")
+    except Exception:
+      pass
+
+  def _lr_findCovariatesPath(self) -> str:
+    """Prefer explicit selection in the UI; else look for outputFolder/covariateTable.csv."""
+    paths = []
+    try:
+      p = str(self.ui.selectCovariatesText.text)
+      if p:
+        paths.append(p)
+    except Exception:
+      pass
+    try:
+      p2 = os.path.join(self.outputFolder, "covariateTable.csv")
+      paths.append(p2)
+    except Exception:
+      pass
+    for p in paths:
+      if p and os.path.isfile(p):
+        return p
+    return ""
+
+  def _lr_get_base_variables_from_formula(self, formula: str):
+    """
+    Return set of base variable names referenced on RHS of the formula,
+    excluding 'Coords' (or Shape aliases) and 'Size'.
+    """
+    if not self._lr_ensurePatsy():
+      return set()
+
+    import patsy, re
+    txt = (formula or "").strip()
+    desc = patsy.ModelDesc.from_formula(txt)
+
+    mains_allowed = set(self._lr_computeWhitelist())  # ["Size"] + covariates from table
+    bases = set()
+
+    # Collect bases from each RHS term
+    for term in getattr(desc, "rhs_termlist", []):
+      names = self._lr_extract_term_names(term)  # strings of factors possibly wrapped
+      if len(names) == 0:
+        continue
+      if len(names) == 1:
+        bases |= self._lr_factor_base_vars(names[0], mains_allowed)
+      elif self._lr_is_pairwise_term(names):
+        bases |= self._lr_factor_base_vars(names[0], mains_allowed)
+        bases |= self._lr_factor_base_vars(names[1], mains_allowed)
+
+    # Scrub out LHS/aliases and Size
+    drop = {"Coords", "Shape", "SHAPE", "shape", "Size", "size"}
+    return {b for b in bases if b not in drop}
+
+  def _lr_onFitInRClicked(self):
+    """
+    Fit in R using RRPP::procD.lm with a plain matrix response (no geomorph).
+    - Y is an n × (3p) numeric matrix (coords flattened); predictors live in a data.frame (.df).
+    - This avoids arrayspecs() and any attempt to load the 'geomorph' DLLs that are segfaulting.
+    - Each R step is wrapped so if Rserve crashes, the UI log shows exactly where.
+    """
+    import numpy as np
+    import pandas as pd
+
+    # ---- Guards ---------------------------------------------------------------
+    if not getattr(self, "LM", None):
+      self.ui.lrFitStatusLabel.setText("No GPA data")
+      return
+
+    fml_raw = self._lr_getFormulaText()
+    ok, msg = self._lr_validateFormula(fml_raw)
+    if not ok:
+      self.ui.lrFitStatusLabel.setText("Invalid formula")
+      self.ui.GPALogTextbox.insertPlainText(f"[LR] Invalid formula: {msg}\n")
+      return
+
+    conn = getattr(self, "_r_conn", None)
+    if not conn:
+      self.ui.lrFitStatusLabel.setText("Rserve not connected")
+      return
+
+    # ---- Build response Y (n × 3p) and Size ----------------------------------
+    arr = np.asarray(self.LM.lm)  # (p, 3, n)
+    if arr.ndim != 3 or arr.shape[1] != 3:
+      self.ui.lrFitStatusLabel.setText("Bad landmark array")
+      self.ui.GPALogTextbox.insertPlainText(f"[LR] Unexpected LM.lm shape: {arr.shape}\n")
+      return
+    p, _, n = arr.shape
+    Y = arr.transpose(2, 0, 1).reshape(n, 3 * p, order="C")  # n × 3p
+
+    size_vec = np.asarray(self.LM.centriodSize, dtype=float).reshape(-1)
+    if size_vec.shape[0] != n:
+      self.ui.lrFitStatusLabel.setText("Bad centroid size")
+      self.ui.GPALogTextbox.insertPlainText(f"[LR] centroid size length {size_vec.shape[0]} != specimens {n}\n")
+      return
+
+    files = list(getattr(self, "files", [])) or [f"spec_{i + 1}" for i in range(n)]
+
+    # ---- Non-Size predictors required by formula -----------------------------
+    base_vars = self._lr_get_base_variables_from_formula(fml_raw)  # excludes 'Size'
+    cov_df = None
+    cov_path = ""
+    if base_vars:
+      cov_path = self._lr_findCovariatesPath()
+      if not cov_path:
+        self.ui.lrFitStatusLabel.setText("Missing covariate table")
+        self.ui.GPALogTextbox.insertPlainText("[LR] No covariate CSV found; cannot satisfy formula variables.\n")
+        return
+      try:
+        cov_df = pd.read_csv(cov_path)
+        if cov_df.shape[1] < 2:
+          raise ValueError("Covariate CSV needs ID col + covariate columns.")
+        cov_df = cov_df.set_index(cov_df.columns[0])
+        missing = [f for f in files if f not in cov_df.index]
+        if missing:
+          raise ValueError(f"IDs missing in covariate table (first 10): {missing[:10]}")
+        cov_df = cov_df.loc[files]  # align to specimen order
+      except Exception as e:
+        self.ui.lrFitStatusLabel.setText("Covariate load error")
+        self.ui.GPALogTextbox.insertPlainText(f"[LR] Failed to read/align covariates: {e}\n")
+        return
+
+    step = self._r_step  # run one R command, log errors precisely
+
+    # ---- Keep rgl headless (defensive; RRPP itself doesn't need it) ----------
+    if not step(conn, "Headless rgl",
+                'options(rgl.useNULL=TRUE); '
+                'Sys.setenv(RGL_USE_NULL="TRUE"); '
+                'Sys.setenv(RGL_ALWAYS_SOFTWARE="TRUE")'):
+      self.ui.lrFitStatusLabel.setText("R data error (rgl)")
+      return
+
+    # ---- Require RRPP (we do NOT load/require geomorph here) ------------------
+    ok, _ = self._r_try('if (!"RRPP" %in% rownames(installed.packages())) '
+                        'stop("RRPP not installed in this Rserve")',
+                        "check RRPP")
+    if not ok:
+      self.ui.lrFitStatusLabel.setText("RRPP missing")
+      return
+
+    # ---- Ship response and size to R ------------------------------------------
+    try:
+      conn.r.Y = Y
+      conn.r.size = size_vec
+    except Exception as e:
+      self.ui.lrFitStatusLabel.setText("R data error (send)")
+      self.ui.GPALogTextbox.insertPlainText(f"[LR] send Y/size: {repr(e)}\n")
+      return
+
+    # Ensure Y is numeric matrix
+    if not step(conn, "Prepare Y", 'Y <- base::as.matrix(Y); storage.mode(Y) <- "double"'):
+      self.ui.lrFitStatusLabel.setText("R data error (Y)")
+      return
+
+    # ---- Build predictor data.frame (.df) in R --------------------------------
+    if not step(conn, "Init .df", '.df <- base::data.frame(Size = base::as.numeric(size))'):
+      self.ui.lrFitStatusLabel.setText("R data error (.df)")
+      return
+
+    if base_vars and cov_df is not None:
+      for var in sorted(base_vars):
+        if var not in cov_df.columns:
+          self.ui.lrFitStatusLabel.setText("Missing covariate column")
+          self.ui.GPALogTextbox.insertPlainText(f"[LR] Column '{var}' not found in covariate CSV.\n")
+          return
+        s = cov_df[var]
+        tmpname = f".py_{var}"
+        # numeric first
+        try:
+          s_num = pd.to_numeric(s, errors="raise").to_numpy().astype(float)
+          conn.r.__setattr__(tmpname, s_num)
+          ok = step(conn, f"set .df${var} (num)", f'.df[["{var}"]] <- base::as.numeric({tmpname})')
+        except Exception:
+          conn.r.__setattr__(tmpname, s.astype(str).tolist())
+          ok = step(conn, f"set .df${var} (factor)",
+                    f'.df[["{var}"]] <- base::factor(base::as.character(base::unlist({tmpname})))')
+        if not ok:
+          self.ui.lrFitStatusLabel.setText("R data error (.df set)")
+          return
+
+    # Basic sanity
+    if not step(conn, "check nrows",
+                'if (base::nrow(.df) != base::nrow(Y)) '
+                '  stop(sprintf("Row mismatch: nrow(.df)=%d, nrow(Y)=%d", nrow(.df), nrow(Y)))'):
+      self.ui.lrFitStatusLabel.setText("Row mismatch")
+      return
+    if not step(conn, "check NA",
+                'if (any(!stats::complete.cases(.df))) '
+                '  stop("Missing values in predictors are not allowed")'):
+      self.ui.lrFitStatusLabel.setText("Missing values")
+      return
+
+    # ---- Normalize LHS aliases to 'Y' and build formula -----------------------
+    import re as _re
+    fml = _re.sub(r'^\s*(Coords|Shape|SHAPE|shape)\s*~', 'Y ~', fml_raw.strip())
+    try:
+      conn.r.__setattr__('fml', fml)
+    except Exception as e:
+      self.ui.lrFitStatusLabel.setText("R data error (formula)")
+      self.ui.GPALogTextbox.insertPlainText(f"[LR] set fml: {repr(e)}\n")
+      return
+
+    if not step(conn, "build formula", 'mod <- stats::as.formula(fml)'):
+      self.ui.lrFitStatusLabel.setText("Bad formula")
+      return
+    if not step(conn, "predictor presence",
+                'miss <- base::setdiff(all.vars(mod)[-1], base::names(.df)); '
+                'if (length(miss)) stop(paste("Predictors missing in .df:", paste(miss, collapse=", ")))'):
+      self.ui.lrFitStatusLabel.setText("Predictor mismatch")
+      return
+
+    # ---- Fit with RRPP ONLY ---------------------------------------------------
+    if not step(conn, "fit procD.lm", 'fit <- RRPP::procD.lm(mod, data=.df)'):
+      self.ui.lrFitStatusLabel.setText("Fit failed/crashed")
+      self.ui.GPALogTextbox.insertPlainText(
+        "[LR] Rserve died while fitting. This almost always indicates a broken compiled package in your R.\n"
+        "     Because we avoided 'geomorph', check RRPP and its compiled deps in the R shown above (Rserve R.home).\n"
+      )
+      return
+
+    # ---- Extract coefficients / names -----------------------------------------
+    if not step(conn, "extract",
+                'coef_mat <- fit$coefficients; '
+                'X <- stats::model.matrix(mod, data=.df); '
+                'coef_names <- if (!is.null(base::rownames(coef_mat))) base::rownames(coef_mat) else base::colnames(X)'):
+      self.ui.lrFitStatusLabel.setText("Extract error")
+      return
+
+    try:
+      coef_mat = np.asarray(conn.eval('coef_mat'))
+      coef_names = list(conn.eval('as.character(coef_names)'))
+    except Exception as e:
+      self.ui.lrFitStatusLabel.setText("Pull-back error")
+      self.ui.GPALogTextbox.insertPlainText(f"[LR] pull coef: {repr(e)}\n")
+      return
+
+    # ---- Cache for downstream use --------------------------------------------
+    self._lr_last_fit = {
+      "formula": fml,
+      "coef_mat": coef_mat,
+      "coef_names": coef_names,
+      "n_specimens": n,
+      "p_landmarks": p,
+      "covariates": [(v, ("numeric" if (cov_df is not None and pd.api.types.is_numeric_dtype(cov_df[v])) else "factor"))
+                     for v in sorted(base_vars)] if base_vars else [],
+      "covariate_path": cov_path
+    }
+    print(f"[LR] RRPP::procD.lm OK: coef_mat {coef_mat.shape}, terms={len(coef_names)}")
+    self.ui.lrFitStatusLabel.setText("Fit complete")
+
+  def _r_try(self, code: str, tag: str = ""):
+    """
+    Evaluate R 'code' in .GlobalEnv with tryCatch; return (ok: bool, msg: str).
+    Keeps objects (.df, Y, etc.) persistent across calls and surfaces useful errors.
+    """
+    conn = getattr(self, "_r_conn", None)
+    if not conn:
+      return (False, "No Rserve connection")
+
+    # Pass the code as a variable to avoid quoting issues
+    conn.r.__setattr__(".pycode", code)
+
+    # IMPORTANT: evaluate in .GlobalEnv (not a local()) so assignments persist
+    res = str(conn.eval(
+      'tryCatch({ eval(parse(text=.pycode), envir=.GlobalEnv); "OK" }, '
+      '         error=function(e) paste("ERR:", conditionMessage(e)))'
+    )).strip()
+
+    if tag and res != "OK":
+      try:
+        self.ui.GPALogTextbox.insertPlainText(f"[LR] {tag}: {res}\n")
+      except Exception:
+        pass
+
+    return (res == "OK", res)
+
+  def _r_step(self, conn, tag: str, code: str) -> bool:
+    """
+    Run a single R statement in .GlobalEnv, logging *where* a crash or error occurs.
+    Returns True on success, False on error (including EndOfDataError).
+    """
+    try:
+      conn.r.__setattr__(".pycode", code)
+      res = str(conn.eval(
+        'tryCatch({ eval(parse(text=.pycode), envir=.GlobalEnv); "OK" }, '
+        '         error=function(e) paste("ERR:", conditionMessage(e)))'
+      )).strip()
+      if res != "OK":
+        try:
+          self.ui.GPALogTextbox.insertPlainText(f"[LR] {tag}: {res}\n")
+        except Exception:
+          pass
+        return False
+      # Also echo success lightly to help pinpoint the last good stage when debugging
+      try:
+        self.ui.GPALogTextbox.insertPlainText(f"[LR] {tag}: OK\n")
+      except Exception:
+        pass
+      return True
+    except Exception as e:
+      # This is where EndOfDataError shows up if Rserve died
+      try:
+        self.ui.GPALogTextbox.insertPlainText(f"[LR] {tag}: PYERR {repr(e)}\n")
+      except Exception:
+        pass
+      try:
+        self._safeCloseRConn()
+        self._refreshStatusLabels()
+      except Exception:
+        pass
+      return False
+
+  def _r_cli_pkg_selftest(self):
+    """
+    Run a *safe* package-load test in a separate Rscript process so a bad
+    binary can’t crash Rserve. Returns (ok, info_dict).
+    info_dict keys: geomorph, RRPP, r_home, libpaths(list), load_ok(dict), raw, returncode, rscript
+    """
+    rscript = self._r_getRscriptFromUI()
+    if not (rscript and os.path.exists(rscript)):
+      return (False, {"error": "Rscript not set or not found", "rscript": rscript})
+
+    code = (
+      "options(rgl.useNULL=TRUE); Sys.setenv(RGL_USE_NULL='TRUE'); "
+      "okG <- FALSE; okR <- FALSE; vG <- ''; vR <- ''; "
+      "s <- try(requireNamespace('geomorph', quietly=TRUE), silent=TRUE); "
+      "if (isTRUE(s)) { okG <- TRUE; vG <- as.character(packageVersion('geomorph')); } "
+      "s <- try(requireNamespace('RRPP', quietly=TRUE), silent=TRUE); "
+      "if (isTRUE(s)) { okR <- TRUE; vR <- as.character(packageVersion('RRPP')); } "
+      "cat('OK|', R.home('bin'), '|', paste(.libPaths(), collapse=';'), '|', "
+      "    vG, '|', vR, '|', okG, '|', okR, sep='')"
+    )
+
+    try:
+      p = subprocess.run([rscript, "-e", code], capture_output=True, text=True, timeout=60)
+      out = ((p.stdout or "") + (p.stderr or "")).strip()
+
+      # Be forgiving: find our marker anywhere in the combined output.
+      idx = out.rfind("OK|")
+      if idx >= 0:
+        tail = out[idx + 3:]
+        parts = tail.split("|")
+        # OK| <rhome> | <libs> | <geomorph> | <RRPP> | <okG> | <okR>
+        rhome = parts[0] if len(parts) > 0 else "?"
+        libs = parts[1].split(";") if len(parts) > 1 and parts[1] else []
+        vGeom = parts[2] if len(parts) > 2 else ""
+        vRRPP = parts[3] if len(parts) > 3 else ""
+        okGeom = (parts[4].strip() == "TRUE") if len(parts) > 4 else False
+        okRRPP = (parts[5].strip() == "TRUE") if len(parts) > 5 else False
+        return (True, {
+          "r_home": rhome,
+          "libpaths": libs,
+          "geomorph": vGeom,
+          "RRPP": vRRPP,
+          "load_ok": {"geomorph": okGeom, "RRPP": okRRPP},
+          "raw": out,
+          "returncode": p.returncode,
+          "rscript": rscript
+        })
+
+      # No marker found — return raw for diagnostics
+      return (False, {"raw": out, "returncode": p.returncode, "rscript": rscript})
+
+    except Exception as e:
+      return (False, {"error": repr(e), "rscript": rscript})
+
+
 #
 # GPALogic
 #

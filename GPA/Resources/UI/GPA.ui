@@ -161,7 +161,7 @@
       </layout>
     </widget>
 
-    <!-- ===================== TAB 2: Explore Data/Results (UNCHANGED, lollipop RESTORED) ===================== -->
+    <!-- ===================== TAB 2: Explore Data/Results (UNCHANGED) ===================== -->
     <widget class="QWidget" name="exploreDataResultsTab">
       <attribute name="title"><string>Explore Data/Results</string></attribute>
       <layout class="QVBoxLayout" name="exploreTabLayout">
@@ -387,7 +387,7 @@
           </widget>
         </item>
 
-        <!-- Reference list: mains + pairwise interactions (read-only) -->
+        <!-- Reference list: mains (read-only) -->
         <item>
           <widget class="QGroupBox" name="lrReferenceGroup">
             <property name="title"><string>Possible Main Effect Terms</string></property>
@@ -416,6 +416,73 @@
                   <property name="dragDropMode"><enum>QAbstractItemView::NoDragDrop</enum></property>
                   <property name="alternatingRowColors"><bool>true</bool></property>
                   <property name="maximumHeight"><number>220</number></property>
+                </widget>
+              </item>
+            </layout>
+          </widget>
+        </item>
+
+        <!-- NEW: R / Rserve Bridge (unchanged UI from your current) -->
+        <item>
+          <widget class="QGroupBox" name="rserveGroup">
+            <property name="title"><string>R / Rserve Bridge</string></property>
+            <layout class="QGridLayout" name="rserveGrid">
+              <property name="leftMargin"><number>6</number></property>
+              <property name="topMargin"><number>6</number></property>
+              <property name="rightMargin"><number>6</number></property>
+              <property name="bottomMargin"><number>6</number></property>
+              <property name="verticalSpacing"><number>6</number></property>
+
+              <item row="0" column="0"><widget class="QLabel" name="rscriptPathLabel"><property name="text"><string>Rscript path:</string></property></widget></item>
+              <item row="0" column="1" colspan="2"><widget class="ctkPathLineEdit" name="rscriptPath"/></item>
+              <item row="0" column="3"><widget class="QPushButton" name="rDetectButton"><property name="text"><string>Auto-detect</string></property></widget></item>
+
+              <item row="1" column="0"><widget class="QLabel" name="rPortLabel"><property name="text"><string>Rserve port:</string></property></widget></item>
+              <item row="1" column="1"><widget class="QSpinBox" name="rPortSpin"><property name="value"><number>6311</number></property></widget></item>
+              <item row="1" column="2"><widget class="QCheckBox" name="rAllowRemote"><property name="text"><string>Enable remote</string></property></widget></item>
+              <item row="1" column="3"><widget class="QPushButton" name="rRefreshButton"><property name="text"><string>Refresh status</string></property></widget></item>
+
+              <item row="2" column="0"><widget class="QLabel" name="rGeomorphTitle"><property name="text"><string>geomorph:</string></property></widget></item>
+              <item row="2" column="1" colspan="2"><widget class="QLabel" name="rGeomorphStatusLabel"><property name="text"><string>Unknown</string></property></widget></item>
+              <item row="2" column="3"><widget class="QPushButton" name="rCheckGeomorphButton"><property name="text"><string>Check</string></property></widget></item>
+
+              <item row="3" column="0"><widget class="QPushButton" name="rLaunchButton"><property name="text"><string>Launch Rserve</string></property></widget></item>
+              <item row="3" column="1"><widget class="QPushButton" name="rConnectButton"><property name="text"><string>Connect</string></property></widget></item>
+              <item row="3" column="2"><widget class="QPushButton" name="rDisconnectButton"><property name="text"><string>Disconnect</string></property></widget></item>
+              <item row="3" column="3"><widget class="QPushButton" name="rShutdownButton"><property name="text"><string>Shutdown Rserve</string></property></widget></item>
+
+              <item row="4" column="0"><widget class="QLabel" name="rExeTitle"><property name="text"><string>Rscript:</string></property></widget></item>
+              <item row="4" column="1" colspan="3"><widget class="QLabel" name="rExeStatusLabel"><property name="text"><string>Not checked</string></property></widget></item>
+
+              <item row="5" column="0"><widget class="QLabel" name="rRserveTitle"><property name="text"><string>Rserve:</string></property></widget></item>
+              <item row="5" column="1" colspan="3"><widget class="QLabel" name="rRserveStatusLabel"><property name="text"><string>Unknown</string></property></widget></item>
+
+              <item row="6" column="0"><widget class="QLabel" name="rConnTitle"><property name="text"><string>Connection:</string></property></widget></item>
+              <item row="6" column="1" colspan="3"><widget class="QLabel" name="rConnStatusLabel"><property name="text"><string>Not connected</string></property></widget></item>
+            </layout>
+          </widget>
+        </item>
+
+        <!-- NEW: Fit Model area -->
+        <item>
+          <widget class="QGroupBox" name="lrRunGroup">
+            <property name="title"><string>Fit model (Rserve)</string></property>
+            <layout class="QGridLayout" name="lrRunGrid">
+              <item row="0" column="0" colspan="2">
+                <widget class="QLabel" name="lrFitPrereqLabel">
+                  <property name="text"><string>Requires: valid formula + Rserve connected</string></property>
+                </widget>
+              </item>
+              <item row="1" column="0">
+                <widget class="QPushButton" name="lrFitButton">
+                  <property name="text"><string>Fit model in R (procD.lm)</string></property>
+                  <property name="enabled"><bool>false</bool></property>
+                  <property name="toolTip"><string>Fits the current formula in R using geomorph::procD.lm</string></property>
+                </widget>
+              </item>
+              <item row="1" column="1">
+                <widget class="QLabel" name="lrFitStatusLabel">
+                  <property name="text"><string>Idle</string></property>
                 </widget>
               </item>
             </layout>
