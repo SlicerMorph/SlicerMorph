@@ -1310,55 +1310,94 @@ class GeomorphLR:
     return self.lrGridTransformNode
 
   def _lr_prepareWarpInfra(self):
-    # ensure mean landmarks
+    """
+    Prepare LR warp infra:
+      - Ensure mean landmarks are available
+      - Create/reuse 'LR Warped Landmarks' shown in View 2
+      - Color ONLY these glyphs (orange)
+      - Create/reuse LR TPS transform and attach targets
+    """
+    # Ensure we have mean landmarks
     if getattr(self.w, "rawMeanLandmarks", None) is None:
-      try:
-        if getattr(self.w, "LM", None) and getattr(self.w.LM, "mShape", None) is not None:
-          self.w.rawMeanLandmarks = np.asarray(self.w.LM.mShape, dtype=float)
-        elif getattr(self.w, "LM", None) and getattr(self.w.LM, "lmOrig", None) is not None:
-          self.w.rawMeanLandmarks = np.asarray(self.w.LM.lmOrig.mean(2), dtype=float)
-      except Exception: pass
+        try:
+            if getattr(self.w, "LM", None) and getattr(self.w.LM, "mShape", None) is not None:
+                self.w.rawMeanLandmarks = np.asarray(self.w.LM.mShape, dtype=float)
+            elif getattr(self.w, "LM", None) and getattr(self.w.LM, "lmOrig", None) is not None:
+                self.w.rawMeanLandmarks = np.asarray(self.w.LM.lmOrig.mean(2), dtype=float)
+        except Exception:
+            pass
     if getattr(self.w, "rawMeanLandmarks", None) is None:
-      self._log("[LR] Cannot initialize: no mean landmarks available yet."); return
+        self._log("[LR] Cannot initialize: no mean landmarks available yet.")
+        return
 
     p = int(self.w.rawMeanLandmarks.shape[0])
+
+    # Create or reuse the LR warp fiducials (these are the ones that will be ORANGE)
     try:
-      if not (getattr(self, "lrWarpNode", None) and slicer.mrmlScene.IsNodePresent(self.lrWarpNode)):
-        self.lrWarpNode = slicer.vtkMRMLMarkupsFiducialNode()
-        self.lrWarpNode.SetName("LR Warped Landmarks")
-        slicer.mrmlScene.AddNode(self.lrWarpNode); self.nodes.AddItem(self.lrWarpNode)
-        self._log(f"[LR] Created LR warp node: {self.lrWarpNode.GetID()}")
-      try: self.lrWarpNode.RemoveAllControlPoints()
-      except Exception: pass
-      for i in range(p):
-        self.lrWarpNode.AddControlPoint(self.w.rawMeanLandmarks[i, :], str(i + 1))
-      self.lrWarpNode.CreateDefaultDisplayNodes()
-      d = self.lrWarpNode.GetDisplayNode()
-      if d:
-        d.SetPointLabelsVisibility(1); d.SetTextScale(3)
-        try: d.SetGlyphScale(float(self.w.ui.scaleMeanShapeSlider.value))
-        except Exception: pass
-        v2 = _view_node_by_name("View2")
-        if v2: d.SetViewNodeIDs([v2.GetID()])
-      self.lrWarpNode.SetDisplayVisibility(1)
+        create_new = not (getattr(self, "lrWarpNode", None) and slicer.mrmlScene.IsNodePresent(self.lrWarpNode))
+        if create_new:
+            self.lrWarpNode = slicer.vtkMRMLMarkupsFiducialNode()
+            self.lrWarpNode.SetName("LR Warped Landmarks")
+            slicer.mrmlScene.AddNode(self.lrWarpNode)
+            self.nodes.AddItem(self.lrWarpNode)
+            self._log(f"[LR] Created LR warp node: {self.lrWarpNode.GetID()}")
+
+        # Populate/refresh points
+        try:
+            self.lrWarpNode.RemoveAllControlPoints()
+        except Exception:
+            pass
+        for i in range(p):
+            self.lrWarpNode.AddControlPoint(self.w.rawMeanLandmarks[i, :], str(i + 1))
+
+        # Display config (View 2 + scales + ORANGE color)
+        self.lrWarpNode.CreateDefaultDisplayNodes()
+        d = self.lrWarpNode.GetDisplayNode()
+        if d:
+            d.SetPointLabelsVisibility(1)
+            d.SetTextScale(3)
+            # Match glyph scale to the UI (won't affect color)
+            try:
+                d.SetGlyphScale(float(self.w.ui.scaleMeanShapeSlider.value))
+            except Exception:
+                pass
+            # Show only in View 2
+            v2 = _view_node_by_name("View2")
+            if v2:
+                d.SetViewNodeIDs([v2.GetID()])
+
+        # Color ONLY these LR-warped glyphs (purple)
+        self._lr_setWarpGlyphColor(rgb=(51, 128, 15))  # orange
+
+        self.lrWarpNode.SetDisplayVisibility(1)
     except Exception as e:
-      self._log(f"[LR] Warp node setup failed: {e}")
-      return
+        self._log(f"[LR] Warp node setup failed: {e}")
+        return
 
+    # Ensure the LR TPS transform exists and attach it to the warp node (and model, if selected)
     node = self._ensureLRTPSNode()
-    try: self.lrWarpNode.SetAndObserveTransformNodeID(node.GetID())
-    except Exception: pass
-    try: modelChecked = bool(self.w.ui.modelVisualizationType.isChecked())
-    except Exception: modelChecked = False
-    if modelChecked and getattr(self.w, "cloneModelNode", None):
-      try: self.w.cloneModelNode.SetAndObserveTransformNodeID(node.GetID())
-      except Exception: pass
+    try:
+        self.lrWarpNode.SetAndObserveTransformNodeID(node.GetID())
+    except Exception:
+        pass
 
     try:
-      tid = node.GetID() if node else "(none)"
-      lid = self.lrWarpNode.GetID() if getattr(self, "lrWarpNode", None) else "(none)"
-      self._log(f"[LR] Infra ready (TPS). transform={tid}, lrWarpNode={lid}")
-    except Exception: pass
+        modelChecked = bool(self.w.ui.modelVisualizationType.isChecked())
+    except Exception:
+        modelChecked = False
+    if modelChecked and getattr(self.w, "cloneModelNode", None):
+        try:
+            self.w.cloneModelNode.SetAndObserveTransformNodeID(node.GetID())
+        except Exception:
+            pass
+
+    try:
+        tid = node.GetID() if node else "(none)"
+        lid = self.lrWarpNode.GetID() if getattr(self, "lrWarpNode", None) else "(none)"
+        self._log(f"[LR] Infra ready (TPS). transform={tid}, lrWarpNode={lid}")
+    except Exception:
+        pass
+
 
   def _coef_row_to_shift(self, row_3p):
     if getattr(self.w, "rawMeanLandmarks", None) is None:
@@ -1446,3 +1485,24 @@ class GeomorphLR:
       self.ui.GPALogTextbox.insertPlainText(s + "\n")
     except Exception:
       print(s)
+
+  def _lr_setWarpGlyphColor(self, rgb=(1.0, 0.5, 0.0)):
+    """
+    Set the glyph color for the LR Warped Landmarks (only).
+    rgb: tuple/list in [0..1].
+    """
+    node = getattr(self, "lrWarpNode", None)
+    if not node or not slicer.mrmlScene.IsNodePresent(node):
+      return
+    d = node.GetDisplayNode()
+    if not d:
+      return
+    # Markups use SelectedColor/Color for picked/unpicked; set both to the same orange.
+    try:
+      d.SetSelectedColor(rgb)
+    except Exception:
+      pass
+    try:
+      d.SetColor(rgb)
+    except Exception:
+      pass
