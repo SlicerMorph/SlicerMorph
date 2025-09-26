@@ -19,6 +19,69 @@ from datetime import datetime
 import scipy.linalg as sp
 from vtk.util import numpy_support
 
+def _ensure_pyRserve_early() -> bool:
+  """
+  Ensure pyRserve is importable at module load time.
+  - Applies NumPy 2.0 compatibility shim BEFORE importing pyRserve
+  - Attempts import; if missing, installs via pip and imports again
+  Returns True on success, False otherwise (non-fatal).
+  """
+  # ---- NumPy 2.x shim (must run before importing pyRserve) -------------------
+  try:
+    import numpy as _np
+    from types import SimpleNamespace as _SS
+    if not hasattr(_np, "string_"):  _np.string_ = _np.bytes_
+    if not hasattr(_np, "unicode_"): _np.unicode_ = str
+    if not hasattr(_np, "int"):      _np.int = int
+    if not hasattr(_np, "bool"):     _np.bool = bool
+    if not hasattr(_np, "float"):    _np.float = float
+    if not hasattr(_np, "object"):   _np.object = object
+    if not hasattr(_np, "compat"):
+      _np.compat = _SS(long=int)
+    elif not hasattr(_np.compat, "long"):
+      _np.compat.long = int
+  except Exception:
+    pass
+
+  # ---- Already imported? -----------------------------------------------------
+  try:
+    import sys
+    if "pyRserve" in sys.modules:
+      return True
+  except Exception:
+    pass
+
+  # ---- Try normal import -----------------------------------------------------
+  try:
+    import pyRserve  # noqa: F401
+    return True
+  except Exception:
+    pass
+
+  # ---- Install and import ----------------------------------------------------
+  progress = None
+  try:
+    progress = slicer.util.createProgressDialog(
+      windowTitle="Installing...",
+      labelText="Installing pyRserve...",
+      maximum=0,
+    )
+    slicer.app.processEvents()
+    slicer.util.pip_install(["pyRserve"])
+    if progress:
+      progress.close()
+    import pyRserve  # noqa: F401
+    return True
+  except Exception:
+    try:
+      if progress:
+        progress.close()
+    except Exception:
+      pass
+    # Non-fatal: fitting will still fail gracefully later if Rserve is used without pyRserve.
+    return False
+
+
 #
 # GPA
 #
@@ -467,6 +530,13 @@ class GPAWidget(ScriptedLoadableModuleWidget):
           progressDialog.close()
         except Exception:
           pass
+
+      # NEW: ensure pyRserve is available (NumPy shim + install if needed)
+      try:
+        _ensure_pyRserve_early()
+      except Exception:
+        # Non-fatal; runtime fit will still error cleanly if user tries to use Rserve without pyRserve
+        pass
 
     # Initialize the LR tab UI (safe no-op if tab not present)
     from Support.geomorph_lr import GeomorphLR

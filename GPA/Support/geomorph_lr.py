@@ -205,7 +205,6 @@ class GeomorphLR:
     self._rserve_started_by_us = False
     self._r_conn = None
     self._r_last_error = ""
-    self._geomorph_ok = False
 
     # LR state (formula/completer)
     self._lr_completer = None
@@ -588,72 +587,107 @@ class GeomorphLR:
   # ----------------------------- R / Rserve panel -----------------------------
 
   def _r_initPanel(self):
+    """Wire the R/Rserve controls (no geomorph/RRPP UI checks)."""
     if not hasattr(self.ui, "rserveGroup"):
       return
 
-    # reasonable Rserve port default
     try:
-      self.ui.rPortSpin.setMinimum(1024); self.ui.rPortSpin.setMaximum(65535)
+      self.ui.rPortSpin.setMinimum(1024)
+      self.ui.rPortSpin.setMaximum(65535)
       if int(self.ui.rPortSpin.value) == 0:
         self.ui.rPortSpin.setValue(6311)
-    except Exception: pass
+    except Exception:
+      pass
 
-    # Buttons
     self.ui.rDetectButton.clicked.connect(self._r_onDetectR)
     self.ui.rLaunchButton.clicked.connect(self._r_onLaunchClicked)
     self.ui.rShutdownButton.clicked.connect(self._r_onShutdownClicked)
     self.ui.rConnectButton.clicked.connect(self._r_onConnectClicked)
     self.ui.rDisconnectButton.clicked.connect(self._r_onDisconnectClicked)
     self.ui.rRefreshButton.clicked.connect(self._r_refreshRStatus)
-    self.ui.rCheckGeomorphButton.clicked.connect(self._r_onCheckGeomorph)
 
     # Initial status
     self._r_onDetectR()
-    self._r_onCheckGeomorph()
     self._refreshButtons()
     self._refreshStatusLabels()
 
   def _r_onDetectR(self):
+    """Try to auto-locate Rscript and update Rscript label."""
     path = self._r_find_rscript()
     if path:
-      try: self.ui.rscriptPath.setCurrentPath(path)
+      try:
+        self.ui.rscriptPath.setCurrentPath(path)
       except Exception:
-        try: self.ui.rscriptPath.currentPath = path
-        except Exception: pass
+        try:
+          self.ui.rscriptPath.currentPath = path
+        except Exception:
+          pass
       _set_label(self.ui.rExeStatusLabel, f"Found: {path}")
     else:
       _set_label(self.ui.rExeStatusLabel, "Not found on PATH/R_HOME; set path manually.")
-    self._r_onCheckGeomorph()
-    self._refreshStatusLabels(); self._refreshButtons()
+    self._refreshStatusLabels()
+    self._refreshButtons()
 
   def _r_onLaunchClicked(self):
+    """Launch Rserve robustly across platforms.
+    - Windows: wait=TRUE so the port is ready before return.
+    - macOS/Linux: let Rserve daemonize (default), keep foreground clean.
+    """
     port = int(self.ui.rPortSpin.value)
     allow_remote = bool(getattr(self.ui.rAllowRemote, "isChecked", lambda: False)())
     rscript = self._r_getRscriptFromUI()
     if not rscript or not os.path.exists(rscript):
-      _set_label(self.ui.rRserveStatusLabel, "Cannot launch: Rscript path invalid.")
-      return
+        _set_label(self.ui.rRserveStatusLabel, "Cannot launch: Rscript path invalid.")
+        return
 
-    args = f"--RS-port {port} --no-save" + (" --RS-enable-remote" if allow_remote else "")
-    code = "Sys.setenv(RGL_USE_NULL='TRUE'); options(rgl.useNULL=TRUE); Rserve::Rserve(args='%s')" % args
+    # Common args (UTF-8 helps on Windows and is harmless elsewhere)
+    common_args = f"--RS-port {port} --no-save --RS-encoding utf8"
+    if allow_remote:
+        common_args += " --RS-enable-remote"
+
+    if platform.system() == "Windows":
+        # Foreground (no daemon) so port is reliably open before return
+        code = (
+            "Sys.setenv(RGL_USE_NULL='TRUE'); "
+            "options(rgl.useNULL=TRUE); "
+            f"Rserve::Rserve(debug=TRUE, wait=TRUE, args='{common_args}')"
+        )
+    else:
+        # Unix: let Rserve daemonize as usual (wait=FALSE / default)
+        # (Do not pass wait=TRUE to keep the old behavior.)
+        code = (
+            "Sys.setenv(RGL_USE_NULL='TRUE'); "
+            "options(rgl.useNULL=TRUE); "
+            f"Rserve::Rserve(debug=FALSE, args='{common_args}')"
+        )
+
     cmd = [rscript, "-e", code]
 
     try:
-      flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if platform.system()=="Windows" else 0
-      self._rserve_proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=flags)
-      self._rserve_started_by_us = True
-      t0 = time.time()
-      while time.time() - t0 < 8.0:
-        if _is_port_open("127.0.0.1", port):
-          _set_label(self.ui.rRserveStatusLabel, f"Rserve is running on port {port}.")
-          break
-        time.sleep(0.25)
-      else:
-        _set_label(self.ui.rRserveStatusLabel, "Launch attempted, but port not open yet.")
+        flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if platform.system() == "Windows" else 0
+        self._rserve_proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=flags
+        )
+        self._rserve_started_by_us = True
+
+        # Poll for the socket to come up (Windows needs this; harmless elsewhere)
+        timeout = 20.0 if platform.system() == "Windows" else 10.0
+        t0 = time.time()
+        while time.time() - t0 < timeout:
+            if _is_port_open("127.0.0.1", port) or _is_port_open("localhost", port):
+                _set_label(self.ui.rRserveStatusLabel, f"Rserve is running on port {port}.")
+                break
+            time.sleep(0.25)
+        else:
+            _set_label(self.ui.rRserveStatusLabel, "Launch attempted, but port not open yet.")
     except Exception as e:
-      _set_label(self.ui.rRserveStatusLabel, f"Launch failed: {e}")
+        _set_label(self.ui.rRserveStatusLabel, f"Launch failed: {e}")
     finally:
-      self._refreshButtons()
+        self._refreshButtons()
+
 
   def _r_onShutdownClicked(self):
     port = int(self.ui.rPortSpin.value)
@@ -688,11 +722,13 @@ class GeomorphLR:
     self._refreshButtons(); self._refreshStatusLabels()
 
   def _r_onConnectClicked(self):
+    """Open a pyRserve connection (no extra geomorph UI checks)."""
     _set_label(self.ui.rConnStatusLabel, "Connecting…")
     pyR = self._r_ensure_pyRserve()
     if not pyR:
       _set_label(self.ui.rConnStatusLabel, f"pyRserve not available. {self._r_last_error}")
-      self._refreshButtons(); self._refreshStatusLabels()
+      self._refreshButtons()
+      self._refreshStatusLabels()
       return
 
     port = int(self.ui.rPortSpin.value)
@@ -701,11 +737,13 @@ class GeomorphLR:
       try:
         self._safeCloseRConn()
         self._r_conn = pyR.connect(host, port) if hasattr(pyR, "connect") else pyR.rconnect(host, port)
-        try: _ = self._r_conn.eval("1+1")
-        except Exception: pass
+        try:
+          _ = self._r_conn.eval("1+1")
+        except Exception:
+          pass
         _set_label(self.ui.rConnStatusLabel, f"Connected to {host}:{port}")
-        self._r_onCheckGeomorph()
-        self._refreshButtons(); self._refreshStatusLabels()
+        self._refreshButtons()
+        self._refreshStatusLabels()
         return
       except Exception as e:
         last_exc = e
@@ -713,7 +751,9 @@ class GeomorphLR:
     self._r_conn = None
     _set_label(self.ui.rConnStatusLabel, f"Connect failed on port {port}: {last_exc}")
     self._log(f"[Rserve] Connect failed on {port}: {last_exc}")
-    self._refreshButtons(); self._refreshStatusLabels()
+    self._refreshButtons()
+    self._refreshStatusLabels()
+
 
   def _r_onDisconnectClicked(self):
     self._safeCloseRConn()
@@ -751,6 +791,7 @@ class GeomorphLR:
     self.refreshFitButton()
 
   def _refreshButtons(self):
+    """Enable/disable Rserve buttons based on current state."""
     port = int(self.ui.rPortSpin.value)
     rscript_ok = bool(self._r_getRscriptFromUI() and os.path.exists(self._r_getRscriptFromUI()))
     rserve_running = _is_port_open("127.0.0.1", port)
@@ -760,7 +801,7 @@ class GeomorphLR:
     _set_enabled(self.ui.rShutdownButton, rserve_running)
     _set_enabled(self.ui.rConnectButton,  rserve_running and not connected)
     _set_enabled(self.ui.rDisconnectButton, connected)
-    _set_enabled(self.ui.rCheckGeomorphButton, rscript_ok or connected)
+    # NOTE: rCheckGeomorphButton is removed from the UI; nothing to toggle here.
 
   def _r_getRscriptFromUI(self):
     p = None
@@ -851,81 +892,6 @@ class GeomorphLR:
         except Exception: pass
         self._r_last_error = str(ee)
         return None
-
-  def _r_onCheckGeomorph(self):
-    def _fmt(xs): return ("\n  - " + "\n  - ".join(xs)) if xs else " (none)"
-
-    # CLI self-test
-    cli_ok, cli_info = self._r_cli_pkg_selftest()
-    cli_rhome = cli_info.get("r_home","?")
-    cli_libs  = cli_info.get("libpaths",[])
-    cli_okG   = cli_info.get("load_ok",{}).get("geomorph", False)
-
-    # Rserve-installed check (no load)
-    conn = self._r_conn
-    rsrv_vG, rsrv_rhome, rsrv_libs = "", "?", []
-    if conn:
-      try:
-        s = str(conn.eval(
-          "ip <- rownames(installed.packages());"
-          "g <- if ('geomorph' %in% ip) as.character(packageVersion('geomorph')) else '';"
-          "paste(g, R.home('bin'), paste(.libPaths(), collapse=';'), sep='|')"
-        )).strip()
-        parts = s.split("|")
-        if len(parts) >= 3:
-          rsrv_vG = parts[0]; rsrv_rhome = parts[1]
-          rsrv_libs = parts[2].split(";") if parts[2] else []
-      except Exception as e:
-        self._log(f"[Rserve] installed.packages() failed: {e}")
-
-    bits = []
-    bits.append("Rserve connected" if conn else "Rserve not connected")
-    if cli_ok:
-      bits.append(f"Rscript load test: geomorph {'OK' if cli_okG else 'FAIL'}")
-    else:
-      bits.append("Rscript check failed")
-    if conn:
-      bits.append(f"Rserve has geomorph {rsrv_vG}" if rsrv_vG else "Rserve missing geomorph")
-    _set_label(self.ui.rGeomorphStatusLabel, " | ".join(bits))
-
-    self._log(f"[Rscript] R.home(bin): {cli_rhome}\n[Rscript] .libPaths():{_fmt(cli_libs)}")
-    if conn:
-      self._log(f"[Rserve ] R.home(bin): {rsrv_rhome}\n[Rserve ] .libPaths():{_fmt(rsrv_libs)}")
-
-    self._geomorph_ok = bool(conn) and bool(rsrv_vG)
-    self._refreshButtons(); self.refreshFitButton()
-
-  def _r_cli_pkg_selftest(self):
-    rscript = self._r_getRscriptFromUI()
-    if not (rscript and os.path.exists(rscript)):
-      return (False, {"error":"Rscript not set or not found", "rscript": rscript})
-    code = (
-      "options(rgl.useNULL=TRUE); Sys.setenv(RGL_USE_NULL='TRUE'); "
-      "okG <- FALSE; okR <- FALSE; vG <- ''; vR <- ''; "
-      "s <- try(requireNamespace('geomorph', quietly=TRUE), silent=TRUE); "
-      "if (isTRUE(s)) { okG <- TRUE; vG <- as.character(packageVersion('geomorph')); } "
-      "s <- try(requireNamespace('RRPP', quietly=TRUE), silent=TRUE); "
-      "if (isTRUE(s)) { okR <- TRUE; vR <- as.character(packageVersion('RRPP')); } "
-      "cat('OK|', R.home('bin'), '|', paste(.libPaths(), collapse=';'), '|', vG, '|', vR, '|', okG, '|', okR, sep='')"
-    )
-    try:
-      p = subprocess.run([rscript, "-e", code], capture_output=True, text=True, timeout=60)
-      out = ((p.stdout or "") + (p.stderr or "")).strip()
-      idx = out.rfind("OK|")
-      if idx >= 0:
-        tail = out[idx+3:]; parts = tail.split("|")
-        rhome = parts[0] if len(parts)>0 else "?"
-        libs  = parts[1].split(";") if len(parts)>1 and parts[1] else []
-        vGeom = parts[2] if len(parts)>2 else ""
-        vRRPP = parts[3] if len(parts)>3 else ""
-        okGeom = (parts[4].strip()=="TRUE") if len(parts)>4 else False
-        okRRPP = (parts[5].strip()=="TRUE") if len(parts)>5 else False
-        return (True, {"r_home":rhome,"libpaths":libs,"geomorph":vGeom,"RRPP":vRRPP,
-                       "load_ok":{"geomorph":okGeom,"RRPP":okRRPP},
-                       "raw":out,"returncode":p.returncode,"rscript":rscript})
-      return (False, {"raw":out,"returncode":p.returncode,"rscript":rscript})
-    except Exception as e:
-      return (False, {"error":repr(e),"rscript":rscript})
 
   # ------------------------ Fit gating & covariate plumbing -------------------
 

@@ -350,7 +350,46 @@
       <attribute name="title"><string>Geomorph Linear Regression</string></attribute>
       <layout class="QVBoxLayout" name="geomorphLRTabLayout">
 
-        <!-- Formula -->
+        <!-- (1) R / Rserve Bridge -->
+        <item>
+          <widget class="QGroupBox" name="rserveGroup">
+            <property name="title"><string>R / Rserve Bridge</string></property>
+            <layout class="QGridLayout" name="rserveGrid">
+              <property name="leftMargin"><number>6</number></property>
+              <property name="topMargin"><number>6</number></property>
+              <property name="rightMargin"><number>6</number></property>
+              <property name="bottomMargin"><number>6</number></property>
+              <property name="verticalSpacing"><number>6</number></property>
+
+              <item row="0" column="0"><widget class="QLabel" name="rscriptPathLabel"><property name="text"><string>Rscript path:</string></property></widget></item>
+              <item row="0" column="1" colspan="2"><widget class="ctkPathLineEdit" name="rscriptPath"/></item>
+              <item row="0" column="3"><widget class="QPushButton" name="rDetectButton"><property name="text"><string>Auto-detect</string></property></widget></item>
+
+              <item row="1" column="0"><widget class="QLabel" name="rPortLabel"><property name="text"><string>Rserve port:</string></property></widget></item>
+              <item row="1" column="1"><widget class="QSpinBox" name="rPortSpin"><property name="value"><number>6311</number></property></widget></item>
+              <item row="1" column="2"><widget class="QCheckBox" name="rAllowRemote"><property name="text"><string>Enable remote</string></property></widget></item>
+              <item row="1" column="3"><widget class="QPushButton" name="rRefreshButton"><property name="text"><string>Refresh status</string></property></widget></item>
+
+              <!-- Removed geomorph/RRPP status + Check row -->
+
+              <item row="2" column="0"><widget class="QPushButton" name="rLaunchButton"><property name="text"><string>Launch Rserve</string></property></widget></item>
+              <item row="2" column="1"><widget class="QPushButton" name="rConnectButton"><property name="text"><string>Connect</string></property></widget></item>
+              <item row="2" column="2"><widget class="QPushButton" name="rDisconnectButton"><property name="text"><string>Disconnect</string></property></widget></item>
+              <item row="2" column="3"><widget class="QPushButton" name="rShutdownButton"><property name="text"><string>Shutdown Rserve</string></property></widget></item>
+
+              <item row="3" column="0"><widget class="QLabel" name="rExeTitle"><property name="text"><string>Rscript:</string></property></widget></item>
+              <item row="3" column="1" colspan="3"><widget class="QLabel" name="rExeStatusLabel"><property name="text"><string>Not checked</string></property></widget></item>
+
+              <item row="4" column="0"><widget class="QLabel" name="rRserveTitle"><property name="text"><string>Rserve:</string></property></widget></item>
+              <item row="4" column="1" colspan="3"><widget class="QLabel" name="rRserveStatusLabel"><property name="text"><string>Unknown</string></property></widget></item>
+
+              <item row="5" column="0"><widget class="QLabel" name="rConnTitle"><property name="text"><string>Connection:</string></property></widget></item>
+              <item row="5" column="1" colspan="3"><widget class="QLabel" name="rConnStatusLabel"><property name="text"><string>Not connected</string></property></widget></item>
+            </layout>
+          </widget>
+        </item>
+
+        <!-- (2) R Formula -->
         <item>
           <widget class="QGroupBox" name="lrFormulaGroup">
             <property name="title"><string>R Formula</string></property>
@@ -428,7 +467,7 @@
           </widget>
         </item>
 
-        <!-- Reference list: mains (read-only) -->
+        <!-- (3) Possible Main Effect Terms -->
         <item>
           <widget class="QGroupBox" name="lrReferenceGroup">
             <property name="title"><string>Possible Main Effect Terms</string></property>
@@ -463,48 +502,7 @@
           </widget>
         </item>
 
-        <!-- R / Rserve Bridge -->
-        <item>
-          <widget class="QGroupBox" name="rserveGroup">
-            <property name="title"><string>R / Rserve Bridge</string></property>
-            <layout class="QGridLayout" name="rserveGrid">
-              <property name="leftMargin"><number>6</number></property>
-              <property name="topMargin"><number>6</number></property>
-              <property name="rightMargin"><number>6</number></property>
-              <property name="bottomMargin"><number>6</number></property>
-              <property name="verticalSpacing"><number>6</number></property>
-
-              <item row="0" column="0"><widget class="QLabel" name="rscriptPathLabel"><property name="text"><string>Rscript path:</string></property></widget></item>
-              <item row="0" column="1" colspan="2"><widget class="ctkPathLineEdit" name="rscriptPath"/></item>
-              <item row="0" column="3"><widget class="QPushButton" name="rDetectButton"><property name="text"><string>Auto-detect</string></property></widget></item>
-
-              <item row="1" column="0"><widget class="QLabel" name="rPortLabel"><property name="text"><string>Rserve port:</string></property></widget></item>
-              <item row="1" column="1"><widget class="QSpinBox" name="rPortSpin"><property name="value"><number>6311</number></property></widget></item>
-              <item row="1" column="2"><widget class="QCheckBox" name="rAllowRemote"><property name="text"><string>Enable remote</string></property></widget></item>
-              <item row="1" column="3"><widget class="QPushButton" name="rRefreshButton"><property name="text"><string>Refresh status</string></property></widget></item>
-
-              <item row="2" column="0"><widget class="QLabel" name="rGeomorphTitle"><property name="text"><string>geomorph:</string></property></widget></item>
-              <item row="2" column="1" colspan="2"><widget class="QLabel" name="rGeomorphStatusLabel"><property name="text"><string>Unknown</string></property></widget></item>
-              <item row="2" column="3"><widget class="QPushButton" name="rCheckGeomorphButton"><property name="text"><string>Check</string></property></widget></item>
-
-              <item row="3" column="0"><widget class="QPushButton" name="rLaunchButton"><property name="text"><string>Launch Rserve</string></property></widget></item>
-              <item row="3" column="1"><widget class="QPushButton" name="rConnectButton"><property name="text"><string>Connect</string></property></widget></item>
-              <item row="3" column="2"><widget class="QPushButton" name="rDisconnectButton"><property name="text"><string>Disconnect</string></property></widget></item>
-              <item row="3" column="3"><widget class="QPushButton" name="rShutdownButton"><property name="text"><string>Shutdown Rserve</string></property></widget></item>
-
-              <item row="4" column="0"><widget class="QLabel" name="rExeTitle"><property name="text"><string>Rscript:</string></property></widget></item>
-              <item row="4" column="1" colspan="3"><widget class="QLabel" name="rExeStatusLabel"><property name="text"><string>Not checked</string></property></widget></item>
-
-              <item row="5" column="0"><widget class="QLabel" name="rRserveTitle"><property name="text"><string>Rserve:</string></property></widget></item>
-              <item row="5" column="1" colspan="3"><widget class="QLabel" name="rRserveStatusLabel"><property name="text"><string>Unknown</string></property></widget></item>
-
-              <item row="6" column="0"><widget class="QLabel" name="rConnTitle"><property name="text"><string>Connection:</string></property></widget></item>
-              <item row="6" column="1" colspan="3"><widget class="QLabel" name="rConnStatusLabel"><property name="text"><string>Not connected</string></property></widget></item>
-            </layout>
-          </widget>
-        </item>
-
-        <!-- Fit Model -->
+        <!-- (4) Fit Model (Rserve) -->
         <item>
           <widget class="QGroupBox" name="lrRunGroup">
             <property name="title"><string>Fit model (Rserve)</string></property>
@@ -530,7 +528,7 @@
           </widget>
         </item>
 
-        <!-- NEW: Model Summary (read-only) -->
+        <!-- (5) Model Summary -->
         <item>
           <widget class="QGroupBox" name="lrSummaryGroup">
             <property name="title"><string>Model Summary (read-only)</string></property>
@@ -546,7 +544,7 @@
           </widget>
         </item>
 
-        <!-- Coefficient Visualization -->
+        <!-- (6) Coefficient Visualization Parameters -->
         <item>
           <widget class="ctkCollapsibleButton" name="coefVisualizationParametersButton">
             <property name="collapsed"><bool>false</bool></property>
