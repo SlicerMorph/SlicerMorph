@@ -509,10 +509,25 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         slicer.util.infoDisplay("Issue while installing Pandas Python package. Please install manually.")
         progressDialog.close()
 
-    # Load widget from .ui file (created by Qt Designer).
-    uiWidget = slicer.util.loadUI(self.resourcePath("UI/GPA.ui"))
-    self.layout.addWidget(uiWidget)
-    self.ui = slicer.util.childWidgetVariables(uiWidget)
+    # Load widget from .ui files (created by Qt Designer).
+    # NEW: assemble the split tabs into one QTabWidget
+    tab = qt.QTabWidget()
+    tab.setObjectName("tabWidget")  # keep old name for compatibility
+
+    tabs = [
+      ("Setup Analysis", "UI/GPA_SetupAnalysis.ui"),
+      ("Explore Data/Results", "UI/GPA_ExploreDataResults.ui"),
+      ("Interactive 3D Visualization", "UI/GPA_Interactive3D.ui"),
+      ("Geomorph Linear Regression", "UI/GPA_GeomorphLR.ui"),
+    ]
+
+    for title, relpath in tabs:
+      w = slicer.util.loadUI(self.resourcePath(relpath))
+      tab.addTab(w, title)
+
+    self.layout.addWidget(tab)
+    # Collect *all* named children across all tabs into self.ui (unchanged usage elsewhere)
+    self.ui = slicer.util.childWidgetVariables(tab)
 
     # Ensure patsy is available (just like you do for pandas)
     try:
