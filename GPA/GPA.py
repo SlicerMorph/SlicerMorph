@@ -1,2581 +1,1495 @@
-import os
-import unittest
-import vtk, qt, ctk, slicer
-from slicer.ScriptedLoadableModule import *
-import logging
-import math
-import subprocess, shutil, socket, platform, time, os
+# Support/geomorph_lr.py
+# -----------------------------------------------------------------------------
+# Geomorph Linear Regression (LR) controller for the SlicerMorph GPA module.
+# Encapsulates:
+#   • LR tab (formula autocomplete + validation)
+#   • R/Rserve panel (detect/launch/connect/check geomorph)
+#   • Coefficient visualization (TPS grid + warped landmarks/models)
+#
+# Usage (from GPAWidget.setup()):
+#   from Support.geomorph_lr import GeomorphLR
+#   self.lr = GeomorphLR(parent_widget=self, node_collection=GPANodeCollection)
+#   self.lr.attach()
+#
+# This module avoids circular imports: it does not import GPAWidget or GPALogic.
+# Any data it needs (LM arrays, files, mean landmarks, scale factors, etc.)
+# are read from the parent widget (self.w).
+# -----------------------------------------------------------------------------
 
-import re
-import csv
-import glob
-import fnmatch
-import json
+import os, time, socket, platform, subprocess, shutil
+import numpy as np
 
-import Support.vtk_lib as vtk_lib
-import Support.gpa_lib as gpa_lib
-import  numpy as np
-from datetime import datetime
-import scipy.linalg as sp
-from vtk.util import numpy_support
+# Optional pandas/patsy import is deferred until needed
+try:
+  import pandas as pd  # noqa: F401
+except Exception:
+  pd = None
 
-def _ensure_pyRserve_early() -> bool:
-  """
-  Ensure pyRserve is importable at module load time.
-  - Applies NumPy 2.0 compatibility shim BEFORE importing pyRserve
-  - Attempts import; if missing, installs via pip and imports again
-  Returns True on success, False otherwise (non-fatal).
-  """
-  # ---- NumPy 2.x shim (must run before importing pyRserve) -------------------
+import vtk, qt, slicer
+
+
+# ----------------------------- Small helpers ---------------------------------
+
+class _DummyCollection:
+  def AddItem(self, node): pass
+  def RemoveItem(self, node): pass
+
+
+def _safe_text(widget):
+  """Return text from QLineEdit/QPlainTextEdit in a PythonQt-safe way."""
+  if hasattr(widget, "toPlainText"):
+    return str(widget.toPlainText())
+  if hasattr(widget, "text"):
+    try: return str(widget.text())
+    except Exception: return str(widget.text)
+  return ""
+
+
+def _set_text(widget, s):
+  """Set text into QLineEdit/QPlainTextEdit in a PythonQt-safe way."""
+  if hasattr(widget, "setPlainText"):
+    widget.setPlainText(str(s))
+  elif hasattr(widget, "setText"):
+    try: widget.setText(str(s))
+    except Exception: widget.setText = str(s)  # PythonQt fallback
+
+
+def _set_enabled(widget, enabled: bool):
   try:
-    import numpy as _np
-    from types import SimpleNamespace as _SS
-    if not hasattr(_np, "string_"):  _np.string_ = _np.bytes_
-    if not hasattr(_np, "unicode_"): _np.unicode_ = str
-    if not hasattr(_np, "int"):      _np.int = int
-    if not hasattr(_np, "bool"):     _np.bool = bool
-    if not hasattr(_np, "float"):    _np.float = float
-    if not hasattr(_np, "object"):   _np.object = object
-    if not hasattr(_np, "compat"):
-      _np.compat = _SS(long=int)
-    elif not hasattr(_np.compat, "long"):
-      _np.compat.long = int
+    widget.setEnabled(bool(enabled))
   except Exception:
-    pass
+    try: widget.enabled = bool(enabled)
+    except Exception: pass
 
-  # ---- Already imported? -----------------------------------------------------
+
+def _set_label(widget, text):
   try:
-    import sys
-    if "pyRserve" in sys.modules:
+    widget.setText(str(text))
+  except Exception:
+    try: widget.text = str(text)
+    except Exception: pass
+
+
+def _is_port_open(host, port, timeout=0.25):
+  try:
+    with socket.create_connection((host, int(port)), timeout=timeout):
       return True
   except Exception:
-    pass
-
-  # ---- Try normal import -----------------------------------------------------
-  try:
-    import pyRserve  # noqa: F401
-    return True
-  except Exception:
-    pass
-
-  # ---- Install and import ----------------------------------------------------
-  progress = None
-  try:
-    progress = slicer.util.createProgressDialog(
-      windowTitle="Installing...",
-      labelText="Installing pyRserve...",
-      maximum=0,
-    )
-    slicer.app.processEvents()
-    slicer.util.pip_install(["pyRserve"])
-    if progress:
-      progress.close()
-    import pyRserve  # noqa: F401
-    return True
-  except Exception:
-    try:
-      if progress:
-        progress.close()
-    except Exception:
-      pass
-    # Non-fatal: fitting will still fail gracefully later if Rserve is used without pyRserve.
     return False
 
 
-#
-# GPA
-#
-#define global variable for node management
-GPANodeCollection=vtk.vtkCollection() #collect nodes created by module
-
-class GPA(ScriptedLoadableModule):
-  """Uses ScriptedLoadableModule base class, available at:
-  https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
-  """
-
-  def __init__(self, parent):
-    ScriptedLoadableModule.__init__(self, parent)
-    self.parent.title = "GPA" # TODO make this more human readable by adding spaces
-    self.parent.categories = ["SlicerMorph.Geometric Morphometrics"]
-    self.parent.dependencies = []
-    self.parent.contributors = [" Sara Rolfe (UW), Murat Maga (UW)"] # replace with "Firstname Lastname (Organization)"
-    self.parent.helpText = """
-This module performs standard Generalized Procrustes Analysis (GPA) based on Dryden and Mardia, 2016
-<p>For more information see the <a href="https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/GPA">online documentation.</a>.</p>
-"""
-    #self.parent.helpText += self.getDefaultModuleDocumentationLink()
-    self.parent.acknowledgementText = """
-      This module was developed by Sara Rolfe, and Murat Maga for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections"
-      awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839).
-      https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
-""" # replace with organization, grant and thanks.
-
-# Define custom layouts for GPA modules in slicer global namespace
-    slicer.customLayoutSM = """
-      <layout type=\"vertical\" split=\"true\" >
-       <item splitSize=\"500\">
-         <layout type=\"horizontal\">
-           <item>
-            <view class=\"vtkMRMLViewNode\" singletontag=\"1\">
-             <property name=\"viewlabel\" action=\"default\">1</property>
-            </view>
-           </item>
-           <item>
-            <view class=\"vtkMRMLViewNode\" singletontag=\"2\" type=\"secondary\">"
-             <property name=\"viewlabel\" action=\"default\">2</property>"
-            </view>
-          </item>
-         </layout>
-       </item>
-       <item splitSize=\"500\">
-        <layout type=\"horizontal\">
-         <item>
-          <view class=\"vtkMRMLSliceNode\" singletontag=\"Red\">
-           <property name=\"orientation\" action=\"default\">Axial</property>
-           <property name=\"viewlabel\" action=\"default\">R</property>
-           <property name=\"viewcolor\" action=\"default\">#F34A33</property>
-          </view>
-         </item>
-           <item>
-            <view class=\"vtkMRMLPlotViewNode\" singletontag=\"PlotViewerWindow_1\">
-             <property name=\"viewlabel\" action=\"default\">1</property>
-            </view>
-           </item>
-         <item>
-          <view class=\"vtkMRMLTableViewNode\" singletontag=\"TableViewerWindow_1\">"
-           <property name=\"viewlabel\" action=\"default\">T</property>"
-          </view>"
-         </item>"
-        </layout>
-       </item>
-      </layout>
-  """
-
-    slicer.customLayoutTableOnly = """
-      <layout type=\"horizontal\" >
-       <item>
-        <view class=\"vtkMRMLTableViewNode\" singletontag=\"TableViewerWindow_1\">"
-         <property name=\"viewlabel\" action=\"default\">T</property>"
-        </view>"
-       </item>"
-      </layout>
-  """
-
-    slicer.customLayoutPlotOnly = """
-      <layout type=\"horizontal\" >
-       <item>
-        <view class=\"vtkMRMLPlotViewNode\" singletontag=\"PlotViewerWindow_1\">
-         <property name=\"viewlabel\" action=\"default\">1</property>
-        </view>"
-       </item>"
-      </layout>
-  """
-
-class PCSliderController:
-    """
-    Controller that links an existing QComboBox, QSlider, and QDoubleSpinBox.
-    - Keeps slider and spinbox in sync via mapped values
-    - Exposes optional callbacks:
-        onSliderChanged -> called on slider.valueChanged
-        onComboBoxChanged -> called on comboBox.currentIndexChanged
-    - Provides helpers: setRange, setValue, sliderValue, comboBoxIndex, populateComboBox, clear
-    """
-    def __init__(self, comboBox, slider, spinBox, dynamic_min=0.0, dynamic_max=1.0,
-                 onSliderChanged=None, onComboBoxChanged=None):
-        self.comboBox = comboBox
-        self.slider = slider
-        self.spinBox = spinBox
-        self.dynamic_min = float(dynamic_min)
-        self.dynamic_max = float(dynamic_max)
-
-        # Configure widgets but do not create them
-        self.slider.setMinimum(-100)
-        self.slider.setMaximum(100)
-        self.spinBox.setDecimals(3)
-        self.spinBox.setMinimum(self.dynamic_min)
-        self.spinBox.setMaximum(self.dynamic_max)
-        self.spinBox.setSingleStep(0.01)  # for finer keyboard control
-
-        # Keep slider and spinbox mapped to each other
-        self.slider.valueChanged.connect(self.updateSpinBoxFromSlider)
-        self.spinBox.valueChanged.connect(self.updateSliderFromSpinBox)
-
-        # Optional external callbacks, matching legacy SliderGroup behavior
-        if onSliderChanged:
-            self.slider.valueChanged.connect(onSliderChanged)
-        if onComboBoxChanged:
-            self.comboBox.currentIndexChanged.connect(onComboBoxChanged)
-
-    def setRange(self, new_min, new_max):
-      self.dynamic_min = float(new_min)
-      self.dynamic_max = float(new_max)
-
-      # Update spinbox bounds
-      self.spinBox.blockSignals(True)
-      self.spinBox.setMinimum(self.dynamic_min)
-      self.spinBox.setMaximum(self.dynamic_max)
-      self.spinBox.blockSignals(False)
-
-      # Compute where slider should be for dynamic value 0 (works for asymmetric ranges)
-      s0 = self.map_dynamic_to_slider(0.0)
-      s0 = max(min(s0, self.slider.maximum), self.slider.minimum)
-
-      # Final reset: set exact 0.0 via spinbox, and align slider to s0
-      self.spinBox.blockSignals(True)
-      self.slider.blockSignals(True)
-      try:
-          self.spinBox.setValue(0.0)
-          self.slider.setValue(s0)
-      finally:
-          self.slider.blockSignals(False)
-          self.spinBox.blockSignals(False)
-
-    def setValue(self, dynamic_value):
-        """Set using the dynamic value domain."""
-        sv = self.map_dynamic_to_slider(float(dynamic_value))
-        self.slider.setValue(sv)
-
-    def sliderValue(self):
-        """Return the current dynamic value shown in the spinbox."""
-        try:
-            return float(self.spinBox.value())
-        except TypeError:
-            return float(self.spinBox.value)
-
-    def comboBoxIndex(self):
-        """Return current combobox index as int."""
-        try:
-            return int(self.comboBox.currentIndex())
-        except TypeError:
-            return int(self.comboBox.currentIndex)
-
-    def populateComboBox(self, items):
-        self.comboBox.clear()
-        for it in items:
-            self.comboBox.addItem(str(it))
-
-    def clear(self):
-        self.spinBox.setValue(0.0)
-        self.comboBox.clear()
-
-    def map_slider_to_dynamic(self, slider_value):
-        """Map [-100, 100] to [dynamic_min, dynamic_max], snapping near zero."""
-        normalized = (float(slider_value) + 100.0) / 200.0
-        val = self.dynamic_min + normalized * (self.dynamic_max - self.dynamic_min)
-        if abs(val) < 1e-12:
-            return 0.0
-        return val
-
-    def map_dynamic_to_slider(self, dynamic_value):
-        """Map [dynamic_min, dynamic_max] to [-100, 100] with rounding."""
-        if self.dynamic_max == self.dynamic_min:
-            return 0
-        normalized = (float(dynamic_value) - self.dynamic_min) / (self.dynamic_max - self.dynamic_min)
-        return int(round(normalized * 200.0 - 100.0))
-
-    def updateSpinBoxFromSlider(self, slider_value):
-        dynamic_value = self.map_slider_to_dynamic(slider_value)
-        # If the slider is exactly centered, force a clean 0.0
-        if int(slider_value) == 0 or abs(dynamic_value) < 1e-6:
-            dynamic_value = 0.0
-        self.spinBox.blockSignals(True)
-        self.spinBox.setValue(dynamic_value)
-        self.spinBox.blockSignals(False)
-
-    def updateSliderFromSpinBox(self, spinbox_value):
-        slider_value = self.map_dynamic_to_slider(spinbox_value)
-        self.slider.blockSignals(True)
-        self.slider.setValue(slider_value)
-        self.slider.blockSignals(False)
-
-class LMData:
-  def __init__(self):
-    self.lm=0
-    self.lmOrig=0
-    self.val=0
-    self.vec=0
-    self.alignCoords=0
-    self.mShape=0
-    self.tangentCoord=0
-    self.shift=0
-    self.centriodSize=0
-
-  def initializeFromDataFrame(self, outputData, meanShape, eigenVectors, eigenValues):
-    try:
-      self.centriodSize = outputData.centroid.to_numpy()
-      self.centriodSize=self.centriodSize.reshape(-1,1)
-      LMHeaders = [name for name in outputData.columns if 'LM ' in name]
-      points = outputData[LMHeaders].to_numpy().transpose()
-      self.lm = points.reshape(int(points.shape[0]/3), 3, -1, order='C')
-      self.lmOrig = self.lm
-      self.mShape = meanShape[['X','Y','Z']].to_numpy()
-      self.val = eigenValues.Scores.to_numpy()
-      vectors = [name for name in eigenVectors.columns if 'PC ' in name]
-      self.vec = eigenVectors[vectors].to_numpy()
-      self.sortedEig = gpa_lib.pairEig(self.val, self.vec)
-      self.procdist = outputData.proc_dist.to_numpy()
-      self.procdist=self.procdist.reshape(-1,1)
-      return 1
-    except:
-      print("Error loading results")
-      self.ui.GPALogTextbox.insertPlainText("Error loading results: Failed to initialize from file \n")
-      return 0
-
-  def calcLMVariation(self, SampleScaleFactor, BoasOption):
-    i,j,k=self.lmOrig.shape
-    varianceMat=np.zeros((i,j))
-    for subject in range(k):
-      tmp=pow((self.lmOrig[:,:,subject]-self.mShape),2)
-      varianceMat=varianceMat+tmp
-    # if GPA scaling has been skipped, don't apply image size scaling factor
-    if(BoasOption):
-      varianceMat =np.sqrt(varianceMat/(k-1))
-    else:
-      varianceMat = SampleScaleFactor*np.sqrt(varianceMat/(k-1))
-    return varianceMat
-
-  def doGpa(self,BoasOption):
-    i,j,k=self.lmOrig.shape
-    self.centriodSize=np.zeros(k)
-    for subjectNum in range(k):
-      self.centriodSize[subjectNum]=np.linalg.norm(self.lmOrig[:,:,subjectNum]-self.lmOrig[:,:,subjectNum].mean(axis=0))
-    if not BoasOption:
-      self.lm, self.mShape=gpa_lib.runGPA(self.lmOrig)
-    else:
-      self.lm, self.mShape=gpa_lib.runGPANoScale(self.lmOrig)
-    self.procdist = gpa_lib.procDist(self.lm, self.mShape)
-
-  def calcEigen(self):
-    i, j, k = self.lmOrig.shape
-    twoDim=gpa_lib.makeTwoDim(self.lm)
-    covMatrix=gpa_lib.calcCov(twoDim)
-    if k>i*j: # limit results returned if sample number is less than observations
-      self.val, self.vec = sp.eigh(covMatrix)
-    else:
-      self.val, self.vec=sp.eigh(covMatrix, eigvals=(i * j - k, i * j - 1))
-    self.val=self.val[::-1]
-    self.vec=self.vec[:, ::-1]
-    self.sortedEig = gpa_lib.pairEig(self.val, self.vec)
-
-  def ExpandAlongPCs(self, numVec,scaleFactor,SampleScaleFactor):
-    b=0
-    i,j,k=self.lm.shape
-    tmp=np.zeros((i,j))
-    points=np.zeros((i,j))
-    self.vec=np.real(self.vec)
-    # scale eigenvector
-    for y in range(len(numVec)):
-      if numVec[y] != 0:
-        pcComponent = numVec[y] - 1
-        tmp[:,0]=tmp[:,0]+float(scaleFactor[y])*self.vec[0:i,pcComponent]*SampleScaleFactor/3
-        tmp[:,1]=tmp[:,1]+float(scaleFactor[y])*self.vec[i:2*i,pcComponent]*SampleScaleFactor/3
-        tmp[:,2]=tmp[:,2]+float(scaleFactor[y])*self.vec[2*i:3*i,pcComponent]*SampleScaleFactor/3
-    self.shift=tmp
-
-  def ExpandAlongSinglePC(self,pcNumber,pcRange,SampleScaleFactor):
-    b=0
-    i,j,k=self.lm.shape
-    shift=np.zeros((i,j))
-    points=np.zeros((i,j))
-    self.vec=np.real(self.vec)
-    # scale eigenvector
-    pcComponent = pcNumber - 1
-    print("scaling factor: ", pcRange)
-    shift[:,0]=shift[:,0]+float(pcRange)*self.vec[0:i,pcComponent]*SampleScaleFactor/3
-    shift[:,1]=shift[:,1]+float(pcRange)*self.vec[i:2*i,pcComponent]*SampleScaleFactor/3
-    shift[:,2]=shift[:,2]+float(pcRange)*self.vec[2*i:3*i,pcComponent]*SampleScaleFactor/3
-    return shift
-
-  def writeOutData(self, outputFolder, files):
-    # make headers for eigenvector matrix
-    headerPC = []
-    headerLM = [""]
-    for i in range(self.vec.shape[1]):
-      headerPC.append("PC " + str(i + 1))
-    for i in range(int(self.vec.shape[0] / 3)):
-      headerLM.append("LM " + str(i + 1) + "_X")
-      headerLM.append("LM " + str(i + 1) + "_Y")
-      headerLM.append("LM " + str(i + 1) + "_Z")
-    r,c=self.vec.shape
-    temp=np.empty(shape=(r+1,c), dtype = object)
-    temp[0,:] = np.array(headerPC)
-    # Reshape to (X, Y, Z) ordering
-    n_coords, n_pcs = self.vec.shape
-    n_landmarks = n_coords // 3
-    reshaped = self.vec.reshape((n_landmarks, 3, n_pcs), order='F')  # from (3n, p) to (n, 3, p)
-    flattened = reshaped.reshape((n_landmarks * 3, n_pcs), order='C')  # from (n, 3, p) to (3n, p)
-
-    for currentRow in range(flattened.shape[0]):
-      temp[currentRow + 1, :] = flattened[currentRow, :]
-    temp = np.column_stack((np.array(headerLM), temp))
-    np.savetxt(outputFolder + os.sep + "eigenvector.csv", temp, delimiter=",", fmt='%s')
-    temp = np.column_stack((np.array(headerPC), self.val))
-    np.savetxt(outputFolder + os.sep + "eigenvalues.csv", temp, delimiter=",", fmt='%s')
-
-    headerLM = []
-    headerCoordinate = ["", "X", "Y", "Z"]
-    for i in range(len(self.mShape)):
-      headerLM.append("LM " + str(i + 1))
-    temp = np.column_stack((np.array(headerLM), self.mShape))
-    temp = np.vstack((np.array(headerCoordinate), temp))
-    np.savetxt(outputFolder + os.sep + "meanShape.csv", temp, delimiter=",", fmt='%s')
-
-    percentVar = self.val / self.val.sum()
-    files = np.array(files)
-    i = files.shape
-    files = files.reshape(i[0], 1)
-    k, j, i = self.lmOrig.shape
-
-    coords = self.flattenArray(self.lm)
-    self.procdist = self.procdist.reshape(i, 1)
-    self.centriodSize = self.centriodSize.reshape(i, 1)
-    tmp = np.column_stack((files, self.procdist, self.centriodSize, np.transpose(coords)))
-    header = np.array(['Sample_name', 'proc_dist', 'centroid'])
-    i1, j = tmp.shape
-    coodrsL = (j - 3) / 3.0
-    l = np.zeros(int(3 * coodrsL))
-
-    l = list(l)
-
-    for x in range(int(coodrsL)):
-      loc = x + 1
-      l[3 * x] = "LM " + str(loc) + "_X"
-      l[3 * x + 1] = "LM " + str(loc) + "_Y"
-      l[3 * x + 2] = "LM " + str(loc) + "_Z"
-    l = np.array(l)
-    header = np.column_stack((header.reshape(1, 3), l.reshape(1, int(3 * coodrsL))))
-    tmp1 = np.vstack((header, tmp))
-    np.savetxt(outputFolder + os.sep + "outputData.csv", tmp1, fmt="%s", delimiter=",")
-
-    # calc PC scores
-    twoDcoors = gpa_lib.makeTwoDim(self.lm)
-    scores = np.dot(np.transpose(twoDcoors), self.vec)
-    scores = np.real(scores)
-    headerPC.insert(0, "Sample_name")
-    temp = np.column_stack((files.reshape(i, 1), scores))
-    temp = np.vstack((headerPC, temp))
-    np.savetxt(outputFolder + os.sep + "pcScores.csv", temp, fmt="%s", delimiter=",")
-
-  def flattenArray(self, dataArray):
-    i,j,k=dataArray.shape
-    tmp=np.zeros((i*j,k))
-    for x in range(k):
-        vec=np.reshape(dataArray[:,:,x],(i*j),order='A')
-        tmp[:,x]=vec
-    return tmp
-
-  def closestSample(self,files):
-    import operator
-    min_index, min_value = min(enumerate(self.procdist), key=operator.itemgetter(1))
-    tmp=files[min_index]
-    return tmp
-
-  def calcEndpoints(self,LM,pc, scaleFactor, MonsterObj):
-    i,j=LM.shape
-    tmp=np.zeros((i,j))
-    tmp[:,0]=self.vec[0:i,pc]
-    tmp[:,1]=self.vec[i:2*i,pc]
-    tmp[:,2]=self.vec[2*i:3*i,pc]
-    return LM+tmp*scaleFactor/3.0
-
-#
-# GPAWidget
-#
-class GPAWidget(ScriptedLoadableModuleWidget):
-  """Uses ScriptedLoadableModuleWidget base class, available at: https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
-  """
-  def __init__(self, parent=None):
-      ScriptedLoadableModuleWidget.__init__(self, parent)
-      self.ui = None
-
-  def setup(self):
-    ScriptedLoadableModuleWidget.setup(self)
-    # Initialize zoom factor for widget
-    self.widgetZoomFactor = 0
-    # Import pandas if needed
-    try:
-      import pandas
-    except:
-      progressDialog = slicer.util.createProgressDialog(
-          windowTitle="Installing...",
-          labelText="Installing Pandas Python package...",
-          maximum=0,
-      )
-      slicer.app.processEvents()
-      try:
-        slicer.util.pip_install(["pandas"])
-        progressDialog.close()
-      except:
-        slicer.util.infoDisplay("Issue while installing Pandas Python package. Please install manually.")
-        progressDialog.close()
-
-    # Load widget from .ui files (created by Qt Designer).
-    # NEW: assemble the split tabs into one QTabWidget
-    tab = qt.QTabWidget()
-    tab.setObjectName("tabWidget")  # keep old name for compatibility
-
-    tabs = [
-      ("Setup Analysis", "UI/GPA_SetupAnalysis.ui"),
-      ("Explore Data/Results", "UI/GPA_ExploreDataResults.ui"),
-      ("Interactive 3D Visualization", "UI/GPA_Interactive3D.ui"),
-      ("Geomorph Linear Regression", "UI/GPA_GeomorphLR.ui"),
-    ]
-
-    for title, relpath in tabs:
-      w = slicer.util.loadUI(self.resourcePath(relpath))
-      tab.addTab(w, title)
-
-    self.layout.addWidget(tab)
-    # Collect *all* named children across all tabs into self.ui (unchanged usage elsewhere)
-    self.ui = slicer.util.childWidgetVariables(tab)
-
-    # Ensure patsy is available (just like you do for pandas)
-    try:
-      import patsy  # noqa
-    except Exception:
-      try:
-        progressDialog = slicer.util.createProgressDialog(windowTitle="Installing...",
-                                                          labelText="Installing patsy (formula parser)...",
-                                                          maximum=0)
-        slicer.app.processEvents()
-        slicer.util.pip_install(["patsy"])
-        progressDialog.close()
-      except Exception:
-        try:
-          progressDialog.close()
-        except Exception:
-          pass
-
-      # NEW: ensure pyRserve is available (NumPy shim + install if needed)
-      try:
-        _ensure_pyRserve_early()
-      except Exception:
-        # Non-fatal; runtime fit will still error cleanly if user tries to use Rserve without pyRserve
-        pass
-
-    # Initialize the LR tab UI (safe no-op if tab not present)
-    from Support.geomorph_lr import GeomorphLR
-    self.lr = GeomorphLR(parent_widget=self, node_collection=GPANodeCollection)
-    self.lr.attach()
-
-    # Add custom layout buttons to menu
-    self.addLayoutButton(500, 'GPA Module View', 'Custom layout for GPA module', 'LayoutSlicerMorphView.png', slicer.customLayoutSM)
-    self.addLayoutButton(501, 'Table Only View', 'Custom layout for GPA module', 'LayoutTableOnlyView.png', slicer.customLayoutTableOnly)
-    self.addLayoutButton(502, 'Plot Only View', 'Custom layout for GPA module', 'LayoutPlotOnlyView.png', slicer.customLayoutPlotOnly)
-
-    ################################### Setup tab connections
-    self.ui.LMbutton.connect('clicked(bool)', self.onSelectLandmarkFiles)
-    self.ui.clearButton.connect('clicked(bool)', self.onClearButton)
-    self.ui.outputPathButton.connect('clicked(bool)', self.onSelectOutputDirectory)
-    self.ui.factorNames.connect('textChanged(const QString &)', self.factorStringChanged)
-    self.ui.generateCovariatesTableButton.connect('clicked(bool)', self.onGenerateCovariatesTable)
-    self.ui.selectCovariatesButton.connect('clicked(bool)', self.onSelectCovariatesTable)
-    self.ui.loadButton.connect('clicked(bool)', self.onLoad)
-    self.ui.openResultsButton.connect('clicked(bool)', self.onOpenResults)
-    self.ui.resultsButton.connect('clicked(bool)', self.onSelectResultsDirectory)
-    self.ui.loadResultsButton.connect('clicked(bool)', self.onLoadFromFile)
-
-    ################################### Explore tab connections
-    self.ui.plotMeanButton3D.connect('clicked(bool)', self.toggleMeanPlot)
-    self.ui.showMeanLabelsButton.connect('clicked(bool)', self.toggleMeanLabels)
-    self.ui.meanShapeColor.connect('colorChanged(QColor)', self.toggleMeanColor)
-    self.ui.scaleMeanShapeSlider.connect('valueChanged(double)', self.scaleMeanGlyph)
-    self.ui.scaleSlider.connect('valueChanged(double)', self.onPlotDistribution)
-    self.ui.plotDistributionButton.connect('clicked(bool)', self.onPlotDistribution)
-    self.ui.plotButton.connect('clicked(bool)', self.plot)
-    self.ui.lolliButton.connect('clicked(bool)', self.lolliPlot)
-
-    ################################### Visualize tab connections
-    self.ui.landmarkVisualizationType.connect('toggled(bool)', self.onToggleVisualization)
-    self.ui.modelVisualizationType.connect('toggled(bool)', self.onToggleVisualization)
-    self.ui.grayscaleSelector.connect('validInputChanged(bool)', self.onModelSelected)
-    self.ui.FudSelect.connect('validInputChanged(bool)', self.onModelSelected)
-    self.ui.selectorButton.connect('clicked(bool)', self.onSelect)
-    self.ui.startRecordButton.connect('clicked(bool)', self.onStartRecording)
-    self.ui.stopRecordButton.connect('clicked(bool)', self.onStopRecording)
-    self.ui.resetButton.connect('clicked(bool)', self.reset)
-    self.ui.updateMagnificationButton.connect("clicked()", self.onUpdateMagnificationClicked)
-    self.PCList=[]
-
-    # Keep a persistent controller instance
-    self.pcController = PCSliderController(
-        comboBox=self.ui.pcComboBox,
-        slider=self.ui.pcSlider,
-        spinBox=self.ui.pcSpinBox,
-        dynamic_min=-1.0,
-        dynamic_max=1.0,
-        onSliderChanged=lambda _: self.updatePCScaling(),
-        onComboBoxChanged=lambda _: self.setupPCTransform(),
-    )
-    self.pcController.populateComboBox(self.PCList)
-    self.ui.pcComboBox.setCurrentIndex(0)
-    self.setupPCTransform()
-    self.updatePCScaling()
+def _convert_numpy_to_vtk_points(A):
+  """A: (p,3) float -> vtkPoints."""
+  p, c = A.shape
+  pts = vtk.vtkPoints()
+  for i in range(p):
+    pts.InsertNextPoint(float(A[i, 0]), float(A[i, 1]), float(A[i, 2]))
+  return pts
 
 
-    # Core state defaults
-    self.LM = None
-    self.sampleSizeScaleFactor = 1.0
-    self.meanLandmarkNode = None
-    self.cloneLandmarkNode = None
-    self.copyLandmarkNode = None
-    self.cloneModelNode = None
-    self.modelDisplayNode = None
-    self.cloneModelDisplayNode = None
-    self.factorTableNode = None
-    self.gridTransformNode = None
-    self.files = []
-    self.inputFilePaths = []
-    self.outputDirectory = None
-    self.resultsDirectory = None
-    self.scatterDataAll = np.zeros((0, 3))
-    self.currentPC = 1
-    self.pcMin = 0.0
-    self.pcMax = 0.0
-    self.pcScoreAbsMax = 0.0
-    self._resetting = False
-    self.ui.spinMagnification.setValue(1.0)
+def _expanded_bounds(node, paddingFactor=0.1):
+  """Return node RAS bounds with symmetric padding."""
+  b = [0.0] * 6
+  node.GetRASBounds(b)
+  xr = b[1] - b[0]
+  yr = b[3] - b[2]
+  zr = b[5] - b[4]
+  b[0] -= xr * paddingFactor; b[1] += xr * paddingFactor
+  b[2] -= yr * paddingFactor; b[3] += yr * paddingFactor
+  b[4] -= zr * paddingFactor; b[5] += zr * paddingFactor
+  return b
 
 
-  # ---- Safe node helpers ----
-  def _node(self, attr_name):
-    n = getattr(self, attr_name, None)
-    if n and slicer.mrmlScene.IsNodePresent(n):
-      return n
+def _view_node_by_name(name: str):
+  try:
+    return slicer.mrmlScene.GetFirstNodeByName(name)
+  except Exception:
     return None
 
-  def _display(self, node_or_attr):
-    node = node_or_attr
-    if isinstance(node_or_attr, str):
-      node = self._node(node_or_attr)
-    if not node:
-      return None
+
+# ------------------------- Slider controller (local) --------------------------
+
+class _PCSliderController:
+  """
+  Minimal copy of your slider<->spinbox<->combobox linker to avoid circular imports.
+  API: setRange, setValue, sliderValue, comboBoxIndex, populateComboBox
+  """
+  def __init__(self, comboBox, slider, spinBox,
+               dynamic_min=-1.0, dynamic_max=1.0,
+               onSliderChanged=None, onComboBoxChanged=None):
+    self.comboBox, self.slider, self.spinBox = comboBox, slider, spinBox
+    self.dynamic_min, self.dynamic_max = float(dynamic_min), float(dynamic_max)
+
+    self.slider.setMinimum(-100); self.slider.setMaximum(100)
+    try: self.spinBox.setDecimals(3)
+    except Exception: pass
+    self.spinBox.setMinimum(self.dynamic_min); self.spinBox.setMaximum(self.dynamic_max)
+    try: self.spinBox.setSingleStep(0.01)
+    except Exception: pass
+
+    self.slider.valueChanged.connect(self._updateSpinFromSlider)
+    self.spinBox.valueChanged.connect(self._updateSliderFromSpin)
+
+    if onSliderChanged: self.slider.valueChanged.connect(onSliderChanged)
+    if onComboBoxChanged: self.comboBox.currentIndexChanged.connect(onComboBoxChanged)
+
+  def setRange(self, a, b):
+    self.dynamic_min, self.dynamic_max = float(a), float(b)
+    self.spinBox.blockSignals(True)
+    self.spinBox.setMinimum(self.dynamic_min); self.spinBox.setMaximum(self.dynamic_max)
+    self.spinBox.blockSignals(False)
+    s0 = self._map_dynamic_to_slider(0.0)
+    s0 = max(min(s0, self.slider.maximum), self.slider.minimum)
+    self.spinBox.blockSignals(True); self.slider.blockSignals(True)
     try:
-      return node.GetDisplayNode()
-    except Exception:
-      return None
+      self.spinBox.setValue(0.0); self.slider.setValue(s0)
+    finally:
+      self.slider.blockSignals(False); self.spinBox.blockSignals(False)
 
-  # module update helper functions
-  def assignLayoutDescription(self):
-    customLayoutId1=500
-    layoutManager = slicer.app.layoutManager()
-    layoutManager.setLayout(customLayoutId1)
+  def setValue(self, dynamic_value):
+    self.slider.setValue(self._map_dynamic_to_slider(float(dynamic_value)))
 
-    #link whatever is in the 3D views
-    viewNode1 = slicer.mrmlScene.GetFirstNodeByName("View1") #name = "View"+ singletonTag
-    viewNode2 = slicer.mrmlScene.GetFirstNodeByName("View2")
-    viewNode1.SetAxisLabelsVisible(False)
-    viewNode2.SetAxisLabelsVisible(False)
-    viewNode1.SetLinkedControl(True)
-    viewNode2.SetLinkedControl(True)
+  def sliderValue(self):
+    try: return float(self.spinBox.value())
+    except TypeError: return float(self.spinBox.value)
 
-    # Assign nodes to appropriate views
-    redNode = layoutManager.sliceWidget('Red').sliceView().mrmlSliceNode()
-    dn = self._display('meanLandmarkNode')
-    if dn:
-      dn.SetViewNodeIDs([viewNode1.GetID(), redNode.GetID()])
-    cd = self._display('cloneLandmarkNode')
-    if cd:
-      cd.SetViewNodeIDs([viewNode2.GetID()])
+  def comboBoxIndex(self):
+    try: return int(self.comboBox.currentIndex())
+    except TypeError: return int(self.comboBox.currentIndex)
 
-    # check for loaded reference model
-    model_disp = getattr(self, 'modelDisplayNode', None)
-    if model_disp:
-      model_disp.SetViewNodeIDs([viewNode1.GetID()])
-    clone_model_disp = getattr(self, 'cloneModelDisplayNode', None)
-    if clone_model_disp:
-      clone_model_disp.SetViewNodeIDs([viewNode2.GetID()])
+  def populateComboBox(self, items):
+    self.comboBox.clear()
+    for it in items: self.comboBox.addItem(str(it))
 
-    # fit the red slice node to show the plot projections
-    rasBounds = [0,]*6
-    self.meanLandmarkNode.GetRASBounds(rasBounds)
+  # mapping
+  def _map_slider_to_dynamic(self, s):
+    t = (float(s) + 100.0) / 200.0
+    val = self.dynamic_min + t * (self.dynamic_max - self.dynamic_min)
+    return 0.0 if abs(val) < 1e-12 else val
 
-    redNode.GetSliceToRAS().SetElement(0, 3, (rasBounds[1]+rasBounds[0]) / 2.)
-    redNode.GetSliceToRAS().SetElement(1, 3, (rasBounds[3]+rasBounds[2]) / 2.)
-    redNode.GetSliceToRAS().SetElement(2, 3, (rasBounds[5]+rasBounds[4]) / 2.)
-    rSize = rasBounds[1]-rasBounds[0]
-    aSize = rasBounds[3]-rasBounds[2]
-    dimensions = redNode.GetDimensions()
-    aspectRatio = float(dimensions[0]) / float(dimensions[1])
-    if rSize > aSize:
-      redNode.SetFieldOfView(rSize, rSize/aspectRatio, 1.)
-    else:
-      redNode.SetFieldOfView(aSize*aspectRatio, aSize, 1.)
-    redNode.UpdateMatrices()
+  def _map_dynamic_to_slider(self, v):
+    if self.dynamic_max == self.dynamic_min: return 0
+    t = (float(v) - self.dynamic_min) / (self.dynamic_max - self.dynamic_min)
+    return int(round(t * 200.0 - 100.0))
 
-    # reset 3D cameras
-    threeDWidget = layoutManager.threeDWidget(0)
-    if bool(threeDWidget.name == 'ThreeDWidget1'):
-      threeDView = threeDWidget.threeDView()
-      threeDView.resetFocalPoint()
-      threeDView.resetCamera()
-    else:
-      threeDWidget  = layoutManager.threeDWidget(1)
-      threeDView = threeDWidget.threeDView()
-      threeDView.resetFocalPoint()
-      threeDView.resetCamera()
+  def _updateSpinFromSlider(self, s):
+    val = self._map_slider_to_dynamic(s)
+    if int(s) == 0 or abs(val) < 1e-6: val = 0.0
+    self.spinBox.blockSignals(True); self.spinBox.setValue(val); self.spinBox.blockSignals(False)
 
-  def textIn(self,label, dispText, buttonText):
-    """ a function to set up the appearance of a QlineEdit widget.
+  def _updateSliderFromSpin(self, v):
+    self.slider.blockSignals(True); self.slider.setValue(self._map_dynamic_to_slider(v)); self.slider.blockSignals(False)
+
+
+# -------------------------- Main controller class -----------------------------
+
+class GeomorphLR:
+  """
+  Wraps *all* methods previously named:
+    - _lr_* (LR tab)
+    - _r_*  (R/Rserve panel)
+    - _coef_* (coefficient/TPS visualization)
+  so the GPA module stays lean. This class reads/writes state on the parent
+  widget (self.w) where appropriate (LM data, files, outputFolder, etc.).
+  """
+
+  # --------------------- construction & top-level attach ----------------------
+
+  def __init__(self, parent_widget, node_collection=None):
+    self.w = parent_widget                 # GPAWidget instance
+    self.ui = parent_widget.ui             # UI shortcuts
+    self.nodes = node_collection or _DummyCollection()
+
+    # Rserve state
+    self._rserve_proc = None
+    self._rserve_started_by_us = False
+    self._r_conn = None
+    self._r_last_error = ""
+
+    # LR state (formula/completer)
+    self._lr_completer = None
+    self._lr_completer_model = None
+    self._lr_popup_connected = False
+
+    # Coef viz state
+    self._coef_enabled = False
+    self._coef_vectors = []
+    self._coef_names = []
+    self._coef_current = -1
+
+  def attach(self):
     """
-    # set up text line
-    textInLine=qt.QLineEdit();
-    textInLine.setText(dispText)
-    #textInLine.toolTip = toolTip
-    # set up label
-    lineLabel=qt.QLabel()
-    lineLabel.setText(label)
+    Wire up all LR/Rserve/Coef panels to the current UI.
+    Safe no-op if the relevant widgets aren't present in the .ui file.
+    """
+    # LR tab
+    self._lr_initTab()
 
-    # make clickable button
-    if buttonText == "":
-      buttonText = "..."
-    button=qt.QPushButton(buttonText)
-    return textInLine, lineLabel, button
+    # R/Rserve panel
+    self._r_initPanel()
 
-  def updateList(self):
-    i,j,k=self.LM.lm.shape
-    self.PCList=[]
-    self.pcController.populateComboBox(self.PCList)
-    self.PCList.append('None')
-    self.LM.val=np.real(self.LM.val)
-    percentVar=self.LM.val/self.LM.val.sum()
-    self.ui.vectorOne.clear()
-    self.ui.vectorTwo.clear()
-    self.ui.vectorThree.clear()
-    self.ui.XcomboBox.clear()
-    self.ui.YcomboBox.clear()
+    # Coefficient visualization panel
+    self._coef_initUI()
 
-    self.ui.vectorOne.addItem('None')
-    self.ui.vectorTwo.addItem('None')
-    self.ui.vectorThree.addItem('None')
-    if len(percentVar)<self.pcNumber:
-      self.pcNumber=len(percentVar)
-    for x in range(self.pcNumber):
-      tmp=f"{percentVar[x]*100:.1f}"
-      string='PC '+str(x+1)+': '+str(tmp)+"%" +" var"
-      self.PCList.append(string)
-      self.ui.XcomboBox.addItem(string)
-      self.ui.YcomboBox.addItem(string)
-      self.ui.vectorOne.addItem(string)
-      self.ui.vectorTwo.addItem(string)
-      self.ui.vectorThree.addItem(string)
+  # ---------------------- LR: UI + validation + completer ---------------------
 
-  def factorStringChanged(self):
-    if self.ui.factorNames.text != "" and getattr(self, 'inputFilePaths', None) and self.inputFilePaths is not []:
-      self.ui.generateCovariatesTableButton.enabled = True
-    else:
-      self.ui.generateCovariatesTableButton.enabled = False
+  def _lr_initTab(self):
+    if not hasattr(self.ui, 'geomorphLRTab'):
+      return  # LR tab not present in the .ui (safe no-op)
 
-  def populateDistanceTable(self, files):
-    sortedArray = np.zeros(len(files), dtype={'names':('filename', 'procdist'),'formats':('U50','f8')})
-    sortedArray['filename']=files
-    sortedArray['procdist']=self.LM.procdist[:,0]
-    sortedArray.sort(order='procdist')
+    # Map controls
+    self._lr_formula = getattr(self.ui, 'lrFormulaEdit', None) or getattr(self.ui, 'lrFormulaLine', None)
+    self._lr_status = self.ui.lrStatusLabel
+    self._lr_validateBtn = self.ui.lrValidateButton
+    self._lr_copyBtn = self.ui.lrCopyButton
+    self._lr_resetBtn = self.ui.lrResetButton
+    self._lr_possibleList = self.ui.lrPossibleCovariatesList
 
-    tableNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTableNode', 'Procrustes Distance Table')
-    GPANodeCollection.AddItem(tableNode)
-    col1=tableNode.AddColumn()
-    col1.SetName('ID')
+    # Fit widgets
+    self._lr_fitBtn = self.ui.lrFitButton
+    self._lr_fitStatus = self.ui.lrFitStatusLabel
 
-    col2=tableNode.AddColumn()
-    col2.SetName('Procrustes Distance')
-    tableNode.SetColumnType('ID',vtk.VTK_STRING)
-    tableNode.SetColumnType('Procrustes Distance',vtk.VTK_FLOAT)
+    self._lr_summaryWidget = getattr(self.ui, 'lrSummaryText', None)
+    if self._lr_summaryWidget:
+      self._lr_setSummaryText("Run a model to see the geomorph::procD.lm summary here.")
 
-    for i in range(len(files)):
-      tableNode.AddEmptyRow()
-      tableNode.SetCellText(i,0,sortedArray['filename'][i])
-      tableNode.SetCellText(i,1,str(sortedArray['procdist'][i]))
+    # If the .ui had a single-line widget, upgrade to multiline quietly
+    self._lr_upgradeFormulaWidget()
 
-    barPlot = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLPlotSeriesNode', 'Distances')
-    GPANodeCollection.AddItem(barPlot)
-    barPlot.SetAndObserveTableNodeID(tableNode.GetID())
-    barPlot.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeBar)
-    barPlot.SetLabelColumnName('ID') #displayed when hovering mouse
-    barPlot.SetYColumnName('Procrustes Distance') # for bar plots, index is the x-value
-    chartNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLPlotChartNode', 'Procrustes Distance Chart')
-    GPANodeCollection.AddItem(chartNode)
-    chartNode.SetTitle('Procrustes Distances')
-    chartNode.SetLegendVisibility(False)
-    chartNode.SetYAxisTitle('Distance')
-    chartNode.SetXAxisTitle('Subjects')
-    chartNode.AddAndObservePlotSeriesNodeID(barPlot.GetID())
-    layoutManager = slicer.app.layoutManager()
-    self.assignLayoutDescription()
-    #set up custom layout
-    plotWidget = layoutManager.plotWidget(0)
-    plotViewNode = plotWidget.mrmlPlotViewNode()
-    plotViewNode.SetPlotChartNodeID(chartNode.GetID())
-    #add table to new layout
-    slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveTableID(tableNode.GetID())
-    slicer.app.applicationLogic().PropagateTableSelection()
-
-  def reset(self):
-    # delete the two data objects
-
-    # reset text fields
-    self.outputDirectory=None
-    self.ui.outText.setText(" ")
-    self.LM_dir_name=None
-    self.ui.openResultsButton.enabled = False
-
-    self.ui.grayscaleSelector.setCurrentPath("")
-    self.ui.FudSelect.setCurrentPath("")
-    self.ui.grayscaleSelector.enabled = False
-    self.ui.FudSelect.enabled = False
-    self.pcController.clear()
-    self.ui.vectorOne.clear()
-    self.ui.vectorTwo.clear()
-    self.ui.vectorThree.clear()
-    self.ui.XcomboBox.clear()
-    self.ui.YcomboBox.clear()
-    self.ui.selectFactor.clear()
-    self.ui.factorNames.setText("")
-    self.ui.scaleSlider.value=3
-    self.ui.scaleMeanShapeSlider.value=3
-    self.ui.meanShapeColor.color=qt.QColor(250,128,114)
-    self.ui.scaleSlider.enabled = False
-
-    # Disable buttons for workflow
-    self.ui.plotButton.enabled = False
-    self.inputFactorButton.enabled = False
-    self.ui.lolliButton.enabled = False
-    self.ui.plotDistributionButton.enabled = False
-    self.ui.plotMeanButton3D.enabled = False
-    self.ui.showMeanLabelsButton.enabled = False
-    self.ui.loadButton.enabled = False
-    self.ui.landmarkVisualizationType.enabled = False
-    self.ui.modelVisualizationType.enabled = False
-    self.ui.selectorButton.enabled = False
-    self.ui.stopRecordButton.enabled = False
-    self.ui.startRecordButton.enabled = False
-
-    #delete data from previous runs
-    self.nodeCleanUp()
-
-  def nodeCleanUp(self):
-    # clear all nodes created by the module
-    for node in GPANodeCollection:
-
-      GPANodeCollection.RemoveItem(node)
-      slicer.mrmlScene.RemoveNode(node)
-
-  def addLayoutButton(self, layoutID, buttonAction, toolTip, imageFileName, layoutDiscription):
-    layoutManager = slicer.app.layoutManager()
-    layoutManager.layoutLogic().GetLayoutNode().AddLayoutDescription(layoutID, layoutDiscription)
-
-    viewToolBar = slicer.util.mainWindow().findChild('QToolBar', 'ViewToolBar')
-    layoutMenu = viewToolBar.widgetForAction(viewToolBar.actions()[0]).menu()
-    layoutSwitchActionParent = layoutMenu
-    # use `layoutMenu` to add inside layout list, use `viewToolBar` to add next the standard layout list
-    layoutSwitchAction = layoutSwitchActionParent.addAction(buttonAction) # add inside layout list
-
-    moduleDir = os.path.dirname(slicer.util.modulePath(self.__module__))
-    iconPath = os.path.join(moduleDir, 'Resources/Icons', imageFileName)
-    layoutSwitchAction.setIcon(qt.QIcon(iconPath))
-    layoutSwitchAction.setToolTip(toolTip)
-    layoutSwitchAction.connect('triggered()', lambda layoutId = layoutID: slicer.app.layoutManager().setLayout(layoutId))
-    layoutSwitchAction.setData(layoutID)
-
-  # Setup Analysis callbacks and helpers
-  def onClearButton(self):
-    self.ui.inputFileTable.clear()
-    self.inputFilePaths = []
-    self.ui.clearButton.enabled = False
-
-  def onSelectLandmarkFiles(self):
-    self.ui.inputFileTable.clear()
-    self.inputFilePaths = []
-    filter = "Landmarks (*.json *.mrk.json *.fcsv )"
-    self.inputFilePaths = sorted(qt.QFileDialog().getOpenFileNames(None, "Window name", "", filter))
-    self.ui.inputFileTable.plainText = '\n'.join(self.inputFilePaths)
-    self.ui.clearButton.enabled = True
-    #enable load button if required fields are complete
-    filePathsExist = bool(self.inputFilePaths is not [] )
-    self.ui.loadButton.enabled = bool (filePathsExist and getattr(self, 'outputDirectory', None))
-    if filePathsExist:
-      self.LM_dir_name = os.path.dirname(self.inputFilePaths[0])
-      basename, self.extension = os.path.splitext(self.inputFilePaths[0])
-      if self.extension == '.json':
-        basename, secondExtension = os.path.splitext(basename)
-        if secondExtension == '.mrk':
-          self.extension =  secondExtension + self.extension
-      self.files=[]
-      for path in self.inputFilePaths:
-        basename, ext = os.path.splitext(os.path.basename(path))
-        if self.extension == '.mrk.json':
-          basename, ext = os.path.splitext(basename)
-        self.files.append(basename)
-      self.factorStringChanged()
-
-  def onSelectOutputDirectory(self):
-    self.outputDirectory=qt.QFileDialog().getExistingDirectory()
-    self.ui.outText.setText(self.outputDirectory)
+    # Live validation on keystroke
     try:
-      filePathsExist = self.inputFilePaths is not []
-      self.ui.loadButton.enabled = bool (filePathsExist and self.outputDirectory)
-    except AttributeError:
-      self.ui.loadButton.enabled = False
-
-  def onSelectCovariatesTable(self):
-    dialog = qt.QFileDialog()
-    filter = "csv(*.csv)"
-    self.covariateTableFile = qt.QFileDialog.getOpenFileName(dialog, "", "", filter)
-    if self.covariateTableFile:
-      self.ui.selectCovariatesText.setText(self.covariateTableFile)
-    else:
-     self.covariateTableFile =  self.ui.selectCovariatesText.text
-
-  def onGenerateCovariatesTable(self):
-    numberOfInputFiles = len(self.inputFilePaths)
-    if numberOfInputFiles<1:
-      qt.QMessageBox.critical(slicer.util.mainWindow(),
-      'Error', 'Please select landmark files for analysis before generating covariate table')
-      logging.debug('No input files are selected')
-      self.ui.GPALogTextbox.insertPlainText("Error: No input files were selected for generating the covariate table\n")
-      return
-    #if #check for rows, columns
-    factorList = self.ui.factorNames.text.split(",")
-    if len(factorList)<1:
-      qt.QMessageBox.critical(slicer.util.mainWindow(),
-      'Error', 'Please specify at least one factor name to generate a covariate table template')
-      logging.debug('No factor names are provided for covariate table template')
-      self.ui.GPALogTextbox.insertPlainText("Error: No factor names were provided for the covariate table template\n")
-      return
-    sortedArray = np.zeros(len(self.files), dtype={'names':('filename', 'procdist'),'formats':('U50','f8')})
-    sortedArray['filename']=self.files
-    ##check for an existing factor table, if so remove
-    #if getattr(self, 'factorTableNode', None):
-    #  slicer.mrmlScene.RemoveNode(self.factorTableNode)
-    self.factorTableNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTableNode', 'Factor Table')
-    col=self.factorTableNode.AddColumn()
-    col.SetName('ID')
-    for i in range(len(self.files)):
-      self.factorTableNode.AddEmptyRow()
-      self.factorTableNode.SetCellText(i,0,sortedArray['filename'][i])
-    for i in range(len(factorList)):
-      col=self.factorTableNode.AddColumn()
-      col.SetName(factorList[i])
-    dateTimeStamp = datetime.now().strftime('%Y-%m-%d_%H_%M_%S')
-    covariateFolder = os.path.join(slicer.app.cachePath, dateTimeStamp)
-    self.covariateTableFile = os.path.join(covariateFolder, "covariateTable.csv")
-    try:
-      os.makedirs(covariateFolder)
-      self.covariateTableFile = os.path.join(covariateFolder, "covariateTable.csv")
-      slicer.util.saveNode(self.factorTableNode, self.covariateTableFile)
-    except:
-      self.ui.GPALogTextbox.insertPlainText("Covariate table output failed: Could not write {self.factorTableNode} to {self.covariateTableFile}\n")
-    slicer.mrmlScene.RemoveNode(self.factorTableNode)
-    self.ui.selectCovariatesText.setText(self.covariateTableFile)
-    qpath = qt.QUrl.fromLocalFile(os.path.dirname(covariateFolder+os.path.sep))
-    qt.QDesktopServices().openUrl(qpath)
-    self.ui.GPALogTextbox.insertPlainText(f"Covariate table template generated in folder: \n{covariateFolder}\n Please fill in covariate columns, save, and load table in the next step to proceed.\n")
-
-  def onLoadCovariatesTable(self):
-    numberOfInputFiles = len(self.inputFilePaths)
-    runAnalysis=True
-    #columnsToRemove = []
-    if numberOfInputFiles<1:
-      logging.debug('No input files are selected')
-      self.ui.GPALogTextbox.insertPlainText("Error: No input files are selected for the covariate table\n")
-      return runAnalysis
-    try:
-      # refresh covariateTableFile from GUI
-      self.covariateTableFile =  self.ui.selectCovariatesText.text
-      self.factorTableNode = slicer.util.loadTable(self.covariateTableFile)
-    except AttributeError:
-      logging.debug(f'Covariate table import failed for: {self.covariateTableFile}')
-      runAnalysis = slicer.util.confirmYesNoDisplay(f"Error: Covariate import failed. Table could not be loaded from {self.covariateTableFile}. \n\nYou can continue analysis without covariates or stop and edit your selected table. \n\nWould you like to proceed with the analysis?")
-      return runAnalysis
-    #check for at least one covariate factor
-    numberOfColumns = self.factorTableNode.GetNumberOfColumns()
-    if numberOfColumns<2:
-      logging.debug('Covariate table import failed, covariate table must have at least one factor column')
-      runAnalysis = slicer.util.confirmYesNoDisplay("Error: Covariate import failed. Table is required to have at least one factor column. \n\nYou can continue analysis without covariates or stop and edit your table. \n\nWould you like to proceed with the analysis?")
-      return runAnalysis
-    #check for same number of covariate rows and input filenames
-    indexColumn = self.factorTableNode.GetTable().GetColumn(0)
-    if indexColumn.GetNumberOfTuples() != numberOfInputFiles:
-      logging.debug('Covariate table import failed, covariate table row number does not match number of input files')
-      self.ui.GPALogTextbox.insertPlainText(f"Error: Covariate table import failed, covariate table row number does not match number of input files\n")
-      runAnalysis = slicer.util.confirmYesNoDisplay(f"Error: Covariate import failed. The number of rows in the table is required to match the number of selected input files. \n\nYou can continue analysis without covariates or stop and edit your sample selection and/or covariate table. \n\nWould you like to proceed with the analysis?")
-      return runAnalysis
-    #check that input filenames match factor row names
-    for i, inputFile in enumerate(self.inputFilePaths):
-      if indexColumn.GetValue(i) not in inputFile:
-        print(indexColumn.GetValue(i), inputFile)
-        self.ui.GPALogTextbox.insertPlainText(f"Covariate import failed. Covariate filenames do not match input files \n Expected {inputFile}, got {indexColumn.GetValue(i)} \n")
-        logging.debug("Covariate table import failed, covariate filenames do not match input files")
-        runAnalysis = slicer.util.confirmYesNoDisplay(f"Error: Covariate import failed. The row names in the table are required to match the selected input filenames. \n\nYou can continue analysis without covariates or stop and edit your covariate table. \n\nWould you like to proceed with the analysis?")
-        return runAnalysis
-    for i in range(1,numberOfColumns):
-      if self.factorTableNode.GetTable().GetColumnName(i) == "":
-        self.ui.GPALogTextbox.insertPlainText(f"Covariate import failed, covariate {i} is not labeled\n")
-        logging.debug(f"Covariate import failed, covariate {i} is not labeled")
-        runAnalysis = slicer.util.confirmYesNoDisplay(f"Error: Covariate import failed. Covariate {i} has no label. Covariates table is required to have a header row with covariate names. \n\nYou can continue analysis without covariates or stop and edit your table. \n\nWould you like to proceed with the analysis?")
-        return runAnalysis
-      hasNumericValue = False
-      for j in range(self.factorTableNode.GetTable().GetNumberOfRows()):
-        if self.factorTableNode.GetTable().GetValue(j,i) == "":
-          subjectID = self.factorTableNode.GetTable().GetValue(j,0).ToString()
-          self.ui.GPALogTextbox.insertPlainText(f"Covariate table import failed, covariate {self.factorTableNode.GetTable().GetColumnName(i)} has no value for {subjectID}\n")
-          logging.debug(f"Covariate table import failed, covariate {self.factorTableNode.GetTable().GetColumnName(i)} has no value for {subjectID}")
-          runAnalysis = slicer.util.confirmYesNoDisplay(f"Error: Covariate import failed. Covariate {self.factorTableNode.GetTable().GetColumnName(i)} has no value for {subjectID}. Missing observation(s) in the covariates table are not allowed. \n\nYou can continue analysis without covariates or stop and edit your sample selection and/or covariate table. \n\nWould you like to proceed with the analysis?")
-          return runAnalysis
-        if self.factorTableNode.GetTable().GetValue(j,i).ToString().isnumeric():
-          hasNumericValue = True
-      if hasNumericValue:
-        self.ui.GPALogTextbox.insertPlainText(f"Covariate: {self.factorTableNode.GetTable().GetColumnName(i)} contains numeric values and will not be loaded for plotting\n")
-        logging.debug(f"Covariate: {self.factorTableNode.GetTable().GetColumnName(i)} contains numeric values and will not be loaded for plotting\n")
-        qt.QMessageBox.critical(slicer.util.mainWindow(),
-        "Warning: ", f"Covariate: {self.factorTableNode.GetTable().GetColumnName(i)} contains numeric values and will not be loaded for plotting")
-      else:
-        self.ui.selectFactor.addItem(self.factorTableNode.GetTable().GetColumnName(i))
-    self.ui.GPALogTextbox.insertPlainText("Covariate table loaded and validated\n")
-    self.ui.GPALogTextbox.insertPlainText(f"Table contains {self.factorTableNode.GetNumberOfColumns()-1} covariates: ")
-    for i in range(1,self.factorTableNode.GetNumberOfColumns()):
-      self.ui.GPALogTextbox.insertPlainText(f"{self.factorTableNode.GetTable().GetColumnName(i)} ")
-    self.ui.GPALogTextbox.insertPlainText("\n")
-
-    if hasattr(self, "lr"):
-      self.lr.refreshFromCovariates()
-      self.lr.refreshFitButton()
-
-    return runAnalysis
-
-  def onSelectResultsDirectory(self):
-    self.resultsDirectory=qt.QFileDialog().getExistingDirectory()
-    self.ui.resultsText.setText(self.resultsDirectory)
-    try:
-      self.ui.loadResultsButton.enabled = bool (self.resultsDirectory)
-    except AttributeError:
-      self.ui.loadResultsButton.enabled = False
-
-  def onOpenResults(self):
-    qpath = qt.QUrl.fromLocalFile(os.path.dirname(self.outputFolder+os.path.sep))
-    qt.QDesktopServices().openUrl(qpath)
-
-  def setupCovariatesFromResults(self, tablePath):
-    # Load table
-    try:
-      self.factorTableNode = slicer.util.loadTable(tablePath)
-    except Exception:
-      self.ui.GPALogTextbox.insertPlainText(
-        f"Covariate import failed. Table could not be loaded from {tablePath}\n"
-      )
-      return False
-    numRows = self.factorTableNode.GetTable().GetColumn(0).GetNumberOfTuples()
-    if numRows != len(self.files):
-      self.ui.GPALogTextbox.insertPlainText(
-        "Error: Covariate table import failed. Row count does not match number of samples in results.\n"
-      )
-      return False
-    indexCol = self.factorTableNode.GetTable().GetColumn(0)
-    for i, fname in enumerate(self.files):
-      if indexCol.GetValue(i) not in fname:
-        self.ui.GPALogTextbox.insertPlainText(
-          f"Covariate import failed. Expected row like {fname}, got {indexCol.GetValue(i)}\n"
-        )
-        return False
-    self.ui.selectFactor.clear()
-    self.ui.selectFactor.addItem("")  # “no factor”
-    for c in range(1, self.factorTableNode.GetNumberOfColumns()):
-      name = self.factorTableNode.GetTable().GetColumnName(c)
-      # if any cell in column is numeric, treat as numeric and skip
-      has_numeric = False
-      for r in range(numRows):
-        if self.factorTableNode.GetTable().GetValue(r, c).ToString().isnumeric():
-          has_numeric = True
-          break
-      if not has_numeric and name:
-        self.ui.selectFactor.addItem(name)
-
-    self.ui.GPALogTextbox.insertPlainText("Covariate table loaded for results session\n")
-
-    if hasattr(self, "lr"):
-      self.lr.refreshFromCovariates()
-      self.lr.refreshFitButton()
-
-    return True
-
-  def onLoadFromFile(self):
-    self.initializeOnLoad() #clean up module from previous runs
-    logic = GPALogic()
-    import pandas
-
-    # Load data
-    outputDataPath = os.path.join(self.resultsDirectory, 'outputData.csv')
-    meanShapePath = os.path.join(self.resultsDirectory, 'meanShape.csv')
-    eigenVectorPath = os.path.join(self.resultsDirectory, 'eigenvector.csv')
-    eigenValuePath = os.path.join(self.resultsDirectory, 'eigenvalues.csv')
-    eigenValueNames = ['Index', 'Scores']
-    try:
-      eigenValues = pandas.read_csv(eigenValuePath, names=eigenValueNames)
-      eigenVector = pandas.read_csv(eigenVectorPath)
-      meanShape = pandas.read_csv(meanShapePath)
-      outputData = pandas.read_csv(outputDataPath)
-    except:
-      logging.debug('Result import failed: Missing file')
-      self.ui.GPALogTextbox.insertPlainText(f"Result import failed: Missing file in output folder\n")
-      return
-
-    # Try to load skip scaling and skip LM options from log file, if present
-    self.BoasOption = False
-    self.LMExclusionList=[]
-    logFilePath = os.path.join(self.resultsDirectory, 'analysis.json')
-    try:
-      with open(logFilePath) as json_file:
-        logData = json.load(json_file)
-      self.BoasOption = logData['GPALog'][0]['Boas']
-      self.LMExclusionList = logData['GPALog'][0]['ExcludedLM']
-    except:
-      logging.debug('Log import failed: Cannot read the log file')
-      self.ui.GPALogTextbox.insertPlainText("logging.debug('Log import failed: Cannot read the log file\n")
-
-    # Initialize variables
-    self.LM=LMData()
-    success = self.LM.initializeFromDataFrame(outputData, meanShape, eigenVector, eigenValues)
-    if not success:
-      return
-
-    self.files = outputData.Sample_name.tolist()
-    shape = self.LM.lmOrig.shape
-    print('Loaded ' + str(shape[2]) + ' subjects with ' + str(shape[0]) + ' landmark points.')
-    self.ui.GPALogTextbox.insertPlainText(f"Loaded {shape[2]} subjects with {shape[0]} landmark points.\n")
-
-    # If a covariate table was written with these results, load and setup
-    covariatePath = os.path.join(self.resultsDirectory, "covariateTable.csv")
-    if os.path.exists(covariatePath):
-      self.ui.selectCovariatesText.setText(covariatePath)  # show path in UI
-      if self.setupCovariatesFromResults(covariatePath):
-        try:
-          self.ui.selectFactor.currentIndexChanged.connect(lambda _: self.plot())
-        except Exception:
-          pass
-    # GPA parameters
-    self.pcNumber=10
-    self.updateList()
-
-    # Default to PC1 and initialize transform so slider works immediately
-    try:
-        if self.ui.pcComboBox.count > 1:
-            self.ui.pcComboBox.setCurrentIndex(1)
-        self.setupPCTransform()
-    except Exception:
-        pass
-# get mean landmarks as a fiducial node
-    self.meanLandmarkNode=slicer.mrmlScene.GetFirstNodeByName('Mean Landmark Node')
-    if self.meanLandmarkNode is None:
-      self.meanLandmarkNode = slicer.vtkMRMLMarkupsFiducialNode()
-      self.meanLandmarkNode.SetName('Mean Landmark Node')
-      slicer.mrmlScene.AddNode(self.meanLandmarkNode)
-      GPANodeCollection.AddItem(self.meanLandmarkNode)
-      modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
-      GPANodeCollection.AddItem(modelDisplayNode)
-    self.meanLandmarkNode.GetDisplayNode().SetSliceProjection(True)
-    self.meanLandmarkNode.GetDisplayNode().SetSliceProjectionOpacity(1)
-
-    #set scaling factor using mean of landmarks
-    self.rawMeanLandmarks = self.LM.mShape
-    logic = GPALogic()
-    if self.BoasOption:
-        self.sampleSizeScaleFactor = 1.0
-    else:
-      self.sampleSizeScaleFactor = logic.dist2(self.rawMeanLandmarks).max()
-    print("Scale Factor: " + str(self.sampleSizeScaleFactor))
-    self.ui.GPALogTextbox.insertPlainText(f"Scale Factor: {self.sampleSizeScaleFactor}\n")
-    for landmarkNumber in range (shape[0]):
-      name = str(landmarkNumber+1) #start numbering at 1
-      self.meanLandmarkNode.AddControlPoint(self.rawMeanLandmarks[landmarkNumber,:], name)
-    self.meanLandmarkNode.SetDisplayVisibility(1)
-    self.meanLandmarkNode.LockedOn() #lock position so when displayed they cannot be moved
-    self.meanLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(1)
-    self.meanLandmarkNode.GetDisplayNode().SetTextScale(3)
-    #initialize mean LM display
-    self.scaleMeanGlyph()
-    self.toggleMeanColor()
-    # Set up cloned mean landmark node for pc warping
-    shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
-    itemIDToClone = shNode.GetItemByDataNode(self.meanLandmarkNode)
-    clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(shNode, itemIDToClone)
-    self.copyLandmarkNode = shNode.GetItemDataNode(clonedItemID)
-    GPANodeCollection.AddItem(self.copyLandmarkNode)
-    self.copyLandmarkNode.SetName('PC Warped Landmarks')
-    self.copyLandmarkNode.SetDisplayVisibility(0)
-
-    #set up procrustes distance plot
-    filename=self.LM.closestSample(self.files)
-    self.populateDistanceTable(self.files)
-    print("Closest sample to mean:" + filename)
-    self.ui.GPALogTextbox.insertPlainText(f"Closest sample to mean: {filename}\n")
-
-    #Setup for scatter plots
-    shape = self.LM.lm.shape
-    self.LM.calcEigen()
-    self.scatterDataAll= np.zeros(shape=(shape[2],self.pcNumber))
-    for i in range(self.pcNumber):
-      data=gpa_lib.plotTanProj(self.LM.lm,self.LM.sortedEig,i,1)
-      self.scatterDataAll[:,i] = data[:,0]
-
-    # Set up layout
-    self.assignLayoutDescription()
-    # Apply zoom for morphospace if scaling not skipped
-    if(not self.BoasOption):
-      cameras=slicer.mrmlScene.GetNodesByClass('vtkMRMLCameraNode')
-      self.widgetZoomFactor = 2000*self.sampleSizeScaleFactor
-      for camera in cameras:
-        camera.GetCamera().Zoom(self.widgetZoomFactor)
-
-    #initialize mean LM display
-    self.scaleMeanGlyph()
-    self.toggleMeanColor()
-
-    # Enable buttons for workflow
-    self.ui.plotButton.enabled = True
-    self.ui.lolliButton.enabled = True
-    self.ui.plotDistributionButton.enabled = True
-    self.ui.plotMeanButton3D.enabled = True
-    self.ui.showMeanLabelsButton.enabled = True
-    self.ui.selectorButton.enabled = True
-    self.ui.landmarkVisualizationType.enabled = True
-    self.ui.modelVisualizationType.enabled = True
-
-    if hasattr(self, "lr"):
-      self.lr.refreshFromCovariates()
-      self.lr.refreshFitButton()
-
-  def onLoad(self):
-    self.initializeOnLoad() #clean up module from previous runs
-    logic = GPALogic()
-    # check for loaded covariate table if table path is specified
-    if self.ui.selectCovariatesText.text != "":
-      runAnalysis = self.onLoadCovariatesTable()
-      if not runAnalysis:
-        return
-    # get landmarks
-    self.LM=LMData()
-    lmToExclude=self.ui.excludeLMText.text
-    if len(lmToExclude) != 0:
-      self.LMExclusionList=lmToExclude.split(",")
-      print("Excluded landmarks: ", self.LMExclusionList)
-      self.ui.GPALogTextbox.insertPlainText(f"Excluded landmarks: {self.LMExclusionList}\n")
-      self.LMExclusionList=[int(x) for x in self.LMExclusionList]
-      lmNP=np.asarray(self.LMExclusionList)
-    else:
-      self.LMExclusionList=[]
-    try:
-      self.LM.lmOrig, self.landmarkTypeArray = logic.loadLandmarks(self.inputFilePaths, self.LMExclusionList, self.extension)
-    except:
-      logging.debug('Load landmark data failed: Could not create an array from landmark files')
-      self.ui.GPALogTextbox.insertPlainText(f"Load landmark data failed: Could not create an array from landmark files\n")
-      return
-    shape = self.LM.lmOrig.shape
-    print('Loaded ' + str(shape[2]) + ' subjects with ' + str(shape[0]) + ' landmark points.')
-    self.ui.GPALogTextbox.insertPlainText(f"Loaded {shape[2]} subjects with {shape[0]} landmark points.\n")
-
-    # Do GPA
-    self.BoasOption=self.ui.BoasOptionCheckBox.isChecked()
-    self.LM.doGpa(self.BoasOption)
-    self.LM.calcEigen()
-    self.pcNumber=10
-    self.updateList()
-
-    # Default to PC1 and initialize transform so slider works immediately
-    try:
-        if self.ui.pcComboBox.count > 1:
-            self.ui.pcComboBox.setCurrentIndex(1)
-        self.setupPCTransform()
-    except Exception:
-        pass
-    if(self.BoasOption):
-          self.ui.GPALogTextbox.insertPlainText("Using Boas coordinates \n")
-          print("Using Boas coordinates")
-
-    #set scaling factor using mean of landmarks
-    self.rawMeanLandmarks = self.LM.lmOrig.mean(2)
-    logic = GPALogic()
-    if self.BoasOption:
-      self.sampleSizeScaleFactor = 1.0
-    else:
-      self.sampleSizeScaleFactor = logic.dist2(self.rawMeanLandmarks).max()
-    print("Scale Factor: " + str(self.sampleSizeScaleFactor))
-    self.ui.GPALogTextbox.insertPlainText(f"Scale Factor for visualizations: {self.sampleSizeScaleFactor}\n")
-
-    # get mean landmarks as a fiducial node
-    self.meanLandmarkNode=slicer.mrmlScene.GetFirstNodeByName('Mean Landmark Node')
-    if self.meanLandmarkNode is None:
-      self.meanLandmarkNode = slicer.vtkMRMLMarkupsFiducialNode()
-      self.meanLandmarkNode.SetName('Mean Landmark Node')
-      slicer.mrmlScene.AddNode(self.meanLandmarkNode)
-      GPANodeCollection.AddItem(self.meanLandmarkNode)
-      modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
-      GPANodeCollection.AddItem(modelDisplayNode)
-    self.meanLandmarkNode.GetDisplayNode().SetSliceProjection(True)
-    self.meanLandmarkNode.GetDisplayNode().SetSliceProjectionOpacity(1)
-    for landmarkNumber in range(shape[0]):
-      name = str(landmarkNumber+1) #start numbering at 1
-      self.meanLandmarkNode.AddControlPoint(vtk.vtkVector3d(self.rawMeanLandmarks[landmarkNumber,:]), name)
-    self.meanLandmarkNode.SetDisplayVisibility(1)
-    self.meanLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(1)
-    self.meanLandmarkNode.GetDisplayNode().SetTextScale(3)
-    self.meanLandmarkNode.LockedOn() #lock position so when displayed they cannot be moved
-
-    # Set up cloned mean landmark node for pc warping
-    shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
-    itemIDToClone = shNode.GetItemByDataNode(self.meanLandmarkNode)
-    clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(shNode, itemIDToClone)
-    self.copyLandmarkNode = shNode.GetItemDataNode(clonedItemID)
-    GPANodeCollection.AddItem(self.copyLandmarkNode)
-    self.copyLandmarkNode.SetName('PC Warped Landmarks')
-    self.copyLandmarkNode.SetDisplayVisibility(0)
-
-    # Set up output
-    dateTimeStamp = datetime.now().strftime('%Y-%m-%d_%H_%M_%S')
-    self.outputFolder = os.path.join(self.outputDirectory, dateTimeStamp)
-    try:
-      os.makedirs(self.outputFolder)
-      self.LM.writeOutData(self.outputFolder, self.files)
-      # covariate table
-      if getattr(self, 'factorTableNode', None):
-        try:
-          print(f"saving {self.factorTableNode.GetID()} to {self.outputFolder + os.sep}covariateTable.csv")
-          slicer.util.saveNode(self.factorTableNode, self.outputFolder + os.sep + "covariateTable.csv")
-          GPANodeCollection.AddItem(self.factorTableNode)
-        except:
-          self.ui.GPALogTextbox.insertPlainText("Covariate table output failed: Could not write {self.factorTableNode} to {self.outputFolder+os.sep}covariateTable.csv\n")
-      self.writeAnalysisLogFile(self.LM_dir_name, self.outputFolder, self.files)
-      self.ui.openResultsButton.enabled = True
-    except:
-      logging.debug('Result directory failed: Could not access output folder')
-      print("Error creating result directory")
-      self.ui.GPALogTextbox.insertPlainText("Result directory failed: Could not access output folder\n")
-
-    # Get closest sample to mean
-    filename=self.LM.closestSample(self.files)
-    self.populateDistanceTable(self.files)
-    print("Closest sample to mean:" + filename)
-    self.ui.GPALogTextbox.insertPlainText(f"Closest sample to mean: {filename}\n")
-
-    #Setup for scatter plots
-    shape = self.LM.lm.shape
-    self.scatterDataAll= np.zeros(shape=(shape[2],self.pcNumber))
-    for i in range(self.pcNumber):
-      data=gpa_lib.plotTanProj(self.LM.lm,self.LM.sortedEig,i,1)
-      self.scatterDataAll[:,i] = data[:,0]
-
-    # Set up layout
-    self.assignLayoutDescription()
-    # Apply zoom for morphospace if scaling not skipped
-    if(not self.BoasOption):
-      cameras=slicer.mrmlScene.GetNodesByClass('vtkMRMLCameraNode')
-      self.widgetZoomFactor = 2000*self.sampleSizeScaleFactor
-      for camera in cameras:
-        camera.GetCamera().Zoom(self.widgetZoomFactor)
-
-    #initialize mean LM display
-    self.scaleMeanGlyph()
-    self.toggleMeanColor()
-
-    # Enable buttons for workflow
-    self.ui.plotButton.enabled = True
-    self.ui.lolliButton.enabled = True
-    self.ui.plotDistributionButton.enabled = True
-    self.ui.plotMeanButton3D.enabled = True
-    self.ui.showMeanLabelsButton.enabled = True
-    self.ui.selectorButton.enabled = True
-    self.ui.landmarkVisualizationType.enabled = True
-    self.ui.modelVisualizationType.enabled = True
-
-    if hasattr(self, "lr"):
-      self.lr.refreshFromCovariates()
-      self.lr.refreshFitButton()
-
-  def initializeOnLoad(self):
-    # clear rest of module when starting GPA analysis
-
-    self.ui.grayscaleSelector.setCurrentPath("")
-    self.ui.FudSelect.setCurrentPath("")
-
-    self.ui.landmarkVisualizationType.setChecked(True)
-
-    self.pcController.clear()
-
-    self.ui.vectorOne.clear()
-    self.ui.vectorTwo.clear()
-    self.ui.vectorThree.clear()
-    self.ui.XcomboBox.clear()
-    self.ui.YcomboBox.clear()
-
-    self.ui.scaleSlider.value=3
-    self.ui.scaleMeanShapeSlider.value=3
-    self.ui.meanShapeColor.color=qt.QColor(250,128,114)
-
-    self.nodeCleanUp()
-
-    # Reset zoom
-    if self.widgetZoomFactor > 0:
-      cameras=slicer.mrmlScene.GetNodesByClass('vtkMRMLCameraNode')
-      for camera in cameras:
-        camera.GetCamera().Zoom(1/self.widgetZoomFactor)
-      self.widgetZoomFactor = 0
-
-  def writeAnalysisLogFile(self, inputPath, outputPath, files):
-    # generate log file
-    [pointNumber, dim, subjectNumber] = self.LM.lmOrig.shape
-    if getattr(self, 'factorTableNode', None):
-      covariatePath = "covariateTable.csv"
-    else:
-      covariatePath = ""
-    logData = {
-      "@schema": "https://raw.githubusercontent.com/slicermorph/slicermorph/master/GPA/Resources/Schema/GPALog-schema-v1.0.0.json#",
-      "GPALog" : [
-        {
-        "Date": datetime.now().strftime('%Y-%m-%d'),
-        "Time": datetime.now().strftime('%H:%M:%S'),
-        "InputPath": inputPath,
-        "OutputPath": outputPath.replace("\\","/"),
-        "Files": [f + self.extension for f in files],
-        "LMFormat": self.extension,
-        "NumberLM": pointNumber + len(self.LMExclusionList),
-        "ExcludedLM": self.LMExclusionList,
-        "Boas": bool(self.BoasOption),
-        "MeanShape": "meanShape.csv",
-        "Eigenvalues": "eigenvalues.csv",
-        "Eigenvectors": "eigenvectors.csv",
-        "OutputData": "outputData.csv",
-        "PCScores": "pcScores.csv",
-        "SemiLandmarks": self.landmarkTypeArray,
-        "CovariatesFile": covariatePath
-        }
-      ]
-    }
-    logFilePath = outputPath+os.sep+"analysis.json"
-    with open(logFilePath, 'w') as logFile:
-      print(json.dumps(logData, indent=2), file=logFile)
-    logFile.close()
-
-
-  # ---- PC magnification helpers (class-level) ----
-  def onUpdateMagnificationClicked(self):
-    self.setupPCTransform()
-
-  def setupPCTransform(self):
-    # Determine currently selected PC (combo index > 0 means a PC is selected)
-    pc_index = self.pcController.comboBoxIndex()
-    if pc_index <= 0:
-      return
-    self.currentPC = pc_index
-    # Determine PC score range from loaded scatter data
-    self.pcMax = float(np.max(self.scatterDataAll, axis=0)[self.currentPC - 1])
-    self.pcMin = float(np.min(self.scatterDataAll, axis=0)[self.currentPC - 1])
-    self.pcScoreAbsMax = max(abs(self.pcMin), abs(self.pcMax))
-
-    # Build displacement grid for current PC
-    self.displacementGridData = self.getGridTransform(self.currentPC)
-
-    needNewNode = (self._node('gridTransformNode') is None)
-    if needNewNode:
-      self.gridTransformNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLGridTransformNode", "GridTransform")
-      GPANodeCollection.AddItem(self.gridTransformNode)
-
-    # Assign the displacement grid
-    self.gridTransformNode.GetTransformFromParent().SetDisplacementGridData(self.displacementGridData)
-
-    # Attach transform to the warped landmark/model nodes if present
-    targetModelChecked = False
-    try:
-      targetModelChecked = bool(self.ui.modelVisualizationType.isChecked())
-    except Exception:
-      # Fall back to attribute access pattern used elsewhere
-      targetModelChecked = bool(getattr(self.ui.modelVisualizationType, "checked", False))
-
-    # Landmarks: prefer cloneLandmarkNode, fall back to copyLandmarkNode if used in older code
-    lm_node = getattr(self, "cloneLandmarkNode", None) or getattr(self, "copyLandmarkNode", None)
-    if lm_node is not None:
-      lm_node.SetAndObserveTransformNodeID(self.gridTransformNode.GetID())
-
-    # Model (if present and selected)
-    if targetModelChecked and getattr(self, "cloneModelNode", None) and self.cloneModelNode is not None:
-      self.cloneModelNode.SetAndObserveTransformNodeID(self.gridTransformNode.GetID())
-
-    # Update the UI-driven range for live scaling
-    self.pcController.setRange(self.pcMin, self.pcMax)
-    self.pcController.setValue(0)
-    self.updatePCScaling()
-
-  def getGridTransform(self, pcValue: int):
-    logic = GPALogic()
-    # Read magnification from UI
-    try:
-      magnification = float(self.ui.spinMagnification.value)
-    except Exception:
-      # Defensive fallback for odd UI bindings
-      magnification = float(getattr(self.ui, "spinMagnification", 1.0))
-
-    # Shift mean landmarks along selected PC at the maximum score
-    shiftMax = self.LM.ExpandAlongSinglePC(pcValue, self.pcScoreAbsMax * magnification, self.sampleSizeScaleFactor)
-    target = self.rawMeanLandmarks + shiftMax
-    targetLMVTK = logic.convertNumpyToVTK(target)
-    sourceLMVTK = logic.convertNumpyToVTK(self.rawMeanLandmarks)
-
-    VTKTPS = vtk.vtkThinPlateSplineTransform()
-    VTKTPS.SetSourceLandmarks(targetLMVTK)
-    VTKTPS.SetTargetLandmarks(sourceLMVTK)
-    VTKTPS.SetBasisToR()
-
-    # Choose bounds from model if in model mode; otherwise from the landmark clone/copy
-    try:
-      modelChecked = bool(self.ui.modelVisualizationType.isChecked())
-    except Exception:
-      modelChecked = bool(getattr(self.ui.modelVisualizationType, "checked", False))
-    bounds_node = None
-    if modelChecked and getattr(self, "cloneModelNode", None) and self.cloneModelNode is not None:
-      bounds_node = self.cloneModelNode
-    else:
-      bounds_node = getattr(self, "cloneLandmarkNode", None) or getattr(self, "copyLandmarkNode", None)
-    if bounds_node is None:
-      raise RuntimeError("No landmark or model node available to derive bounds for the grid transform.")
-    modelBounds = self.getExpandedBounds(bounds_node)
-
-    origin = (modelBounds[0], modelBounds[2], modelBounds[4])
-    size = (modelBounds[1] - modelBounds[0], modelBounds[3] - modelBounds[2], modelBounds[5] - modelBounds[4])
-    dimension = 50
-    extent = [0, dimension - 1, 0, dimension - 1, 0, dimension - 1]
-    spacing = (size[0] / dimension, size[1] / dimension, size[2] / dimension)
-
-    transformToGrid = vtk.vtkTransformToGrid()
-    transformToGrid.SetInput(VTKTPS)
-    transformToGrid.SetGridOrigin(origin)
-    transformToGrid.SetGridSpacing(spacing)
-    transformToGrid.SetGridExtent(extent)
-    transformToGrid.Update()
-
-    return transformToGrid.GetOutput()
-
-  def getExpandedBounds(self, node, paddingFactor: float = 0.1):
-    bounds = [0.0] * 6
-    node.GetRASBounds(bounds)
-    xRange = bounds[1] - bounds[0]
-    yRange = bounds[3] - bounds[2]
-    zRange = bounds[5] - bounds[4]
-    bounds[0] -= xRange * paddingFactor
-    bounds[1] += xRange * paddingFactor
-    bounds[2] -= yRange * paddingFactor
-    bounds[3] += yRange * paddingFactor
-    bounds[4] -= zRange * paddingFactor
-    bounds[5] += zRange * paddingFactor
-    return bounds
-
-  def updatePCScaling(self):
-    if not getattr(self, 'gridTransformNode', None):
-      return
-    # Use the controller's current value mapped to the PC score range
-    try:
-      dynamic_value = float(self.pcController.getValue())
-    except Exception:
-      # Backward compatibility if someone left an old name around
-      dynamic_value = float(getattr(self.pcController, "sliderValue", lambda: 0)())
-    if getattr(self, "pcScoreAbsMax", 0) and self.pcScoreAbsMax > 1e-6:
-      sf = dynamic_value / self.pcScoreAbsMax
-    else:
-      sf = 0.0
-    sf = max(min(sf, 1.0), -1.0)
-    self.gridTransformNode.GetTransformFromParent().SetDisplacementScale(sf)
-
-
-    try:
-      self.gridTransformNode.Modified()
+      self._lr_formula.textChanged.connect(lambda: self._lr_onFormulaEdited())
     except Exception:
       pass
 
-  # Explore Data callbacks and helpers
-  def plot(self):
-    logic = GPALogic()
-    # get values from box
-    xValue=self.ui.XcomboBox.currentIndex
-    yValue=self.ui.YcomboBox.currentIndex
-    shape = self.LM.lm.shape
+    # Buttons
+    self._lr_validateBtn.clicked.connect(lambda: self._lr_onFormulaEdited(force=True))
+    self._lr_copyBtn.clicked.connect(self._lr_onCopyClicked)
+    self._lr_resetBtn.clicked.connect(self._lr_onResetClicked)
+    self._lr_fitBtn.clicked.connect(self._lr_onFitInRClicked)
 
-    if (self.ui.selectFactor.currentIndex > 0) and getattr(self, 'factorTableNode', None):
-      factorName = self.ui.selectFactor.currentText
-      factorCol = self.factorTableNode.GetTable().GetColumnByName(factorName)
-      factorArray=[]
-      for i in range(factorCol.GetNumberOfTuples()):
-        factorArray.append(factorCol.GetValue(i).rstrip())
-      factorArrayNP = np.array(factorArray)
-      if(len(np.unique(factorArrayNP))>1 ): #check values of factors for scatter plot
-        logic.makeScatterPlotWithFactors(self.scatterDataAll,self.files,factorArrayNP,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1),self.pcNumber)
-      else:   #if the user input a factor requiring more than 3 groups, do not use factor
-        qt.QMessageBox.critical(slicer.util.mainWindow(),
-        'Error', 'Please use more than one unique factor')
-        logic.makeScatterPlot(self.scatterDataAll,self.files,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1),self.pcNumber)
+    # Defaults
+    _set_enabled(self._lr_copyBtn, False)
+    self._lr_setStatus("Waiting for input…", ok=None)
+    _set_text(self._lr_formula, "Coords ~ Size")
+    _set_enabled(self._lr_fitBtn, False)
+    _set_label(self._lr_fitStatus, "Not ready")
+
+    # Whitelist, completer, first validation
+    self.refreshFromCovariates()
+    self.refreshFitButton()
+
+  def _lr_setStatus(self, msg, ok=None):
+    _set_label(self._lr_status, msg)
+    css_ok = "QLineEdit, QPlainTextEdit { border: 2px solid #2e7d32; border-radius: 3px; }"
+    css_bad = "QLineEdit, QPlainTextEdit { border: 2px solid #c62828; border-radius: 3px; }"
+    if ok is True:
+      try: self._lr_formula.setStyleSheet(css_ok)
+      except Exception: pass
+      _set_enabled(self._lr_copyBtn, True)
+    elif ok is False:
+      try: self._lr_formula.setStyleSheet(css_bad)
+      except Exception: pass
+      _set_enabled(self._lr_copyBtn, False)
     else:
-      logic.makeScatterPlot(self.scatterDataAll,self.files,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1),self.pcNumber)
+      try: self._lr_formula.setStyleSheet("")
+      except Exception: pass
+      _set_enabled(self._lr_copyBtn, False)
 
-  def lolliPlot(self):
-    pb1=self.ui.vectorOne.currentIndex
-    pb2=self.ui.vectorTwo.currentIndex
-    pb3=self.ui.vectorThree.currentIndex
+  def _lr_onResetClicked(self):
+    try: self._lr_formula.blockSignals(True)
+    except Exception: pass
+    _set_text(self._lr_formula, "Coords ~ Size")
+    try: self._lr_formula.blockSignals(False)
+    except Exception: pass
+    self._lr_onFormulaEdited()
 
-    pcList=[pb1,pb2,pb3]
-    logic = GPALogic()
+  def _lr_onCopyClicked(self):
+    qt.QApplication.clipboard().setText(self._lr_getFormulaText())
 
-    meanLandmarkNode=slicer.mrmlScene.GetFirstNodeByName('Mean Landmark Node')
-    meanLandmarkNode.SetDisplayVisibility(1)
-    componentNumber = 1
-    for pc in pcList:
-      logic.lollipopGraph(self.LM, self.rawMeanLandmarks, pc, self.sampleSizeScaleFactor, componentNumber, self.ui.TwoDType.isChecked())
-      componentNumber+=1
+  def _lr_getCovariateNames(self):
+    names = []
+    ftn = getattr(self.w, 'factorTableNode', None)
+    if not ftn:
+      return names
+    try:
+      table = ftn.GetTable()
+      ncols = ftn.GetNumberOfColumns()
+      for c in range(1, ncols):
+        nm = str(table.GetColumnName(c)).strip()
+        if nm:
+          names.append(nm)
+    except Exception:
+      pass
+    return names
 
-  def toggleMeanPlot(self):
-    node = self._node('meanLandmarkNode')
-    if not node:
+  def _lr_computeWhitelist(self):
+    covs = self._lr_getCovariateNames()
+    return ["Size"] + covs
+
+  def _lr_applyCompleter(self):
+    # dispose prior
+    try:
+      if self._lr_completer is not None:
+        self._lr_completer.setParent(None)
+        self._lr_completer.deleteLater()
+    except Exception: pass
+    self._lr_completer = None; self._lr_completer_model = None
+
+    model = qt.QStringListModel(self._lr_formula)  # parent so it lives
+    comp = qt.QCompleter(model, self._lr_formula)
+    comp.setCaseSensitivity(qt.Qt.CaseSensitive)
+    try: comp.setCompletionMode(qt.QCompleter.PopupCompletion)
+    except Exception: pass
+
+    self._lr_completer_model = model
+    self._lr_completer = comp
+    comp.setWidget(self._lr_formula)
+
+    try:
+      comp.activated[str].connect(self._lr_insertCompletion)
+    except Exception:
+      comp.activated.connect(lambda s: self._lr_insertCompletion(str(s)))
+
+    if not self._lr_popup_connected:
+      try:
+        self._lr_formula.textChanged.connect(self._lr_completerMaybePopup)
+        self._lr_popup_connected = True
+      except Exception:
+        pass
+
+    self._lr_updateCompleterModel()
+
+  def refreshFromCovariates(self):
+    """Public wrapper (used by GPAWidget): rebuild list + completer + revalidate."""
+    if not hasattr(self.ui, 'geomorphLRTab'):
       return
-    vis = node.GetDisplayVisibility()
-    if vis:
-      node.SetDisplayVisibility(False)
-      clone = self._node('cloneLandmarkNode')
-      if clone:
-        clone.SetDisplayVisibility(False)
+    mains = self._lr_computeWhitelist()
+    self._lr_possibleList.clear()
+    for nm in mains:
+      self._lr_possibleList.addItem(nm)
+    self._lr_applyCompleter()
+    self._lr_onFormulaEdited()
+
+  # --- formula parsing/validation helpers (patsy-based) ---
+
+  def _lr_extract_term_names(self, patsy_term):
+    names = []
+    for fac in getattr(patsy_term, 'factors', []):
+      nm = getattr(fac, 'code', None)
+      if nm is None:
+        nm = getattr(fac, 'name', None)
+        if callable(nm):
+          try: nm = nm()
+          except Exception: nm = None
+      if nm is None:
+        nm = str(fac)
+        if "EvalFactor(" in nm and "'" in nm:
+          try: nm = nm.split("'", 2)[1]
+          except Exception: pass
+      names.append(str(nm).strip())
+    return names
+
+  def _lr_allowed_function_names(self):
+    return {"log","log10","log1p","exp","sqrt","I","C","scale","center","bs","cr","poly"}
+
+  def _lr_factor_base_vars(self, factor_str, mains_allowed):
+    import re
+    s = str(factor_str).strip()
+    if s in mains_allowed:
+      return {s}
+    func_call = re.match(r'\s*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*\((.*)\)\s*$', s)
+    if func_call:
+      func_name = func_call.group(1).split('.')[-1]
+      inner = func_call.group(2)
+      if func_name in self._lr_allowed_function_names():
+        ids = set(re.findall(r'[A-Za-z_]\w*', inner))
+        ids = {tok for tok in ids if tok in mains_allowed}
+        if ids:
+          return ids
+    ids = set(re.findall(r'[A-Za-z_]\w*', s))
+    ids = {tok for tok in ids if tok in mains_allowed}
+    return ids
+
+  def _lr_is_pairwise_term(self, names): return len(names) == 2
+
+  def _lr_validateFormula(self, formula):
+    # ensure patsy
+    try:
+      import patsy  # noqa: F401
+    except Exception:
+      try:
+        progress = slicer.util.createProgressDialog(windowTitle="Installing...",
+                                                    labelText="Installing patsy (formula parser)...",
+                                                    maximum=0)
+        slicer.app.processEvents()
+        slicer.util.pip_install(["patsy"])
+        progress.close()
+        import patsy  # noqa: F401
+      except Exception:
+        try: progress.close()
+        except Exception: pass
+        return (False, "patsy is not available and could not be installed.")
+
+    import patsy
+    txt = (formula or "").strip()
+    if not txt: return (False, "Enter a formula, e.g., Coords ~ Size + Sex.")
+    if "~" not in txt: return (False, "Formula must contain '~'. Example: Coords ~ Size + Sex.")
+
+    try:
+      desc = patsy.ModelDesc.from_formula(txt)
+    except Exception as e:
+      return (False, f"Syntax error: {e}")
+
+    # LHS checks
+    lhs_terms = getattr(desc, "lhs_termlist", [])
+    if len(lhs_terms) != 1:
+      return (False, "Left-hand side must be a single variable: 'Coords'.")
+    lhs_names = self._lr_extract_term_names(lhs_terms[0])
+    if len(lhs_names) != 1 or lhs_names[0] not in ["Coords","Shape","SHAPE","shape"]:
+      return (False, "LHS should be 'Coords'. If you used 'Shape', it will be treated as an alias.")
+
+    mains_allowed = set(self._lr_computeWhitelist())
+    # RHS terms
+    for term in getattr(desc, "rhs_termlist", []):
+      names = self._lr_extract_term_names(term)
+      if len(names) == 0:  # intercept-only
+        continue
+      if len(names) == 1:  # main effect
+        fac = names[0]
+        bases = self._lr_factor_base_vars(fac, mains_allowed)
+        if not bases:
+          return (False, f"Unknown variable or unsupported transform: '{fac}'.")
+        if len(bases) > 1:
+          return (False, f"Ambiguous transformed main effect '{fac}'. Use one variable or split the term.")
+        continue
+      # interaction (pairwise only)
+      if not self._lr_is_pairwise_term(names):
+        return (False, "Only pairwise interactions (A:B) are allowed.")
+      left_bases = self._lr_factor_base_vars(names[0], mains_allowed)
+      right_bases = self._lr_factor_base_vars(names[1], mains_allowed)
+      if not left_bases:  return (False, f"Unknown variable on left of interaction: '{names[0]}'.")
+      if not right_bases: return (False, f"Unknown variable on right of interaction: '{names[1]}'.")
+      if len(left_bases) > 1 or len(right_bases) > 1:
+        return (False, f"Ambiguous transformed interaction '{':'.join(names)}'. Use one base variable per side.")
+
+    return (True, "OK")
+
+  def _lr_onFormulaEdited(self, force=False):
+    txt = self._lr_getFormulaText()
+    ok, msg = self._lr_validateFormula(txt)
+    self._lr_setStatus(msg, ok=ok)
+    self.refreshFitButton()
+
+  def _lr_upgradeFormulaWidget(self):
+    # If single-line exists, replace with a multi-line editor in the same grid cell
+    if hasattr(self.ui, 'lrFormulaEdit'):
+      self._lr_formula = self.ui.lrFormulaEdit
+      return
+    if not (hasattr(self.ui, 'lrFormulaLine') and hasattr(self.ui, 'lrFormulaGrid')):
+      return
+    edit = qt.QPlainTextEdit()
+    edit.setObjectName('lrFormulaEdit')
+    edit.setMinimumHeight(72); edit.setMaximumHeight(120)
+    edit.setSizePolicy(qt.QSizePolicy.Policy.Expanding, qt.QSizePolicy.Policy.Fixed)
+    try: edit.setPlaceholderText("Coords ~ Size + Sex + Species")
+    except Exception: pass
+    grid = self.ui.lrFormulaGrid
+    old = self.ui.lrFormulaLine
+    try: grid.removeWidget(old)
+    except Exception: pass
+    old.deleteLater()
+    grid.addWidget(edit, 0, 1, 1, 1)
+    self.ui.lrFormulaEdit = edit
+    self._lr_formula = edit
+    edit.textChanged.connect(lambda: self._lr_onFormulaEdited())
+    try:
+      f = edit.font; f.setFamily("Menlo"); edit.setFont(f)
+    except Exception: pass
+
+  def _lr_getFormulaText(self): return _safe_text(self._lr_formula)
+  def _lr_setFormulaText(self, s): _set_text(self._lr_formula, s)
+
+  def _lr_completerMaybePopup(self):
+    comp = self._lr_completer
+    if comp is None: return
+    self._lr_updateCompleterModel()
+
+    prefix = self._lr_currentTokenPrefix()
+    try: comp.setCompletionPrefix(prefix)
+    except Exception: return
+
+    if not prefix:
+      try: comp.popup().hide()
+      except Exception: pass
+      return
+
+    try:
+      r = self._lr_formula.cursorRect(self._lr_formula.textCursor())
+    except Exception:
+      try: r = self._lr_formula.cursorRect()
+      except Exception: r = qt.QRect(0,0,1,1)
+
+    try:
+      top_left = self._lr_formula.viewport().mapTo(self._lr_formula, r.bottomLeft())
+      r = qt.QRect(top_left, qt.QSize(max(280, r.width()), max(22, r.height())))
+    except Exception:
+      r = qt.QRect(0, 0, 280, 22)
+    comp.complete(r)
+
+  def _lr_currentTokenPrefix(self):
+    import re
+    text = self._lr_getFormulaText()
+    try:
+      cursor = self._lr_formula.textCursor(); pos = cursor.position()
+      left = text[:pos]
+    except Exception:
+      left = text
+    token = re.split(r'[\s\+\:\~\*\(\)]+', left)[-1]
+    return token or ""
+
+  def _lr_insertCompletion(self, completion: str):
+    try:
+      cursor = self._lr_formula.textCursor()
+      prefix = self._lr_currentTokenPrefix()
+      if prefix:
+        cursor.movePosition(qt.QTextCursor.Left, qt.QTextCursor.KeepAnchor, len(prefix))
+      cursor.insertText(completion)
+      self._lr_formula.setTextCursor(cursor)
+    except Exception:
+      try: self._lr_formula.insertPlainText(completion)
+      except Exception: pass
+
+  def _lr_contextBeforePrefix(self):
+    import re
+    text = self._lr_getFormulaText()
+    try:
+      cursor = self._lr_formula.textCursor(); pos = cursor.position()
+      left = text[:pos]
+    except Exception:
+      left = text
+    token = re.split(r'[\s\+\:\~\*\(\)]+', left)[-1]
+    before = left[:-len(token)] if token else left
+    return before[-1:] if before else ''
+
+  def _lr_updateCompleterModel(self):
+    mains = self._lr_computeWhitelist()
+    ops = ["~", "+", ":", "-1"]
+    func_tokens = [f + "(" for f in sorted(self._lr_allowed_function_names())]
+    context_char = self._lr_contextBeforePrefix()
+    if context_char in (":", "*", "+", "~", "(") or self._lr_currentTokenPrefix() == "":
+      candidates = ops + func_tokens + mains
     else:
-      node.SetDisplayVisibility(True)
-      disp = self._display(node)
-      if disp:
-        disp.SetGlyphScale(self.ui.scaleMeanShapeSlider.value)
-        color = self.ui.meanShapeColor.color
-        disp.SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
-      clone = self._node('cloneLandmarkNode')
-      if clone:
-        clone.SetDisplayVisibility(True)
-        cdisp = self._display(clone)
-        if cdisp:
-          cdisp.SetGlyphScale(self.ui.scaleMeanShapeSlider.value)
-          cdisp.SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
+      candidates = ops + mains
+    if self._lr_completer_model is not None:
+      self._lr_completer_model.setStringList(candidates)
 
-  def toggleMeanLabels(self):
-    node = self._node('meanLandmarkNode')
-    if not node:
+  # ----------------------------- R / Rserve panel -----------------------------
+
+  def _r_initPanel(self):
+    """Wire the R/Rserve controls (no geomorph/RRPP UI checks)."""
+    if not hasattr(self.ui, "rserveGroup"):
       return
-    disp = self._display(node)
-    if not disp:
-      return
-    visibility = disp.GetPointLabelsVisibility()
-    if visibility:
-      disp.SetPointLabelsVisibility(0)
-      clone = self._node('cloneLandmarkNode')
-      if clone:
-        cdisp = self._display(clone)
-        if cdisp:
-          cdisp.SetPointLabelsVisibility(0)
-    else:
-      disp.SetPointLabelsVisibility(1)
-      disp.SetTextScale(3)
-      clone = self._node('cloneLandmarkNode')
-      if clone:
-        cdisp = self._display(clone)
-        if cdisp:
-          cdisp.SetPointLabelsVisibility(1)
-          cdisp.SetTextScale(3)
 
-  def toggleMeanColor(self):
-    node = self._node('meanLandmarkNode')
-    if not node:
-      return
-    disp = self._display(node)
-    if not disp:
-      return
-    color = self.ui.meanShapeColor.color
-    disp.SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
-    clone = self._node('cloneLandmarkNode')
-    if clone:
-      cdisp = self._display(clone)
-      if cdisp:
-        cdisp.SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
+    try:
+      self.ui.rPortSpin.setMinimum(1024)
+      self.ui.rPortSpin.setMaximum(65535)
+      if int(self.ui.rPortSpin.value) == 0:
+        self.ui.rPortSpin.setValue(6311)
+    except Exception:
+      pass
 
-  def scaleMeanGlyph(self):
-    node = self._node('meanLandmarkNode')
-    if not node:
-      return
-    disp = self._display(node)
-    if not disp:
-      return
-    disp.SetGlyphScale(self.ui.scaleMeanShapeSlider.value)
-    clone = self._node('cloneLandmarkNode')
-    if clone:
-      cdisp = self._display(clone)
-      if cdisp:
-        cdisp.SetGlyphScale(self.ui.scaleMeanShapeSlider.value)
+    self.ui.rDetectButton.clicked.connect(self._r_onDetectR)
+    self.ui.rLaunchButton.clicked.connect(self._r_onLaunchClicked)
+    self.ui.rShutdownButton.clicked.connect(self._r_onShutdownClicked)
+    self.ui.rConnectButton.clicked.connect(self._r_onConnectClicked)
+    self.ui.rDisconnectButton.clicked.connect(self._r_onDisconnectClicked)
+    self.ui.rRefreshButton.clicked.connect(self._r_refreshRStatus)
 
-  def onModelSelected(self):
-    self.ui.selectorButton.enabled = bool( self.ui.grayscaleSelector.currentPath and self.ui.FudSelect.currentPath)
+    # Initial status
+    self._r_onDetectR()
+    self._refreshButtons()
+    self._refreshStatusLabels()
 
-  def onToggleVisualization(self):
-    if self.ui.landmarkVisualizationType.isChecked():
-      self.ui.selectorButton.enabled = True
-    else:
-      self.ui.grayscaleSelector.enabled = True
-      self.ui.FudSelect.enabled = True
-      self.ui.selectorButton.enabled = bool( self.ui.grayscaleSelector.currentPath != "") and bool(self.ui.FudSelect.currentPath != "")
-
-  def onPlotDistribution(self):
-    if self.LM is None:
-      return
-    self.ui.scaleSlider.enabled = True
-    if self.ui.NoneType.isChecked():
-      self.unplotDistributions()
-    elif self.ui.CloudType.isChecked():
-      self.plotDistributionCloud(2*self.ui.scaleSlider.value)
-    else:
-      self.plotDistributionGlyph(2*self.ui.scaleSlider.value)
-
-  def unplotDistributions(self):
-    modelNode=slicer.mrmlScene.GetFirstNodeByName('Landmark Point Cloud')
-    if modelNode:
-      slicer.mrmlScene.RemoveNode(modelNode)
-    modelNode=slicer.mrmlScene.GetFirstNodeByName('Landmark Variance Ellipse')
-    if modelNode:
-      slicer.mrmlScene.RemoveNode(modelNode)
-    modelNode=slicer.mrmlScene.GetFirstNodeByName('Landmark Variance Sphere')
-    if modelNode:
-      slicer.mrmlScene.RemoveNode(modelNode)
-
-  def plotDistributionCloud(self, sliderScale):
-    self.unplotDistributions()
-    i,j,k=self.LM.lmOrig.shape
-    pt=[0,0,0]
-    #set up vtk point array for each landmark point
-    points = vtk.vtkPoints()
-    points.SetNumberOfPoints(i*k)
-    indexes = vtk.vtkDoubleArray()
-    indexes.SetName('LM Index')
-    pointCounter = 0
-
-    for subject in range(0,k):
-      for landmark in range(0,i):
-        pt=self.LM.lmOrig[landmark,:,subject]
-        points.SetPoint(pointCounter,pt)
-        indexes.InsertNextValue(landmark+1)
-        pointCounter+=1
-
-    #add points to polydata
-    polydata=vtk.vtkPolyData()
-    polydata.SetPoints(points)
-    polydata.GetPointData().SetScalars(indexes)
-
-    #set up glyph for visualizing point cloud
-    sphereSource = vtk.vtkSphereSource()
-    if sliderScale != 1: # if scaling for visualization
-      sphereSource.SetRadius(sliderScale*self.sampleSizeScaleFactor/500)
-    else:
-      sphereSource.SetRadius(sliderScale*self.sampleSizeScaleFactor/300)
-    glyph = vtk.vtkGlyph3D()
-    glyph.SetSourceConnection(sphereSource.GetOutputPort())
-    glyph.SetInputData(polydata)
-    glyph.ScalingOff()
-    glyph.Update()
-
-    #display
-    modelNode=slicer.mrmlScene.GetFirstNodeByName('Landmark Point Cloud')
-    if modelNode is None:
-      modelNode = slicer.vtkMRMLModelNode()
-      modelNode.SetName('Landmark Point Cloud')
-      slicer.mrmlScene.AddNode(modelNode)
-      GPANodeCollection.AddItem(modelNode)
-      modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
-      GPANodeCollection.AddItem(modelDisplayNode)
-      modelNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
-      viewNode1 = slicer.mrmlScene.GetFirstNodeByName("View1") #name = "View"+ singletonTag
-      modelDisplayNode.SetViewNodeIDs([viewNode1.GetID()])
-
-    modelDisplayNode = modelNode.GetDisplayNode()
-    modelDisplayNode.SetScalarVisibility(True)
-    modelDisplayNode.SetActiveScalarName('LM Index')
-    modelDisplayNode.SetAndObserveColorNodeID('vtkMRMLColorTableNodeLabels.txt')
-
-    modelNode.SetAndObservePolyData(glyph.GetOutput())
-
-  def plotDistributionGlyph(self, sliderScale):
-    if self.LM is None:
-      return
-    self.unplotDistributions()
-    varianceMat = self.LM.calcLMVariation(self.sampleSizeScaleFactor, self.BoasOption)
-    i,j,k=self.LM.lmOrig.shape
-    pt=[0,0,0]
-    #set up vtk point array for each landmark point
-    points = vtk.vtkPoints()
-    points.SetNumberOfPoints(i)
-    scales = vtk.vtkDoubleArray()
-    scales.SetName("Scales")
-    index = vtk.vtkDoubleArray()
-    index.SetName("Index")
-
-    #set up tensor array to scale ellipses
-    tensors = vtk.vtkDoubleArray()
-    tensors.SetNumberOfTuples(i)
-    tensors.SetNumberOfComponents(9)
-    tensors.SetName("Tensors")
-
-    # get fiducial node for mean landmarks, make just labels visible
-    self.meanLandmarkNode.SetDisplayVisibility(1)
-    self.ui.scaleMeanShapeSlider.value=0
-    for landmark in range(i):
-      pt=self.rawMeanLandmarks[landmark,:]
-      points.SetPoint(landmark,pt)
-      scales.InsertNextValue(sliderScale*(varianceMat[landmark,0]+varianceMat[landmark,1]+varianceMat[landmark,2])/3)
-      tensors.InsertTuple9(landmark,sliderScale*varianceMat[landmark,0],0,0,0,sliderScale*varianceMat[landmark,1],0,0,0,sliderScale*varianceMat[landmark,2])
-      index.InsertNextValue(landmark+1)
-
-    polydata=vtk.vtkPolyData()
-    polydata.SetPoints(points)
-    polydata.GetPointData().AddArray(index)
-
-    if self.ui.EllipseType.isChecked():
-      polydata.GetPointData().SetScalars(index)
-      polydata.GetPointData().SetTensors(tensors)
-      glyph = vtk.vtkTensorGlyph()
-      glyph.ExtractEigenvaluesOff()
-      modelNode=slicer.mrmlScene.GetFirstNodeByName('Landmark Variance Ellipse')
-      if modelNode is None:
-        modelNode = slicer.vtkMRMLModelNode()
-        modelNode.SetName('Landmark Variance Ellipse')
-        slicer.mrmlScene.AddNode(modelNode)
-        GPANodeCollection.AddItem(modelNode)
-        modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
-        modelNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
-        viewNode1 = slicer.mrmlScene.GetFirstNodeByName("View1") #name = "View"+ singletonTag
-        modelDisplayNode.SetViewNodeIDs([viewNode1.GetID()])
-        GPANodeCollection.AddItem(modelDisplayNode)
-
-    else:
-      polydata.GetPointData().SetScalars(scales)
-      polydata.GetPointData().AddArray(index)
-      glyph = vtk.vtkGlyph3D()
-      modelNode=slicer.mrmlScene.GetFirstNodeByName('Landmark Variance Sphere')
-      if modelNode is None:
-        modelNode = slicer.vtkMRMLModelNode()
-        modelNode.SetName('Landmark Variance Sphere')
-        slicer.mrmlScene.AddNode(modelNode)
-        GPANodeCollection.AddItem(modelNode)
-        modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
-        modelNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
-        viewNode1 = slicer.mrmlScene.GetFirstNodeByName("View1") #name = "View"+ singletonTag
-        modelDisplayNode.SetViewNodeIDs([viewNode1.GetID()])
-        GPANodeCollection.AddItem(modelDisplayNode)
-
-    sphereSource = vtk.vtkSphereSource()
-    sphereSource.SetThetaResolution(64)
-    sphereSource.SetPhiResolution(64)
-
-    glyph.SetSourceConnection(sphereSource.GetOutputPort())
-    glyph.SetInputData(polydata)
-    glyph.Update()
-
-    modelNode.SetAndObservePolyData(glyph.GetOutput())
-    modelDisplayNode = modelNode.GetDisplayNode()
-    modelDisplayNode.SetScalarVisibility(True)
-    modelDisplayNode.SetActiveScalarName('Index') #color by landmark number
-    modelDisplayNode.SetAndObserveColorNodeID('vtkMRMLColorTableNodeLabels.txt')
-
-  # Interactive Visualization callbacks and helpers
-
-  def onSelect(self):
-    self.cloneLandmarkNode = self.copyLandmarkNode
-    self.cloneLandmarkNode.CreateDefaultDisplayNodes()
-    if self.ui.modelVisualizationType.isChecked():
-      # get landmark node selected
-      logic = GPALogic()
-      self.sourceLMNode= slicer.util.loadMarkups(self.ui.FudSelect.currentPath)
-      # check if landmark number is valid
-      if self.sourceLMNode.GetNumberOfControlPoints() != self.LM.lmOrig.shape[0]:
-        # error message
-        logging.debug("Number of landmarks selected for 3D visualization does not match the analysis\n")
-        slicer.util.messageBox(f"Error: Expected {self.LM.lmOrig.shape[0]} landmarks but loaded file has {self.sourceLMNode.GetNumberOfControlPoints()}")
-        slicer.mrmlScene.RemoveNode(self.sourceLMNode)
-        return
-      self.initializeOnSelect()
-      GPANodeCollection.AddItem(self.sourceLMNode)
-      self.sourceLMnumpy=logic.convertFudicialToNP(self.sourceLMNode)
-
-      # remove any excluded landmarks
-      j=len(self.LMExclusionList)
-      if (j != 0):
-        indexToRemove=[]
-        for i in range(j):
-          indexToRemove.append(self.LMExclusionList[i]-1)
-        self.sourceLMnumpy=np.delete(self.sourceLMnumpy,indexToRemove,axis=0)
-
-      # set up transform
-      targetLMVTK=logic.convertNumpyToVTK(self.rawMeanLandmarks)
-      sourceLMVTK=logic.convertNumpyToVTK(self.sourceLMnumpy)
-      VTKTPSMean = vtk.vtkThinPlateSplineTransform()
-      VTKTPSMean.SetSourceLandmarks( sourceLMVTK )
-      VTKTPSMean.SetTargetLandmarks( targetLMVTK )
-      VTKTPSMean.SetBasisToR()  # for 3D transform
-
-      # transform from selected to mean
-      self.transformMeanNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', 'Mean TPS Transform')
-      GPANodeCollection.AddItem(self.transformMeanNode)
-      self.transformMeanNode.SetAndObserveTransformToParent( VTKTPSMean )
-
-      # load model node
-      self.modelNode=slicer.util.loadModel(self.ui.grayscaleSelector.currentPath)
-      GPANodeCollection.AddItem(self.modelNode)
-      self.modelDisplayNode = self.modelNode.GetDisplayNode()
-      self.modelNode.SetAndObserveTransformNodeID(self.transformMeanNode.GetID())
-      slicer.vtkSlicerTransformLogic().hardenTransform(self.modelNode)
-
-      # create a PC warped model as clone of the selected model node
-      shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
-      itemIDToClone = shNode.GetItemByDataNode(self.modelNode)
-      clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(shNode, itemIDToClone)
-      self.cloneModelNode = shNode.GetItemDataNode(clonedItemID)
-      self.cloneModelNode.SetName('PC Warped Model')
-      self.cloneModelDisplayNode =  self.cloneModelNode.GetDisplayNode()
-      self.cloneModelDisplayNode.SetColor([0,0,1])
-      GPANodeCollection.AddItem(self.cloneModelNode)
-      visibility = self.meanLandmarkNode.GetDisplayVisibility()
-      self.cloneLandmarkNode.SetDisplayVisibility(visibility)
-      # clean up
-      GPANodeCollection.RemoveItem(self.sourceLMNode)
-      slicer.mrmlScene.RemoveNode(self.sourceLMNode)
-
-    else:
-      self.initializeOnSelect()
-      self.cloneLandmarkNode.SetDisplayVisibility(1)
-      self.meanLandmarkNode.SetDisplayVisibility(1)
-
-    #set mean landmark color and scale from GUI
-    self.scaleMeanGlyph()
-    self.toggleMeanColor()
-    visibility = self.meanLandmarkNode.GetDisplayNode().GetPointLabelsVisibility()
-    self.cloneLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(visibility)
-    self.cloneLandmarkNode.GetDisplayNode().SetTextScale(3)
-
-    if self.ui.scaleMeanShapeSlider.value == 0:  # If the scale is set to 0, reset to default scale
-      self.ui.scaleMeanShapeSlider.value = 3
-
-    self.cloneLandmarkNode.GetDisplayNode().SetGlyphScale(self.ui.scaleMeanShapeSlider.value)
-
-    #apply custom layout
-    self.assignLayoutDescription()
-
-    # Set up transform for PCA warping
-    self.transformNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', 'PC TPS Transform')
-    GPANodeCollection.AddItem(self.transformNode)
-
-    # Enable PCA warping and recording
-    self.pcController.populateComboBox(self.PCList)
-    self.applyEnabled = True
-    self.ui.startRecordButton.enabled = True
-
-  def onStartRecording(self):
-    #set up sequences for template model and PC TPS transform
-    self.modelSequence=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSequenceNode","GPAModelSequence")
-    self.modelSequence.SetHideFromEditors(0)
-    GPANodeCollection.AddItem(self.modelSequence)
-    self.transformSequence = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSequenceNode","GPATFSequence")
-    self.transformSequence.SetHideFromEditors(0)
-    GPANodeCollection.AddItem(self.transformSequence)
-
-    #Set up a new sequence browser and add sequences
-    browserNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSequenceBrowserNode", "GPASequenceBrowser")
-    browserLogic=slicer.modules.sequences.logic()
-    if getattr(self, 'cloneModelNode', None):
-      browserLogic.AddSynchronizedNode(self.modelSequence,self.cloneModelNode,browserNode)
-    browserLogic.AddSynchronizedNode(self.modelSequence,self.cloneLandmarkNode,browserNode)
-    browserLogic.AddSynchronizedNode(self.transformSequence,self.gridTransformNode,browserNode)
-    browserNode.SetRecording(self.transformSequence,'true')
-    browserNode.SetRecording(self.modelSequence,'true')
-
-    #Set up widget to record
-    browserWidget=slicer.modules.sequences.widgetRepresentation()
-    browserWidget.setActiveBrowserNode(browserNode)
-    recordWidget = browserWidget.findChild('qMRMLSequenceBrowserPlayWidget')
-    recordWidget.setRecordingEnabled(1)
-    GPANodeCollection.AddItem(self.modelSequence)
-    GPANodeCollection.AddItem(self.transformSequence)
-    GPANodeCollection.AddItem(browserNode)
-
-    #enable stop recording
-    self.ui.stopRecordButton.enabled = True
-    self.ui.startRecordButton.enabled = False
-
-  def onStopRecording(self):
-    browserWidget=slicer.modules.sequences.widgetRepresentation()
-    recordWidget = browserWidget.findChild('qMRMLSequenceBrowserPlayWidget')
-    recordWidget.setRecordingEnabled(0)
-    slicer.util.selectModule(slicer.modules.sequences)
-    self.ui.stopRecordButton.enabled = False
-    self.ui.startRecordButton.enabled = True
-
-  def initializeOnSelect(self):
-    #remove nodes from previous runs
-    temporaryNode=slicer.mrmlScene.GetFirstNodeByName('Mean TPS Transform')
-    if(temporaryNode):
-      GPANodeCollection.RemoveItem(temporaryNode)
-      slicer.mrmlScene.RemoveNode(temporaryNode)
-
-    temporaryNode=slicer.mrmlScene.GetFirstNodeByName('GPA Warped Volume')
-    if(temporaryNode):
-      GPANodeCollection.RemoveItem(temporaryNode)
-      slicer.mrmlScene.RemoveNode(temporaryNode)
-
-    temporaryNode=slicer.mrmlScene.GetFirstNodeByName('PC TPS Transform')
-    if(temporaryNode):
-      GPANodeCollection.RemoveItem(temporaryNode)
-      slicer.mrmlScene.RemoveNode(temporaryNode)
-#
-# GPALogic
-#
-
-class GPALogic(ScriptedLoadableModuleLogic):
-  """This class should implement all the actual
-  computation done by your module.  The interface
-  should be such that other python code can import
-  this class and make use of the functionality without
-  requiring an instance of the Widget.
-  Uses ScriptedLoadableModuleLogic base class, available at:
-  https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
-  """
-
-  def takeScreenshot(self,name,description,type=-1):
-    # show the message even if not taking a screen shot
-    slicer.util.delayDisplay('Take screenshot: '+description+'.\nResult is available in the Annotations module.', 3000)
-
-    lm = slicer.app.layoutManager()
-    # switch on the type to get the requested window
-    widget = 0
-    if type == slicer.qMRMLScreenShotDialog.FullLayout:
-      # full layout
-      widget = lm.viewport()
-    elif type == slicer.qMRMLScreenShotDialog.ThreeD:
-      # just the 3D window
-      widget = lm.threeDWidget(0).threeDView()
-    elif type == slicer.qMRMLScreenShotDialog.Red:
-      # red slice window
-      widget = lm.sliceWidget("Red")
-    elif type == slicer.qMRMLScreenShotDialog.Yellow:
-      # yellow slice window
-      widget = lm.sliceWidget("Yellow")
-    elif type == slicer.qMRMLScreenShotDialog.Green:
-      # green slice window
-      widget = lm.sliceWidget("Green")
-    else:
-      # default to using the full window
-      widget = slicer.util.mainWindow()
-      # reset the type so that the node is set correctly
-      type = slicer.qMRMLScreenShotDialog.FullLayout
-
-    # grab and convert to vtk image data
-    qimage = ctk.ctkWidgetsUtils.grabWidget(widget)
-    imageData = vtk.vtkImageData()
-    slicer.qMRMLUtils().qImageToVtkImageData(qimage,imageData)
-
-    annotationLogic = slicer.modules.annotations.logic()
-    annotationLogic.CreateSnapShot(name, description, type, 1, imageData)
-
-  def loadLandmarks(self, filePathList, lmToRemove, extension):
-    # initial data array
-    lmToRemove = [x - 1 for x in lmToRemove]
-    if 'json' in extension:
-      import pandas
-      tempTable = pandas.DataFrame.from_dict(pandas.read_json(filePathList[0])['markups'][0]['controlPoints'])
-      landmarkNumber = len(tempTable)
-      landmarkTypeArray=[]
-      errorString = ""
-      subjectErrorArray = []
-      landmarkErrorArray = []
-      for i in range(landmarkNumber):
-        if tempTable['description'][i] =='Semi':
-          landmarkTypeArray.append(str(i+1))
-      landmarks=np.zeros(shape=(landmarkNumber-len(lmToRemove),3,len(filePathList)))
-      for i in range(len(filePathList)):
+  def _r_onDetectR(self):
+    """Try to auto-locate Rscript and update Rscript label."""
+    path = self._r_find_rscript()
+    if path:
+      try:
+        self.ui.rscriptPath.setCurrentPath(path)
+      except Exception:
         try:
-          tmp1=pandas.DataFrame.from_dict(pandas.read_json(filePathList[i])['markups'][0]['controlPoints'])
-        except:
-          slicer.util.messageBox(f"Error: Load file {filePathList[i]} failed:.")
-          logging.debug(f"Error: Load file {filePathList[i]} failed:.")
-          self.ui.GPALogTextbox.insertPlainText(f"Error: Load file {filePathList[i]} failed:\n")
-        if len(tmp1) == landmarkNumber:
-          lmArray = tmp1['position'].to_numpy()
-          landmarkIndex = 0
-          for j in range(landmarkNumber):
-            if j not in lmToRemove:
-              if tmp1['positionStatus'][j] == 'defined':
-                landmarks[landmarkIndex,:,i]=lmArray[j]
-                landmarkIndex += 1
-              else:
-                subjectFileName = os.path.basename(filePathList[i])
-                message = f"{subjectFileName}: Landmark {str(j+1)} \n"
-                errorString += message
-                if subjectFileName not in subjectErrorArray:
-                  subjectErrorArray.append(subjectFileName)
-                if j not in landmarkErrorArray:
-                  landmarkErrorArray.append(j)
-        else:
-          warning = f"Error: Load file {filePathList[i]} failed. There are {len(tmp1)} landmarks instead of the expected {landmarkNumber}."
-          slicer.util.messageBox(warning)
-          return
-      if (errorString != "") and not all(x in lmToRemove for x in landmarkErrorArray):
-        landmarkErrorArrayString = ', '.join(map(str, [x+1 for x in landmarkErrorArray]))
-        subjectErrorArrayString = ', '.join(subjectErrorArray)
-        warning = "Error: The following undefined landmarks were found: \n" + errorString +\
-                  "To resolve,  exclude the affected landmarks from all subjects using the 'Exclude landmarks' field: " +\
-                  landmarkErrorArrayString +"\n" +\
-                  "Alternatively,  remove the affected subjects from the landmark file selector: " + \
-                  subjectErrorArrayString
-        slicer.util.messageBox(warning)
+          self.ui.rscriptPath.currentPath = path
+        except Exception:
+          pass
+      _set_label(self.ui.rExeStatusLabel, f"Found: {path}")
+    else:
+      _set_label(self.ui.rExeStatusLabel, "Not found on PATH/R_HOME; set path manually.")
+    self._refreshStatusLabels()
+    self._refreshButtons()
+
+  def _r_onLaunchClicked(self):
+    """Launch Rserve robustly across platforms.
+    - Windows: wait=TRUE so the port is ready before return.
+    - macOS/Linux: let Rserve daemonize (default), keep foreground clean.
+    """
+    port = int(self.ui.rPortSpin.value)
+    allow_remote = bool(getattr(self.ui.rAllowRemote, "isChecked", lambda: False)())
+    rscript = self._r_getRscriptFromUI()
+    if not rscript or not os.path.exists(rscript):
+        _set_label(self.ui.rRserveStatusLabel, "Cannot launch: Rscript path invalid.")
         return
+
+    # Common args (UTF-8 helps on Windows and is harmless elsewhere)
+    common_args = f"--RS-port {port} --no-save --RS-encoding utf8"
+    if allow_remote:
+        common_args += " --RS-enable-remote"
+
+    if platform.system() == "Windows":
+        # Foreground (no daemon) so port is reliably open before return
+        code = (
+            "Sys.setenv(RGL_USE_NULL='TRUE'); "
+            "options(rgl.useNULL=TRUE); "
+            f"Rserve::Rserve(debug=TRUE, wait=TRUE, args='{common_args}')"
+        )
     else:
-      landmarks, landmarkTypeArray = self.initDataArray(filePathList)
-      landmarkNumber = landmarks.shape[0]
-      for i in range(len(filePathList)):
-        tmp1=self.importLandMarks(filePathList[i])
-        if len(tmp1) == landmarkNumber:
-          landmarks[:,:,i] = tmp1
+        # Unix: let Rserve daemonize as usual (wait=FALSE / default)
+        # (Do not pass wait=TRUE to keep the old behavior.)
+        code = (
+            "Sys.setenv(RGL_USE_NULL='TRUE'); "
+            "options(rgl.useNULL=TRUE); "
+            f"Rserve::Rserve(debug=FALSE, args='{common_args}')"
+        )
+
+    cmd = [rscript, "-e", code]
+
+    try:
+        flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if platform.system() == "Windows" else 0
+        self._rserve_proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=flags
+        )
+        self._rserve_started_by_us = True
+
+        # Poll for the socket to come up (Windows needs this; harmless elsewhere)
+        timeout = 20.0 if platform.system() == "Windows" else 10.0
+        t0 = time.time()
+        while time.time() - t0 < timeout:
+            if _is_port_open("127.0.0.1", port) or _is_port_open("localhost", port):
+                _set_label(self.ui.rRserveStatusLabel, f"Rserve is running on port {port}.")
+                break
+            time.sleep(0.25)
         else:
-          warning = f"Error: Load file {filePathList[i]} failed. There are {len(tmp1)} landmarks instead of the expected {landmarkNumber}."
-          slicer.util.messageBox(warning)
-          return
-      landmarks = np.delete(landmarks, lmToRemove, axis=0)
-    return landmarks, landmarkTypeArray
+            _set_label(self.ui.rRserveStatusLabel, "Launch attempted, but port not open yet.")
+    except Exception as e:
+        _set_label(self.ui.rRserveStatusLabel, f"Launch failed: {e}")
+    finally:
+        self._refreshButtons()
 
-  def importLandMarks(self, filePath):
-    """Imports the landmarks from file. Does not import sample if a  landmark is -1000
-    Adjusts the resolution is log(nhrd) file is found returns kXd array of landmark data. k=# of landmarks d=dimension
-    """
-    # import data file
-    datafile=open(filePath)
-    data=[]
-    for row in datafile:
-      if not fnmatch.fnmatch(row[0],"#*"):
-        data.append(row.strip().split(','))
-    # Make Landmark array
-    dataArray=np.zeros(shape=(len(data),3))
-    j=0
-    sorter=[]
-    for i in data:
-      tmp=np.array(i)[1:4]
-      dataArray[j,0:3]=tmp
 
-      x=np.array(i).shape
-      j=j+1
-    slicer.app.processEvents()
-    return dataArray
+  def _r_onShutdownClicked(self):
+    port = int(self.ui.rPortSpin.value)
+    ok = False
 
-  def initDataArray(self, files):
-    """
-    returns an np array for the storage of the landmarks and an array of landmark types (Fixed, Semi)
-    """
-    dim=3
-    subjectNumber = len(files)
-    # import data file
-    datafile=open(files[0])
-    landmarkType = []
-    rowNumber=0
-    for row in datafile:
-      if not fnmatch.fnmatch(row[0],"#*"):
-        rowNumber+=1
-        tmp=(row.strip().split(','))
-        if tmp[12] == 'Semi':
-          landmarkType.append(str(rowNumber))
-    i = rowNumber
-    landmarks=np.zeros(shape=(rowNumber,dim,subjectNumber))
-    return landmarks, landmarkType
+    # Try via pyRserve shutdown
+    try:
+      pyR = self._r_ensure_pyRserve()
+      if pyR:
+        conn = self._r_conn or pyR.connect(host="127.0.0.1", port=port, timeout=2.0)
+        try:
+          if hasattr(conn, "shutdown"):
+            conn.shutdown(); ok = True
+          conn.close()
+        except Exception: pass
+    except Exception: pass
 
-  def dist(self, a):
-    """
-    Computes the euclidean distance matrix for nXK points in a 3D space. So the input matrix is nX3xk
-    Returns a nXnXk matrix
-    """
-    id,jd,kd=a.shape
-    fnx = lambda q : q - np.reshape(q, (id, 1,kd))
-    dx=fnx(a[:,0,:])
-    dy=fnx(a[:,1,:])
-    dz=fnx(a[:,2,:])
-    return (dx**2.0+dy**2.0+dz**2.0)**0.5
+    # Kill child we spawned if needed
+    if not ok and self._rserve_started_by_us and self._rserve_proc is not None:
+      try:
+        self._rserve_proc.terminate()
+        self._rserve_proc.wait(timeout=4.0)
+        ok = True
+      except Exception:
+        try: self._rserve_proc.kill()
+        except Exception: pass
 
-  def dist2(self, a):
-    """
-    Computes the euclidean distance matrix for n points in a 3D space
-    Returns a nXn matrix
-     """
-    id,jd=a.shape
-    fnx = lambda q : q - np.reshape(q, (id, 1))
-    dx=fnx(a[:,0])
-    dy=fnx(a[:,1])
-    dz=fnx(a[:,2])
-    return (dx**2.0+dy**2.0+dz**2.0)**0.5
+    self._rserve_proc = None; self._rserve_started_by_us = False
 
-  #plotting functions
+    _set_label(self.ui.rRserveStatusLabel, "Rserve shut down." if ok else "Shutdown requested.")
+    self._safeCloseRConn()
+    self._refreshButtons(); self._refreshStatusLabels()
 
-  def makeScatterPlotWithFactors(self, data, files, factors,title,xAxis,yAxis,pcNumber):
-    #create two tables for the first two factors and then check for a third
-    #check if there is a table node has been created
-    numPoints = len(data)
-    uniqueFactors, factorCounts = np.unique(factors, return_counts=True)
-    factorNumber = len(uniqueFactors)
+  def _r_onConnectClicked(self):
+    """Open a pyRserve connection (no extra geomorph UI checks)."""
+    _set_label(self.ui.rConnStatusLabel, "Connecting…")
+    pyR = self._r_ensure_pyRserve()
+    if not pyR:
+      _set_label(self.ui.rConnStatusLabel, f"pyRserve not available. {self._r_last_error}")
+      self._refreshButtons()
+      self._refreshStatusLabels()
+      return
 
-    #Set up chart
-    plotChartNode=slicer.mrmlScene.GetFirstNodeByName("Chart_PCA_cov" + xAxis + "v" +yAxis)
-    if plotChartNode is None:
-      plotChartNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotChartNode", "Chart_PCA_cov" + xAxis + "v" +yAxis)
-      GPANodeCollection.AddItem(plotChartNode)
+    port = int(self.ui.rPortSpin.value)
+    last_exc = None
+    for host in ("127.0.0.1", "localhost", "::1"):
+      try:
+        self._safeCloseRConn()
+        self._r_conn = pyR.connect(host, port) if hasattr(pyR, "connect") else pyR.rconnect(host, port)
+        try:
+          _ = self._r_conn.eval("1+1")
+        except Exception:
+          pass
+        _set_label(self.ui.rConnStatusLabel, f"Connected to {host}:{port}")
+        self._refreshButtons()
+        self._refreshStatusLabels()
+        return
+      except Exception as e:
+        last_exc = e
+
+    self._r_conn = None
+    _set_label(self.ui.rConnStatusLabel, f"Connect failed on port {port}: {last_exc}")
+    self._log(f"[Rserve] Connect failed on {port}: {last_exc}")
+    self._refreshButtons()
+    self._refreshStatusLabels()
+
+
+  def _r_onDisconnectClicked(self):
+    self._safeCloseRConn()
+    _set_label(self.ui.rConnStatusLabel, "Disconnected.")
+    self._refreshButtons(); self._refreshStatusLabels()
+
+  def _r_refreshRStatus(self):
+    self._refreshStatusLabels(); self._refreshButtons()
+
+  def _refreshStatusLabels(self):
+    # Rscript
+    rscript = self._r_getRscriptFromUI()
+    if rscript and os.path.exists(rscript):
+      _set_label(self.ui.rExeStatusLabel, f"Found: {rscript}")
     else:
-      plotChartNode.RemoveAllPlotSeriesNodeIDs()
+      _set_label(self.ui.rExeStatusLabel, "Not found; set path and 'Auto-detect' if needed.")
 
-    # Plot all series
-    for factorIndex in range(len(uniqueFactors)):
-      factor = uniqueFactors[factorIndex]
-      tableNode=slicer.mrmlScene.GetFirstNodeByName('PCA Scatter Plot Table Factor ' + factor)
-      if tableNode is None:
-        tableNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", 'PCA Scatter Plot Table Factor ' + factor)
-        GPANodeCollection.AddItem(tableNode)
-      else:
-        tableNode.RemoveAllColumns()    #clear previous data from columns
+    # Rserve
+    port = int(self.ui.rPortSpin.value)
+    running = _is_port_open("127.0.0.1", port)
+    _set_label(self.ui.rRserveStatusLabel, f"Listening on {port}" if running else "Not listening")
 
-      # Set up columns for X,Y, and labels
-      labels=tableNode.AddColumn()
-      labels.SetName('Subject ID')
-      tableNode.SetColumnType('Subject ID',vtk.VTK_STRING)
-
-      for i in range(pcNumber):
-        pc=tableNode.AddColumn()
-        colName="PC" + str(i+1)
-        pc.SetName(colName)
-        tableNode.SetColumnType(colName, vtk.VTK_FLOAT)
-
-      factorCounter=0
-      table = tableNode.GetTable()
-      table.SetNumberOfRows(factorCounts[factorIndex])
-      for i in range(numPoints):
-        if (factors[i] == factor):
-          table.SetValue(factorCounter, 0,files[i])
-          for j in range(pcNumber):
-            table.SetValue(factorCounter, j+1, data[i,j])
-          factorCounter+=1
-
-      plotSeriesNode=slicer.mrmlScene.GetFirstNodeByName("Series_PCA_" + factor + "_" + xAxis + "v" +yAxis)
-      if plotSeriesNode is None:
-        plotSeriesNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", factor)
-        GPANodeCollection.AddItem(plotSeriesNode)
-      # Create data series from table
-      plotSeriesNode.SetAndObserveTableNodeID(tableNode.GetID())
-      plotSeriesNode.SetXColumnName(xAxis)
-      plotSeriesNode.SetYColumnName(yAxis)
-      plotSeriesNode.SetLabelColumnName('Subject ID')
-      plotSeriesNode.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeScatter)
-      plotSeriesNode.SetLineStyle(slicer.vtkMRMLPlotSeriesNode.LineStyleNone)
-      plotSeriesNode.SetMarkerStyle(slicer.vtkMRMLPlotSeriesNode.MarkerStyleSquare)
-      # Set color determined by series index
-      seriesColor=[0,0,0,0]
-      if(factorIndex<8):
-         randomColorTable = slicer.util.getFirstNodeByName('MediumChartColors')
-         randomColorTable.GetColor(factorIndex,seriesColor)
-      else:
-        randomColorTable = slicer.util.getFirstNodeByName('Random')
-        randomColorTable.GetColor(factorIndex-7,seriesColor)
-
-      plotSeriesNode.SetColor(seriesColor[0:3])
-      # Add data series to chart
-      plotChartNode.AddAndObservePlotSeriesNodeID(plotSeriesNode.GetID())
-
-    # Set up view options for chart
-    plotChartNode.SetTitle('PCA Scatter Plot with factors')
-    plotChartNode.SetXAxisTitle(xAxis)
-    plotChartNode.SetYAxisTitle(yAxis)
-    layoutManager = slicer.app.layoutManager()
-
-    plotWidget = layoutManager.plotWidget(0)
-    plotViewNode = plotWidget.mrmlPlotViewNode()
-    plotViewNode.SetPlotChartNodeID(plotChartNode.GetID())
-
-  def makeScatterPlot(self, data, files, title,xAxis,yAxis,pcNumber):
-    numPoints = len(data)
-    #check if there is a table node has been created
-    tableNode=slicer.mrmlScene.GetFirstNodeByName('PCA Scatter Plot Table')
-    if tableNode is None:
-      tableNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", 'PCA Scatter Plot Table')
-      GPANodeCollection.AddItem(tableNode)
-
-      #set up columns for X,Y, and labels
-      labels=tableNode.AddColumn()
-      labels.SetName('Subject ID')
-      tableNode.SetColumnType('Subject ID',vtk.VTK_STRING)
-
-      for i in range(pcNumber):
-        pc=tableNode.AddColumn()
-        colName="PC" + str(i+1)
-        pc.SetName(colName)
-        tableNode.SetColumnType(colName, vtk.VTK_FLOAT)
-
-      table = tableNode.GetTable()
-      table.SetNumberOfRows(numPoints)
-      for i in range(numPoints):
-        table.SetValue(i, 0,files[i])
-        for j in range(pcNumber):
-            table.SetValue(i, j+1, data[i,j])
-
-    plotSeriesNode1=slicer.mrmlScene.GetFirstNodeByName("Series_PCA" + xAxis + "v" +yAxis)
-    if plotSeriesNode1 is None:
-      plotSeriesNode1 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", "Series_PCA" + xAxis + "v" +yAxis)
-      GPANodeCollection.AddItem(plotSeriesNode1)
-
-    plotSeriesNode1.SetAndObserveTableNodeID(tableNode.GetID())
-    plotSeriesNode1.SetXColumnName(xAxis)
-    plotSeriesNode1.SetYColumnName(yAxis)
-    plotSeriesNode1.SetLabelColumnName('Subject ID')
-    plotSeriesNode1.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeScatter)
-    plotSeriesNode1.SetLineStyle(slicer.vtkMRMLPlotSeriesNode.LineStyleNone)
-    plotSeriesNode1.SetMarkerStyle(slicer.vtkMRMLPlotSeriesNode.MarkerStyleSquare)
-    plotSeriesNode1.SetUniqueColor()
-
-    plotChartNode=slicer.mrmlScene.GetFirstNodeByName("Chart_PCA" + xAxis + "v" +yAxis)
-    if plotChartNode is None:
-      plotChartNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotChartNode", "Chart_" + xAxis + "v" +yAxis)
-      GPANodeCollection.AddItem(plotChartNode)
-
-    plotChartNode.AddAndObservePlotSeriesNodeID(plotSeriesNode1.GetID())
-    plotChartNode.SetTitle('PCA Scatter Plot ')
-    plotChartNode.SetXAxisTitle(xAxis)
-    plotChartNode.SetYAxisTitle(yAxis)
-
-    layoutManager = slicer.app.layoutManager()
-
-    plotWidget = layoutManager.plotWidget(0)
-    plotViewNode = plotWidget.mrmlPlotViewNode()
-    plotViewNode.SetPlotChartNodeID(plotChartNode.GetID())
-
-  def lollipopGraph(self, LMObj,LM, pc, scaleFactor, componentNumber, TwoDOption):
-    print("lolli scale: ", scaleFactor)
-    # set options for 3 vector displays
-    if componentNumber == 1:
-      color = [1,0,0]
-      modelNodeName = 'Lollipop Vector Plot 1'
-    elif componentNumber == 2:
-      color = [0,1,0]
-      modelNodeName = 'Lollipop Vector Plot 2'
+    # Connection
+    if self._r_conn:
+      try:
+        _ = self._r_conn.eval("1+1")
+        _set_label(self.ui.rConnStatusLabel, "Connected")
+      except Exception:
+        _set_label(self.ui.rConnStatusLabel, "Connection lost")
+        self._safeCloseRConn()
     else:
-      color = [0,0,1]
-      modelNodeName = 'Lollipop Vector Plot 3'
+      _set_label(self.ui.rConnStatusLabel, "Not connected")
 
-    if pc != 0:
-      pc=pc-1 # get current component
-      endpoints=self.calcEndpoints(LMObj,LM,pc,scaleFactor)
-      i,j=LM.shape
+    # Fit gating
+    self.refreshFitButton()
 
-      # declare arrays for polydata
-      points = vtk.vtkPoints()
-      points.SetNumberOfPoints(i*2)
-      lines = vtk.vtkCellArray()
-      magnitude = vtk.vtkFloatArray()
-      magnitude.SetName('Magnitude');
-      magnitude.SetNumberOfComponents(1);
-      magnitude.SetNumberOfValues(i);
+  def _refreshButtons(self):
+    """Enable/disable Rserve buttons based on current state."""
+    port = int(self.ui.rPortSpin.value)
+    rscript_ok = bool(self._r_getRscriptFromUI() and os.path.exists(self._r_getRscriptFromUI()))
+    rserve_running = _is_port_open("127.0.0.1", port)
+    connected = bool(self._r_conn)
 
-      for x in range(i): #populate vtkPoints and vtkLines
-        points.SetPoint(x,LM[x,:])
-        points.SetPoint(x+i,endpoints[x,:])
-        line = vtk.vtkLine()
-        line.GetPointIds().SetId(0,x)
-        line.GetPointIds().SetId(1,x+i)
-        lines.InsertNextCell(line)
-        magnitude.InsertValue(x,abs(LM[x,0]-endpoints[x,0]) + abs(LM[x,1]-endpoints[x,1]) + abs(LM[x,2]-endpoints[x,2]))
+    _set_enabled(self.ui.rLaunchButton,   rscript_ok and not rserve_running)
+    _set_enabled(self.ui.rShutdownButton, rserve_running)
+    _set_enabled(self.ui.rConnectButton,  rserve_running and not connected)
+    _set_enabled(self.ui.rDisconnectButton, connected)
+    # NOTE: rCheckGeomorphButton is removed from the UI; nothing to toggle here.
 
-      polydata=vtk.vtkPolyData()
-      polydata.SetPoints(points)
-      polydata.SetLines(lines)
-      polydata.GetCellData().AddArray(magnitude)
+  def _r_getRscriptFromUI(self):
+    p = None
+    try: p = self.ui.rscriptPath.currentPath
+    except Exception:
+      try: p = str(self.ui.rscriptPath.text())
+      except Exception: p = None
+    if not p: return None
+    p = os.path.expanduser(str(p).strip())
+    return os.path.realpath(p)
 
-      tubeFilter = vtk.vtkTubeFilter()
-      tubeFilter.SetInputData(polydata)
-      if scaleFactor != 1: #if using scaling for morphospace
-        tubeFilter.SetRadius(scaleFactor/500)
-      else:
-        tubeFilter.SetRadius(scaleFactor/100)
-      tubeFilter.SetNumberOfSides(20)
-      tubeFilter.CappingOn()
-      tubeFilter.Update()
+  def _r_find_rscript(self):
+    p = shutil.which("Rscript") if 'shutil' in globals() else None
+    if p: return p
+    try:
+      import shutil as _sh
+      p = _sh.which("Rscript") or _sh.which("Rscript.exe")
+      if p: return p
+    except Exception:
+      pass
 
-      #check if there is a model node for lollipop plot
-      modelNode=slicer.mrmlScene.GetFirstNodeByName(modelNodeName)
-      if modelNode is None:
-        modelNode = slicer.vtkMRMLModelNode()
-        modelNode.SetName(modelNodeName)
-        slicer.mrmlScene.AddNode(modelNode)
-        GPANodeCollection.AddItem(modelNode)
-        modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
-        viewNode1 = slicer.mrmlScene.GetFirstNodeByName("View1") #name = "View"+ singletonTag
-        modelDisplayNode.SetViewNodeIDs([viewNode1.GetID()])
-        GPANodeCollection.AddItem(modelDisplayNode)
-        modelNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
+    r_home = os.environ.get("R_HOME", "")
+    if r_home:
+      for c in [os.path.join(r_home,"bin","Rscript"),
+                os.path.join(r_home,"bin","Rscript.exe"),
+                os.path.join(r_home,"bin","x64","Rscript.exe")]:
+        if os.path.exists(c): return c
 
-      modelDisplayNode = modelNode.GetDisplayNode()
-
-      modelDisplayNode.SetColor(color)
-      modelDisplayNode.SetVisibility2D(False)
-      modelNode.SetDisplayVisibility(1)
-      modelNode.SetAndObservePolyData(tubeFilter.GetOutput())
-      if TwoDOption:
-        modelDisplayNode.SetSliceDisplayModeToProjection()
-        modelDisplayNode.SetVisibility2D(True)
-        # Assign node to 2D views
-        layoutManager = slicer.app.layoutManager()
-        redNode = layoutManager.sliceWidget('Red').sliceView().mrmlSliceNode()
-        viewNode1 = slicer.mrmlScene.GetFirstNodeByName("View1")
-        modelDisplayNode.SetViewNodeIDs([viewNode1.GetID(),redNode.GetID()])
-      else:
-        viewNode1 = slicer.mrmlScene.GetFirstNodeByName("View1")
-        modelDisplayNode.SetViewNodeIDs([viewNode1.GetID()])
+    if platform.system() == "Windows":
+      roots = [os.environ.get("ProgramFiles",""), os.environ.get("ProgramFiles(x86)","")]
+      for root in roots:
+        if not root: continue
+        try:
+          for ver in os.listdir(os.path.join(root, "R")):
+            c1 = os.path.join(root, "R", ver, "bin", "Rscript.exe")
+            c2 = os.path.join(root, "R", ver, "bin", "x64", "Rscript.exe")
+            if os.path.exists(c2): return c2
+            if os.path.exists(c1): return c1
+        except Exception: pass
     else:
-      modelNode=slicer.mrmlScene.GetFirstNodeByName(modelNodeName)
-      if modelNode is not None:
-        modelNode.SetDisplayVisibility(0)
+      for c in ("/opt/homebrew/bin/Rscript", "/usr/local/bin/Rscript", "/usr/bin/Rscript"):
+        if os.path.exists(c): return c
+    return None
 
-  def calcEndpoints(self,LMObj,LM,pc, scaleFactor):
-    i,j=LM.shape
-    tmp=np.zeros((i,j))
-    tmp[:,0]=LMObj.vec[0:i,pc]
-    tmp[:,1]=LMObj.vec[i:2*i,pc]
-    tmp[:,2]=LMObj.vec[2*i:3*i,pc]
-    return LM+tmp*scaleFactor/3
+  def _safeCloseRConn(self):
+    if self._r_conn is not None:
+      try: self._r_conn.close()
+      except Exception: pass
+    self._r_conn = None
 
-  def convertFudicialToVTKPoint(self, fnode):
-    import numpy as np
-    numberOfLM=fnode.GetNumberOfControlPoints()
-    lmData=np.zeros((numberOfLM,3))
-    for i in range(numberOfLM):
-      loc = fnode.GetNthControlPointPosition(i)
-      lmData[i,:]=np.asarray(loc)
-    points=vtk.vtkPoints()
-    for i in range(numberOfLM):
-      points.InsertNextPoint(lmData[i,0], lmData[i,1], lmData[i,2])
-    return points
+  def _r_ensure_pyRserve(self):
+    # NumPy 2.0 compat shim before importing pyRserve
+    try:
+      import numpy as _np
+      from types import SimpleNamespace as _SS
+      if not hasattr(_np, "string_"):  _np.string_ = _np.bytes_
+      if not hasattr(_np, "unicode_"): _np.unicode_ = str
+      if not hasattr(_np, "int"):      _np.int = int
+      if not hasattr(_np, "bool"):     _np.bool = bool
+      if not hasattr(_np, "float"):    _np.float = float
+      if not hasattr(_np, "object"):   _np.object = object
+      if not hasattr(_np, "compat"): _np.compat = _SS(long=int)
+      elif not hasattr(_np.compat, "long"): _np.compat.long = int
+    except Exception:
+      pass
 
-  def convertFudicialToNP(self, fnode):
-    import numpy as np
-    numberOfLM=fnode.GetNumberOfControlPoints()
-    lmData=np.zeros((numberOfLM,3))
+    try:
+      import sys
+      if "pyRserve" in sys.modules:
+        import pyRserve as _pyRserve
+        return _pyRserve
+    except Exception: pass
 
-    for i in range(numberOfLM):
-      loc = fnode.GetNthControlPointPosition(i)
-      lmData[i,:]=np.asarray(loc)
-    return lmData
+    try:
+      import pyRserve as _pyRserve
+      return _pyRserve
+    except Exception as e:
+      try:
+        progress = slicer.util.createProgressDialog(
+          windowTitle="Installing...", labelText="Installing pyRserve...", maximum=0)
+        slicer.app.processEvents()
+        slicer.util.pip_install(["pyRserve"])
+        progress.close()
+        import pyRserve as _pyRserve
+        return _pyRserve
+      except Exception as ee:
+        try: progress.close()
+        except Exception: pass
+        self._r_last_error = str(ee)
+        return None
 
-  def convertNumpyToVTK(self, A):
-    x,y=A.shape
-    points=vtk.vtkPoints()
-    for i in range(x):
-      points.InsertNextPoint(A[i,0], A[i,1], A[i,2])
-    return points
+  # ------------------------ Fit gating & covariate plumbing -------------------
 
-  def convertNumpyToVTKmatrix44(self, A):
-    x,y=A.shape
-    mat=vtk.vtkMatrix4x4()
-    for i in range(x):
-      for j in range(y):
-        mat.SetElement(i,j,A[i,j])
-    return mat
+  def _lr_canFit(self) -> bool:
+    try:
+      fml = self._lr_getFormulaText()
+      ok,_ = self._lr_validateFormula(fml)
+    except Exception:
+      ok = False
+    return ok and bool(self._r_conn)
 
-  def convertVTK44toNumpy(self, A):
-    a=np.ones((4,4))
-    for i in range(4):
-      for j in range(4):
-        a[i,j]=A.GetElement(i,j)
-    return a
+  def refreshFitButton(self):
+    can = self._lr_canFit()
+    _set_enabled(self._lr_fitBtn, bool(can))
+    _set_label(self._lr_fitStatus, "Ready" if can else "Not ready")
 
-  def process(self, inputVolume, outputVolume, imageThreshold, invert=False, showResult=True):
+  def _lr_findCovariatesPath(self) -> str:
+    paths = []
+    try:
+      p = str(self.ui.selectCovariatesText.text)
+      if p: paths.append(p)
+    except Exception: pass
+    try:
+      p2 = os.path.join(self.w.outputFolder, "covariateTable.csv")
+      paths.append(p2)
+    except Exception: pass
+    for p in paths:
+      if p and os.path.isfile(p):
+        return p
+    return ""
+
+  def _lr_get_base_variables_from_formula(self, formula: str):
+    try:
+      import patsy  # noqa: F401
+    except Exception:
+      return set()
+    import patsy, re
+    desc = patsy.ModelDesc.from_formula((formula or "").strip())
+    mains_allowed = set(self._lr_computeWhitelist())
+    bases = set()
+    for term in getattr(desc, "rhs_termlist", []):
+      names = self._lr_extract_term_names(term)
+      if len(names) == 0: continue
+      if len(names) == 1:
+        bases |= self._lr_factor_base_vars(names[0], mains_allowed)
+      elif self._lr_is_pairwise_term(names):
+        bases |= self._lr_factor_base_vars(names[0], mains_allowed)
+        bases |= self._lr_factor_base_vars(names[1], mains_allowed)
+    drop = {"Coords","Shape","SHAPE","shape","Size","size"}
+    return {b for b in bases if b not in drop}
+
+  # -------------------------------- Fit in R ----------------------------------
+
+  def _lr_onFitInRClicked(self):
+    import numpy as _np
+    # guards
+    if not getattr(self.w, "LM", None):
+      _set_label(self._lr_fitStatus, "No GPA data"); return
+
+    fml_raw = self._lr_getFormulaText()
+    ok, msg = self._lr_validateFormula(fml_raw)
+    if not ok:
+      _set_label(self._lr_fitStatus, "Invalid formula")
+      self._log(f"[LR] Invalid formula: {msg}")
+      return
+
+    conn = self._r_conn
+    if not conn:
+      _set_label(self._lr_fitStatus, "Rserve not connected"); return
+
+    arr = _np.asarray(self.w.LM.lm)  # (p,3,n)
+    if arr.ndim != 3 or arr.shape[1] != 3:
+      _set_label(self._lr_fitStatus, "Bad landmark array")
+      self._log(f"[LR] Unexpected LM.lm shape: {arr.shape}")
+      return
+    p, _, n = arr.shape
+
+    coords_mat = arr.transpose(2,0,1).reshape(n, 3*p, order="C")
+    size_vec = _np.asarray(self.w.LM.centriodSize, dtype=float).reshape(-1)
+    if size_vec.shape[0] != n:
+      _set_label(self._lr_fitStatus, "Bad centroid size")
+      self._log(f"[LR] centroid size length {size_vec.shape[0]} != specimens {n}")
+      return
+
+    files = list(self.w.files) if (hasattr(self.w, "files") and isinstance(self.w.files,(list,tuple)) and len(self.w.files)==n) \
+            else [f"spec_{i+1}" for i in range(n)]
+
+    base_vars = self._lr_get_base_variables_from_formula(fml_raw)
+    cov_df, cov_path = None, ""
+    if base_vars:
+      cov_path = self._lr_findCovariatesPath()
+      if not cov_path:
+        _set_label(self._lr_fitStatus, "Missing covariate table")
+        self._log("[LR] No covariate CSV found; cannot satisfy formula variables.")
+        return
+      try:
+        import pandas as pd
+      except Exception:
+        _set_label(self._lr_fitStatus, "pandas missing")
+        self._log("[LR] pandas not available.")
+        return
+      try:
+        cov_df = pd.read_csv(cov_path)
+        if cov_df.shape[1] < 2:
+          raise ValueError("Covariate CSV needs ID col + covariate columns.")
+        cov_df = cov_df.set_index(cov_df.columns[0])
+        missing = [f for f in files if f not in cov_df.index]
+        if missing:
+          raise ValueError(f"IDs missing in covariate table (first 10): {missing[:10]}")
+        cov_df = cov_df.loc[files]
+      except Exception as e:
+        _set_label(self._lr_fitStatus, "Covariate load error")
+        self._log(f"[LR] Failed to read/align covariates: {e}")
+        return
+
+    step = self._r_step
+
+    # Headless rgl
+    if not step(conn, "Headless rgl",
+                'options(rgl.useNULL=TRUE); Sys.setenv(RGL_USE_NULL="TRUE"); Sys.setenv(RGL_ALWAYS_SOFTWARE="TRUE")'):
+      _set_label(self._lr_fitStatus, "R data error (rgl)"); return
+
+    # Require geomorph installed in Rserve
+    ok_pkg, _ = self._r_try(
+      'if (!"geomorph" %in% rownames(installed.packages())) stop("geomorph not installed in this Rserve")',
+       "check geomorph")
+    if not ok_pkg:
+      _set_label(self._lr_fitStatus, "geomorph missing"); return
+
+    # Ship coords + size
+    try:
+      conn.r.coords = coords_mat; conn.r.size = size_vec
+    except Exception as e:
+      _set_label(self._lr_fitStatus, "R data error (send)")
+      self._log(f"[LR] send coords/size: {repr(e)}")
+      return
+
+    if not step(conn, "Prepare coords", 'coords <- base::as.matrix(coords); storage.mode(coords) <- "double"'):
+      _set_label(self._lr_fitStatus, "R data error (coords)"); return
+    if not step(conn, "arrayspecs", f'arr <- geomorph::arrayspecs(coords, p={p}, k=3)'):
+      _set_label(self._lr_fitStatus, "R data error (arrayspecs)"); return
+
+    # predictors in .GlobalEnv
+    added_vars = []
+    if base_vars and cov_df is not None:
+      for var in sorted(base_vars):
+        if var not in cov_df.columns:
+          _set_label(self._lr_fitStatus, "Missing covariate column")
+          self._log(f"[LR] Column '{var}' not found in covariate CSV."); return
+        series = cov_df[var]
+        tmpname = f'.py_{var}'
+        try:
+          s_num = pd.to_numeric(series, errors="raise").to_numpy().astype(float)  # type: ignore
+          conn.r.__setattr__(tmpname, s_num)
+          if not step(conn, f"Set {var} (numeric)", f'{var} <- base::as.numeric({tmpname})'):
+            _set_label(self._lr_fitStatus, "R data error (covariate)"); return
+        except Exception:
+          conn.r.__setattr__(tmpname, series.astype(str).tolist())
+          if not step(conn, f"Set {var} (factor)", f'{var} <- base::factor(base::as.character(base::unlist({tmpname})))'):
+            _set_label(self._lr_fitStatus, "R data error (covariate)"); return
+        added_vars.append(var)
+
+    pieces = ['Size=base::as.numeric(size)', 'Coords=arr']
+    for var in added_vars: pieces.insert(1, f'{var}={var}')
+    gdf_call = 'gdf <- geomorph::geomorph.data.frame(' + ', '.join(pieces) + ')'
+    if not step(conn, "Build gdf", gdf_call):
+      _set_label(self._lr_fitStatus, "R data error (gdf)"); return
+
+    import re as _re
+    fml = _re.sub(r'^\s*(Y|Coords|Shape|SHAPE|shape)\s*~', 'Coords ~', fml_raw.strip())
+    try: conn.r.__setattr__('fml', fml)
+    except Exception as e:
+      _set_label(self._lr_fitStatus, "R data error (formula set)")
+      self._log(f"[LR] set fml: {repr(e)}"); return
+    if not step(conn, "Build formula", 'mod <- stats::as.formula(fml)'):
+      _set_label(self._lr_fitStatus, "Bad formula"); return
+
+    if not step(conn, "Fit procD.lm", 'outlm <- geomorph::procD.lm(mod, data=gdf)'):
+      _set_label(self._lr_fitStatus, "Fit failed"); return
+
+    if not step(conn, "Extract coefficients", 'coef_mat <- outlm$coefficients; coef_names <- base::rownames(coef_mat)'):
+      _set_label(self._lr_fitStatus, "Extract error"); return
+
+    try:
+      coef_mat = np.asarray(conn.eval('coef_mat'))
+      coef_names = list(conn.eval('as.character(coef_names)'))
+    except Exception as e:
+      _set_label(self._lr_fitStatus, "Pull-back error")
+      self._log(f"[LR] pull coef: {repr(e)}"); return
+
+    if not step(conn, "Summarize model", 'sumtxt <- paste(utils::capture.output(summary(outlm)), collapse="\\n")'):
+      self._lr_setSummaryText("Failed to build summary(outlm).")
+      summary_text = ""
+    else:
+      try: summary_text = str(conn.eval('sumtxt'))
+      except Exception as e:
+        summary_text = f"Could not read summary from R: {repr(e)}"
+      self._lr_setSummaryText(summary_text)
+
+    # cache for coefficient viz
+    self._lr_last_fit = {
+      "formula": fml,
+      "coef_mat": coef_mat,
+      "coef_names": coef_names,
+      "n_specimens": n,
+      "p_landmarks": p,
+      "covariate_path": cov_path,
+      "summary_text": summary_text
+    }
+
+    self._log(f"[LR] geomorph::procD.lm OK: coef_mat {coef_mat.shape}, terms={len(coef_names)}")
+    _set_label(self._lr_fitStatus, "Fit complete")
+
+    try: self._coef_refreshFromFit()
+    except Exception: pass
+
+  def _r_try(self, code: str, tag: str = ""):
+    conn = self._r_conn
+    if not conn: return (False, "No Rserve connection")
+    conn.r.__setattr__(".pycode", code)
+    res = str(conn.eval(
+      'tryCatch({ eval(parse(text=.pycode), envir=.GlobalEnv); "OK" }, '
+      '         error=function(e) paste("ERR:", conditionMessage(e)))'
+    )).strip()
+    if tag and res != "OK":
+      self._log(f"[LR] {tag}: {res}")
+    return (res == "OK", res)
+
+  def _r_step(self, conn, tag: str, code: str) -> bool:
+    try:
+      conn.r.__setattr__(".pycode", code)
+      res = str(conn.eval(
+        'tryCatch({ eval(parse(text=.pycode), envir=.GlobalEnv); "OK" }, '
+        '         error=function(e) paste("ERR:", conditionMessage(e)))'
+      )).strip()
+      if res != "OK":
+        self._log(f"[LR] {tag}: {res}")
+        return False
+      self._log(f"[LR] {tag}: OK")
+      return True
+    except Exception as e:
+      self._log(f"[LR] {tag}: PYERR {repr(e)}")
+      try: self._safeCloseRConn(); self._refreshStatusLabels()
+      except Exception: pass
+      return False
+
+  # ---------------------- Coefficient visualization (TPS) ---------------------
+
+  def _coef_initUI(self):
+    if not hasattr(self.ui, "coefVisualizationParametersButton"):
+      self._coef_enabled = False
+      return
+
+    self._coef_enabled = True
+    self._coef_vectors = []; self._coef_names = []; self._coef_current = -1
+
+    # controller
+    try:
+      self.coefController = _PCSliderController(
+        comboBox=self.ui.coefComboBox,
+        slider=self.ui.coefSlider,
+        spinBox=self.ui.coefSpinBox,
+        dynamic_min=-1.0, dynamic_max=1.0,
+        onSliderChanged=lambda _: self._coef_updateScaling(),
+        onComboBoxChanged=lambda _: self._coef_onSelectCoefficient(),
+      )
+    except Exception:
+      self.coefController = None
+
+    try: self.ui.coefUpdateMagnificationButton.clicked.connect(self._coef_setMagnification)
+    except Exception: pass
+    try: self.ui.coefResetButton.clicked.connect(self._coef_resetView)
+    except Exception: pass
+    try:
+      self.ui.coefMagnificationSpin.setDecimals(2)
+      self.ui.coefMagnificationSpin.setMinimum(0.01)
+      self.ui.coefMagnificationSpin.setMaximum(1_000_000.0)
+      self.ui.coefMagnificationSpin.setSingleStep(10.0)
+      self.ui.coefMagnificationSpin.setValue(1000.0)
+    except Exception: pass
+
+    # Add programmatic "Initialize LR Warping" button
+    try:
+      self.lrInitWarpButton = qt.QPushButton("Initialize LR Warping")
+      self.lrInitWarpButton.setToolTip("Create LR grid + LR warped landmarks and show them in View 2.")
+      self.lrInitWarpButton.clicked.connect(self._lr_prepareWarpInfra)
+      self.ui.coefVisualizationParametersLayout.addWidget(self.lrInitWarpButton, 4, 0, 1, 3)
+    except Exception:
+      pass
+
+    self._ensureLRGridNode()
+    if self.coefController:
+      self.coefController.setRange(-1.0, 1.0); self.coefController.setValue(0.0)
+
+  def _coef_refreshFromFit(self):
+    if not self._coef_enabled: return
+    last = getattr(self, "_lr_last_fit", None)
+    if not last: self._coef_clearChoices(); return
+
+    coef_mat = np.asarray(last.get("coef_mat", []))
+    coef_names = list(last.get("coef_names", []))
+    if coef_mat.ndim != 2 or len(coef_names) != coef_mat.shape[0]:
+      self._coef_clearChoices(); return
+
+    self._coef_vectors = [np.asarray(coef_mat[i, :]).reshape(-1).copy() for i in range(coef_mat.shape[0])]
+    self._coef_names = [str(n) for n in coef_names]
+
+    first_term = 0
+    for i, nm in enumerate(self._coef_names):
+      if nm.strip() != "(Intercept)":
+        first_term = i; break
+    self._coef_current = int(first_term)
+
+    if self.coefController:
+      self.coefController.populateComboBox(self._coef_names)
+      try: self.ui.coefComboBox.setCurrentIndex(self._coef_current)
+      except Exception: pass
+      self.coefController.setRange(-1.0, 1.0); self.coefController.setValue(0.0)
+
+    self._lr_prepareWarpInfra()
+    self._ensureLRTPSNode()
+    try: self._coef_applyTPS(scale=0.0)
+    except Exception as e: self._log(f"[LR/COEF] initial TPS build failed: {e}")
+    self._coef_attachTargets(enabled=True); self._coef_updateScaling()
+
+  def _coef_onSelectCoefficient(self):
+    if not self._coef_enabled: return
+    try: idx = int(self.coefController.comboBoxIndex())
+    except Exception: idx = -1
+    if idx < 0 or idx >= len(self._coef_vectors): return
+    self._coef_current = idx
+    try: self.coefController.setValue(0.0)
+    except Exception: pass
+    try: self._coef_applyTPS(scale=0.0)
+    except Exception as e: self._log(f"[LR/COEF] TPS build (new coef) failed: {e}")
+    self._coef_attachTargets(enabled=True)
+
+  def _coef_setMagnification(self):
+    if not self._coef_enabled: return
+    try: scale = float(self.coefController.sliderValue())
+    except Exception: scale = 0.0
+    scale = 1.0 if scale > 1.0 else (-1.0 if scale < -1.0 else scale)
+    try: self._coef_applyTPS(scale=scale)
+    except Exception as e: self._log(f"[LR/COEF] TPS rebuild (magnification) failed: {e}")
+
+  def _coef_updateScaling(self):
+    if not self._coef_enabled: return
+    try: val = float(self.coefController.sliderValue())
+    except Exception: val = 0.0
+    val = 1.0 if val > 1.0 else (-1.0 if val < -1.0 else val)
+    try: self._coef_applyTPS(scale=val)
+    except Exception as e: self._log(f"[LR/COEF] TPS rebuild (scale) failed: {e}")
+
+  def _coef_resetView(self):
+    if self.coefController: self.coefController.setValue(0.0)
+    node = self._ensureLRTPSNode()
+    try:
+      id_tps = vtk.vtkThinPlateSplineTransform(); id_tps.SetBasisToR()
+      node.SetAndObserveTransformToParent(id_tps); node.Modified()
+    except Exception: pass
+    self._coef_debugPipeline(tag="reset", sample_scale=0.0)
+
+  def _coef_attachTargets(self, enabled: bool):
+    node = getattr(self, "lrTPSTransformNode", None)
+    if not node:
+      self._log("[LR/COEF] lrTPSTransformNode missing in _coef_attachTargets"); return
+    lm = getattr(self, "lrWarpNode", None)
+    if lm is not None and slicer.mrmlScene.IsNodePresent(lm):
+      try: lm.SetAndObserveTransformNodeID(node.GetID() if enabled else None)
+      except Exception: pass
+    try: modelChecked = bool(self.w.ui.modelVisualizationType.isChecked())
+    except Exception: modelChecked = False
+    if modelChecked and getattr(self.w, "cloneModelNode", None):
+      try: self.w.cloneModelNode.SetAndObserveTransformNodeID(node.GetID() if enabled else None)
+      except Exception: pass
+    self._coef_debugPipeline(tag=f"attachTargets(enabled={enabled})", sample_scale=None)
+
+  def _coef_clearChoices(self):
+    self._coef_vectors = []; self._coef_names = []; self._coef_current = -1
+    if hasattr(self.ui, "coefComboBox"):
+      try: self.ui.coefComboBox.clear()
+      except Exception: pass
+    if self.coefController:
+      self.coefController.setRange(-1.0, 1.0); self.coefController.setValue(0.0)
+    self._coef_attachTargets(enabled=False)
+
+  def _coef_debugPipeline(self, tag="debug", sample_scale=None):
+    """Silenced debug hook for the coefficient-warp pipeline."""
+    return
+
+  def _ensureLRGridNode(self):
+    try:
+      if getattr(self, 'lrGridTransformNode', None) and slicer.mrmlScene.IsNodePresent(self.lrGridTransformNode):
+        return self.lrGridTransformNode
+    except Exception: pass
+    self.lrGridTransformNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLGridTransformNode', 'LRGridTransform')
+    self.nodes.AddItem(self.lrGridTransformNode)
+    self._log(f"[LR] Created LRGridTransform: {self.lrGridTransformNode.GetID()}")
+    return self.lrGridTransformNode
+
+  def _lr_prepareWarpInfra(self):
     """
-    Run the processing algorithm.
-    Can be used without GUI widget.
-    :param inputVolume: volume to be thresholded
-    :param outputVolume: thresholding result
-    :param imageThreshold: values above/below this threshold will be set to 0
-    :param invert: if True then values above the threshold will be set to 0, otherwise values below are set to 0
-    :param showResult: show output volume in slice viewers
+    Prepare LR warp infra:
+      - Ensure mean landmarks are available
+      - Create/reuse 'LR Warped Landmarks' shown in View 2
+      - Color ONLY these glyphs (orange)
+      - Create/reuse LR TPS transform and attach targets
     """
+    # Ensure we have mean landmarks
+    if getattr(self.w, "rawMeanLandmarks", None) is None:
+        try:
+            if getattr(self.w, "LM", None) and getattr(self.w.LM, "mShape", None) is not None:
+                self.w.rawMeanLandmarks = np.asarray(self.w.LM.mShape, dtype=float)
+            elif getattr(self.w, "LM", None) and getattr(self.w.LM, "lmOrig", None) is not None:
+                self.w.rawMeanLandmarks = np.asarray(self.w.LM.lmOrig.mean(2), dtype=float)
+        except Exception:
+            pass
+    if getattr(self.w, "rawMeanLandmarks", None) is None:
+        self._log("[LR] Cannot initialize: no mean landmarks available yet.")
+        return
 
-    if not inputVolume or not outputVolume:
-      raise ValueError("Input or output volume is invalid")
+    p = int(self.w.rawMeanLandmarks.shape[0])
 
-    import time
-    startTime = time.time()
-    logging.info('Processing started')
+    # Create or reuse the LR warp fiducials (these are the ones that will be ORANGE)
+    try:
+        create_new = not (getattr(self, "lrWarpNode", None) and slicer.mrmlScene.IsNodePresent(self.lrWarpNode))
+        if create_new:
+            self.lrWarpNode = slicer.vtkMRMLMarkupsFiducialNode()
+            self.lrWarpNode.SetName("LR Warped Landmarks")
+            slicer.mrmlScene.AddNode(self.lrWarpNode)
+            self.nodes.AddItem(self.lrWarpNode)
+            self._log(f"[LR] Created LR warp node: {self.lrWarpNode.GetID()}")
 
-    # Compute the thresholded output volume using the "Threshold Scalar Volume" CLI module
-    cliParams = {
-      'InputVolume': inputVolume.GetID(),
-      'OutputVolume': outputVolume.GetID(),
-      'ThresholdValue' : imageThreshold,
-      'ThresholdType' : 'Above' if invert else 'Below'
-      }
-    cliNode = slicer.cli.run(slicer.modules.thresholdscalarvolume, None, cliParams, wait_for_completion=True, update_display=showResult)
-    # We don't need the CLI module node anymore, remove it to not clutter the scene with it
-    slicer.mrmlScene.RemoveNode(cliNode)
+        # Populate/refresh points
+        try:
+            self.lrWarpNode.RemoveAllControlPoints()
+        except Exception:
+            pass
+        for i in range(p):
+            self.lrWarpNode.AddControlPoint(self.w.rawMeanLandmarks[i, :], str(i + 1))
 
-    stopTime = time.time()
-    logging.info(f'Processing completed in {stopTime-startTime:.2f} seconds')
+        # Display config (View 2 + scales + ORANGE color)
+        self.lrWarpNode.CreateDefaultDisplayNodes()
+        d = self.lrWarpNode.GetDisplayNode()
+        if d:
+            d.SetPointLabelsVisibility(1)
+            d.SetTextScale(3)
+            # Match glyph scale to the UI (won't affect color)
+            try:
+                d.SetGlyphScale(float(self.w.ui.scaleMeanShapeSlider.value))
+            except Exception:
+                pass
+            # Show only in View 2
+            v2 = _view_node_by_name("View2")
+            if v2:
+                d.SetViewNodeIDs([v2.GetID()])
 
+        # Color ONLY these LR-warped glyphs (purple)
+        self._lr_setWarpGlyphColor(rgb=(51, 128, 15))  # orange
 
-class GPATest(ScriptedLoadableModuleTest):
-  """
-  This is the test case for your scripted module.
-  Uses ScriptedLoadableModuleTest base class, available at:
-  https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
-  """
+        self.lrWarpNode.SetDisplayVisibility(1)
+    except Exception as e:
+        self._log(f"[LR] Warp node setup failed: {e}")
+        return
 
-  def setUp(self):
-    """ Do whatever is needed to reset the state - typically a scene clear will be enough.
+    # Ensure the LR TPS transform exists and attach it to the warp node (and model, if selected)
+    node = self._ensureLRTPSNode()
+    try:
+        self.lrWarpNode.SetAndObserveTransformNodeID(node.GetID())
+    except Exception:
+        pass
+
+    try:
+        modelChecked = bool(self.w.ui.modelVisualizationType.isChecked())
+    except Exception:
+        modelChecked = False
+    if modelChecked and getattr(self.w, "cloneModelNode", None):
+        try:
+            self.w.cloneModelNode.SetAndObserveTransformNodeID(node.GetID())
+        except Exception:
+            pass
+
+    try:
+        tid = node.GetID() if node else "(none)"
+        lid = self.lrWarpNode.GetID() if getattr(self, "lrWarpNode", None) else "(none)"
+        self._log(f"[LR] Infra ready (TPS). transform={tid}, lrWarpNode={lid}")
+    except Exception:
+        pass
+
+  def _coef_row_to_shift(self, row_3p):
+    if getattr(self.w, "rawMeanLandmarks", None) is None:
+      raise RuntimeError("No mean landmarks available yet")
+    p = int(self.w.rawMeanLandmarks.shape[0])
+    a = np.asarray(row_3p, dtype=float).reshape(-1)
+    if a.size != 3 * p:
+      raise RuntimeError(f"Coefficient row length {a.size} != 3*p ({3 * p})")
+
+    v = np.zeros((p, 3), dtype=float)
+    v[:, 0] = a[0:p]
+    v[:, 1] = a[p:2 * p]
+    v[:, 2] = a[2 * p:3 * p]
+
+    try:
+      mag = float(self.ui.coefMagnificationSpin.value)
+    except Exception:
+      mag = 1000.0
+    try:
+      ssf = float(getattr(self.w, "sampleSizeScaleFactor", 1.0))
+    except Exception:
+      ssf = 1.0
+
+    shift = (mag * ssf / 3.0) * v
+    return shift
+
+  def _ensureLRTPSNode(self):
+    try:
+      if getattr(self, 'lrTPSTransformNode', None) and slicer.mrmlScene.IsNodePresent(self.lrTPSTransformNode):
+        return self.lrTPSTransformNode
+    except Exception: pass
+    self.lrTPSTransformNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', 'LRTPS_Transform')
+    self.nodes.AddItem(self.lrTPSTransformNode)
+    self._log(f"[LR] Created LRTPS_Transform: {self.lrTPSTransformNode.GetID()}")
+    return self.lrTPSTransformNode
+
+  def _coef_applyTPS(self, scale: float):
+    if self._coef_current is None or self._coef_current < 0:
+      return
+    if getattr(self.w, "rawMeanLandmarks", None) is None:
+      return
+    if not (self._coef_vectors and len(self._coef_vectors) > self._coef_current):
+      return
+
+    if scale > 1.0:
+      scale = 1.0
+    if scale < -1.0:
+      scale = -1.0
+
+    row = np.asarray(self._coef_vectors[self._coef_current]).reshape(-1)
+    base_shift = self._coef_row_to_shift(row)
+    shift = float(scale) * base_shift
+    target = self.w.rawMeanLandmarks + shift
+
+    tps = vtk.vtkThinPlateSplineTransform()
+    tps.SetSourceLandmarks(_convert_numpy_to_vtk_points(self.w.rawMeanLandmarks))
+    tps.SetTargetLandmarks(_convert_numpy_to_vtk_points(target))
+    tps.SetBasisToR()
+
+    node = self._ensureLRTPSNode()
+    node.SetAndObserveTransformToParent(tps)
+    try:
+      node.Modified()
+    except Exception:
+      pass
+
+    # keep call for compatibility; it’s silenced below
+    self._coef_debugPipeline(tag=f"TPS scale={scale:.3f}", sample_scale=None)
+
+  # ------------------------------ Misc UI helpers -----------------------------
+
+  def _lr_setSummaryText(self, txt: str):
+    w = getattr(self.ui, 'lrSummaryText', None)
+    if not w: return
+    try:
+      w.setPlainText(str(txt) if txt is not None else "")
+      try: w.setLineWrapMode(qt.QPlainTextEdit.NoWrap)
+      except Exception: pass
+      try:
+        f = w.font
+        for fam in ["Menlo","Consolas","Courier New","Monospace"]:
+          f.setFamily(fam); break
+        f.setFixedPitch(True); w.setFont(f)
+      except Exception: pass
+    except Exception: pass
+
+  def _log(self, s: str):
+    try:
+      print(s)
+      self.ui.GPALogTextbox.insertPlainText(s + "\n")
+    except Exception:
+      print(s)
+
+  def _lr_setWarpGlyphColor(self, rgb=(1.0, 0.5, 0.0)):
     """
-    slicer.mrmlScene.Clear(0)
-
-  def runTest(self):
-    """Run as few or as many tests as needed here.
+    Set the glyph color for the LR Warped Landmarks (only).
+    rgb: tuple/list in [0..1].
     """
-    self.setUp()
-    self.test_GPA1()
-
-  def test_GPA1(self):
-    """ Ideally you should have several levels of tests.  At the lowest level
-    tests should exercise the functionality of the logic with different inputs
-    (both valid and invalid).  At higher levels your tests should emulate the
-    way the user would interact with your code and confirm that it still works
-    the way you intended.
-    One of the most important features of the tests is that it should alert other
-    developers when their changes will have an impact on the behavior of your
-    module.  For example, if a developer removes a feature that you depend on,
-    your test should break so they know that the feature is needed.
-    """
-
-    self.delayDisplay("Starting the test")
-
-    # Get/create input data
-    import SampleData
-    registerSampleData()
-    inputVolume = SampleData.downloadSample('TemplateKey1')
-    self.delayDisplay('Loaded test data set')
-
-    inputScalarRange = inputVolume.GetImageData().GetScalarRange()
-    self.assertEqual(inputScalarRange[0], 0)
-    self.assertEqual(inputScalarRange[1], 695)
-
-    outputVolume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode")
-    threshold = 100
-
-    # Test the module logic
-
-    logic = GPALogic()
-
-    # Test algorithm with non-inverted threshold
-    logic.process(inputVolume, outputVolume, threshold, True)
-    outputScalarRange = outputVolume.GetImageData().GetScalarRange()
-    self.assertEqual(outputScalarRange[0], inputScalarRange[0])
-    self.assertEqual(outputScalarRange[1], threshold)
-
-    # Test algorithm with inverted threshold
-    logic.process(inputVolume, outputVolume, threshold, False)
-    outputScalarRange = outputVolume.GetImageData().GetScalarRange()
-    self.assertEqual(outputScalarRange[0], inputScalarRange[0])
-    self.assertEqual(outputScalarRange[1], inputScalarRange[1])
-
-    self.delayDisplay('Test passed')
+    node = getattr(self, "lrWarpNode", None)
+    if not node or not slicer.mrmlScene.IsNodePresent(node):
+      return
+    d = node.GetDisplayNode()
+    if not d:
+      return
+    # Markups use SelectedColor/Color for picked/unpicked; set both to the same orange.
+    try:
+      d.SetSelectedColor(rgb)
+    except Exception:
+      pass
+    try:
+      d.SetColor(rgb)
+    except Exception:
+      pass
