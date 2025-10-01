@@ -1146,45 +1146,64 @@ class GeomorphLR:
       return
 
     self._coef_enabled = True
-    self._coef_vectors = []; self._coef_names = []; self._coef_current = -1
+    self._coef_vectors = []
+    self._coef_names = []
+    self._coef_current = -1
 
-    # controller
+    # Slider controller
     try:
       self.coefController = _PCSliderController(
         comboBox=self.ui.coefComboBox,
         slider=self.ui.coefSlider,
         spinBox=self.ui.coefSpinBox,
-        dynamic_min=-1.0, dynamic_max=1.0,
+        dynamic_min=-1.0,
+        dynamic_max=1.0,
         onSliderChanged=lambda _: self._coef_updateScaling(),
         onComboBoxChanged=lambda _: self._coef_onSelectCoefficient(),
       )
     except Exception:
       self.coefController = None
 
-    try: self.ui.coefUpdateMagnificationButton.clicked.connect(self._coef_setMagnification)
-    except Exception: pass
-    try: self.ui.coefResetButton.clicked.connect(self._coef_resetView)
-    except Exception: pass
+    # Magnification wiring (unchanged)
+    try:
+      self.ui.coefUpdateMagnificationButton.clicked.connect(self._coef_setMagnification)
+    except Exception:
+      pass
     try:
       self.ui.coefMagnificationSpin.setDecimals(2)
       self.ui.coefMagnificationSpin.setMinimum(0.01)
       self.ui.coefMagnificationSpin.setMaximum(1_000_000.0)
       self.ui.coefMagnificationSpin.setSingleStep(10.0)
+      # Keep prior behavior: high default mag for visible warps
       self.ui.coefMagnificationSpin.setValue(1000.0)
-    except Exception: pass
-
-    # Add programmatic "Initialize LR Warping" button
-    try:
-      self.lrInitWarpButton = qt.QPushButton("Initialize LR Warping")
-      self.lrInitWarpButton.setToolTip("Create LR grid + LR warped landmarks and show them in View 2.")
-      self.lrInitWarpButton.clicked.connect(self._lr_prepareWarpInfra)
-      self.ui.coefVisualizationParametersLayout.addWidget(self.lrInitWarpButton, 4, 0, 1, 3)
     except Exception:
       pass
 
+    # Reuse the existing UI button as the single "Init / Reset" control
+    try:
+      self.ui.coefResetButton.setText("Init / Reset Coefficient View")
+      self.ui.coefResetButton.setToolTip(
+        "Create LR warping infrastructure if needed, then reset the coefficient slider to 0 and clear any TPS warp."
+      )
+      # Connect to combined handler
+      self.ui.coefResetButton.clicked.connect(self._coef_initOrResetClicked)
+    except Exception:
+      pass
+
+    # Remove any legacy runtime-added "Initialize LR Warping" button if present
+    try:
+      if hasattr(self, "lrInitWarpButton") and self.lrInitWarpButton:
+        self.lrInitWarpButton.setParent(None)
+        self.lrInitWarpButton.deleteLater()
+        self.lrInitWarpButton = None
+    except Exception:
+      pass
+
+    # Keep grid node alive for coefficient warps
     self._ensureLRGridNode()
     if self.coefController:
-      self.coefController.setRange(-1.0, 1.0); self.coefController.setValue(0.0)
+      self.coefController.setRange(-1.0, 1.0)
+      self.coefController.setValue(0.0)
 
   def _coef_refreshFromFit(self):
     if not self._coef_enabled: return
@@ -1254,6 +1273,33 @@ class GeomorphLR:
     except Exception: pass
     self._coef_debugPipeline(tag="reset", sample_scale=0.0)
 
+  def _coef_initOrResetClicked(self):
+    """
+    One-button convenience:
+      - Ensure LR warping infra exists (landmarks, TPS node, attachments)
+      - Reset the coefficient view to neutral (slider=0, identity TPS)
+    Safe to click before or after fitting a model.
+    """
+    # Always try to bring infra up (idempotent no-op if already built)
+    try:
+      self._lr_prepareWarpInfra()
+    except Exception as e:
+      self._log(f"[LR/COEF] Init/Reset: infra prep warning: {e}")
+
+    # Reset slider + TPS to identity (existing helper does both)
+    try:
+      self._coef_resetView()
+    except Exception as e:
+      self._log(f"[LR/COEF] Init/Reset: reset failed: {e}")
+
+    # Make sure targets are attached (warped landmarks, and model if selected)
+    try:
+      self._coef_attachTargets(enabled=True)
+    except Exception as e:
+      self._log(f"[LR/COEF] Init/Reset: attach targets warning: {e}")
+
+    self._coef_debugPipeline(tag="init/reset", sample_scale=0.0)
+
   def _coef_attachTargets(self, enabled: bool):
     node = getattr(self, "lrTPSTransformNode", None)
     if not node:
@@ -1279,25 +1325,8 @@ class GeomorphLR:
     self._coef_attachTargets(enabled=False)
 
   def _coef_debugPipeline(self, tag="debug", sample_scale=None):
-    nm = "?"
-    try:
-      if self._coef_names and self._coef_current is not None and self._coef_current >= 0:
-        nm = self._coef_names[self._coef_current]
-    except Exception: pass
-    node = getattr(self, "lrTPSTransformNode", None)
-    lid  = getattr(self, "lrWarpNode", None)
-    tid = node.GetID() if node else "(none)"
-    lid2 = lid.GetID() if lid else "(none)"
-    self._log(f"[LR/COEF:{tag}] coef='{nm}', tpsNode='{tid}', lrWarpNode='{lid2}'")
-    try:
-      if node and node.GetTransformToParent() and getattr(self.w, "rawMeanLandmarks", None) is not None:
-        tf = node.GetTransformToParent()
-        p0 = np.asarray(self.w.rawMeanLandmarks[0, :], dtype=float)
-        out = [0.0, 0.0, 0.0]; tf.TransformPoint(p0.tolist(), out)
-        delta = np.asarray(out) - p0
-        self._log(f"[LR/COEF:{tag}] TPS delta @ LM1 = ({delta[0]:.6g}, {delta[1]:.6g}, {delta[2]:.6g})")
-    except Exception as e:
-      self._log(f"[LR/COEF:{tag}] sample delta error: {e}")
+    """Silenced debug hook for the coefficient-warp pipeline."""
+    return
 
   def _ensureLRGridNode(self):
     try:
@@ -1398,24 +1427,29 @@ class GeomorphLR:
     except Exception:
         pass
 
-
   def _coef_row_to_shift(self, row_3p):
     if getattr(self.w, "rawMeanLandmarks", None) is None:
       raise RuntimeError("No mean landmarks available yet")
     p = int(self.w.rawMeanLandmarks.shape[0])
     a = np.asarray(row_3p, dtype=float).reshape(-1)
-    if a.size != 3*p:
-      raise RuntimeError(f"Coefficient row length {a.size} != 3*p ({3*p})")
-    v = np.zeros((p,3), dtype=float)
-    v[:,0] = a[0:p]; v[:,1] = a[p:2*p]; v[:,2] = a[2*p:3*p]
-    try: mag = float(self.ui.coefMagnificationSpin.value)
-    except Exception: mag = 1000.0
-    try: ssf = float(getattr(self.w, "sampleSizeScaleFactor", 1.0))
-    except Exception: ssf = 1.0
+    if a.size != 3 * p:
+      raise RuntimeError(f"Coefficient row length {a.size} != 3*p ({3 * p})")
+
+    v = np.zeros((p, 3), dtype=float)
+    v[:, 0] = a[0:p]
+    v[:, 1] = a[p:2 * p]
+    v[:, 2] = a[2 * p:3 * p]
+
+    try:
+      mag = float(self.ui.coefMagnificationSpin.value)
+    except Exception:
+      mag = 1000.0
+    try:
+      ssf = float(getattr(self.w, "sampleSizeScaleFactor", 1.0))
+    except Exception:
+      ssf = 1.0
+
     shift = (mag * ssf / 3.0) * v
-    try: mn, mx = float(np.min(shift)), float(np.max(shift))
-    except Exception: mn = mx = 0.0
-    self._log(f"[LR] shift range after mag: [{mn:.6g}, {mx:.6g}]")
     return shift
 
   def _ensureLRTPSNode(self):
@@ -1430,13 +1464,16 @@ class GeomorphLR:
 
   def _coef_applyTPS(self, scale: float):
     if self._coef_current is None or self._coef_current < 0:
-      self._log("[LR/COEF] no coefficient selected"); return
+      return
     if getattr(self.w, "rawMeanLandmarks", None) is None:
-      self._log("[LR/COEF] rawMeanLandmarks missing"); return
+      return
     if not (self._coef_vectors and len(self._coef_vectors) > self._coef_current):
-      self._log("[LR/COEF] coefficient vectors not available yet"); return
-    if scale > 1.0:  scale = 1.0
-    if scale < -1.0: scale = -1.0
+      return
+
+    if scale > 1.0:
+      scale = 1.0
+    if scale < -1.0:
+      scale = -1.0
 
     row = np.asarray(self._coef_vectors[self._coef_current]).reshape(-1)
     base_shift = self._coef_row_to_shift(row)
@@ -1450,16 +1487,12 @@ class GeomorphLR:
 
     node = self._ensureLRTPSNode()
     node.SetAndObserveTransformToParent(tps)
-    try: node.Modified()
-    except Exception: pass
-
     try:
-      p0 = np.asarray(self.w.rawMeanLandmarks[0, :], dtype=float)
-      out = [0.0,0.0,0.0]; tps.TransformPoint(p0.tolist(), out)
-      d = np.asarray(out) - p0
-      self._log(f"[LR/COEF] TPS delta @ LM1 (scale={scale:.3f}): ({d[0]:.6g}, {d[1]:.6g}, {d[2]:.6g})")
-    except Exception: pass
+      node.Modified()
+    except Exception:
+      pass
 
+    # keep call for compatibility; it’s silenced below
     self._coef_debugPipeline(tag=f"TPS scale={scale:.3f}", sample_scale=None)
 
   # ------------------------------ Misc UI helpers -----------------------------

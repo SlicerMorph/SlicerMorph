@@ -328,7 +328,7 @@
 
             <item row="2" column="0" colspan="3">
               <widget class="QPushButton" name="coefResetButton">
-                <property name="text"><string>Reset Coefficient View</string></property>
+                <property name="text"><string>Init / Reset Coefficient View</string></property>
                 <property name="toolTip"><string>Clear coefficient warping and reset the slider to 0.</string></property>
               </widget>
             </item>
