@@ -949,7 +949,8 @@ class GeomorphLR:
     import numpy as _np
     # guards
     if not getattr(self.w, "LM", None):
-      _set_label(self._lr_fitStatus, "No GPA data"); return
+      _set_label(self._lr_fitStatus, "No GPA data");
+      return
 
     fml_raw = self._lr_getFormulaText()
     ok, msg = self._lr_validateFormula(fml_raw)
@@ -960,7 +961,8 @@ class GeomorphLR:
 
     conn = self._r_conn
     if not conn:
-      _set_label(self._lr_fitStatus, "Rserve not connected"); return
+      _set_label(self._lr_fitStatus, "Rserve not connected");
+      return
 
     arr = _np.asarray(self.w.LM.lm)  # (p,3,n)
     if arr.ndim != 3 or arr.shape[1] != 3:
@@ -969,15 +971,16 @@ class GeomorphLR:
       return
     p, _, n = arr.shape
 
-    coords_mat = arr.transpose(2,0,1).reshape(n, 3*p, order="C")
+    coords_mat = arr.transpose(2, 0, 1).reshape(n, 3 * p, order="C")
     size_vec = _np.asarray(self.w.LM.centriodSize, dtype=float).reshape(-1)
     if size_vec.shape[0] != n:
       _set_label(self._lr_fitStatus, "Bad centroid size")
       self._log(f"[LR] centroid size length {size_vec.shape[0]} != specimens {n}")
       return
 
-    files = list(self.w.files) if (hasattr(self.w, "files") and isinstance(self.w.files,(list,tuple)) and len(self.w.files)==n) \
-            else [f"spec_{i+1}" for i in range(n)]
+    files = list(self.w.files) if (
+              hasattr(self.w, "files") and isinstance(self.w.files, (list, tuple)) and len(self.w.files) == n) \
+      else [f"spec_{i + 1}" for i in range(n)]
 
     base_vars = self._lr_get_base_variables_from_formula(fml_raw)
     cov_df, cov_path = None, ""
@@ -1012,27 +1015,32 @@ class GeomorphLR:
     # Headless rgl
     if not step(conn, "Headless rgl",
                 'options(rgl.useNULL=TRUE); Sys.setenv(RGL_USE_NULL="TRUE"); Sys.setenv(RGL_ALWAYS_SOFTWARE="TRUE")'):
-      _set_label(self._lr_fitStatus, "R data error (rgl)"); return
+      _set_label(self._lr_fitStatus, "R data error (rgl)");
+      return
 
     # Require geomorph installed in Rserve
     ok_pkg, _ = self._r_try(
       'if (!"geomorph" %in% rownames(installed.packages())) stop("geomorph not installed in this Rserve")',
-       "check geomorph")
+      "check geomorph")
     if not ok_pkg:
-      _set_label(self._lr_fitStatus, "geomorph missing"); return
+      _set_label(self._lr_fitStatus, "geomorph missing");
+      return
 
     # Ship coords + size
     try:
-      conn.r.coords = coords_mat; conn.r.size = size_vec
+      conn.r.coords = coords_mat;
+      conn.r.size = size_vec
     except Exception as e:
       _set_label(self._lr_fitStatus, "R data error (send)")
       self._log(f"[LR] send coords/size: {repr(e)}")
       return
 
     if not step(conn, "Prepare coords", 'coords <- base::as.matrix(coords); storage.mode(coords) <- "double"'):
-      _set_label(self._lr_fitStatus, "R data error (coords)"); return
+      _set_label(self._lr_fitStatus, "R data error (coords)");
+      return
     if not step(conn, "arrayspecs", f'arr <- geomorph::arrayspecs(coords, p={p}, k=3)'):
-      _set_label(self._lr_fitStatus, "R data error (arrayspecs)"); return
+      _set_label(self._lr_fitStatus, "R data error (arrayspecs)");
+      return
 
     # predictors in .GlobalEnv
     added_vars = []
@@ -1040,58 +1048,105 @@ class GeomorphLR:
       for var in sorted(base_vars):
         if var not in cov_df.columns:
           _set_label(self._lr_fitStatus, "Missing covariate column")
-          self._log(f"[LR] Column '{var}' not found in covariate CSV."); return
+          self._log(f"[LR] Column '{var}' not found in covariate CSV.");
+          return
         series = cov_df[var]
         tmpname = f'.py_{var}'
         try:
+          import pandas as pd
           s_num = pd.to_numeric(series, errors="raise").to_numpy().astype(float)  # type: ignore
           conn.r.__setattr__(tmpname, s_num)
           if not step(conn, f"Set {var} (numeric)", f'{var} <- base::as.numeric({tmpname})'):
-            _set_label(self._lr_fitStatus, "R data error (covariate)"); return
+            _set_label(self._lr_fitStatus, "R data error (covariate)");
+            return
         except Exception:
           conn.r.__setattr__(tmpname, series.astype(str).tolist())
-          if not step(conn, f"Set {var} (factor)", f'{var} <- base::factor(base::as.character(base::unlist({tmpname})))'):
-            _set_label(self._lr_fitStatus, "R data error (covariate)"); return
+          if not step(conn, f"Set {var} (factor)",
+                      f'{var} <- base::factor(base::as.character(base::unlist({tmpname})))'):
+            _set_label(self._lr_fitStatus, "R data error (covariate)");
+            return
         added_vars.append(var)
 
     pieces = ['Size=base::as.numeric(size)', 'Coords=arr']
     for var in added_vars: pieces.insert(1, f'{var}={var}')
     gdf_call = 'gdf <- geomorph::geomorph.data.frame(' + ', '.join(pieces) + ')'
     if not step(conn, "Build gdf", gdf_call):
-      _set_label(self._lr_fitStatus, "R data error (gdf)"); return
+      _set_label(self._lr_fitStatus, "R data error (gdf)");
+      return
 
     import re as _re
     fml = _re.sub(r'^\s*(Y|Coords|Shape|SHAPE|shape)\s*~', 'Coords ~', fml_raw.strip())
-    try: conn.r.__setattr__('fml', fml)
+    try:
+      conn.r.__setattr__('fml', fml)
     except Exception as e:
       _set_label(self._lr_fitStatus, "R data error (formula set)")
-      self._log(f"[LR] set fml: {repr(e)}"); return
+      self._log(f"[LR] set fml: {repr(e)}");
+      return
     if not step(conn, "Build formula", 'mod <- stats::as.formula(fml)'):
-      _set_label(self._lr_fitStatus, "Bad formula"); return
+      _set_label(self._lr_fitStatus, "Bad formula");
+      return
 
     if not step(conn, "Fit procD.lm", 'outlm <- geomorph::procD.lm(mod, data=gdf)'):
-      _set_label(self._lr_fitStatus, "Fit failed"); return
+      _set_label(self._lr_fitStatus, "Fit failed");
+      return
 
     if not step(conn, "Extract coefficients", 'coef_mat <- outlm$coefficients; coef_names <- base::rownames(coef_mat)'):
-      _set_label(self._lr_fitStatus, "Extract error"); return
+      _set_label(self._lr_fitStatus, "Extract error");
+      return
 
     try:
       coef_mat = np.asarray(conn.eval('coef_mat'))
       coef_names = list(conn.eval('as.character(coef_names)'))
     except Exception as e:
       _set_label(self._lr_fitStatus, "Pull-back error")
-      self._log(f"[LR] pull coef: {repr(e)}"); return
+      self._log(f"[LR] pull coef: {repr(e)}");
+      return
+
+    # ---- NEW: cache covariate ranges for numeric sliders ----
+    cov_stats = {}
+    try:
+      cov_stats["Size"] = {
+        "is_numeric": True,
+        "min": float(_np.nanmin(size_vec)),
+        "max": float(_np.nanmax(size_vec)),
+        "mean": float(_np.nanmean(size_vec)),
+      }
+      if cov_df is not None:
+        import pandas as pd
+        for col in cov_df.columns:
+          series = cov_df[col]
+          is_num = False
+          try:
+            is_num = bool(pd.api.types.is_numeric_dtype(series))
+          except Exception:
+            try:
+              _ = pd.to_numeric(series, errors="raise")
+              is_num = True
+            except Exception:
+              is_num = False
+          if is_num:
+            vals = _np.asarray(series, dtype=float)
+            cov_stats[str(col)] = {
+              "is_numeric": True,
+              "min": float(_np.nanmin(vals)),
+              "max": float(_np.nanmax(vals)),
+              "mean": float(_np.nanmean(vals)),
+            }
+    except Exception:
+      pass
+    # ----------------------------------------------
 
     if not step(conn, "Summarize model", 'sumtxt <- paste(utils::capture.output(summary(outlm)), collapse="\\n")'):
       self._lr_setSummaryText("Failed to build summary(outlm).")
       summary_text = ""
     else:
-      try: summary_text = str(conn.eval('sumtxt'))
+      try:
+        summary_text = str(conn.eval('sumtxt'))
       except Exception as e:
         summary_text = f"Could not read summary from R: {repr(e)}"
       self._lr_setSummaryText(summary_text)
 
-    # cache for coefficient viz
+    # cache for coefficient viz (+ covariate stats)
     self._lr_last_fit = {
       "formula": fml,
       "coef_mat": coef_mat,
@@ -1099,14 +1154,17 @@ class GeomorphLR:
       "n_specimens": n,
       "p_landmarks": p,
       "covariate_path": cov_path,
-      "summary_text": summary_text
+      "summary_text": summary_text,
+      "covariate_stats": cov_stats,  # <--- NEW
     }
 
     self._log(f"[LR] geomorph::procD.lm OK: coef_mat {coef_mat.shape}, terms={len(coef_names)}")
     _set_label(self._lr_fitStatus, "Fit complete")
 
-    try: self._coef_refreshFromFit()
-    except Exception: pass
+    try:
+      self._coef_refreshFromFit()
+    except Exception:
+      pass
 
   def _r_try(self, code: str, tag: str = ""):
     conn = self._r_conn
@@ -1213,64 +1271,110 @@ class GeomorphLR:
     coef_mat = np.asarray(last.get("coef_mat", []))
     coef_names = list(last.get("coef_names", []))
     if coef_mat.ndim != 2 or len(coef_names) != coef_mat.shape[0]:
-      self._coef_clearChoices(); return
+      self._coef_clearChoices();
+      return
 
     self._coef_vectors = [np.asarray(coef_mat[i, :]).reshape(-1).copy() for i in range(coef_mat.shape[0])]
     self._coef_names = [str(n) for n in coef_names]
 
+    # pick first non-intercept
     first_term = 0
     for i, nm in enumerate(self._coef_names):
       if nm.strip() != "(Intercept)":
-        first_term = i; break
+        first_term = i;
+        break
     self._coef_current = int(first_term)
 
+    # Populate combo
     if self.coefController:
       self.coefController.populateComboBox(self._coef_names)
-      try: self.ui.coefComboBox.setCurrentIndex(self._coef_current)
-      except Exception: pass
-      self.coefController.setRange(-1.0, 1.0); self.coefController.setValue(0.0)
+      try:
+        self.ui.coefComboBox.setCurrentIndex(self._coef_current)
+      except Exception:
+        pass
 
+    # Build domains for slider behavior
+    try:
+      self._coef_build_domains()
+    except Exception as e:
+      self._log(f"[LR/COEF] domain build warning: {e}")
+
+    # Ensure infra and TPS, then set slider domain, then apply identity warp at neutral reference
     self._lr_prepareWarpInfra()
     self._ensureLRTPSNode()
-    try: self._coef_applyTPS(scale=0.0)
-    except Exception as e: self._log(f"[LR/COEF] initial TPS build failed: {e}")
-    self._coef_attachTargets(enabled=True); self._coef_updateScaling()
+
+    try:
+      self._coef_set_slider_domain_for_current()  # sets range and neutral (mean for numeric, 0 otherwise)
+    except Exception as e:
+      self._log(f"[LR/COEF] domain set failed: {e}")
+      if self.coefController:
+        self.coefController.setRange(-1.0, 1.0)
+        self.coefController.setValue(0.0)
+
+    try:
+      self._coef_applyTPS()  # uses current slider value & domain
+    except Exception as e:
+      self._log(f"[LR/COEF] initial TPS build failed: {e}")
+
+    self._coef_attachTargets(enabled=True)
 
   def _coef_onSelectCoefficient(self):
     if not self._coef_enabled: return
-    try: idx = int(self.coefController.comboBoxIndex())
-    except Exception: idx = -1
+    try:
+      idx = int(self.coefController.comboBoxIndex())
+    except Exception:
+      idx = -1
     if idx < 0 or idx >= len(self._coef_vectors): return
     self._coef_current = idx
-    try: self.coefController.setValue(0.0)
-    except Exception: pass
-    try: self._coef_applyTPS(scale=0.0)
-    except Exception as e: self._log(f"[LR/COEF] TPS build (new coef) failed: {e}")
+
+    # Set slider range & neutral for this coefficient
+    try:
+      self._coef_set_slider_domain_for_current()
+    except Exception as e:
+      self._log(f"[LR/COEF] domain set (select) failed: {e}")
+      if self.coefController:
+        self.coefController.setRange(-1.0, 1.0)
+        self.coefController.setValue(0.0)
+
+    try:
+      self._coef_applyTPS()
+    except Exception as e:
+      self._log(f"[LR/COEF] TPS build (new coef) failed: {e}")
     self._coef_attachTargets(enabled=True)
 
   def _coef_setMagnification(self):
     if not self._coef_enabled: return
-    try: scale = float(self.coefController.sliderValue())
-    except Exception: scale = 0.0
-    scale = 1.0 if scale > 1.0 else (-1.0 if scale < -1.0 else scale)
-    try: self._coef_applyTPS(scale=scale)
-    except Exception as e: self._log(f"[LR/COEF] TPS rebuild (magnification) failed: {e}")
+    try:
+      self._coef_applyTPS()
+    except Exception as e:
+      self._log(f"[LR/COEF] TPS rebuild (magnification) failed: {e}")
 
   def _coef_updateScaling(self):
     if not self._coef_enabled: return
-    try: val = float(self.coefController.sliderValue())
-    except Exception: val = 0.0
-    val = 1.0 if val > 1.0 else (-1.0 if val < -1.0 else val)
-    try: self._coef_applyTPS(scale=val)
-    except Exception as e: self._log(f"[LR/COEF] TPS rebuild (scale) failed: {e}")
+    try:
+      self._coef_applyTPS()
+    except Exception as e:
+      self._log(f"[LR/COEF] TPS rebuild (scale) failed: {e}")
 
   def _coef_resetView(self):
-    if self.coefController: self.coefController.setValue(0.0)
+    # Set slider to neutral based on domain
+    try:
+      dom = self._coef_current_domain()
+    except Exception:
+      dom = {"mode": "unit", "ref": 0.0}
+    if self.coefController:
+      neutral = float(dom.get("ref", 0.0)) if dom.get("mode") == "real" else 0.0
+      self.coefController.setValue(neutral)
+
+    # Identity TPS
     node = self._ensureLRTPSNode()
     try:
-      id_tps = vtk.vtkThinPlateSplineTransform(); id_tps.SetBasisToR()
-      node.SetAndObserveTransformToParent(id_tps); node.Modified()
-    except Exception: pass
+      id_tps = vtk.vtkThinPlateSplineTransform();
+      id_tps.SetBasisToR()
+      node.SetAndObserveTransformToParent(id_tps);
+      node.Modified()
+    except Exception:
+      pass
     self._coef_debugPipeline(tag="reset", sample_scale=0.0)
 
   def _coef_initOrResetClicked(self):
@@ -1462,7 +1566,7 @@ class GeomorphLR:
     self._log(f"[LR] Created LRTPS_Transform: {self.lrTPSTransformNode.GetID()}")
     return self.lrTPSTransformNode
 
-  def _coef_applyTPS(self, scale: float):
+  def _coef_applyTPS(self, scale: float | None = None):
     if self._coef_current is None or self._coef_current < 0:
       return
     if getattr(self.w, "rawMeanLandmarks", None) is None:
@@ -1470,14 +1574,28 @@ class GeomorphLR:
     if not (self._coef_vectors and len(self._coef_vectors) > self._coef_current):
       return
 
-    if scale > 1.0:
-      scale = 1.0
-    if scale < -1.0:
-      scale = -1.0
+    # Determine delta multiplier from current domain & slider value
+    dom = self._coef_current_domain()
+    if scale is None:
+      try:
+        value = float(self.coefController.sliderValue())
+      except Exception:
+        value = 0.0
+    else:
+      value = float(scale)
+
+    if dom.get("mode") == "real":
+      # Real units: slider shows the actual covariate value; neutral at mean
+      delta = value - float(dom.get("ref", 0.0))
+    else:
+      # Unit domain: keep legacy behavior in [-1, 1]
+      if value > 1.0: value = 1.0
+      if value < -1.0: value = -1.0
+      delta = value
 
     row = np.asarray(self._coef_vectors[self._coef_current]).reshape(-1)
-    base_shift = self._coef_row_to_shift(row)
-    shift = float(scale) * base_shift
+    base_shift = self._coef_row_to_shift(row)  # includes magnification & sample-size scaling
+    shift = float(delta) * base_shift
     target = self.w.rawMeanLandmarks + shift
 
     tps = vtk.vtkThinPlateSplineTransform()
@@ -1492,8 +1610,7 @@ class GeomorphLR:
     except Exception:
       pass
 
-    # keep call for compatibility; it’s silenced below
-    self._coef_debugPipeline(tag=f"TPS scale={scale:.3f}", sample_scale=None)
+    self._coef_debugPipeline(tag=f"TPS val={value} (delta={delta})", sample_scale=None)
 
   # ------------------------------ Misc UI helpers -----------------------------
 
@@ -1539,3 +1656,76 @@ class GeomorphLR:
       d.SetColor(rgb)
     except Exception:
       pass
+
+  def _coef_build_domains(self):
+    """
+    Build per-coefficient slider domains:
+      - For numeric covariates (e.g., Size, Age): mode='real', range=[min,max], ref=mean
+      - Otherwise: mode='unit', range=[-1,1], ref=0
+    Saves into self._coef_domains: {coef_name: {mode,min,max,ref}}
+    """
+    self._coef_domains = {}
+    last = getattr(self, "_lr_last_fit", {}) or {}
+    stats = last.get("covariate_stats", {}) or {}
+
+    def numeric_domain_for(var_name: str):
+      s = stats.get(var_name)
+      if s and s.get("is_numeric"):
+        return {"mode": "real", "min": float(s["min"]), "max": float(s["max"]), "ref": float(s["mean"])}
+      return None
+
+    for nm in (self._coef_names or []):
+      nm_str = str(nm).strip()
+      dom = None
+
+      # Exact match first (e.g., "Size")
+      dom = numeric_domain_for(nm_str)
+
+      # If interaction (e.g., "Size:SexFemale" or "Age:TreatmentB"), try each side
+      if dom is None and ":" in nm_str:
+        parts = [p.strip() for p in nm_str.split(":") if p.strip()]
+        for p in parts:
+          cand = numeric_domain_for(p)
+          if cand is not None:
+            dom = cand
+            # annotate which side is numeric if useful later
+            dom["interaction_numeric"] = p
+            break
+
+      # Default unit domain
+      if dom is None:
+        dom = {"mode": "unit", "min": -1.0, "max": 1.0, "ref": 0.0}
+
+      self._coef_domains[nm_str] = dom
+
+  def _coef_current_domain(self):
+    """Return domain dict for the currently-selected coefficient."""
+    if self._coef_current is None or self._coef_current < 0:
+      return {"mode": "unit", "min": -1.0, "max": 1.0, "ref": 0.0}
+    try:
+      name = str(self._coef_names[self._coef_current]).strip()
+    except Exception:
+      return {"mode": "unit", "min": -1.0, "max": 1.0, "ref": 0.0}
+    dom = getattr(self, "_coef_domains", {}).get(name)
+    if not dom:
+      dom = {"mode": "unit", "min": -1.0, "max": 1.0, "ref": 0.0}
+    return dom
+
+  def _coef_set_slider_domain_for_current(self):
+    """
+    Apply domain to the slider/spinbox:
+      - Numeric: range=[min,max], set value=mean (neutral)
+      - Unit:    range=[-1,1],   set value=0.0  (neutral)
+    """
+    if not self.coefController:
+      return
+    dom = self._coef_current_domain()
+    self.coefController.setRange(float(dom["min"]), float(dom["max"]))
+    neutral = float(dom.get("ref", 0.0)) if dom.get("mode") == "real" else 0.0
+    self.coefController.setValue(neutral)
+
+    if dom.get("mode") == "real":
+      try:
+        self.ui.coefMagnificationSpin.setValue(1.0)
+      except Exception:
+        pass

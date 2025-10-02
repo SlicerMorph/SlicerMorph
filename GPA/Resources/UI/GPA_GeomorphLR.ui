@@ -320,7 +320,7 @@
                     <property name="minimum"><double>-1.000</double></property>
                     <property name="maximum"><double>1.000</double></property>
                     <property name="singleStep"><double>0.010</double></property>
-                    <property name="toolTip"><string>Exact slider value.</string></property>
+                    <property name="toolTip"><string>Slider value (real covariate units for numeric coefficients; otherwise normalized [-1, 1]).</string></property>
                   </widget>
                 </item>
               </layout>
