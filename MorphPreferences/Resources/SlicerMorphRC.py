@@ -9,15 +9,7 @@ defaultVolumeStorageNode.SetUseCompression(0)
 slicer.mrmlScene.AddDefaultNode(defaultVolumeStorageNode)
 logging.info("  Volume nodes will be stored uncompressed by default")
 
-#
-#set the default volume storage to not compress by default
-#
-defaultVolumeStorageNode = slicer.vtkMRMLSegmentationStorageNode()
-defaultVolumeStorageNode.SetUseCompression(0)
-slicer.mrmlScene.AddDefaultNode(defaultVolumeStorageNode)
-logging.info("  Segmentation nodes will be stored uncompressed")
 
-#
 #set the default model save format to ply (from vtk)
 #
 defaultModelStorageNode = slicer.vtkMRMLModelStorageNode()
@@ -229,3 +221,4 @@ def onNodeAdded(caller, event, calldata):
     qt.QTimer.singleShot(0, lambda: setVolumePropertyDiceCT(node))
 
 slicer.mrmlScene.AddObserver(slicer.vtkMRMLScene.NodeAddedEvent, onNodeAdded)
+
