@@ -252,34 +252,13 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.outputSpacingWidget.toolTip = "Slice spacing of the volume that will be loaded"
     outputFormLayout.addRow("Output spacing: ", self.outputSpacingWidget)
 
-    # 8-bit conversion section
+    # 8-bit conversion section (uses VTK AutoRange for optimal thresholds)
     self.convert8bitCheckBox = qt.QCheckBox()
     self.convert8bitCheckBox.checked = False
-    self.convert8bitCheckBox.toolTip = "Convert output volume to 8-bit using percentile-based intensity rescaling"
-    outputFormLayout.addRow("8-bit conversion: ", self.convert8bitCheckBox)
+    self.convert8bitCheckBox.toolTip = "Convert output volume to grayscale (8bit) using percentile-based intensity rescaling"
+    outputFormLayout.addRow("8-bit intensity: ", self.convert8bitCheckBox)
 
-    # Percentile range inputs
-    percentileLayout = qt.QHBoxLayout()
-    self.lowerPercentileSpinBox = qt.QDoubleSpinBox()
-    self.lowerPercentileSpinBox.minimum = 0.0
-    self.lowerPercentileSpinBox.maximum = 1.0
-    self.lowerPercentileSpinBox.singleStep = 0.001
-    self.lowerPercentileSpinBox.decimals = 4
-    self.lowerPercentileSpinBox.value = 0.005
-    self.lowerPercentileSpinBox.toolTip = "Lower percentile for intensity rescaling (default: 0.005)"
-    percentileLayout.addWidget(qt.QLabel("Lower:"))
-    percentileLayout.addWidget(self.lowerPercentileSpinBox)
-    
-    self.upperPercentileSpinBox = qt.QDoubleSpinBox()
-    self.upperPercentileSpinBox.minimum = 0.0
-    self.upperPercentileSpinBox.maximum = 1.0
-    self.upperPercentileSpinBox.singleStep = 0.001
-    self.upperPercentileSpinBox.decimals = 4
-    self.upperPercentileSpinBox.value = 0.995
-    self.upperPercentileSpinBox.toolTip = "Upper percentile for intensity rescaling (default: 0.995)"
-    percentileLayout.addWidget(qt.QLabel("Upper:"))
-    percentileLayout.addWidget(self.upperPercentileSpinBox)
-    outputFormLayout.addRow("Percentiles: ", percentileLayout)
+
 
     self.loadButton = qt.QPushButton("Load files")
     self.loadButton.toolTip = "Load files as a 3D volume"
@@ -493,9 +472,7 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       
       # Apply 8-bit conversion if requested
       if self.convert8bitCheckBox.checked:
-        lowerPercentile = self.lowerPercentileSpinBox.value
-        upperPercentile = self.upperPercentileSpinBox.value
-        outputNode = self.logic.convertTo8Bit(outputNode, lowerPercentile, upperPercentile, progressCallback=self.onProgress)
+        outputNode = self.logic.convertTo8Bit(outputNode, progressCallback=self.onProgress)
         self.setCurrentNode(outputNode)
       
       qt.QApplication.restoreOverrideCursor()
@@ -1128,19 +1105,15 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
 
     return sliceArray
 
-  def convertTo8Bit(self, volumeNode, lowerPercentile=0.005, upperPercentile=0.995, progressCallback=None):
+  def convertTo8Bit(self, volumeNode, progressCallback=None):
     """
-    Convert a volume to 8-bit unsigned char using percentile-based intensity rescaling.
+    Convert a volume to 8-bit unsigned char using VTK's optimized intensity rescaling.
     This method operates on the output volume created by loadVolume().
     
     Parameters
     ----------
     volumeNode : vtkMRMLScalarVolumeNode
         The volume node to convert
-    lowerPercentile : float
-        Lower percentile for intensity rescaling (default: 0.005)
-    upperPercentile : float
-        Upper percentile for intensity rescaling (default: 0.995)
     progressCallback : callable, optional
         Callback function for progress updates
         
@@ -1153,22 +1126,42 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
     if progressCallback:
       progressCallback(0.0)
     
+    # Check if volume is multi-component (e.g., RGB)
+    if volumeNode.IsA("vtkMRMLVectorVolumeNode"):
+      raise ValueError("8-bit conversion is not supported for multi-component (RGB/RGBA) volumes")
+    
     # Get the volume array
     volumeArray = slicer.util.arrayFromVolume(volumeNode)
+    
+    # Check if already 8-bit
+    if volumeArray.dtype == numpy.uint8:
+      logging.info("Volume is already 8-bit, no conversion needed")
+      return volumeNode
     
     if progressCallback:
       progressCallback(0.1)
     
-    # Calculate percentile values for intensity rescaling
-    lowerValue = numpy.percentile(volumeArray, lowerPercentile * 100)
-    upperValue = numpy.percentile(volumeArray, upperPercentile * 100)
+    # Use vtkImageHistogramStatistics for optimal intensity thresholds
+    # This avoids saturation and provides robust threshold values automatically
+    histogramStatistics = vtk.vtkImageHistogramStatistics()
+    histogramStatistics.SetInputData(volumeNode.GetImageData())
+    histogramStatistics.Update()
+    
+    # Get optimal threshold values using VTK's AutoRange
+    lowerValue = histogramStatistics.GetAutoRange()[0]
+    upperValue = histogramStatistics.GetAutoRange()[1]
     
     if progressCallback:
       progressCallback(0.3)
     
     # Rescale intensities to 0-255 range
     volumeArray = numpy.clip(volumeArray, lowerValue, upperValue)
-    volumeArray = ((volumeArray - lowerValue) / (upperValue - lowerValue) * 255.0)
+    
+    # Prevent division by zero if lowerValue == upperValue (e.g., constant image)
+    if numpy.isclose(upperValue, lowerValue):
+      volumeArray = numpy.zeros_like(volumeArray)
+    else:
+      volumeArray = ((volumeArray - lowerValue) / (upperValue - lowerValue) * 255.0)
     
     if progressCallback:
       progressCallback(0.6)
@@ -1191,7 +1184,7 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
     if progressCallback:
       progressCallback(1.0)
     
-    logging.info(f"Volume converted to 8-bit: intensity range [{lowerValue:.2f}, {upperValue:.2f}] mapped to [0, 255]")
+    logging.info(f"Volume converted to 8-bit using VTK AutoRange: intensity range [{lowerValue:.2f}, {upperValue:.2f}] mapped to [0, 255]")
     
     return volumeNode
 
