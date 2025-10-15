@@ -258,8 +258,6 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.convert8bitCheckBox.toolTip = "Convert output volume to grayscale (8bit) using percentile-based intensity rescaling"
     outputFormLayout.addRow("8-bit intensity: ", self.convert8bitCheckBox)
 
-
-
     self.loadButton = qt.QPushButton("Load files")
     self.loadButton.toolTip = "Load files as a 3D volume"
     self.loadButton.enabled = False
