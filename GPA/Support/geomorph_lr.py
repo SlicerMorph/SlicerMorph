@@ -1207,8 +1207,11 @@ class GeomorphLR:
     self._coef_vectors = []
     self._coef_names = []
     self._coef_current = -1
+    self._coef_mode = "numeric"  # "numeric" | "categorical"
+    self._cat = None  # holds current categorical contrast cache
+    self._cat_factors = {}  # {factor: [levels...]}
 
-    # Slider controller
+    # Slider controller for NUMERIC coefficient warps (existing behavior)
     try:
       self.coefController = _PCSliderController(
         comboBox=self.ui.coefComboBox,
@@ -1222,7 +1225,7 @@ class GeomorphLR:
     except Exception:
       self.coefController = None
 
-    # Magnification wiring (unchanged)
+    # Magnification (shared; also used to scale categorical delta if desired)
     try:
       self.ui.coefUpdateMagnificationButton.clicked.connect(self._coef_setMagnification)
     except Exception:
@@ -1232,60 +1235,57 @@ class GeomorphLR:
       self.ui.coefMagnificationSpin.setMinimum(0.01)
       self.ui.coefMagnificationSpin.setMaximum(1_000_000.0)
       self.ui.coefMagnificationSpin.setSingleStep(10.0)
-      # Keep prior behavior: high default mag for visible warps
-      self.ui.coefMagnificationSpin.setValue(1000.0)
+      # keep a visible default; for categorical we multiply A->B by this factor
+      self.ui.coefMagnificationSpin.setValue(1.0)
     except Exception:
       pass
 
-    # Reuse the existing UI button as the single "Init / Reset" control
+    # Reuse "Init / Reset" button
     try:
       self.ui.coefResetButton.setText("Init / Reset Coefficient View")
       self.ui.coefResetButton.setToolTip(
-        "Create LR warping infrastructure if needed, then reset the coefficient slider to 0 and clear any TPS warp."
+        "Create LR warping infrastructure if needed, then reset the view to neutral (identity TPS)."
       )
-      # Connect to combined handler
       self.ui.coefResetButton.clicked.connect(self._coef_initOrResetClicked)
     except Exception:
       pass
 
-    # Remove any legacy runtime-added "Initialize LR Warping" button if present
-    try:
-      if hasattr(self, "lrInitWarpButton") and self.lrInitWarpButton:
-        self.lrInitWarpButton.setParent(None)
-        self.lrInitWarpButton.deleteLater()
-        self.lrInitWarpButton = None
-    except Exception:
-      pass
-
-    # Keep grid node alive for coefficient warps
+    # Grid transform node (kept alive)
     self._ensureLRGridNode()
     if self.coefController:
       self.coefController.setRange(-1.0, 1.0)
       self.coefController.setValue(0.0)
 
-  def _coef_refreshFromFit(self):
-    if not self._coef_enabled: return
-    last = getattr(self, "_lr_last_fit", None)
-    if not last: self._coef_clearChoices(); return
+    # ---- NEW: wire CATEGORICAL UI (if present in the .ui) ----
+    self._cat_connect_controls()  # safe no-op if widgets are absent
 
-    coef_mat = np.asarray(last.get("coef_mat", []))
-    coef_names = list(last.get("coef_names", []))
-    if coef_mat.ndim != 2 or len(coef_names) != coef_mat.shape[0]:
-      self._coef_clearChoices();
+  def _coef_refreshFromFit(self):
+    if not self._coef_enabled:
+      return
+    last = getattr(self, "_lr_last_fit", None)
+    if not last:
+      self._coef_clearChoices()
       return
 
-    self._coef_vectors = [np.asarray(coef_mat[i, :]).reshape(-1).copy() for i in range(coef_mat.shape[0])]
+    # Setup numeric-coefficient list as before
+    import numpy as _np
+    coef_mat = _np.asarray(last.get("coef_mat", []))
+    coef_names = list(last.get("coef_names", []))
+    if coef_mat.ndim != 2 or len(coef_names) != coef_mat.shape[0]:
+      self._coef_clearChoices()
+      return
+
+    self._coef_vectors = [_np.asarray(coef_mat[i, :]).reshape(-1).copy() for i in range(coef_mat.shape[0])]
     self._coef_names = [str(n) for n in coef_names]
 
-    # pick first non-intercept
+    # default to first non-intercept
     first_term = 0
     for i, nm in enumerate(self._coef_names):
       if nm.strip() != "(Intercept)":
-        first_term = i;
+        first_term = i
         break
     self._coef_current = int(first_term)
 
-    # Populate combo
     if self.coefController:
       self.coefController.populateComboBox(self._coef_names)
       try:
@@ -1293,30 +1293,68 @@ class GeomorphLR:
       except Exception:
         pass
 
-    # Build domains for slider behavior
+    # Domains for numeric mode
     try:
       self._coef_build_domains()
     except Exception as e:
       self._log(f"[LR/COEF] domain build warning: {e}")
 
-    # Ensure infra and TPS, then set slider domain, then apply identity warp at neutral reference
+    # Ensure infra + identity warp at neutral
     self._lr_prepareWarpInfra()
     self._ensureLRTPSNode()
 
     try:
-      self._coef_set_slider_domain_for_current()  # sets range and neutral (mean for numeric, 0 otherwise)
+      self._coef_set_slider_domain_for_current()
     except Exception as e:
       self._log(f"[LR/COEF] domain set failed: {e}")
       if self.coefController:
         self.coefController.setRange(-1.0, 1.0)
         self.coefController.setValue(0.0)
 
+    # Build initial numeric TPS
     try:
-      self._coef_applyTPS()  # uses current slider value & domain
+      self._coef_mode = "numeric"
+      self._coef_applyTPS()
     except Exception as e:
       self._log(f"[LR/COEF] initial TPS build failed: {e}")
 
     self._coef_attachTargets(enabled=True)
+
+    # ---- NEW: CATEGORICAL factor list + default numeric override wiring ----
+    try:
+      facts = self._r_list_factors_and_levels()  # {factor: [levels...]} (R factor order)
+      self._cat_factors = facts or {}
+
+      if hasattr(self.ui, "catFactorComboBox"):
+        self.ui.catFactorComboBox.clear()
+        if self._cat_factors:
+          # populate factors
+          for f in self._cat_factors.keys():
+            self.ui.catFactorComboBox.addItem(str(f))
+          self._cat_enable_controls(True)
+          # trigger levels refresh
+          self._cat_onFactorChanged()
+        else:
+          self._cat_enable_controls(False)
+
+      # Initialize "Size at" bounds from covariate_stats if available
+      cs = last.get("covariate_stats", {}) or {}
+      if hasattr(self.ui, "catSizeAtSpin"):
+        try:
+          sz = cs.get("Size", {})
+          if sz.get("is_numeric", False):
+            self.ui.catSizeAtSpin.setMinimum(float(sz.get("min", -1e12)))
+            self.ui.catSizeAtSpin.setMaximum(float(sz.get("max", 1e12)))
+            self.ui.catSizeAtSpin.setValue(float(sz.get("mean", 0.0)))
+          else:
+            self.ui.catSizeAtSpin.setMinimum(-1e12)
+            self.ui.catSizeAtSpin.setMaximum(1e12)
+            self.ui.catSizeAtSpin.setValue(0.0)
+        except Exception:
+          pass
+    except Exception as e:
+      self._log(f"[LR/CAT] could not build factor lists: {e}")
+      self._cat_enable_controls(False)
 
   def _coef_onSelectCoefficient(self):
     if not self._coef_enabled: return
@@ -1350,11 +1388,27 @@ class GeomorphLR:
       self._log(f"[LR/COEF] TPS rebuild (magnification) failed: {e}")
 
   def _coef_updateScaling(self):
-    if not self._coef_enabled: return
-    try:
-      self._coef_applyTPS()
-    except Exception as e:
-      self._log(f"[LR/COEF] TPS rebuild (scale) failed: {e}")
+    if not self._coef_enabled:
+      return
+    # Route to the right engine
+    if getattr(self, "_coef_mode", "numeric") == "categorical":
+      try:
+        # For categorical mode, 0..1 slider is in the CAT panel (catSpin/catSlider)
+        # but we also call this when magnification changes; just re-apply current t.
+        t = 0.0
+        if hasattr(self.ui, "catSpin"):
+          try:
+            t = float(self.ui.catSpin.value)
+          except Exception:
+            t = float(self.ui.catSpin.value())
+        self._coef_applyTPS_categorical(t)
+      except Exception as e:
+        self._log(f"[LR/COEF] TPS rebuild (categorical) failed: {e}")
+    else:
+      try:
+        self._coef_applyTPS()
+      except Exception as e:
+        self._log(f"[LR/COEF] TPS rebuild (numeric) failed: {e}")
 
   def _coef_resetView(self):
     # Set slider to neutral based on domain
@@ -1729,3 +1783,437 @@ class GeomorphLR:
         self.ui.coefMagnificationSpin.setValue(1.0)
       except Exception:
         pass
+
+  def _r_list_factors_and_levels(self):
+    """
+    Return {factor_name: [levels...]} for factor predictors on the model RHS,
+    using gdf's factor levels. Robust to geomorph.data.frame and pyRserve's
+    scalar/length-1 character return behavior.
+    """
+    if not self._r_conn:
+      return {}
+
+    code = r'''
+      # RHS variables referenced by the fitted model
+      rhs <- all.vars(stats::delete.response(stats::terms(mod)))
+      rhs <- intersect(rhs, names(gdf))
+
+      # Identify factors in gdf among RHS variables
+      isfac <- if (length(rhs)) vapply(rhs, function(nm) is.factor(gdf[[nm]]),
+                                       FUN.VALUE = logical(1)) else logical(0)
+      facs <- if (length(isfac)) rhs[isfac] else character(0)
+
+      # Named character vector "lvl1|lvl2|..." per factor
+      if (length(facs) == 0) {
+        fact_map <- structure(character(0), names = character(0))
+      } else {
+        lvl_str <- vapply(facs, function(nm) {
+          lv <- levels(gdf[[nm]])
+          if (is.null(lv)) "" else paste(lv, collapse="|")
+        }, FUN.VALUE = character(1))
+        names(lvl_str) <- facs
+        fact_map <- lvl_str
+      }
+    '''
+    ok, _ = self._r_try(code, "list factors/levels")
+    if not ok:
+      self._log("[LR/CAT] No factors found (terms scan failed).")
+      return {}
+
+    # Pull back *character vectors*; coerce safely to Python lists
+    try:
+      facs_obj = self._r_conn.eval('as.character(names(fact_map))')
+      lvl_obj = self._r_conn.eval('as.character(fact_map)')
+    except Exception:
+      self._log("[LR/CAT] Failed to read factor map from R.")
+      return {}
+
+    facs = self._py_to_str_list(facs_obj)
+    lvl = self._py_to_str_list(lvl_obj)
+
+    out = {}
+    try:
+      for i, f in enumerate(facs):
+        lvls = lvl[i].split("|") if i < len(lvl) else []
+        out[str(f)] = [s for s in (str(x) for x in lvls) if s != ""]
+    except Exception:
+      out = {}
+
+    try:
+      if out:
+        self._log("[LR/CAT] Factors found: " + ", ".join([f"{k}({len(v)})" for k, v in out.items()]))
+      else:
+        self._log("[LR/CAT] No factor predictors on the RHS.")
+    except Exception:
+      pass
+
+    return out
+
+  def _cat_enable_controls(self, enabled: bool):
+    """Enable/disable the categorical UI widgets together."""
+    names = [
+      "catFactorComboBox", "catFromLevelComboBox", "catToLevelComboBox",
+      "catSwapButton", "catApplyButton", "catSlider", "catSpin",
+      "catUseMeansCheck", "catSizeAtSpin"
+    ]
+    for n in names:
+      if hasattr(self.ui, n):
+        try:
+          getattr(self.ui, n).setEnabled(bool(enabled))
+        except Exception:
+          _set_enabled(getattr(self.ui, n), bool(enabled))
+
+  def _r_predict_shape(self, assign: dict | None = None) -> np.ndarray:
+    """
+    Predict a single shape (p x 3) by building newdata with:
+      - numeric covariates at sample means
+      - factors at their baseline (first) level
+      - then overriding with values from `assign` (dict of {var: value}).
+
+    Transport of overrides to R uses two character vectors (_py_names/_py_vals),
+    avoiding dict serialization issues in pyRserve.
+    """
+    import numpy as _np
+    if not self._r_conn:
+      raise RuntimeError("No Rserve connection")
+
+    p = int(self._lr_last_fit.get("p_landmarks", 0))
+    if p <= 0:
+      raise RuntimeError("Unknown p_landmarks")
+
+    # Ship overrides to R as *character vectors* (names/values)
+    names_vec, vals_vec = [], []
+    if assign:
+      for k, v in assign.items():
+        names_vec.append(str(k))
+        vals_vec.append(str(v))
+    try:
+      self._r_conn.r.__setattr__("_py_names", names_vec)
+      self._r_conn.r.__setattr__("_py_vals", vals_vec)
+    except Exception:
+      self._r_conn.r.__setattr__("_py_names", [])
+      self._r_conn.r.__setattr__("_py_vals", [])
+
+    code = rf'''
+      # Variables on RHS of the fitted model
+      rhs <- all.vars(stats::delete.response(stats::terms(mod)))
+      rhs <- intersect(rhs, names(gdf))
+
+      # Start with defaults: means for numeric, first level for factor
+      nd <- setNames(vector("list", length(rhs)), rhs)
+      for (i in seq_along(rhs)) {{
+        v <- rhs[[i]]
+        if (is.numeric(gdf[[v]])) {{
+          nd[[v]] <- mean(gdf[[v]], na.rm=TRUE)
+        }} else if (is.factor(gdf[[v]])) {{
+          nd[[v]] <- levels(gdf[[v]])[1L]
+        }} else {{
+          nd[[v]] <- as.character(gdf[[v]])[1L]
+        }}
+      }}
+      nd <- as.data.frame(nd, stringsAsFactors = FALSE)
+
+      # Apply overrides passed from Python
+      an <- if (exists("_py_names", envir=.GlobalEnv)) .GlobalEnv$`_py_names` else character(0)
+      av <- if (exists("_py_vals",  envir=.GlobalEnv)) .GlobalEnv$`_py_vals`  else character(0)
+      if (length(an) != length(av)) {{ an <- character(0); av <- character(0) }}
+
+      if (length(an)) {{
+        for (i in seq_along(an)) {{
+          nm <- an[[i]]
+          if (!nm %in% rhs) next
+          val <- av[[i]]
+          if (is.numeric(gdf[[nm]])) {{
+            nd[[nm]] <- as.numeric(val)
+          }} else if (is.factor(gdf[[nm]])) {{
+            nd[[nm]] <- factor(as.character(val), levels=levels(gdf[[nm]]))
+          }} else {{
+            nd[[nm]] <- val
+          }}
+        }}
+      }}
+
+      # Ensure factor columns in nd inherit gdf levels
+      for (nm in rhs) {{
+        if (is.factor(gdf[[nm]])) {{
+          nd[[nm]] <- factor(nd[[nm]], levels=levels(gdf[[nm]]))
+        }}
+      }}
+
+      # >>> IMPORTANT FIX: build design matrix from RHS-only terms <<<
+      mm_terms <- stats::delete.response(stats::terms(mod))
+      mm      <- stats::model.matrix(mm_terms, nd)
+
+      bhat <- coef(outlm)  # rows correspond to columns of mm
+      yhat <- mm %*% bhat  # 1 x (3p)
+      shp  <- geomorph::arrayspecs(yhat, p={p}, k=3)[,,1]
+    '''
+    ok, _ = self._r_try(code, "predict one shape")
+    if not ok:
+      raise RuntimeError("R prediction failed")
+
+    arr = _np.asarray(self._r_conn.eval('shp'), dtype=float)  # (p,3)
+    return arr
+
+  def set_categorical_contrast(self, factor: str, levelA: str, levelB: str,
+                               numeric_fixes: dict | None = None):
+    """
+    Prepare a categorical contrast A->B:
+     - compute predicted shape at (factor=A) and (factor=B),
+       holding other numerics at user-specified values (or means), and other factors at baseline.
+     - cache and set mode='categorical'
+     - configure the CAT slider (0..1) and build the initial TPS (t=0)
+    """
+    if not factor or factor not in (self._cat_factors or {}):
+      self._log(f"[LR/CAT] Factor '{factor}' not available.")
+      return
+
+    try:
+      assignsA = dict(numeric_fixes or {})
+      assignsB = dict(numeric_fixes or {})
+    except Exception:
+      assignsA, assignsB = {}, {}
+
+    assignsA[factor] = levelA
+    assignsB[factor] = levelB
+
+    shpA = self._r_predict_shape(assignsA)  # (p,3)
+    shpB = self._r_predict_shape(assignsB)  # (p,3)
+
+    self._coef_mode = "categorical"
+    self._cat = {"factor": factor, "A": levelA, "B": levelB, "shpA": shpA, "shpB": shpB}
+
+    # CAT slider in [0,1]
+    if hasattr(self.ui, "catSpin"):
+      try:
+        self.ui.catSpin.setMinimum(0.0)
+        self.ui.catSpin.setMaximum(1.0)
+        self.ui.catSpin.setSingleStep(0.01)
+        self.ui.catSpin.setValue(0.0)
+      except Exception:
+        pass
+    if hasattr(self.ui, "catSlider"):
+      try:
+        self.ui.catSlider.setMinimum(0)
+        self.ui.catSlider.setMaximum(100)
+        self.ui.catSlider.setValue(0)
+      except Exception:
+        pass
+
+    # Apply t=0 immediately
+    self._coef_applyTPS_categorical(0.0)
+
+  def _coef_applyTPS_categorical(self, t: float | None = None):
+    """Apply TPS for the current categorical contrast at interpolation t in [0,1]."""
+    import numpy as _np
+    if self._cat is None:
+      return
+    if t is None:
+      # read from UI spin if present
+      if hasattr(self.ui, "catSpin"):
+        try:
+          t = float(self.ui.catSpin.value)
+        except Exception:
+          t = float(self.ui.catSpin.value())
+      else:
+        t = 0.0
+    t = max(0.0, min(1.0, float(t)))
+
+    shpA = _np.asarray(self._cat["shpA"], dtype=float)
+    shpB = _np.asarray(self._cat["shpB"], dtype=float)
+    delta = shpB - shpA
+
+    # Optional magnification shared with numeric mode
+    mag = 1.0
+    try:
+      mag = float(self.ui.coefMagnificationSpin.value)
+    except Exception:
+      pass
+
+    target = shpA + (mag * t) * delta
+    if getattr(self.w, "rawMeanLandmarks", None) is None:
+      return
+
+    src = _np.asarray(self.w.rawMeanLandmarks, dtype=float)
+    tps = vtk.vtkThinPlateSplineTransform()
+    tps.SetSourceLandmarks(_convert_numpy_to_vtk_points(src))
+    tps.SetTargetLandmarks(_convert_numpy_to_vtk_points(target))
+    tps.SetBasisToR()
+
+    node = self._ensureLRTPSNode()
+    node.SetAndObserveTransformToParent(tps)
+    try:
+      node.Modified()
+    except Exception:
+      pass
+
+    self._coef_attachTargets(enabled=True)
+
+  def _cat_connect_controls(self):
+    """Wire up the Categorical Contrast UI controls if they exist."""
+    # factor / levels / slider / spin
+    try:
+      if hasattr(self.ui, "catSlider") and hasattr(self.ui, "catSpin"):
+        # Sync slider (0..100) <-> spin (0..1)
+        def _slider_to_spin(v):
+          try:
+            self.ui.catSpin.blockSignals(True)
+            self.ui.catSpin.setValue(float(v) / 100.0)
+          finally:
+            self.ui.catSpin.blockSignals(False)
+          # Rebuild TPS at the new t
+          self._coef_updateScaling()
+
+        def _spin_to_slider(x):
+          try:
+            self.ui.catSlider.blockSignals(True)
+            self.ui.catSlider.setValue(int(round(float(x) * 100.0)))
+          finally:
+            self.ui.catSlider.blockSignals(False)
+          # Rebuild TPS at the new t
+          self._coef_updateScaling()
+
+        self.ui.catSlider.valueChanged.connect(_slider_to_spin)
+        self.ui.catSpin.valueChanged.connect(_spin_to_slider)
+    except Exception:
+      pass
+
+    # Factor change -> reload levels
+    try:
+      if hasattr(self.ui, "catFactorComboBox"):
+        self.ui.catFactorComboBox.currentIndexChanged.connect(self._cat_onFactorChanged)
+    except Exception:
+      pass
+
+    # Apply & Swap
+    try:
+      if hasattr(self.ui, "catApplyButton"):
+        self.ui.catApplyButton.clicked.connect(self._cat_onApplyPressed)
+    except Exception:
+      pass
+    try:
+      if hasattr(self.ui, "catSwapButton"):
+        self.ui.catSwapButton.clicked.connect(self._cat_onSwapPressed)
+    except Exception:
+      pass
+
+  def _cat_onFactorChanged(self):
+    """Populate From/To level combos based on selected factor (R factor order)."""
+    if not (hasattr(self.ui, "catFactorComboBox") and hasattr(self.ui, "catFromLevelComboBox") and hasattr(self.ui,
+                                                                                                           "catToLevelComboBox")):
+      return
+
+    # Selected factor name
+    try:
+      f = str(self.ui.catFactorComboBox.currentText)
+    except Exception:
+      try:
+        f = str(self.ui.catFactorComboBox.currentText())
+      except Exception:
+        f = ""
+
+    levels = list(self._cat_factors.get(f, []))
+    self.ui.catFromLevelComboBox.clear()
+    self.ui.catToLevelComboBox.clear()
+
+    if not levels:
+      self._cat_enable_controls(False)
+      return
+
+    for lv in levels:
+      self.ui.catFromLevelComboBox.addItem(lv)
+      self.ui.catToLevelComboBox.addItem(lv)
+
+    try:
+      if len(levels) >= 2:
+        self.ui.catFromLevelComboBox.setCurrentIndex(0)
+        self.ui.catToLevelComboBox.setCurrentIndex(1)
+      else:
+        self.ui.catFromLevelComboBox.setCurrentIndex(0)
+        self.ui.catToLevelComboBox.setCurrentIndex(0)
+      self._cat_enable_controls(True)
+    except Exception:
+      pass
+
+  def _cat_onApplyPressed(self):
+    """Compute A/B predicted shapes and enter categorical mode."""
+
+    # Read factor/levels
+    def _read_combo_text(w):
+      try:
+        return str(w.currentText)
+      except Exception:
+        return str(w.currentText())
+
+    try:
+      factor = _read_combo_text(self.ui.catFactorComboBox)
+      lvlA = _read_combo_text(self.ui.catFromLevelComboBox)
+      lvlB = _read_combo_text(self.ui.catToLevelComboBox)
+    except Exception:
+      self._log("[LR/CAT] UI elements are missing.")
+      return
+
+    assigns = self._cat_read_numeric_overrides()
+    try:
+      self.set_categorical_contrast(factor, lvlA, lvlB, numeric_fixes=assigns)
+    except Exception as e:
+      self._log(f"[LR/CAT] apply failed: {e}")
+
+  def _cat_onSwapPressed(self):
+    """Swap From/To levels."""
+    if not hasattr(self.ui, "catFromLevelComboBox") or not hasattr(self.ui, "catToLevelComboBox"):
+      return
+    try:
+      i = int(self.ui.catFromLevelComboBox.currentIndex())
+      j = int(self.ui.catToLevelComboBox.currentIndex())
+      self.ui.catFromLevelComboBox.setCurrentIndex(j)
+      self.ui.catToLevelComboBox.setCurrentIndex(i)
+    except Exception:
+      pass
+    # optional: re-apply immediately
+    self._cat_onApplyPressed()
+
+  def _cat_read_numeric_overrides(self):
+    """
+    Read optional numeric overrides from UI.
+    For now we support Size; all other numerics default to means in R.
+    """
+    assigns = {}
+    # Respect "Use means for all numerics" checkbox
+    if hasattr(self.ui, "catUseMeansCheck"):
+      try:
+        use_means = bool(self.ui.catUseMeansCheck.isChecked())
+      except Exception:
+        use_means = True
+    else:
+      use_means = True
+
+    if not use_means and hasattr(self.ui, "catSizeAtSpin"):
+      try:
+        assigns["Size"] = float(self.ui.catSizeAtSpin.value)
+      except Exception:
+        try:
+          assigns["Size"] = float(self.ui.catSizeAtSpin.value())
+        except Exception:
+          pass
+    return assigns
+
+  def _py_to_str_list(self, obj):
+    """
+    Coerce obj (str | list[str] | tuple[str] | numpy array) into a list[str].
+    Avoids the 'list(\"Species\") -> ['S','p',...]' trap when pyRserve returns a scalar.
+    """
+    try:
+      import numpy as _np
+    except Exception:
+      _np = None
+
+    if isinstance(obj, (list, tuple)):
+      return [str(x) for x in obj]
+    if _np is not None and isinstance(obj, _np.ndarray):
+      try:
+        return [str(x) for x in obj.tolist()]
+      except Exception:
+        return [str(obj)]
+    # scalar (incl. Python str) -> wrap
+    return [str(obj)]
