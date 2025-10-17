@@ -52,10 +52,10 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         ScriptedLoadableModuleWidget.__init__(self, parent)
         VTKObservationMixin.__init__(self)  # needed for parameter node observation
         self.logic = None
-        extensionName = 'SurfaceMarkup'
-        em = slicer.app.extensionsManagerModel()
-        if not em.isExtensionInstalled(extensionName):
+        if not hasattr(slicer.modules, 'gridsurfacemarkups'):
           if slicer.util.confirmOkCancelDisplay("PlaceLandmarkGrid requires installation of the SurfaceMarkup extension.\nClick OK to install and restart the application."):
+            extensionName = 'SurfaceMarkup'
+            em = slicer.app.extensionsManagerModel()
             em.interactive = False  # prevent display of popups
             em.updateExtensionsMetadataFromServer(True, True)  # update extension metadata from server
             if not em.downloadAndInstallExtensionByName(extensionName, True, True):
