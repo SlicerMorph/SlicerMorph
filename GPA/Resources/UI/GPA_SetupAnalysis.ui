@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+  <class>GPASetupAnalysisTab</class>
+  <widget class="QWidget" name="setupAnalysisTab">
+    <layout class="QVBoxLayout" name="setupTabLayout">
+
+      <item>
+        <widget class="ctkCollapsibleButton" name="inbutton">
+          <property name="collapsed"><bool>false</bool></property>
+          <property name="text"><string>Setup Analysis</string></property>
+          <layout class="QGridLayout" name="inputLayout">
+
+            <item row="0" column="0" colspan="3">
+              <widget class="QPushButton" name="LMbutton">
+                <property name="text"><string>Select Landmark Files ...</string></property>
+                <property name="toolTip">
+                  <string>Select one landmark file for each subject. Files must contain the identical number of landmark points.</string>
+                </property>
+              </widget>
+            </item>
+
+            <item row="1" column="0" colspan="3">
+              <widget class="ctkCollapsibleButton" name="fileViewerCollapsibleButton">
+                <property name="collapsed"><bool>true</bool></property>
+                <property name="text"><string>View selected landmark files</string></property>
+                <layout class="QVBoxLayout" name="fileViewerLayout">
+                  <item>
+                    <widget class="QTextEdit" name="inputFileTable">
+                      <property name="readOnly"><bool>true</bool></property>
+                    </widget>
+                  </item>
+                  <item>
+                    <widget class="QPushButton" name="clearButton">
+                      <property name="text"><string>Clear landmark file selections</string></property>
+                      <property name="enabled"><bool>false</bool></property>
+                      <property name="toolTip"><string>Clear the landmark files selected in the viewer boxes</string></property>
+                    </widget>
+                  </item>
+                </layout>
+              </widget>
+            </item>
+
+            <item row="2" column="0">
+              <widget class="QLabel" name="outLabel">
+                <property name="text"><string>Select output directory:</string></property>
+              </widget>
+            </item>
+            <item row="2" column="1">
+              <widget class="QLineEdit" name="outText"/>
+            </item>
+            <item row="2" column="2">
+              <widget class="QPushButton" name="outputPathButton">
+                <property name="text"><string>...</string></property>
+              </widget>
+            </item>
+
+            <item row="3" column="0">
+              <widget class="QLabel" name="excludeLMLabel">
+                <property name="text"><string>Exclude landmarks:</string></property>
+              </widget>
+            </item>
+            <item row="3" column="1" colspan="2">
+              <widget class="QLineEdit" name="excludeLMText">
+                <property name="toolTip"><string>No spaces. Separate numbers by commas.  Example:  51,52</string></property>
+              </widget>
+            </item>
+
+            <item row="4" column="0" colspan="3">
+              <widget class="QCheckBox" name="BoasOptionCheckBox">
+                <property name="text"><string>Use Boas coordinates for GPA</string></property>
+                <property name="toolTip"><string>If checked, GPA will skip scaling.</string></property>
+              </widget>
+            </item>
+
+            <item row="5" column="0" colspan="3">
+              <widget class="ctkCollapsibleGroupBox" name="loadCovariatesCollapsibleButton">
+                <property name="collapsed"><bool>true</bool></property>
+                <property name="title"><string>Covariate options</string></property>
+                <layout class="QGridLayout" name="loadCovariatesLayout">
+
+                  <item row="0" column="0">
+                    <widget class="ctkCollapsibleGroupBox" name="generateCovariatesTableBox">
+                      <property name="collapsed"><bool>false</bool></property>
+                      <property name="title"><string>Generate new covariate table template</string></property>
+                      <layout class="QHBoxLayout" name="generateCovariatesTableBoxLayout">
+                        <item>
+                          <widget class="QLabel" name="factorNamesLabel">
+                            <property name="text"><string>Factor Names:</string></property>
+                          </widget>
+                        </item>
+                        <item><widget class="QLineEdit" name="factorNames"/></item>
+                        <item>
+                          <widget class="QPushButton" name="generateCovariatesTableButton">
+                            <property name="text"><string>Generate Template</string></property>
+                            <property name="enabled"><bool>false</bool></property>
+                            <property name="toolTip"><string>Create and open a new CSV format file to enter covariate data</string></property>
+                          </widget>
+                        </item>
+                      </layout>
+                    </widget>
+                  </item>
+
+                  <item row="1" column="0">
+                    <widget class="ctkCollapsibleGroupBox" name="loadCovariatesTableBox">
+                      <property name="collapsed"><bool>true</bool></property>
+                      <property name="title"><string>Import covariates table to include in analysis</string></property>
+                      <layout class="QHBoxLayout" name="loadCovariatesTableBoxLayout">
+                        <item>
+                          <widget class="QLabel" name="selectCovariatesLabel">
+                            <property name="text"><string>Select covariates table:</string></property>
+                          </widget>
+                        </item>
+                        <item><widget class="QLineEdit" name="selectCovariatesText"/></item>
+                        <item><widget class="QPushButton" name="selectCovariatesButton">
+                          <property name="text"><string>...</string></property>
+                        </widget></item>
+                      </layout>
+                    </widget>
+                  </item>
+
+                </layout>
+              </widget>
+            </item>
+
+            <item row="6" column="0" colspan="3">
+              <widget class="QPushButton" name="loadButton">
+                <property name="text"><string>Execute GPA + PCA</string></property>
+                <property name="enabled"><bool>false</bool></property>
+                <property name="toolTip"><string>Push to start the program. Make sure you have filled in all the data.</string></property>
+              </widget>
+            </item>
+
+            <item row="7" column="0" colspan="3">
+              <widget class="QPushButton" name="openResultsButton">
+                <property name="text"><string>View output files</string></property>
+                <property name="enabled"><bool>false</bool></property>
+                <property name="toolTip"><string>Push to open the folder where the GPA + PCA results are stored</string></property>
+              </widget>
+            </item>
+
+          </layout>
+        </widget>
+      </item>
+
+      <item>
+        <widget class="ctkCollapsibleButton" name="loadFromFileCollapsibleButton">
+          <property name="collapsed"><bool>true</bool></property>
+          <property name="text"><string>Load previous analysis</string></property>
+          <layout class="QGridLayout" name="loadFromFileLayout">
+            <item row="0" column="0">
+              <widget class="QLabel" name="resultsLabel">
+                <property name="text"><string>Results Directory</string></property>
+              </widget>
+            </item>
+            <item row="0" column="1"><widget class="QLineEdit" name="resultsText"/></item>
+            <item row="0" column="2"><widget class="QPushButton" name="resultsButton"><property name="text"><string>...</string></property></widget></item>
+
+            <item row="1" column="0" colspan="3">
+              <widget class="QPushButton" name="loadResultsButton">
+                <property name="text"><string>Load GPA + PCA Analysis from File</string></property>
+                <property name="enabled"><bool>false</bool></property>
+                <property name="toolTip"><string>Select previous analysis from file and restore.</string></property>
+              </widget>
+            </item>
+          </layout>
+        </widget>
+      </item>
+
+      <item>
+        <widget class="ctkCollapsibleButton" name="GPALogTextboxCollapsibleButton">
+          <property name="collapsed"><bool>false</bool></property>
+          <property name="text"><string>GPA Module Log Information</string></property>
+          <layout class="QGridLayout" name="GPALogTextboxLayout">
+            <item row="0" column="0"><widget class="QPlainTextEdit" name="GPALogTextbox"/></item>
+          </layout>
+        </widget>
+      </item>
+
+    </layout>
+  </widget>
+  <resources/>
+  <connections/>
+</ui>

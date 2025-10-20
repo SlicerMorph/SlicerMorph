@@ -4,6 +4,7 @@ import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
 import logging
 import math
+import subprocess, shutil, socket, platform, time, os
 
 import re
 import csv
@@ -17,6 +18,69 @@ import  numpy as np
 from datetime import datetime
 import scipy.linalg as sp
 from vtk.util import numpy_support
+
+def _ensure_pyRserve_early() -> bool:
+  """
+  Ensure pyRserve is importable at module load time.
+  - Applies NumPy 2.0 compatibility shim BEFORE importing pyRserve
+  - Attempts import; if missing, installs via pip and imports again
+  Returns True on success, False otherwise (non-fatal).
+  """
+  # ---- NumPy 2.x shim (must run before importing pyRserve) -------------------
+  try:
+    import numpy as _np
+    from types import SimpleNamespace as _SS
+    if not hasattr(_np, "string_"):  _np.string_ = _np.bytes_
+    if not hasattr(_np, "unicode_"): _np.unicode_ = str
+    if not hasattr(_np, "int"):      _np.int = int
+    if not hasattr(_np, "bool"):     _np.bool = bool
+    if not hasattr(_np, "float"):    _np.float = float
+    if not hasattr(_np, "object"):   _np.object = object
+    if not hasattr(_np, "compat"):
+      _np.compat = _SS(long=int)
+    elif not hasattr(_np.compat, "long"):
+      _np.compat.long = int
+  except Exception:
+    pass
+
+  # ---- Already imported? -----------------------------------------------------
+  try:
+    import sys
+    if "pyRserve" in sys.modules:
+      return True
+  except Exception:
+    pass
+
+  # ---- Try normal import -----------------------------------------------------
+  try:
+    import pyRserve  # noqa: F401
+    return True
+  except Exception:
+    pass
+
+  # ---- Install and import ----------------------------------------------------
+  progress = None
+  try:
+    progress = slicer.util.createProgressDialog(
+      windowTitle="Installing...",
+      labelText="Installing pyRserve...",
+      maximum=0,
+    )
+    slicer.app.processEvents()
+    slicer.util.pip_install(["pyRserve"])
+    if progress:
+      progress.close()
+    import pyRserve  # noqa: F401
+    return True
+  except Exception:
+    try:
+      if progress:
+        progress.close()
+    except Exception:
+      pass
+    # Non-fatal: fitting will still fail gracefully later if Rserve is used without pyRserve.
+    return False
+
 
 #
 # GPA
@@ -428,32 +492,84 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     ScriptedLoadableModuleWidget.setup(self)
     # Initialize zoom factor for widget
     self.widgetZoomFactor = 0
-    # Import pandas if needed
+
+    # Import pandas if needed (unchanged)
     try:
-      import pandas
-    except:
+      import pandas  # noqa: F401
+    except Exception:
       progressDialog = slicer.util.createProgressDialog(
-          windowTitle="Installing...",
-          labelText="Installing Pandas Python package...",
-          maximum=0,
+        windowTitle="Installing...",
+        labelText="Installing Pandas Python package...",
+        maximum=0,
       )
       slicer.app.processEvents()
       try:
         slicer.util.pip_install(["pandas"])
         progressDialog.close()
-      except:
+      except Exception:
         slicer.util.infoDisplay("Issue while installing Pandas Python package. Please install manually.")
         progressDialog.close()
 
-    # Load widget from .ui file (created by Qt Designer).
-    uiWidget = slicer.util.loadUI(self.resourcePath("UI/GPA.ui"))
-    self.layout.addWidget(uiWidget)
-    self.ui = slicer.util.childWidgetVariables(uiWidget)
+    # ---- Assemble split UI tabs into one QTabWidget ----
+    tab = qt.QTabWidget()
+    tab.setObjectName("tabWidget")  # keep old name for compatibility
 
-    # Add custom layout buttons to menu
-    self.addLayoutButton(500, 'GPA Module View', 'Custom layout for GPA module', 'LayoutSlicerMorphView.png', slicer.customLayoutSM)
-    self.addLayoutButton(501, 'Table Only View', 'Custom layout for GPA module', 'LayoutTableOnlyView.png', slicer.customLayoutTableOnly)
-    self.addLayoutButton(502, 'Plot Only View', 'Custom layout for GPA module', 'LayoutPlotOnlyView.png', slicer.customLayoutPlotOnly)
+    tabs = [
+      ("Setup Analysis", "UI/GPA_SetupAnalysis.ui"),
+      ("Explore Data/Results", "UI/GPA_ExploreDataResults.ui"),
+      ("Interactive 3D Visualization", "UI/GPA_Interactive3D.ui"),
+      ("Geomorph Linear Regression", "UI/GPA_GeomorphLR.ui"),
+    ]
+
+    for title, relpath in tabs:
+      w = slicer.util.loadUI(self.resourcePath(relpath))
+      tab.addTab(w, title)
+
+    self.layout.addWidget(tab)
+    # Collect all named children across tabs into self.ui (unchanged usage elsewhere)
+    self.ui = slicer.util.childWidgetVariables(tab)
+
+    # ---- LAZY LR INIT: do NOT import patsy or pyRserve here ----
+    # We lazily attach the LR controller when the LR tab is first selected.
+    self._tabWidget = tab
+    self._lr_tab_index = None
+    try:
+      total = int(tab.count)
+    except Exception:
+      try:
+        total = int(tab.count())
+      except Exception:
+        total = 0
+    for i in range(total):
+      try:
+        w = tab.widget(i)
+        if getattr(w, "objectName", None) == "geomorphLRTab":
+          self._lr_tab_index = i
+          break
+      except Exception:
+        pass
+
+    # Connect tab change -> lazy LR initialization
+    try:
+      tab.currentChanged.connect(self._onTabChanged)
+    except Exception:
+      # PyQt4-style fallback
+      tab.connect('currentChanged(int)', self._onTabChanged)
+
+    # If LR tab is already selected (unlikely), initialize immediately
+    try:
+      if self._lr_tab_index is not None and int(tab.currentIndex) == int(self._lr_tab_index):
+        self._lazyInitLR()
+    except Exception:
+      pass
+
+    # ---- Custom layout buttons (unchanged) ----
+    self.addLayoutButton(500, 'GPA Module View', 'Custom layout for GPA module', 'LayoutSlicerMorphView.png',
+                         slicer.customLayoutSM)
+    self.addLayoutButton(501, 'Table Only View', 'Custom layout for GPA module', 'LayoutTableOnlyView.png',
+                         slicer.customLayoutTableOnly)
+    self.addLayoutButton(502, 'Plot Only View', 'Custom layout for GPA module', 'LayoutPlotOnlyView.png',
+                         slicer.customLayoutPlotOnly)
 
     ################################### Setup tab connections
     self.ui.LMbutton.connect('clicked(bool)', self.onSelectLandmarkFiles)
@@ -487,25 +603,24 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.ui.stopRecordButton.connect('clicked(bool)', self.onStopRecording)
     self.ui.resetButton.connect('clicked(bool)', self.reset)
     self.ui.updateMagnificationButton.connect("clicked()", self.onUpdateMagnificationClicked)
-    self.PCList=[]
+    self.PCList = []
 
-    # Keep a persistent controller instance
+    # PCA slider controller (unchanged)
     self.pcController = PCSliderController(
-        comboBox=self.ui.pcComboBox,
-        slider=self.ui.pcSlider,
-        spinBox=self.ui.pcSpinBox,
-        dynamic_min=-1.0,
-        dynamic_max=1.0,
-        onSliderChanged=lambda _: self.updatePCScaling(),
-        onComboBoxChanged=lambda _: self.setupPCTransform(),
+      comboBox=self.ui.pcComboBox,
+      slider=self.ui.pcSlider,
+      spinBox=self.ui.pcSpinBox,
+      dynamic_min=-1.0,
+      dynamic_max=1.0,
+      onSliderChanged=lambda _: self.updatePCScaling(),
+      onComboBoxChanged=lambda _: self.setupPCTransform(),
     )
     self.pcController.populateComboBox(self.PCList)
     self.ui.pcComboBox.setCurrentIndex(0)
     self.setupPCTransform()
     self.updatePCScaling()
 
-
-    # Core state defaults
+    # Core state defaults (unchanged)
     self.LM = None
     self.sampleSizeScaleFactor = 1.0
     self.meanLandmarkNode = None
@@ -527,7 +642,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.pcScoreAbsMax = 0.0
     self._resetting = False
     self.ui.spinMagnification.setValue(1.0)
-
 
   # ---- Safe node helpers ----
   def _node(self, attr_name):
@@ -928,6 +1042,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     for i in range(1,self.factorTableNode.GetNumberOfColumns()):
       self.ui.GPALogTextbox.insertPlainText(f"{self.factorTableNode.GetTable().GetColumnName(i)} ")
     self.ui.GPALogTextbox.insertPlainText("\n")
+
+    if hasattr(self, "lr"):
+      self.lr.refreshFromCovariates()
+      self.lr.refreshFitButton()
+
     return runAnalysis
 
   def onSelectResultsDirectory(self):
@@ -978,6 +1097,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         self.ui.selectFactor.addItem(name)
 
     self.ui.GPALogTextbox.insertPlainText("Covariate table loaded for results session\n")
+
+    if hasattr(self, "lr"):
+      self.lr.refreshFromCovariates()
+      self.lr.refreshFitButton()
+
     return True
 
   def onLoadFromFile(self):
@@ -1122,6 +1246,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.ui.landmarkVisualizationType.enabled = True
     self.ui.modelVisualizationType.enabled = True
 
+    if hasattr(self, "lr"):
+      self.lr.refreshFromCovariates()
+      self.lr.refreshFitButton()
+
   def onLoad(self):
     self.initializeOnLoad() #clean up module from previous runs
     logic = GPALogic()
@@ -1264,6 +1392,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.ui.landmarkVisualizationType.enabled = True
     self.ui.modelVisualizationType.enabled = True
 
+    if hasattr(self, "lr"):
+      self.lr.refreshFromCovariates()
+      self.lr.refreshFitButton()
 
   def initializeOnLoad(self):
     # clear rest of module when starting GPA analysis
@@ -1899,6 +2030,75 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     if(temporaryNode):
       GPANodeCollection.RemoveItem(temporaryNode)
       slicer.mrmlScene.RemoveNode(temporaryNode)
+
+  def _onTabChanged(self, index: int):
+    """Initialize the LR tab on first entry."""
+    try:
+      if self._lr_tab_index is not None and int(index) == int(self._lr_tab_index):
+        self._lazyInitLR()
+    except Exception:
+      # Be robust if Qt int wrappers act up
+      try:
+        if self._lr_tab_index is not None and index == self._lr_tab_index:
+          self._lazyInitLR()
+      except Exception:
+        pass
+
+  def _lazyInitLR(self):
+    """One-time initialization for the Geomorph LR tab (patsy + pyRserve + attach controller)."""
+    # If already initialized, nothing to do
+    if hasattr(self, "lr") and self.lr is not None:
+      return
+
+    # 1) Ensure patsy is available (install on-demand)
+    try:
+      import patsy  # noqa: F401
+    except Exception:
+      try:
+        progressDialog = slicer.util.createProgressDialog(
+          windowTitle="Installing...",
+          labelText="Installing patsy (formula parser)...",
+          maximum=0
+        )
+        slicer.app.processEvents()
+        slicer.util.pip_install(["patsy"])
+        progressDialog.close()
+      except Exception:
+        try:
+          progressDialog.close()
+        except Exception:
+          pass
+        # Continue; geomorph_lr will try again if needed.
+
+    # 2) Ensure pyRserve importability (install on-demand)
+    try:
+      _ensure_pyRserve_early()
+    except Exception:
+      # Non-fatal; geomorph tab can still render, and connect will try again.
+      pass
+
+    # 3) Create and attach the LR controller now that the UI exists
+    try:
+      from Support.geomorph_lr import GeomorphLR
+      self.lr = GeomorphLR(parent_widget=self, node_collection=GPANodeCollection)
+      self.lr.attach()
+      # Make sure fit gating & covariate list reflect current state (if any)
+      try:
+        self.lr.refreshFromCovariates()
+      except Exception:
+        pass
+      try:
+        self.lr.refreshFitButton()
+      except Exception:
+        pass
+    except Exception as e:
+      # Surface a short note in the module log; do not hard fail the module
+      try:
+        self.ui.GPALogTextbox.insertPlainText(f"[LR] Initialization error: {e}\n")
+      except Exception:
+        pass
+
+
 #
 # GPALogic
 #

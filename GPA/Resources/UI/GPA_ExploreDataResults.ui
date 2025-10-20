@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+  <class>GPAExploreDataResultsTab</class>
+  <widget class="QWidget" name="exploreDataResultsTab">
+    <layout class="QVBoxLayout" name="exploreTabLayout">
+
+      <item>
+        <widget class="ctkCollapsibleButton" name="meanShapeFrame">
+          <property name="collapsed"><bool>false</bool></property>
+          <property name="text"><string>Mean Shape Plot Options</string></property>
+          <layout class="QGridLayout" name="meanShapeLayout">
+            <item row="1" column="1"><widget class="QLabel" name="meanButtonLabel"><property name="text"><string>Mean shape visibility:</string></property></widget></item>
+            <item row="1" column="2"><widget class="QPushButton" name="plotMeanButton3D"><property name="text"><string>Toggle mean shape visibility</string></property><property name="enabled"><bool>false</bool></property></widget></item>
+            <item row="2" column="1"><widget class="QLabel" name="meanLabelLabel"><property name="text"><string>Mean point label visibility:</string></property></widget></item>
+            <item row="2" column="2"><widget class="QPushButton" name="showMeanLabelsButton"><property name="text"><string>Toggle label visibility</string></property><property name="enabled"><bool>false</bool></property><property name="toolTip"><string>Toggle visibility of mean point labels</string></property></widget></item>
+            <item row="3" column="1"><widget class="QLabel" name="meanColorLabel"><property name="text"><string>Mean shape color:</string></property></widget></item>
+            <item row="3" column="2"><widget class="ctkColorPickerButton" name="meanShapeColor"><property name="displayColorName"><bool>false</bool></property></widget></item>
+            <item row="4" column="1"><widget class="QLabel" name="meanShapeSliderLabel"><property name="text"><string>Mean shape glyph scale</string></property></widget></item>
+            <item row="4" column="2"><widget class="ctkSliderWidget" name="scaleMeanShapeSlider"><property name="toolTip"><string>Set scale for mean shape glyphs</string></property></widget></item>
+          </layout>
+        </widget>
+      </item>
+
+      <item>
+        <widget class="ctkCollapsibleButton" name="distributionFrame">
+          <property name="collapsed"><bool>false</bool></property>
+          <property name="text"><string>Landmark Variance Plot Options</string></property>
+          <layout class="QGridLayout" name="distributionLayout">
+            <item row="2" column="1"><widget class="QLabel" name="ellipseTypeLabel"><property name="text"><string>Ellipse type</string></property></widget></item>
+            <item row="2" column="2"><widget class="QRadioButton" name="EllipseType"><property name="checked"><bool>true</bool></property></widget></item>
+            <item row="3" column="1"><widget class="QLabel" name="sphereTypeLabel"><property name="text"><string>Sphere type</string></property></widget></item>
+            <item row="3" column="2"><widget class="QRadioButton" name="SphereType"/></item>
+            <item row="4" column="1"><widget class="QLabel" name="cloudTypeLabel"><property name="text"><string>Point cloud type</string></property></widget></item>
+            <item row="4" column="2"><widget class="QRadioButton" name="CloudType"/></item>
+            <item row="5" column="1"><widget class="QLabel" name="noneTypeLabel"><property name="text"><string>None</string></property></widget></item>
+            <item row="5" column="2"><widget class="QRadioButton" name="NoneType"/></item>
+            <item row="7" column="1" colspan="4"><widget class="QPushButton" name="plotDistributionButton"><property name="text"><string>Plot LM variance</string></property><property name="enabled"><bool>false</bool></property><property name="toolTip"><string>Visualize variance of landmarks from all subjects</string></property></widget></item>
+            <item row="6" column="1"><widget class="QLabel" name="varianceScaleLabel"><property name="text"><string>Scale Glyphs</string></property></widget></item>
+            <item row="6" column="2"><widget class="ctkSliderWidget" name="scaleSlider"><property name="toolTip"><string>Set scale for variance visualization</string></property></widget></item>
+          </layout>
+        </widget>
+      </item>
+
+      <item>
+        <widget class="ctkCollapsibleButton" name="plotFrame">
+          <property name="collapsed"><bool>false</bool></property>
+          <property name="text"><string>PCA Scatter Plot Options</string></property>
+          <layout class="QGridLayout" name="plotLayout">
+            <item row="1" column="1"><widget class="QLabel" name="Xlabel"><property name="text"><string>X Axis</string></property></widget></item>
+            <item row="1" column="2" colspan="3"><widget class="QComboBox" name="XcomboBox"/></item>
+            <item row="2" column="1"><widget class="QLabel" name="Ylabel"><property name="text"><string>Y Axis</string></property></widget></item>
+            <item row="2" column="2" colspan="3"><widget class="QComboBox" name="YcomboBox"/></item>
+            <item row="4" column="1"><widget class="QLabel" name="selectFactorLabel"><property name="text"><string>Select factor:</string></property></widget></item>
+            <item row="4" column="2">
+              <widget class="QComboBox" name="selectFactor">
+                <item><property name="text"><string>No factor data</string></property></item>
+              </widget>
+            </item>
+            <item row="5" column="1" colspan="5"><widget class="QPushButton" name="plotButton"><property name="text"><string>Scatter Plot</string></property><property name="enabled"><bool>false</bool></property></widget></item>
+          </layout>
+        </widget>
+      </item>
+
+      <item>
+        <widget class="ctkCollapsibleButton" name="lolliFrame">
+          <property name="collapsed"><bool>false</bool></property>
+          <property name="text"><string>Lollipop Plot Options</string></property>
+          <layout class="QGridLayout" name="lolliLayout">
+            <item row="1" column="1"><widget class="QLabel" name="vectorOneLabel"><property name="text"><string>Vector One: Red</string></property></widget></item>
+            <item row="1" column="2" colspan="3"><widget class="QComboBox" name="vectorOne"/></item>
+            <item row="2" column="1"><widget class="QLabel" name="vectorTwoLabel"><property name="text"><string>Vector Two: Green</string></property></widget></item>
+            <item row="2" column="2" colspan="3"><widget class="QComboBox" name="vectorTwo"/></item>
+            <item row="3" column="1"><widget class="QLabel" name="vectorThreeLabel"><property name="text"><string>Vector Three: Blue</string></property></widget></item>
+            <item row="3" column="2" colspan="3"><widget class="QComboBox" name="vectorThree"/></item>
+            <item row="4" column="2"><widget class="QCheckBox" name="TwoDType"><property name="text"><string>Lollipop 2D Projection</string></property></widget></item>
+            <item row="6" column="1" colspan="6">
+              <widget class="QPushButton" name="lolliButton">
+                <property name="text"><string>Lollipop Vector Plot</string></property>
+                <property name="enabled"><bool>false</bool></property>
+                <property name="toolTip"><string>Plot PC vectors</string></property>
+              </widget>
+            </item>
+          </layout>
+        </widget>
+      </item>
+
+    </layout>
+  </widget>
+  <resources/>
+  <connections/>
+</ui>

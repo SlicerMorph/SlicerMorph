@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+  <class>GPAInteractive3DTab</class>
+  <widget class="QWidget" name="visualizeTab">
+    <layout class="QVBoxLayout" name="visualizeTabLayout">
+
+      <item>
+        <widget class="ctkCollapsibleButton" name="selectTemplatesButton">
+          <property name="collapsed"><bool>false</bool></property>
+          <property name="text"><string>Setup Interactive Visualization</string></property>
+          <layout class="QGridLayout" name="selectTemplatesLayout">
+            <item row="0" column="0"><widget class="QLabel" name="landmarkVisualizationTypeLabel"><property name="text"><string>Mean shape visualization</string></property></widget></item>
+            <item row="0" column="1"><widget class="QRadioButton" name="landmarkVisualizationType"><property name="checked"><bool>true</bool></property><property name="enabled"><bool>false</bool></property></widget></item>
+            <item row="1" column="0"><widget class="QLabel" name="modelVisualizationTypeLabel"><property name="text"><string>3D model visualization</string></property></widget></item>
+            <item row="1" column="1"><widget class="QRadioButton" name="modelVisualizationType"><property name="enabled"><bool>false</bool></property></widget></item>
+            <item row="2" column="0"><widget class="QLabel" name="grayscaleSelectorLabel"><property name="text"><string>Specify reference model</string></property><property name="toolTip"><string>Load the model for the interactive visualization</string></property></widget></item>
+            <item row="2" column="1"><widget class="ctkPathLineEdit" name="grayscaleSelector"/></item>
+            <item row="3" column="0"><widget class="QLabel" name="FudSelectLabel"><property name="text"><string>Specify LM set for the selected model:</string></property><property name="toolTip"><string>Select the landmark set that corresponds to the reference model</string></property></widget></item>
+            <item row="3" column="1"><widget class="ctkPathLineEdit" name="FudSelect"/></item>
+            <item row="4" column="0" colspan="2"><widget class="QPushButton" name="selectorButton"><property name="text"><string>Apply</string></property><property name="enabled"><bool>false</bool></property></widget></item>
+          </layout>
+        </widget>
+      </item>
+
+      <item>
+        <widget class="ctkCollapsibleButton" name="pcaVisualizationParametersButton">
+          <property name="text"><string>PCA Visualization Parameters</string></property>
+          <layout class="QGridLayout" name="pcaVisualizationParametersLayout">
+            <item row="0" column="0"><widget class="QLabel" name="magnificationLabel"><property name="text"><string>Magnification Factor:</string></property></widget></item>
+            <item row="0" column="1"><widget class="QDoubleSpinBox" name="spinMagnification"/></item>
+            <item row="0" column="2"><widget class="QPushButton" name="updateMagnificationButton"><property name="text"><string>Update Magnification</string></property></widget></item>
+            <item row="1" column="0" colspan="3">
+              <layout class="QHBoxLayout" name="pcSelectionLayout">
+                <item><widget class="QComboBox" name="pcComboBox"/></item>
+                <item><widget class="QSlider" name="pcSlider"><property name="orientation"><enum>Qt::Horizontal</enum></property></widget></item>
+                <item><widget class="QDoubleSpinBox" name="pcSpinBox"/></item>
+              </layout>
+            </item>
+          </layout>
+        </widget>
+      </item>
+
+      <item>
+        <widget class="ctkCollapsibleButton" name="animate">
+          <property name="collapsed"><bool>false</bool></property>
+          <property name="text"><string>Create animation of PC Warping</string></property>
+          <layout class="QGridLayout" name="animateLayout">
+            <item row="0" column="0"><widget class="QPushButton" name="startRecordButton"><property name="text"><string>Start Recording</string></property><property name="enabled"><bool>false</bool></property><property name="toolTip"><string>Start recording PCA warping applied manually using the slider bars.</string></property></widget></item>
+            <item row="0" column="1"><widget class="QPushButton" name="stopRecordButton"><property name="text"><string>Stop Recording</string></property><property name="enabled"><bool>false</bool></property><property name="toolTip"><string>Stop recording PC warping and review recording in the Sequences module.</string></property></widget></item>
+          </layout>
+        </widget>
+      </item>
+
+      <item>
+        <widget class="QPushButton" name="resetButton">
+          <property name="text"><string>Reset Scene</string></property>
+          <property name="toolTip"><string>Push to reset all fields.</string></property>
+        </widget>
+      </item>
+
+      <item>
+        <spacer name="verticalSpacerFinal">
+          <property name="orientation"><enum>Qt::Vertical</enum></property>
+          <property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property>
+        </spacer>
+      </item>
+
+    </layout>
+  </widget>
+  <resources/>
+  <connections/>
+</ui>
