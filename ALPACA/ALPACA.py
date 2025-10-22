@@ -941,8 +941,23 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
         except:
             self.ui.showManualLMCheckBox.enabled = False
 
+    def updateBatchProgress(self, message):
+        """Update the batch progress text box with a new message"""
+        if hasattr(self.ui, 'batchProgressInfo'):
+            self.ui.batchProgressInfo.appendPlainText(message)
+            # Ensure the UI updates immediately
+            slicer.app.processEvents()
+        # Also print to console as backup
+        print(message)
+
     def onApplyLandmarkMulti(self):
+        # Clear previous progress messages
+        if hasattr(self.ui, 'batchProgressInfo'):
+            self.ui.batchProgressInfo.clear()
+        
         logic = ALPACALogic()
+        # Pass the widget reference to logic for progress updates
+        logic.setProgressCallback(self.updateBatchProgress)
         if self.ui.projectionCheckBoxMulti.checked is False:
             projectionFactor = 0
         else:
@@ -960,7 +975,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
             )
         else:
             for i in range(0, self.ui.replicationNumberSpinBox.value):
-                print("ALPACA replication run ", i)
+                self.updateBatchProgress(f"Starting ALPACA replication run {i+1}/{self.ui.replicationNumberSpinBox.value}")
                 dateTimeStamp = datetime.now().strftime("%Y-%m-%d_%H_%M_%S")
                 datedOutputFolder = os.path.join(
                     self.ui.landmarkOutputSelector.currentPath, dateTimeStamp
@@ -978,10 +993,10 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
                         self.parameterDictionary,
                     )
                 except:
+                    self.updateBatchProgress(f"ERROR: Could not access output folder for replication {i+1}")
                     logging.debug(
                         "Result directory failed: Could not access output folder"
                     )
-                    print("Error creating result directory")
 
     ###Connecting function for kmeans templates selection
     def onSelectKmeans(self):
@@ -1469,6 +1484,21 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     Uses ScriptedLoadableModuleLogic base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
+    
+    def __init__(self):
+        super().__init__()
+        self.progressCallback = None
+    
+    def setProgressCallback(self, callback):
+        """Set callback function for progress updates"""
+        self.progressCallback = callback
+    
+    def updateProgress(self, message):
+        """Update progress using callback or print as fallback"""
+        if self.progressCallback:
+            self.progressCallback(message)
+        else:
+            print(message)
 
     def runLandmarkMultiprocess(
         self,
@@ -1507,68 +1537,94 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
                     sourceLMList.append(sourceFilePath)
         else:
             sourceLMList.append(sourceLandmarkPath)
+        
+        # Get total count of target models for progress tracking
+        targetModelFiles = [f for f in os.listdir(targetModelDirectory) if f.endswith((".ply", ".obj", ".vtk"))]
+        totalTargetModels = len(targetModelFiles)
+        currentModelIndex = 0
+        
+        self.updateProgress(f"Starting batch processing of {totalTargetModels} target models...")
+        self.updateProgress("-----------------------------------------------------------")
+        
         # Iterate through target models
-        for targetFileName in os.listdir(targetModelDirectory):
-            if targetFileName.endswith((".ply", ".obj", ".vtk")):
-                targetFilePath = os.path.join(targetModelDirectory, targetFileName)
-                TargetModelList.append(targetFilePath)
-                rootName = os.path.splitext(targetFileName)[0]
-                landmarkList = []
-                if os.path.isdir(sourceModelPath):
-                    outputMedianPath = os.path.join(
-                        medianOutput, f"{rootName}_median" + extensionLM
-                    )
-                    if not os.path.exists(outputMedianPath):
-                        for file in sourceModelList:
-                            sourceFilePath = os.path.join(sourceModelPath, file)
-                            (baseName, ext) = os.path.splitext(os.path.basename(file))
-                            sourceLandmarkFile = None
-                            for lmFile in sourceLMList:
-                                if baseName in lmFile:
-                                    sourceLandmarkFile = os.path.join(
-                                        sourceLandmarkPath, lmFile
-                                    )
-                            if sourceLandmarkFile is None:
-                                print(
-                                    "::::Could not find the file corresponding to ",
-                                    file,
+        for targetFileName in targetModelFiles:
+            currentModelIndex += 1
+            targetFilePath = os.path.join(targetModelDirectory, targetFileName)
+            TargetModelList.append(targetFilePath)
+            rootName = os.path.splitext(targetFileName)[0]
+            
+            # Display progress message
+            self.updateProgress(f"Now processing {targetFileName}, {currentModelIndex}/{totalTargetModels}")
+            
+            landmarkList = []
+            if os.path.isdir(sourceModelPath):
+                outputMedianPath = os.path.join(
+                    medianOutput, f"{rootName}_median" + extensionLM
+                )
+                if not os.path.exists(outputMedianPath):
+                    totalSourceModels = len(sourceModelList)
+                    currentSourceIndex = 0
+                    self.updateProgress(f"Multi-template mode: Processing {totalSourceModels} templates for {targetFileName}")
+                    for file in sourceModelList:
+                        currentSourceIndex += 1
+                        self.updateProgress(f"    Using template {currentSourceIndex}/{totalSourceModels}: {os.path.basename(file)}")
+                        sourceFilePath = os.path.join(sourceModelPath, file)
+                        (baseName, ext) = os.path.splitext(os.path.basename(file))
+                        sourceLandmarkFile = None
+                        for lmFile in sourceLMList:
+                            if baseName in lmFile:
+                                sourceLandmarkFile = os.path.join(
+                                    sourceLandmarkPath, lmFile
                                 )
-                                next
-                            outputFilePath = os.path.join(
-                                specimenOutput, f"{rootName}_{baseName}" + extensionLM
+                        if sourceLandmarkFile is None:
+                            print(
+                                "::::Could not find the file corresponding to ",
+                                file,
                             )
-                            array = self.pairwiseAlignment(
-                                sourceFilePath,
-                                sourceLandmarkFile,
-                                targetFilePath,
-                                outputFilePath,
-                                scalingOption,
-                                projectionFactor,
-                                parameters,
-                            )
-                            landmarkList.append(array)
-                        medianLandmark = np.median(landmarkList, axis=0)
-                        outputMedianNode = self.exportPointCloud(
-                            medianLandmark, "Median Predicted Landmarks"
+                            next
+                        outputFilePath = os.path.join(
+                            specimenOutput, f"{rootName}_{baseName}" + extensionLM
                         )
-                        slicer.util.saveNode(outputMedianNode, outputMedianPath)
-                        slicer.mrmlScene.RemoveNode(outputMedianNode)
-                elif os.path.isfile(sourceModelPath):
-                    rootName = os.path.splitext(targetFileName)[0]
-                    outputFilePath = os.path.join(
-                        outputDirectory, rootName + extensionLM
+                        
+                        # Display progress for multi-template mode
+                        self.updateProgress(f"  Processing template {os.path.basename(file)} for target {targetFileName}, template {currentSourceIndex}/{totalSourceModels}")
+                        
+                        array = self.pairwiseAlignment(
+                            sourceFilePath,
+                            sourceLandmarkFile,
+                            targetFilePath,
+                            outputFilePath,
+                            scalingOption,
+                            projectionFactor,
+                            parameters,
+                        )
+                        landmarkList.append(array)
+                    self.updateProgress(f"Computing median landmarks for {targetFileName}...")
+                    medianLandmark = np.median(landmarkList, axis=0)
+                    outputMedianNode = self.exportPointCloud(
+                        medianLandmark, "Median Predicted Landmarks"
                     )
-                    array = self.pairwiseAlignment(
-                        sourceModelPath,
-                        sourceLandmarkPath,
-                        targetFilePath,
-                        outputFilePath,
-                        scalingOption,
-                        projectionFactor,
-                        parameters,
-                    )
-                else:
-                    print("::::Could not find the file or directory in question")
+                    slicer.util.saveNode(outputMedianNode, outputMedianPath)
+                    slicer.mrmlScene.RemoveNode(outputMedianNode)
+                    self.updateProgress(f"  Completed processing {targetFileName}")
+            elif os.path.isfile(sourceModelPath):
+                self.updateProgress(f"Single template mode: Processing {targetFileName}")
+                rootName = os.path.splitext(targetFileName)[0]
+                outputFilePath = os.path.join(
+                    outputDirectory, rootName + extensionLM
+                )
+                array = self.pairwiseAlignment(
+                    sourceModelPath,
+                    sourceLandmarkPath,
+                    targetFilePath,
+                    outputFilePath,
+                    scalingOption,
+                    projectionFactor,
+                    parameters,
+                )
+                self.updateProgress(f"  Completed processing {targetFileName}")
+            else:
+                self.updateProgress(f"ERROR: Could not find the file or directory for {targetFileName}")
         extras = {
             "Source": sourceModelList,
             "SourceLandmarks": sourceLMList,
@@ -1591,10 +1647,16 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         parameters,
         usePoisson=False,
     ):
+        # Extract filename for progress display
+        targetFileName = os.path.basename(targetFilePath)
+        
+        self.updateProgress(f"  Loading models for {targetFileName}...")
         targetModelNode = slicer.util.loadModel(targetFilePath)
         targetModelNode.GetDisplayNode().SetVisibility(False)
         sourceModelNode = slicer.util.loadModel(sourceFilePath)
         sourceModelNode.GetDisplayNode().SetVisibility(False)
+        
+        self.updateProgress(f"  Running subsampling for {targetFileName}...")
         (
             sourcePoints,
             targetPoints,
@@ -1605,6 +1667,8 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         ) = self.runSubsample(
             sourceModelNode, targetModelNode, scalingOption, parameters, usePoisson
         )
+        
+        self.updateProgress(f"  Estimating rigid transformation for {targetFileName}...")
         SimilarityTransform, similarityFlag = self.estimateTransform(
             sourcePoints,
             targetPoints,
@@ -1614,6 +1678,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             scalingOption,
             parameters,
         )
+        
         # Rigid
         sourceLandmarks, sourceLMNode = self.loadAndScaleFiducials(
             sourceLandmarkFile, scalingFactor
@@ -1627,6 +1692,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         )
 
         # Deformable
+        self.updateProgress(f"  Running CPD registration for {targetFileName}...")
         registeredSourceLM = self.runCPDRegistration(
             sourceLandmarks, sourcePoints, targetPoints, parameters
         )
@@ -1634,6 +1700,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             registeredSourceLM, "Initial Predicted Landmarks"
         )
         if projectionFactor == 0:
+            self.updateProgress(f"  Saving landmarks for {targetFileName} (no projection)")
             self.propagateLandmarkTypes(sourceLMNode, outputPoints)
             slicer.util.saveNode(outputPoints, outputFilePath)
             slicer.mrmlScene.RemoveNode(outputPoints)
@@ -1642,6 +1709,52 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             slicer.mrmlScene.RemoveNode(sourceLMNode)
             return registeredSourceLM
         else:
+            self.updateProgress(f"  Projecting landmarks to surface for {targetFileName}...")
+            inputPoints = self.exportPointCloud(sourceLandmarks, "Original Landmarks")
+            inputPoints_vtk = self.getFiducialPoints(inputPoints)
+            outputPoints_vtk = self.getFiducialPoints(outputPoints)
+
+            ICPTransformNode = self.convertMatrixToTransformNode(
+                vtkSimilarityTransform, "Rigid Transformation Matrix"
+            )
+            sourceModelNode.SetAndObserveTransformNodeID(ICPTransformNode.GetID())
+
+            deformedModelNode = self.applyTPSTransform(
+                inputPoints_vtk, outputPoints_vtk, sourceModelNode, "Warped Source Mesh"
+            )
+            deformedModelNode.GetDisplayNode().SetVisibility(False)
+
+            maxProjection = (
+                targetModelNode.GetPolyData().GetLength()
+            ) * projectionFactor
+            projectedPoints = self.projectPointsPolydata(
+                deformedModelNode.GetPolyData(),
+                targetModelNode.GetPolyData(),
+                outputPoints_vtk,
+                maxProjection,
+            )
+            projectedLMNode = slicer.mrmlScene.AddNewNodeByClass(
+                "vtkMRMLMarkupsFiducialNode", "Refined Predicted Landmarks"
+            )
+            for i in range(projectedPoints.GetNumberOfPoints()):
+                point = projectedPoints.GetPoint(i)
+                projectedLMNode.AddControlPoint(point)
+            self.propagateLandmarkTypes(sourceLMNode, projectedLMNode)
+            projectedLMNode.SetLocked(True)
+            projectedLMNode.SetFixedNumberOfControlPoints(True)
+            
+            self.updateProgress(f"  Saving projected landmarks for {targetFileName}")
+            slicer.util.saveNode(projectedLMNode, outputFilePath)
+            slicer.mrmlScene.RemoveNode(projectedLMNode)
+            slicer.mrmlScene.RemoveNode(outputPoints)
+            slicer.mrmlScene.RemoveNode(sourceModelNode)
+            slicer.mrmlScene.RemoveNode(targetModelNode)
+            slicer.mrmlScene.RemoveNode(deformedModelNode)
+            slicer.mrmlScene.RemoveNode(sourceLMNode)
+            slicer.mrmlScene.RemoveNode(ICPTransformNode)
+            slicer.mrmlScene.RemoveNode(inputPoints)
+            np_array = vtk_np.vtk_to_numpy(projectedPoints.GetPoints().GetData())
+            return np_array
             inputPoints = self.exportPointCloud(sourceLandmarks, "Original Landmarks")
             inputPoints_vtk = self.getFiducialPoints(inputPoints)
             outputPoints_vtk = self.getFiducialPoints(outputPoints)

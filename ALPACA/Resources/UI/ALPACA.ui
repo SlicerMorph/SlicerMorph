@@ -593,6 +593,31 @@
             </property>
            </widget>
           </item>
+          <item row="11" column="0" colspan="2">
+           <widget class="QPlainTextEdit" name="batchProgressInfo">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>16777215</width>
+              <height>150</height>
+             </size>
+            </property>
+            <property name="readOnly">
+             <bool>true</bool>
+            </property>
+            <property name="plainText">
+             <string/>
+            </property>
+            <property name="placeholderText">
+             <string>Batch processing progress will be displayed here...</string>
+            </property>
+           </widget>
+          </item>
          </layout>
         </widget>
        </item>
