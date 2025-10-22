@@ -1755,49 +1755,6 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             slicer.mrmlScene.RemoveNode(inputPoints)
             np_array = vtk_np.vtk_to_numpy(projectedPoints.GetPoints().GetData())
             return np_array
-            inputPoints = self.exportPointCloud(sourceLandmarks, "Original Landmarks")
-            inputPoints_vtk = self.getFiducialPoints(inputPoints)
-            outputPoints_vtk = self.getFiducialPoints(outputPoints)
-
-            ICPTransformNode = self.convertMatrixToTransformNode(
-                vtkSimilarityTransform, "Rigid Transformation Matrix"
-            )
-            sourceModelNode.SetAndObserveTransformNodeID(ICPTransformNode.GetID())
-
-            deformedModelNode = self.applyTPSTransform(
-                inputPoints_vtk, outputPoints_vtk, sourceModelNode, "Warped Source Mesh"
-            )
-            deformedModelNode.GetDisplayNode().SetVisibility(False)
-
-            maxProjection = (
-                targetModelNode.GetPolyData().GetLength()
-            ) * projectionFactor
-            projectedPoints = self.projectPointsPolydata(
-                deformedModelNode.GetPolyData(),
-                targetModelNode.GetPolyData(),
-                outputPoints_vtk,
-                maxProjection,
-            )
-            projectedLMNode = slicer.mrmlScene.AddNewNodeByClass(
-                "vtkMRMLMarkupsFiducialNode", "Refined Predicted Landmarks"
-            )
-            for i in range(projectedPoints.GetNumberOfPoints()):
-                point = projectedPoints.GetPoint(i)
-                projectedLMNode.AddControlPoint(point)
-            self.propagateLandmarkTypes(sourceLMNode, projectedLMNode)
-            projectedLMNode.SetLocked(True)
-            projectedLMNode.SetFixedNumberOfControlPoints(True)
-            slicer.util.saveNode(projectedLMNode, outputFilePath)
-            slicer.mrmlScene.RemoveNode(projectedLMNode)
-            slicer.mrmlScene.RemoveNode(outputPoints)
-            slicer.mrmlScene.RemoveNode(sourceModelNode)
-            slicer.mrmlScene.RemoveNode(targetModelNode)
-            slicer.mrmlScene.RemoveNode(deformedModelNode)
-            slicer.mrmlScene.RemoveNode(sourceLMNode)
-            slicer.mrmlScene.RemoveNode(ICPTransformNode)
-            slicer.mrmlScene.RemoveNode(inputPoints)
-            np_array = vtk_np.vtk_to_numpy(projectedPoints.GetPoints().GetData())
-            return np_array
 
     def exportPointCloud(self, pointCloud, nodeName):
         fiducialNode = slicer.mrmlScene.AddNewNodeByClass(
