@@ -2743,6 +2743,9 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     def get_fpfh_feature(self, points_np, normals_np, radius, neighbors):
         import itk
 
+        np.nan_to_num(points_np, copy=False)
+        np.nan_to_num(normals_np, copy=False)
+
         pointset = itk.PointSet[itk.F, 3].New()
         pointset.SetPoints(
             itk.vector_container_from_array(points_np.flatten().astype("float32"))
