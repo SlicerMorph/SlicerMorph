@@ -291,6 +291,9 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
         self.ui.replicateAnalysisCheckBox.connect(
             "toggled(bool)", self.onSelectReplicateAnalysis
         )
+        self.ui.meshQCCheckBox.connect(
+            "toggled(bool)", self.onSelectMultiProcess
+        )
         self.ui.applyLandmarkMultiButton.connect(
             "clicked(bool)", self.onApplyLandmarkMulti
         )
@@ -958,6 +961,16 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
         logic = ALPACALogic()
         # Pass the widget reference to logic for progress updates
         logic.setProgressCallback(self.updateBatchProgress)
+        
+        # Perform mesh QC ONCE before any processing if enabled
+        if self.ui.meshQCCheckBox.checked:
+            qc_passed = logic.performBatchMeshQC(
+                self.ui.sourceModelMultiSelector.currentPath,
+                self.ui.targetModelMultiSelector.currentPath
+            )
+            if not qc_passed:
+                return  # Stop if QC failed
+        
         if self.ui.projectionCheckBoxMulti.checked is False:
             projectionFactor = 0
         else:
@@ -1499,6 +1512,98 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             self.progressCallback(message)
         else:
             print(message)
+    
+    def performMeshQC(self, meshPath):
+        """Perform quality control checks on a mesh file
+        Returns: (is_valid, error_message)
+        """
+        try:
+            # Load the mesh temporarily for QC
+            tempNode = slicer.util.loadModel(meshPath)
+            if tempNode is None:
+                return False, f"Failed to load mesh: {os.path.basename(meshPath)}"
+            
+            polydata = tempNode.GetPolyData()
+            if polydata is None:
+                slicer.mrmlScene.RemoveNode(tempNode)
+                return False, f"Mesh has no polydata: {os.path.basename(meshPath)}"
+            
+            # Check for points
+            points = polydata.GetPoints()
+            if points is None or points.GetNumberOfPoints() == 0:
+                slicer.mrmlScene.RemoveNode(tempNode)
+                return False, f"Mesh has no points: {os.path.basename(meshPath)}"
+            
+            # Check for NaN values in points
+            import vtk.util.numpy_support as vtk_np
+            points_array = vtk_np.vtk_to_numpy(points.GetData())
+            
+            if np.any(np.isnan(points_array)):
+                slicer.mrmlScene.RemoveNode(tempNode)
+                return False, f"Mesh contains NaN values in points: {os.path.basename(meshPath)}"
+            
+            # Check for infinite values
+            if np.any(np.isinf(points_array)):
+                slicer.mrmlScene.RemoveNode(tempNode)
+                return False, f"Mesh contains infinite values in points: {os.path.basename(meshPath)}"
+            
+            # Check for cells/faces
+            if polydata.GetNumberOfCells() == 0:
+                slicer.mrmlScene.RemoveNode(tempNode)
+                return False, f"Mesh has no faces/cells: {os.path.basename(meshPath)}"
+            
+            # Clean up temporary node
+            slicer.mrmlScene.RemoveNode(tempNode)
+            return True, ""
+            
+        except Exception as e:
+            return False, f"QC check failed for {os.path.basename(meshPath)}: {str(e)}"
+    
+    def performBatchMeshQC(self, sourceModelPath, targetModelDirectory):
+        """Perform quality control checks on all meshes before batch processing
+        Returns: True if all meshes pass QC, False otherwise
+        """
+        self.updateProgress("Performing mesh quality control checks...")
+        qc_failed_models = []
+        
+        # Check source model(s)
+        if os.path.isdir(sourceModelPath):
+            sourceFiles = [f for f in os.listdir(sourceModelPath) if f.endswith((".ply", ".obj", ".vtk"))]
+            for sourceFile in sourceFiles:
+                sourcePath = os.path.join(sourceModelPath, sourceFile)
+                is_valid, error_msg = self.performMeshQC(sourcePath)
+                if not is_valid:
+                    qc_failed_models.append(f"SOURCE: {error_msg}")
+                    self.updateProgress(f"  ⚠️  QC FAILED - SOURCE: {error_msg}")
+        else:
+            is_valid, error_msg = self.performMeshQC(sourceModelPath)
+            if not is_valid:
+                qc_failed_models.append(f"SOURCE: {error_msg}")
+                self.updateProgress(f"  ⚠️  QC FAILED - SOURCE: {error_msg}")
+        
+        # Check target models
+        targetModelFiles = [f for f in os.listdir(targetModelDirectory) if f.endswith((".ply", ".obj", ".vtk"))]
+        for targetFile in targetModelFiles:
+            targetPath = os.path.join(targetModelDirectory, targetFile)
+            is_valid, error_msg = self.performMeshQC(targetPath)
+            if not is_valid:
+                qc_failed_models.append(f"TARGET: {error_msg}")
+                self.updateProgress(f"  ⚠️  QC FAILED - TARGET: {error_msg}")
+        
+        if qc_failed_models:
+            self.updateProgress(f"")
+            self.updateProgress(f"🛑 BATCH PROCESSING STOPPED: {len(qc_failed_models)} mesh(es) failed QC checks")
+            self.updateProgress(f"Please fix the following issues before proceeding:")
+            for failed_model in qc_failed_models:
+                self.updateProgress(f"  - {failed_model}")
+            self.updateProgress(f"")
+            self.updateProgress(f"💡 Tip: You can disable mesh QC to proceed anyway (not recommended)")
+            return False
+        else:
+            num_source_models = len([f for f in os.listdir(sourceModelPath) if f.endswith((".ply", ".obj", ".vtk"))]) if os.path.isdir(sourceModelPath) else 1
+            self.updateProgress(f"✅ All {len(targetModelFiles) + num_source_models} meshes passed QC checks")
+            self.updateProgress(f"")
+            return True
     
     def calculateGeometricMedian(self, landmarkList):
         """Calculate geometric median of landmark arrays using scipy optimization"""
