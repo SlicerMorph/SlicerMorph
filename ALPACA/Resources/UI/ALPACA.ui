@@ -580,7 +580,24 @@
             </property>
            </widget>
           </item>
-          <item row="10" column="0" colspan="2">
+          <item row="10" column="0">
+           <widget class="QLabel" name="meshQCLabel">
+            <property name="text">
+             <string>Enable Mesh Quality Control</string>
+            </property>
+           </widget>
+          </item>
+          <item row="10" column="1">
+           <widget class="QCheckBox" name="meshQCCheckBox">
+            <property name="toolTip">
+             <string>If checked, ALPACA will perform quality control checks on all meshes before processing to detect NaN values and other potential issues.</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="11" column="0" colspan="2">
            <widget class="QPushButton" name="applyLandmarkMultiButton">
             <property name="enabled">
              <bool>false</bool>
@@ -593,7 +610,7 @@
             </property>
            </widget>
           </item>
-          <item row="11" column="0" colspan="2">
+          <item row="12" column="0" colspan="2">
            <widget class="QPlainTextEdit" name="batchProgressInfo">
             <property name="sizePolicy">
              <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
