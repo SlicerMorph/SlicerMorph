@@ -71,6 +71,17 @@ class ImportSurfaceToSegmentWidget(ScriptedLoadableModuleWidget):
     parametersFormLayout.addRow("Select surface file to edit:", self.inputFileSelector)
 
     #
+    # Oversampling factor spinbox
+    #
+    self.oversamplingFactorSpinBox = qt.QDoubleSpinBox()
+    self.oversamplingFactorSpinBox.minimum = 0.1
+    self.oversamplingFactorSpinBox.maximum = 10.0
+    self.oversamplingFactorSpinBox.singleStep = 0.1
+    self.oversamplingFactorSpinBox.value = 1.0
+    self.oversamplingFactorSpinBox.setToolTip("Set the oversampling factor for the segmentation. Higher values give finer detail but use more memory.")
+    parametersFormLayout.addRow("Oversampling factor:", self.oversamplingFactorSpinBox)
+
+    #
     # check box to trigger taking screen shots for later use in tutorials
     #
     self.enableScreenshotsFlagCheckBox = qt.QCheckBox()
@@ -107,7 +118,7 @@ class ImportSurfaceToSegmentWidget(ScriptedLoadableModuleWidget):
   def onApplyButton(self):
     logic = ImportSurfaceToSegmentLogic()
     enableScreenshotsFlag = self.enableScreenshotsFlagCheckBox.checked
-    logic.run(self.inputFileSelector.currentPath)
+    logic.run(self.inputFileSelector.currentPath, oversamplingFactor=self.oversamplingFactorSpinBox.value)
 
 #
 # ImportSurfaceToSegmentLogic
@@ -159,14 +170,20 @@ class ImportSurfaceToSegmentLogic(ScriptedLoadableModuleLogic):
     annotationLogic = slicer.modules.annotations.logic()
     annotationLogic.CreateSnapShot(name, description, type, 1, imageData)
 
-  def run(self, surfaceFileName):
+  def run(self, surfaceFileName, oversamplingFactor=1.0):
     """
     Run the actual conversion
+    Args:
+        surfaceFileName: Path to the surface file to import
+        oversamplingFactor: Factor to oversample the segmentation (default=1.0)
     """
     [success, modelNode] = slicer.util.loadModel(surfaceFileName, returnNode=True)
     # Convert to segmentation
     segmentName = modelNode.GetName() + '-segmentation'
     segmentNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLSegmentationNode', segmentName)
+    
+    # Set oversampling factor
+    segmentNode.GetSegmentation().SetConversionParameter('Oversampling factor', str(oversamplingFactor))
     slicer.modules.segmentations.logic().ImportModelToSegmentationNode(modelNode, segmentNode)
     #Convert to label map
     labelName = modelNode.GetName() + '-labelmap'
