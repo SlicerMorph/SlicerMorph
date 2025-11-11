@@ -291,6 +291,9 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
         self.ui.replicateAnalysisCheckBox.connect(
             "toggled(bool)", self.onSelectReplicateAnalysis
         )
+        self.ui.meshQCCheckBox.connect(
+            "toggled(bool)", self.onSelectMultiProcess
+        )
         self.ui.applyLandmarkMultiButton.connect(
             "clicked(bool)", self.onApplyLandmarkMulti
         )
@@ -941,8 +944,33 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
         except:
             self.ui.showManualLMCheckBox.enabled = False
 
+    def updateBatchProgress(self, message):
+        """Update the batch progress text box with a new message"""
+        if hasattr(self.ui, 'batchProgressInfo'):
+            self.ui.batchProgressInfo.appendPlainText(message)
+            # Ensure the UI updates immediately
+            slicer.app.processEvents()
+        # Also print to console as backup
+        print(message)
+
     def onApplyLandmarkMulti(self):
+        # Clear previous progress messages
+        if hasattr(self.ui, 'batchProgressInfo'):
+            self.ui.batchProgressInfo.clear()
+        
         logic = ALPACALogic()
+        # Pass the widget reference to logic for progress updates
+        logic.setProgressCallback(self.updateBatchProgress)
+        
+        # Perform mesh QC ONCE before any processing if enabled
+        if self.ui.meshQCCheckBox.checked:
+            qc_passed = logic.performBatchMeshQC(
+                self.ui.sourceModelMultiSelector.currentPath,
+                self.ui.targetModelMultiSelector.currentPath
+            )
+            if not qc_passed:
+                return  # Stop if QC failed
+        
         if self.ui.projectionCheckBoxMulti.checked is False:
             projectionFactor = 0
         else:
@@ -960,7 +988,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
             )
         else:
             for i in range(0, self.ui.replicationNumberSpinBox.value):
-                print("ALPACA replication run ", i)
+                self.updateBatchProgress(f"Starting ALPACA replication run {i+1}/{self.ui.replicationNumberSpinBox.value}")
                 dateTimeStamp = datetime.now().strftime("%Y-%m-%d_%H_%M_%S")
                 datedOutputFolder = os.path.join(
                     self.ui.landmarkOutputSelector.currentPath, dateTimeStamp
@@ -978,10 +1006,10 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
                         self.parameterDictionary,
                     )
                 except:
+                    self.updateBatchProgress(f"ERROR: Could not access output folder for replication {i+1}")
                     logging.debug(
                         "Result directory failed: Could not access output folder"
                     )
-                    print("Error creating result directory")
 
     ###Connecting function for kmeans templates selection
     def onSelectKmeans(self):
@@ -1469,6 +1497,156 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     Uses ScriptedLoadableModuleLogic base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
+    
+    def __init__(self):
+        super().__init__()
+        self.progressCallback = None
+    
+    def setProgressCallback(self, callback):
+        """Set callback function for progress updates"""
+        self.progressCallback = callback
+    
+    def updateProgress(self, message):
+        """Update progress using callback or print as fallback"""
+        if self.progressCallback:
+            self.progressCallback(message)
+        else:
+            print(message)
+    
+    def performMeshQC(self, meshPath):
+        """Perform quality control checks on a mesh file
+        Returns: (is_valid, error_message)
+        """
+        try:
+            # Load the mesh temporarily for QC
+            tempNode = slicer.util.loadModel(meshPath)
+            if tempNode is None:
+                return False, f"Failed to load mesh: {os.path.basename(meshPath)}"
+            
+            polydata = tempNode.GetPolyData()
+            if polydata is None:
+                slicer.mrmlScene.RemoveNode(tempNode)
+                return False, f"Mesh has no polydata: {os.path.basename(meshPath)}"
+            
+            # Check for points
+            points = polydata.GetPoints()
+            if points is None or points.GetNumberOfPoints() == 0:
+                slicer.mrmlScene.RemoveNode(tempNode)
+                return False, f"Mesh has no points: {os.path.basename(meshPath)}"
+            
+            # Check for NaN values in points
+            import vtk.util.numpy_support as vtk_np
+            points_array = vtk_np.vtk_to_numpy(points.GetData())
+            
+            if np.any(np.isnan(points_array)):
+                slicer.mrmlScene.RemoveNode(tempNode)
+                return False, f"Mesh contains NaN values in points: {os.path.basename(meshPath)}"
+            
+            # Check for infinite values
+            if np.any(np.isinf(points_array)):
+                slicer.mrmlScene.RemoveNode(tempNode)
+                return False, f"Mesh contains infinite values in points: {os.path.basename(meshPath)}"
+            
+            # Check for cells/faces
+            if polydata.GetNumberOfCells() == 0:
+                slicer.mrmlScene.RemoveNode(tempNode)
+                return False, f"Mesh has no faces/cells: {os.path.basename(meshPath)}"
+            
+            # Clean up temporary node
+            slicer.mrmlScene.RemoveNode(tempNode)
+            return True, ""
+            
+        except Exception as e:
+            return False, f"QC check failed for {os.path.basename(meshPath)}: {str(e)}"
+    
+    def performBatchMeshQC(self, sourceModelPath, targetModelDirectory):
+        """Perform quality control checks on all meshes before batch processing
+        Returns: True if all meshes pass QC, False otherwise
+        """
+        self.updateProgress("Performing mesh quality control checks...")
+        qc_failed_models = []
+        
+        # Check source model(s)
+        if os.path.isdir(sourceModelPath):
+            sourceFiles = [f for f in os.listdir(sourceModelPath) if f.endswith((".ply", ".obj", ".vtk"))]
+            for sourceFile in sourceFiles:
+                sourcePath = os.path.join(sourceModelPath, sourceFile)
+                is_valid, error_msg = self.performMeshQC(sourcePath)
+                if not is_valid:
+                    qc_failed_models.append(f"SOURCE: {error_msg}")
+                    self.updateProgress(f"  ⚠️  QC FAILED - SOURCE: {error_msg}")
+        else:
+            is_valid, error_msg = self.performMeshQC(sourceModelPath)
+            if not is_valid:
+                qc_failed_models.append(f"SOURCE: {error_msg}")
+                self.updateProgress(f"  ⚠️  QC FAILED - SOURCE: {error_msg}")
+        
+        # Check target models
+        targetModelFiles = [f for f in os.listdir(targetModelDirectory) if f.endswith((".ply", ".obj", ".vtk"))]
+        for targetFile in targetModelFiles:
+            targetPath = os.path.join(targetModelDirectory, targetFile)
+            is_valid, error_msg = self.performMeshQC(targetPath)
+            if not is_valid:
+                qc_failed_models.append(f"TARGET: {error_msg}")
+                self.updateProgress(f"  ⚠️  QC FAILED - TARGET: {error_msg}")
+        
+        if qc_failed_models:
+            self.updateProgress(f"")
+            self.updateProgress(f"🛑 BATCH PROCESSING STOPPED: {len(qc_failed_models)} mesh(es) failed QC checks")
+            self.updateProgress(f"Please fix the following issues before proceeding:")
+            for failed_model in qc_failed_models:
+                self.updateProgress(f"  - {failed_model}")
+            self.updateProgress(f"")
+            self.updateProgress(f"💡 Tip: You can disable mesh QC to proceed anyway (not recommended)")
+            return False
+        else:
+            num_source_models = len([f for f in os.listdir(sourceModelPath) if f.endswith((".ply", ".obj", ".vtk"))]) if os.path.isdir(sourceModelPath) else 1
+            self.updateProgress(f"✅ All {len(targetModelFiles) + num_source_models} meshes passed QC checks")
+            self.updateProgress(f"")
+            return True
+    
+    def calculateGeometricMedian(self, landmarkList):
+        """Calculate geometric median of landmark arrays using scipy optimization"""
+        try:
+            from scipy.optimize import minimize
+        except ImportError:
+            self.updateProgress("Warning: scipy not available, falling back to arithmetic median")
+            return np.median(landmarkList, axis=0)
+        
+        # Convert list to numpy array for easier handling
+        landmarks = np.array(landmarkList)  # Shape: (n_templates, n_landmarks, 3)
+        n_templates, n_landmarks, n_dims = landmarks.shape
+        
+        # Initialize result with arithmetic median
+        result = np.median(landmarks, axis=0)
+        
+        # Objective function: sum of Euclidean distances to all points
+        def objective(x, points):
+            x_reshaped = x.reshape(-1, n_dims)
+            distances = np.sqrt(np.sum((points - x_reshaped[np.newaxis, :, :])**2, axis=2))
+            return np.sum(distances)
+        
+        # Optimize for each landmark separately for better convergence
+        for i in range(n_landmarks):
+            landmark_coords = landmarks[:, i, :]  # Shape: (n_templates, 3)
+            
+            # Initial guess is the arithmetic median for this landmark
+            x0 = result[i, :].flatten()
+            
+            # Minimize sum of distances
+            try:
+                res = minimize(objective, x0, args=(landmark_coords,), method='BFGS')
+                if res.success:
+                    result[i, :] = res.x
+                else:
+                    # If optimization fails, keep arithmetic median
+                    self.updateProgress(f"Warning: Geometric median optimization failed for landmark {i+1}, using arithmetic median")
+            except Exception as e:
+                self.updateProgress(f"Warning: Error in geometric median calculation for landmark {i+1}: {str(e)}")
+                # Keep arithmetic median for this landmark
+                pass
+        
+        return result
 
     def runLandmarkMultiprocess(
         self,
@@ -1507,68 +1685,106 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
                     sourceLMList.append(sourceFilePath)
         else:
             sourceLMList.append(sourceLandmarkPath)
+        
+        # Get total count of target models for progress tracking
+        targetModelFiles = [f for f in os.listdir(targetModelDirectory) if f.endswith((".ply", ".obj", ".vtk"))]
+        totalTargetModels = len(targetModelFiles)
+        currentModelIndex = 0
+        
+        self.updateProgress(f"Starting batch processing of {totalTargetModels} target models...")
+        self.updateProgress("-----------------------------------------------------------")
+        
         # Iterate through target models
-        for targetFileName in os.listdir(targetModelDirectory):
-            if targetFileName.endswith((".ply", ".obj", ".vtk")):
-                targetFilePath = os.path.join(targetModelDirectory, targetFileName)
-                TargetModelList.append(targetFilePath)
-                rootName = os.path.splitext(targetFileName)[0]
-                landmarkList = []
-                if os.path.isdir(sourceModelPath):
-                    outputMedianPath = os.path.join(
-                        medianOutput, f"{rootName}_median" + extensionLM
-                    )
-                    if not os.path.exists(outputMedianPath):
-                        for file in sourceModelList:
-                            sourceFilePath = os.path.join(sourceModelPath, file)
-                            (baseName, ext) = os.path.splitext(os.path.basename(file))
-                            sourceLandmarkFile = None
-                            for lmFile in sourceLMList:
-                                if baseName in lmFile:
-                                    sourceLandmarkFile = os.path.join(
-                                        sourceLandmarkPath, lmFile
-                                    )
-                            if sourceLandmarkFile is None:
-                                print(
-                                    "::::Could not find the file corresponding to ",
-                                    file,
+        for targetFileName in targetModelFiles:
+            currentModelIndex += 1
+            targetFilePath = os.path.join(targetModelDirectory, targetFileName)
+            TargetModelList.append(targetFilePath)
+            rootName = os.path.splitext(targetFileName)[0]
+            
+            # Display progress message
+            self.updateProgress(f"Now processing {targetFileName}, {currentModelIndex}/{totalTargetModels}")
+            
+            landmarkList = []
+            if os.path.isdir(sourceModelPath):
+                outputMedianPath = os.path.join(
+                    medianOutput, f"{rootName}_median" + extensionLM
+                )
+                if not os.path.exists(outputMedianPath):
+                    totalSourceModels = len(sourceModelList)
+                    currentSourceIndex = 0
+                    self.updateProgress(f"Multi-template mode: Processing {totalSourceModels} templates for {targetFileName}")
+                    for file in sourceModelList:
+                        currentSourceIndex += 1
+                        self.updateProgress(f"    Using template {currentSourceIndex}/{totalSourceModels}: {os.path.basename(file)}")
+                        sourceFilePath = os.path.join(sourceModelPath, file)
+                        (baseName, ext) = os.path.splitext(os.path.basename(file))
+                        sourceLandmarkFile = None
+                        for lmFile in sourceLMList:
+                            if baseName in lmFile:
+                                sourceLandmarkFile = os.path.join(
+                                    sourceLandmarkPath, lmFile
                                 )
-                                next
-                            outputFilePath = os.path.join(
-                                specimenOutput, f"{rootName}_{baseName}" + extensionLM
+                        if sourceLandmarkFile is None:
+                            print(
+                                "::::Could not find the file corresponding to ",
+                                file,
                             )
-                            array = self.pairwiseAlignment(
-                                sourceFilePath,
-                                sourceLandmarkFile,
-                                targetFilePath,
-                                outputFilePath,
-                                scalingOption,
-                                projectionFactor,
-                                parameters,
-                            )
-                            landmarkList.append(array)
-                        medianLandmark = np.median(landmarkList, axis=0)
-                        outputMedianNode = self.exportPointCloud(
-                            medianLandmark, "Median Predicted Landmarks"
+                            next
+                        outputFilePath = os.path.join(
+                            specimenOutput, f"{rootName}_{baseName}" + extensionLM
                         )
-                        slicer.util.saveNode(outputMedianNode, outputMedianPath)
-                        slicer.mrmlScene.RemoveNode(outputMedianNode)
-                elif os.path.isfile(sourceModelPath):
-                    rootName = os.path.splitext(targetFileName)[0]
-                    outputFilePath = os.path.join(
-                        outputDirectory, rootName + extensionLM
+                        
+                        # Display progress for multi-template mode
+                        self.updateProgress(f"  Processing template {os.path.basename(file)} for target {targetFileName}, template {currentSourceIndex}/{totalSourceModels}")
+                        
+                        array = self.pairwiseAlignment(
+                            sourceFilePath,
+                            sourceLandmarkFile,
+                            targetFilePath,
+                            outputFilePath,
+                            scalingOption,
+                            projectionFactor,
+                            parameters,
+                        )
+                        landmarkList.append(array)
+                    self.updateProgress(f"Computing median landmarks for {targetFileName}...")
+                    medianLandmark = np.median(landmarkList, axis=0)
+                    outputMedianNode = self.exportPointCloud(
+                        medianLandmark, "Median Predicted Landmarks"
                     )
-                    array = self.pairwiseAlignment(
-                        sourceModelPath,
-                        sourceLandmarkPath,
-                        targetFilePath,
-                        outputFilePath,
-                        scalingOption,
-                        projectionFactor,
-                        parameters,
+                    slicer.util.saveNode(outputMedianNode, outputMedianPath)
+                    slicer.mrmlScene.RemoveNode(outputMedianNode)
+                    
+                    # Calculate geometric median
+                    self.updateProgress(f"Computing geometric median landmarks for {targetFileName}...")
+                    geomedianLandmark = self.calculateGeometricMedian(landmarkList)
+                    outputGeoMedianPath = os.path.join(
+                        medianOutput, f"{rootName}_geomedian" + extensionLM
                     )
-                else:
-                    print("::::Could not find the file or directory in question")
+                    outputGeoMedianNode = self.exportPointCloud(
+                        geomedianLandmark, "Geometric Median Predicted Landmarks"
+                    )
+                    slicer.util.saveNode(outputGeoMedianNode, outputGeoMedianPath)
+                    slicer.mrmlScene.RemoveNode(outputGeoMedianNode)
+                    self.updateProgress(f"  Completed processing {targetFileName}")
+            elif os.path.isfile(sourceModelPath):
+                self.updateProgress(f"Single template mode: Processing {targetFileName}")
+                rootName = os.path.splitext(targetFileName)[0]
+                outputFilePath = os.path.join(
+                    outputDirectory, rootName + extensionLM
+                )
+                array = self.pairwiseAlignment(
+                    sourceModelPath,
+                    sourceLandmarkPath,
+                    targetFilePath,
+                    outputFilePath,
+                    scalingOption,
+                    projectionFactor,
+                    parameters,
+                )
+                self.updateProgress(f"  Completed processing {targetFileName}")
+            else:
+                self.updateProgress(f"ERROR: Could not find the file or directory for {targetFileName}")
         extras = {
             "Source": sourceModelList,
             "SourceLandmarks": sourceLMList,
@@ -1591,10 +1807,16 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         parameters,
         usePoisson=False,
     ):
+        # Extract filename for progress display
+        targetFileName = os.path.basename(targetFilePath)
+        
+        self.updateProgress(f"  Loading models for {targetFileName}...")
         targetModelNode = slicer.util.loadModel(targetFilePath)
         targetModelNode.GetDisplayNode().SetVisibility(False)
         sourceModelNode = slicer.util.loadModel(sourceFilePath)
         sourceModelNode.GetDisplayNode().SetVisibility(False)
+        
+        self.updateProgress(f"  Running subsampling for {targetFileName}...")
         (
             sourcePoints,
             targetPoints,
@@ -1605,6 +1827,8 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         ) = self.runSubsample(
             sourceModelNode, targetModelNode, scalingOption, parameters, usePoisson
         )
+        
+        self.updateProgress(f"  Estimating rigid transformation for {targetFileName}...")
         SimilarityTransform, similarityFlag = self.estimateTransform(
             sourcePoints,
             targetPoints,
@@ -1614,6 +1838,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             scalingOption,
             parameters,
         )
+        
         # Rigid
         sourceLandmarks, sourceLMNode = self.loadAndScaleFiducials(
             sourceLandmarkFile, scalingFactor
@@ -1627,6 +1852,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         )
 
         # Deformable
+        self.updateProgress(f"  Running CPD registration for {targetFileName}...")
         registeredSourceLM = self.runCPDRegistration(
             sourceLandmarks, sourcePoints, targetPoints, parameters
         )
@@ -1634,6 +1860,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             registeredSourceLM, "Initial Predicted Landmarks"
         )
         if projectionFactor == 0:
+            self.updateProgress(f"  Saving landmarks for {targetFileName} (no projection)")
             self.propagateLandmarkTypes(sourceLMNode, outputPoints)
             slicer.util.saveNode(outputPoints, outputFilePath)
             slicer.mrmlScene.RemoveNode(outputPoints)
@@ -1642,6 +1869,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             slicer.mrmlScene.RemoveNode(sourceLMNode)
             return registeredSourceLM
         else:
+            self.updateProgress(f"  Projecting landmarks to surface for {targetFileName}...")
             inputPoints = self.exportPointCloud(sourceLandmarks, "Original Landmarks")
             inputPoints_vtk = self.getFiducialPoints(inputPoints)
             outputPoints_vtk = self.getFiducialPoints(outputPoints)
@@ -1674,6 +1902,8 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             self.propagateLandmarkTypes(sourceLMNode, projectedLMNode)
             projectedLMNode.SetLocked(True)
             projectedLMNode.SetFixedNumberOfControlPoints(True)
+            
+            self.updateProgress(f"  Saving projected landmarks for {targetFileName}")
             slicer.util.saveNode(projectedLMNode, outputFilePath)
             slicer.mrmlScene.RemoveNode(projectedLMNode)
             slicer.mrmlScene.RemoveNode(outputPoints)
