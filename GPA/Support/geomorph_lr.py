@@ -1495,7 +1495,7 @@ class GeomorphLR:
                 d.SetViewNodeIDs([v2.GetID()])
 
         # Color ONLY these LR-warped glyphs (purple)
-        self._lr_setWarpGlyphColor(rgb=(51, 128, 15))  # orange
+        self._lr_setWarpGlyphColor(rgb=(51, 128, 15))  # green
 
         self.lrWarpNode.SetDisplayVisibility(1)
     except Exception as e:
