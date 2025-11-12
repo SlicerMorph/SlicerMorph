@@ -1,0 +1,362 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+  <class>GPAGeomorphLRTab</class>
+  <widget class="QWidget" name="geomorphLRTab">
+    <layout class="QVBoxLayout" name="geomorphLRTabLayout">
+
+      <!-- (1) R / Rserve Bridge -->
+      <item>
+        <widget class="QGroupBox" name="rserveGroup">
+          <property name="title"><string>R / Rserve Bridge</string></property>
+          <layout class="QGridLayout" name="rserveGrid">
+            <property name="leftMargin"><number>6</number></property>
+            <property name="topMargin"><number>6</number></property>
+            <property name="rightMargin"><number>6</number></property>
+            <property name="bottomMargin"><number>6</number></property>
+            <property name="verticalSpacing"><number>6</number></property>
+
+            <item row="0" column="0">
+              <widget class="QLabel" name="rscriptPathLabel">
+                <property name="text"><string>Rscript path:</string></property>
+              </widget>
+            </item>
+            <item row="0" column="1" colspan="2">
+              <widget class="ctkPathLineEdit" name="rscriptPath"/>
+            </item>
+            <item row="0" column="3">
+              <widget class="QPushButton" name="rDetectButton">
+                <property name="text"><string>Auto-detect</string></property>
+              </widget>
+            </item>
+
+            <item row="1" column="0">
+              <widget class="QLabel" name="rPortLabel">
+                <property name="text"><string>Rserve port:</string></property>
+              </widget>
+            </item>
+            <item row="1" column="1">
+              <widget class="QSpinBox" name="rPortSpin">
+                <property name="value"><number>6311</number></property>
+              </widget>
+            </item>
+            <item row="1" column="2">
+              <widget class="QCheckBox" name="rAllowRemote">
+                <property name="text"><string>Enable remote</string></property>
+              </widget>
+            </item>
+            <item row="1" column="3">
+              <widget class="QPushButton" name="rRefreshButton">
+                <property name="text"><string>Refresh status</string></property>
+              </widget>
+            </item>
+
+            <item row="2" column="0">
+              <widget class="QPushButton" name="rLaunchButton">
+                <property name="text"><string>Launch Rserve</string></property>
+              </widget>
+            </item>
+            <item row="2" column="1">
+              <widget class="QPushButton" name="rConnectButton">
+                <property name="text"><string>Connect</string></property>
+              </widget>
+            </item>
+            <item row="2" column="2">
+              <widget class="QPushButton" name="rDisconnectButton">
+                <property name="text"><string>Disconnect</string></property>
+              </widget>
+            </item>
+            <item row="2" column="3">
+              <widget class="QPushButton" name="rShutdownButton">
+                <property name="text"><string>Shutdown Rserve</string></property>
+              </widget>
+            </item>
+
+            <item row="3" column="0">
+              <widget class="QLabel" name="rExeTitle">
+                <property name="text"><string>Rscript:</string></property>
+              </widget>
+            </item>
+            <item row="3" column="1" colspan="3">
+              <widget class="QLabel" name="rExeStatusLabel">
+                <property name="text"><string>Not checked</string></property>
+              </widget>
+            </item>
+
+            <item row="4" column="0">
+              <widget class="QLabel" name="rRserveTitle">
+                <property name="text"><string>Rserve:</string></property>
+              </widget>
+            </item>
+            <item row="4" column="1" colspan="3">
+              <widget class="QLabel" name="rRserveStatusLabel">
+                <property name="text"><string>Unknown</string></property>
+              </widget>
+            </item>
+
+            <item row="5" column="0">
+              <widget class="QLabel" name="rConnTitle">
+                <property name="text"><string>Connection:</string></property>
+              </widget>
+            </item>
+            <item row="5" column="1" colspan="3">
+              <widget class="QLabel" name="rConnStatusLabel">
+                <property name="text"><string>Not connected</string></property>
+              </widget>
+            </item>
+          </layout>
+        </widget>
+      </item>
+
+      <!-- (2) R Formula -->
+      <item>
+        <widget class="QGroupBox" name="lrFormulaGroup">
+          <property name="title"><string>R Formula</string></property>
+          <layout class="QGridLayout" name="lrFormulaGrid">
+
+            <item row="0" column="0">
+              <widget class="QLabel" name="lrFormulaLabel">
+                <property name="text"><string>Formula:</string></property>
+              </widget>
+            </item>
+            <item row="0" column="1" colspan="4">
+              <widget class="QPlainTextEdit" name="lrFormulaEdit">
+                <property name="sizePolicy">
+                  <sizepolicy hsizetype="Expanding" vsizetype="Fixed"/>
+                </property>
+                <property name="minimumHeight"><number>48</number></property>
+                <property name="maximumHeight"><number>60</number></property>
+                <property name="verticalScrollBarPolicy"><enum>Qt::ScrollBarAsNeeded</enum></property>
+                <property name="toolTip">
+                  <string>Type an R-like formula (e.g., Coords ~ Size + Sex + Size:Sex). Use + for main effects and : for pairwise interactions. Add -1 to remove the intercept.</string>
+                </property>
+                <property name="placeholderText"><string>Coords ~ Size</string></property>
+              </widget>
+            </item>
+
+            <item row="1" column="1" colspan="3">
+              <layout class="QHBoxLayout" name="lrButtonsRow">
+                <item>
+                  <widget class="QPushButton" name="lrValidateButton">
+                    <property name="text"><string>Validate</string></property>
+                    <property name="toolTip"><string>Validate syntax and allowed terms (uses patsy).</string></property>
+                  </widget>
+                </item>
+                <item>
+                  <widget class="QPushButton" name="lrCopyButton">
+                    <property name="text"><string>Copy</string></property>
+                    <property name="toolTip"><string>Copy current formula to clipboard.</string></property>
+                  </widget>
+                </item>
+                <item>
+                  <widget class="QPushButton" name="lrResetButton">
+                    <property name="text"><string>Reset to “Coords ~ Size”</string></property>
+                  </widget>
+                </item>
+                <item>
+                  <spacer name="lrButtonsSpacer">
+                    <property name="orientation"><enum>Qt::Horizontal</enum></property>
+                    <property name="sizeHint" stdset="0">
+                      <size><width>40</width><height>10</height></size>
+                    </property>
+                  </spacer>
+                </item>
+              </layout>
+            </item>
+
+            <item row="2" column="0">
+              <widget class="QLabel" name="lrStatusLabelTitle">
+                <property name="text"><string>Status:</string></property>
+              </widget>
+            </item>
+            <item row="2" column="1" colspan="4">
+              <widget class="QLabel" name="lrStatusLabel">
+                <property name="text"><string>Waiting for input…</string></property>
+                <property name="wordWrap"><bool>true</bool></property>
+              </widget>
+            </item>
+
+            <item row="3" column="1" colspan="4">
+              <widget class="QLabel" name="lrHelpLabel">
+                <property name="text">
+                  <string>Tip: Start typing and pick from suggestions. Allowed operators: “+” (add), “:” (interaction), “-1” (remove intercept). LHS should be “Coords”.</string>
+                </property>
+                <property name="wordWrap"><bool>true</bool></property>
+                <property name="styleSheet">
+                  <string notr="true">margin-top:2px;margin-bottom:2px;</string>
+                </property>
+              </widget>
+            </item>
+
+          </layout>
+        </widget>
+      </item>
+
+      <!-- (3) Possible Main Effect Terms -->
+      <item>
+        <widget class="QGroupBox" name="lrReferenceGroup">
+          <property name="title"><string>Possible Main Effect Terms</string></property>
+          <layout class="QGridLayout" name="lrReferenceGrid">
+            <property name="leftMargin"><number>6</number></property>
+            <property name="topMargin"><number>2</number></property>
+            <property name="rightMargin"><number>6</number></property>
+            <property name="bottomMargin"><number>6</number></property>
+            <property name="verticalSpacing"><number>2</number></property>
+
+            <item row="0" column="0">
+              <widget class="QLabel" name="lrPossibleLabel">
+                <property name="text">
+                  <string>These Covariates (including “Size”) are valid in formulas:</string>
+                </property>
+                <property name="styleSheet"><string notr="true">margin:0px;padding:0px;</string></property>
+                <property name="sizePolicy">
+                  <sizepolicy hsizetype="Preferred" vsizetype="Minimum"/>
+                </property>
+              </widget>
+            </item>
+
+            <item row="1" column="0">
+              <widget class="QListWidget" name="lrPossibleCovariatesList">
+                <property name="selectionMode"><enum>QAbstractItemView::NoSelection</enum></property>
+                <property name="dragDropMode"><enum>QAbstractItemView::NoDragDrop</enum></property>
+                <property name="alternatingRowColors"><bool>true</bool></property>
+                <property name="sizePolicy">
+                  <sizepolicy hsizetype="Preferred" vsizetype="Fixed"/>
+                </property>
+                <property name="minimumHeight"><number>80</number></property>
+                <property name="maximumHeight"><number>110</number></property>
+                <property name="verticalScrollBarPolicy"><enum>Qt::ScrollBarAsNeeded</enum></property>
+              </widget>
+            </item>
+          </layout>
+        </widget>
+      </item>
+
+      <!-- (4) Fit Model (Rserve) -->
+      <item>
+        <widget class="QGroupBox" name="lrRunGroup">
+          <property name="title"><string>Fit model (Rserve)</string></property>
+          <layout class="QGridLayout" name="lrRunGrid">
+            <item row="0" column="0" colspan="2">
+              <widget class="QLabel" name="lrFitPrereqLabel">
+                <property name="text"><string>Requires: valid formula + Rserve connected</string></property>
+              </widget>
+            </item>
+            <item row="1" column="0">
+              <widget class="QPushButton" name="lrFitButton">
+                <property name="text"><string>Fit model in R (procD.lm)</string></property>
+                <property name="enabled"><bool>false</bool></property>
+                <property name="toolTip"><string>Fits the current formula in R using geomorph::procD.lm</string></property>
+              </widget>
+            </item>
+            <item row="1" column="1">
+              <widget class="QLabel" name="lrFitStatusLabel">
+                <property name="text"><string>Idle</string></property>
+              </widget>
+            </item>
+          </layout>
+        </widget>
+      </item>
+
+      <!-- (5) Model Summary -->
+      <item>
+        <widget class="QGroupBox" name="lrSummaryGroup">
+          <property name="title"><string>Model Summary (read-only)</string></property>
+          <layout class="QVBoxLayout" name="lrSummaryLayout">
+            <item>
+              <widget class="QPlainTextEdit" name="lrSummaryText">
+                <property name="readOnly"><bool>true</bool></property>
+                <property name="minimumHeight"><number>220</number></property>
+                <property name="toolTip"><string>Full output of summary(outlm) from geomorph::procD.lm</string></property>
+              </widget>
+            </item>
+          </layout>
+        </widget>
+      </item>
+
+      <!-- (6) Coefficient Visualization Parameters -->
+      <item>
+        <widget class="ctkCollapsibleButton" name="coefVisualizationParametersButton">
+          <property name="collapsed"><bool>false</bool></property>
+          <property name="text"><string>Coefficient Visualization Parameters</string></property>
+          <layout class="QGridLayout" name="coefVisualizationParametersLayout">
+
+            <item row="0" column="0">
+              <widget class="QLabel" name="coefMagnificationLabel">
+                <property name="text"><string>Magnification Factor:</string></property>
+              </widget>
+            </item>
+            <item row="0" column="1">
+              <widget class="QDoubleSpinBox" name="coefMagnificationSpin">
+                <property name="decimals"><number>2</number></property>
+                <property name="minimum"><double>0.01</double></property>
+                <property name="maximum"><double>1000000.00</double></property>
+                <property name="value"><double>1.00</double></property>
+                <property name="toolTip"><string>Scales the warp.</string></property>
+              </widget>
+            </item>
+            <item row="0" column="2">
+              <widget class="QPushButton" name="coefUpdateMagnificationButton">
+                <property name="text"><string>Update Magnification</string></property>
+              </widget>
+            </item>
+
+            <item row="1" column="0" colspan="3">
+              <layout class="QHBoxLayout" name="coefSelectionLayout">
+                <item>
+                  <widget class="QComboBox" name="coefComboBox">
+                    <property name="toolTip"><string>Numeric coefficients / interactions.</string></property>
+                  </widget>
+                </item>
+                <item>
+                  <widget class="QSlider" name="coefSlider">
+                    <property name="orientation"><enum>Qt::Horizontal</enum></property>
+                    <property name="minimum"><number>-100</number></property>
+                    <property name="maximum"><number>100</number></property>
+                  </widget>
+                </item>
+                <item>
+                  <widget class="QDoubleSpinBox" name="coefSpinBox">
+                    <property name="decimals"><number>3</number></property>
+                    <property name="minimum"><double>-1.000</double></property>
+                    <property name="maximum"><double>1.000</double></property>
+                    <property name="singleStep"><double>0.010</double></property>
+                    <property name="toolTip"><string>Real units if numeric covariate; otherwise normalized [-1,1].</string></property>
+                  </widget>
+                </item>
+              </layout>
+            </item>
+
+            <item row="2" column="0" colspan="3">
+              <widget class="QPushButton" name="coefResetButton">
+                <property name="text"><string>Init / Reset Coefficient View</string></property>
+                <property name="toolTip"><string>Clear warp and reset to identity TPS.</string></property>
+              </widget>
+            </item>
+
+            <item row="3" column="0" colspan="3">
+              <widget class="QLabel" name="coefHelpLabel">
+                <property name="text">
+                  <string>Warp along regression coefficients (Size and numeric interactions). Categorical contrasts have been removed from this UI.</string>
+                </property>
+                <property name="wordWrap"><bool>true</bool></property>
+              </widget>
+            </item>
+
+          </layout>
+        </widget>
+      </item>
+
+      <item>
+        <spacer name="lrSpacer">
+          <property name="orientation"><enum>Qt::Vertical</enum></property>
+          <property name="sizeHint" stdset="0">
+            <size><width>20</width><height>20</height></size>
+          </property>
+        </spacer>
+      </item>
+
+    </layout>
+  </widget>
+  <resources/>
+  <connections/>
+</ui>
