@@ -380,7 +380,6 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # Apply landmarks if already selected
         self.updateLandmarkDisplay()
         
-        layoutManager = slicer.app.layoutManager()
         self.update3DViews()
 
         # Update joint editing availability after landmarks are applied
