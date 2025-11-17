@@ -16,6 +16,10 @@ import math
 import numpy as np
 import scipy.linalg as sp
 
+# Layout IDs for QuickAlign custom layouts
+LAYOUT_ID_QUICKALIGN_2VIEW = 701
+LAYOUT_ID_QUICKALIGN_4VIEW = 702
+
 #
 # QuickAlign
 #
@@ -157,8 +161,8 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.unlinkButton.connect('clicked(bool)', self.onUnlinkButton)
 
         # Custom Layout button
-        self.addLayoutButton(701, 'QuickAlign View', 'Custom layout for QuickAlign module', 'LayoutSlicerMorphView.png', slicer.customLayoutQuickAlign)
-        self.addLayoutButton(702, 'QuickAlignLayout', 'QuickAlign 2x2 layout with four 3D viewers', 'LayoutSlicerMorphView.png', slicer.customLayoutQuickAlignLayout)
+        self.addLayoutButton(LAYOUT_ID_QUICKALIGN_2VIEW, 'QuickAlign View', 'Custom layout for QuickAlign module', 'LayoutSlicerMorphView.png', slicer.customLayoutQuickAlign)
+        self.addLayoutButton(LAYOUT_ID_QUICKALIGN_4VIEW, 'QuickAlignLayout', 'QuickAlign 2x2 layout with four 3D viewers', 'LayoutSlicerMorphView.png', slicer.customLayoutQuickAlignLayout)
         
         # Initially disable landmark selectors until sync starts
         self.ui.landmarksSelector1.enabled = False
@@ -353,7 +357,7 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # Switch to two-view layout (horizontal 1 & 2) per requirement
         try:
           layoutManager = slicer.app.layoutManager()
-          layoutManager.setLayout(701)  # custom two-view layout id defined earlier
+          layoutManager.setLayout(LAYOUT_ID_QUICKALIGN_2VIEW)  # custom two-view layout id defined earlier
         except Exception as e:
           logging.error(f"Failed to switch to two-view layout: {e}")
 
@@ -567,7 +571,7 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # Hide all other objects in the scene
         self.hideAllObjectsExcept([node1, node2])
         
-        customLayoutId1=702  # Use the 2x2 QuickAlignLayout
+        customLayoutId1=LAYOUT_ID_QUICKALIGN_4VIEW  # Use the 2x2 QuickAlignLayout
         layoutManager = slicer.app.layoutManager()
         layoutManager.setLayout(customLayoutId1)
 
