@@ -61,6 +61,8 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._zoomSyncActive = False
         self._zoomObserverTags = []
         self._zoomSourceToTarget = {}
+        # view sync state
+        self._viewsSynced = False
 
         # Define custom layouts for module in slicer global namespace
         slicer.customLayoutQuickAlign = """
@@ -159,7 +161,7 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # Custom Layout button
         self.addLayoutButton(701, 'QuickAlign View', 'Custom layout for QuickAlign module', 'LayoutSlicerMorphView.png', slicer.customLayoutQuickAlign)
         self.addLayoutButton(702, 'QuickAlignLayout', 'QuickAlign 2x2 layout with four 3D viewers', 'LayoutSlicerMorphView.png', slicer.customLayoutQuickAlignLayout)
-        
+
         # Initially disable landmark selectors until sync starts
         self.ui.landmarksSelector1.enabled = False
         self.ui.landmarksSelector2.enabled = False
@@ -167,9 +169,9 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     def onLandmarkChanged(self):
         """Called when landmark selection changes - update visibility and transforms immediately"""
         # Only process if we're in synced state
-        if not hasattr(self, 'viewNode1') or not self.ui.linkButton.enabled == False:
+        if not hasattr(self, 'viewNode1') or not self._viewsSynced:
             return
-        
+
         # Validate that selected landmarks are not the same as objects
         if hasattr(self, 'excludedLandmarkIDs'):
             for selector in [self.ui.landmarksSelector1, self.ui.landmarksSelector2]:
@@ -177,15 +179,15 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 if currentNode and currentNode.GetID() in self.excludedLandmarkIDs:
                     selector.setCurrentNode(None)
                     slicer.util.warningDisplay(f"Cannot use {currentNode.GetName()} as a landmark - it is already selected as Object 1 or Object 2")
-        
+
         self.updateLandmarkDisplay()
         self.updateJointEditingAvailability()
-    
+
     def filterLandmarkSelectors(self):
         """Filter landmark selectors to exclude Object 1 and Object 2 if they are markups"""
         node1 = self.ui.inputSelector1.currentNode()
         node2 = self.ui.inputSelector2.currentNode()
-        
+
         # Get names to exclude
         excludeNames = []
         excludeIDs = set()
@@ -195,10 +197,10 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if node2 and node2.IsA('vtkMRMLMarkupsNode'):
             excludeNames.append(node2.GetName())
             excludeIDs.add(node2.GetID())
-        
+
         # Store excluded IDs for validation
         self.excludedLandmarkIDs = excludeIDs
-        
+
         # Try to filter using baseName with negative lookahead regex
         if excludeNames:
             # Create a regex pattern that matches anything EXCEPT the excluded names
@@ -208,22 +210,22 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             # Pattern: match anything that is NOT exactly one of the excluded names
             # Using negative lookahead: ^(?!exact_match1$|exact_match2$).*
             pattern = "^(?!" + "|".join([f"{name}$" for name in escaped_names]) + ").*"
-            
+
             for selector in [self.ui.landmarksSelector1, self.ui.landmarksSelector2]:
                 try:
                     selector.baseName = pattern
                 except:
                     # If baseName doesn't work, we'll rely on validation in onLandmarkChanged
                     pass
-    
+
     def updateLandmarkDisplay(self):
         """Apply transforms and view restrictions to currently selected landmarks"""
         if not (hasattr(self, 'centerNode1Transform') and hasattr(self, 'centerNode2Transform')):
             return
-            
+
         landmarks1 = self.ui.landmarksSelector1.currentNode()
         landmarks2 = self.ui.landmarksSelector2.currentNode()
-        
+
         # Update landmarks 1
         if landmarks1:
             landmarks1.SetAndObserveTransformNodeID(self.centerNode1Transform.GetID())
@@ -231,7 +233,7 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             if dn:
                 dn.SetViewNodeIDs([self.viewNode1.GetID()])
                 dn.SetVisibility(True)
-        
+
         # Update landmarks 2
         if landmarks2:
             landmarks2.SetAndObserveTransformNodeID(self.centerNode2Transform.GetID())
@@ -239,34 +241,34 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             if dn:
                 dn.SetViewNodeIDs([self.viewNode2.GetID()])
                 dn.SetVisibility(True)
-    
+
     def updateJointEditingAvailability(self):
         """Enable joint editing if either objects or landmarks are both fiducial markups"""
         node1 = self.ui.inputSelector1.currentNode()
         node2 = self.ui.inputSelector2.currentNode()
         landmarks1 = self.ui.landmarksSelector1.currentNode()
         landmarks2 = self.ui.landmarksSelector2.currentNode()
-        
+
         # Check if objects themselves are fiducials
-        objectsAreFiducials = (node1 and node2 and 
-                               node1.GetNodeTagName() == "MarkupsFiducial" and 
+        objectsAreFiducials = (node1 and node2 and
+                               node1.GetNodeTagName() == "MarkupsFiducial" and
                                node2.GetNodeTagName() == "MarkupsFiducial")
-        
+
         # Check if landmarks are fiducials
-        landmarksAreFiducials = (landmarks1 and landmarks2 and 
-                                 landmarks1.GetNodeTagName() == "MarkupsFiducial" and 
+        landmarksAreFiducials = (landmarks1 and landmarks2 and
+                                 landmarks1.GetNodeTagName() == "MarkupsFiducial" and
                                  landmarks2.GetNodeTagName() == "MarkupsFiducial")
-        
+
         # Enable if either condition is true
         self.ui.jointEditCheckBox.enabled = objectsAreFiducials or landmarksAreFiducials
-        
+
         # Auto-check if enabled and objects are fiducials (original behavior)
         if objectsAreFiducials:
             self.ui.jointEditCheckBox.checked = True
 
     def onSelect(self):
         self.ui.initializeViewButton.enabled = bool(self.ui.inputSelector1.currentNode() and self.ui.inputSelector2.currentNode())
-        
+
         # Update joint editing availability during selection phase
         node1 = self.ui.inputSelector1.currentNode()
         node2 = self.ui.inputSelector2.currentNode()
@@ -314,17 +316,17 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         Run processing when user clicks "Link" button.
         Links views 1 and 2 (superior views) while keeping side views 3 and 4 independent.
         """
-        if not (hasattr(self, 'viewNode1') and hasattr(self, 'viewNode2') and 
+        if not (hasattr(self, 'viewNode1') and hasattr(self, 'viewNode2') and
                 hasattr(self, 'viewNode3') and hasattr(self, 'viewNode4')):
           print("Error: Can not find 4 3d views to link. Please reinitialize views.")
           return
-        
+
         # Get all cameras
         camera1 = slicer.modules.cameras.logic().GetViewActiveCameraNode(self.viewNode1)
         camera2 = slicer.modules.cameras.logic().GetViewActiveCameraNode(self.viewNode2)
 
         logic = QuickAlignLogic()
-        
+
         # Calculate alignment between cameras 1 and 2 (the two superior views)
         camera2ZoomFactor = camera1.GetParallelScale()/camera2.GetParallelScale()
         scalingTransform=vtk.vtkTransform()
@@ -334,7 +336,7 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # Get alignment transform between the two objects (cameras 1 and 2)
         self.alignmentTransform = logic.getCameraAlignmentTransform(camera1, camera2)
-        
+
         # Apply alignment to object 2 (shared transform used by both its view display nodes)
         if hasattr(self, 'centerNode2Transform'):
           self.centerNode2Transform.SetAndObserveTransformNodeID(self.alignmentTransform.GetID())
@@ -346,7 +348,7 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.viewNode2.SetLinkedControl(False)
         self.viewNode3.SetLinkedControl(False)
         self.viewNode4.SetLinkedControl(False)
-        
+
         # Now enable linking on view 1 - this will link ALL views together
         self.viewNode1.SetLinkedControl(True)
 
@@ -360,7 +362,7 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # Restrict display nodes to just their primary views (remove side views during sync)
         node1 = self.ui.inputSelector1.currentNode()
         node2 = self.ui.inputSelector2.currentNode()
-        
+
         if node1:
             dn1 = node1.GetDisplayNode()
             if dn1:
@@ -369,34 +371,34 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             dn2 = node2.GetDisplayNode()
             if dn2:
                 dn2.SetViewNodeIDs([self.viewNode2.GetID()])
-        
+
         # Enable landmark selectors now that sync has started
         self.ui.landmarksSelector1.enabled = True
         self.ui.landmarksSelector2.enabled = True
-        
+
         # Filter landmark selectors to exclude Object 1 and Object 2
         self.filterLandmarkSelectors()
-        
+
         # Apply landmarks if already selected
         self.updateLandmarkDisplay()
-        
+
         layoutManager = slicer.app.layoutManager()
         self.update3DViews()
 
         # Update joint editing availability after landmarks are applied
         self.updateJointEditingAvailability()
-        
+
         # If joint editing checkbox is enabled and checked, start joint editing
         if self.ui.jointEditCheckBox.enabled and self.ui.jointEditCheckBox.checked:
             node1 = self.ui.inputSelector1.currentNode()
             node2 = self.ui.inputSelector2.currentNode()
             landmarks1 = self.ui.landmarksSelector1.currentNode()
             landmarks2 = self.ui.landmarksSelector2.currentNode()
-            
+
             # Prefer objects if they're fiducials, otherwise use landmarks
             editNode1 = node1 if (node1 and node1.GetNodeTagName() == "MarkupsFiducial") else landmarks1
             editNode2 = node2 if (node2 and node2.GetNodeTagName() == "MarkupsFiducial") else landmarks2
-            
+
             if editNode1 and editNode2:
                 self.observerList = logic.startJointMarkupEditing(editNode1, editNode2)
                 if self.observerList == []:
@@ -407,6 +409,7 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.linkButton.enabled = False
         self.ui.initializeViewButton.enabled = False
         self.ui.jointEditCheckBox.enabled = False
+        self._viewsSynced = True
 
     def onUnlinkButton(self):
         """
@@ -415,24 +418,25 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.cleanUpTransformNodes()
         self.ui.unlinkButton.enabled = False
         self.ui.linkButton.enabled = False
+        self._viewsSynced = False
         # Disable landmark selectors when not synced
         self.ui.landmarksSelector1.enabled = False
         self.ui.landmarksSelector2.enabled = False
-        
+
         # End joint editing if it was initiated
         if self.ui.jointEditCheckBox.checked and hasattr(self, 'observerList'):
             node1 = self.ui.inputSelector1.currentNode()
             node2 = self.ui.inputSelector2.currentNode()
             landmarks1 = self.ui.landmarksSelector1.currentNode()
             landmarks2 = self.ui.landmarksSelector2.currentNode()
-            
+
             # Determine which nodes were being edited
             editNode1 = node1 if (node1 and node1.GetNodeTagName() == "MarkupsFiducial") else landmarks1
             editNode2 = node2 if (node2 and node2.GetNodeTagName() == "MarkupsFiducial") else landmarks2
-            
+
             if editNode1 and editNode2:
                 self.logic.endJointMarkupEditing(editNode1, editNode2, self.observerList)
-        
+
         # unlink all the views
         if hasattr(self, 'viewNode1'):
             self.viewNode1.SetLinkedControl(False)
@@ -442,7 +446,7 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.viewNode3.SetLinkedControl(False)
         if hasattr(self, 'viewNode4'):
             self.viewNode4.SetLinkedControl(False)
-        
+
         self.update3DViews()
         self.ui.initializeViewButton.enabled = True
         markupsTypeNodes = bool(node1.GetNodeTagName() == "MarkupsFiducial" and node2.GetNodeTagName() == "MarkupsFiducial")
@@ -531,8 +535,8 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def hideAllObjectsExcept(self, keepNodes):
         """Hide all models, volumes, and markups except the specified nodes"""
-        keepNodeIDs = set([n.GetID() for n in keepNodes if n])
-        
+        keepNodeIDs = {n.GetID() for n in keepNodes if n}
+
         # Hide all models
         models = slicer.util.getNodesByClass('vtkMRMLModelNode')
         for model in models:
@@ -540,7 +544,7 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 dn = model.GetDisplayNode()
                 if dn:
                     dn.SetVisibility(False)
-        
+
         # Hide all volumes (scalar and volume rendering)
         volumes = slicer.util.getNodesByClass('vtkMRMLScalarVolumeNode')
         for vol in volumes:
@@ -549,7 +553,7 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     dn = vol.GetNthDisplayNode(i)
                     if dn:
                         dn.SetVisibility(False)
-        
+
         # Hide all markups
         markups = slicer.util.getNodesByClass('vtkMRMLMarkupsNode')
         for markup in markups:
@@ -557,17 +561,17 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 dn = markup.GetDisplayNode()
                 if dn:
                     dn.SetVisibility(False)
-    
+
     def onInitializeViewButton(self):
         self.cleanUpTransformNodes()
-        
+
         # Get selected objects
         node1 = self.ui.inputSelector1.currentNode()
         node2 = self.ui.inputSelector2.currentNode()
-        
+
         # Hide all other objects in the scene
         self.hideAllObjectsExcept([node1, node2])
-        
+
         customLayoutId1=702  # Use the 2x2 QuickAlignLayout
         layoutManager = slicer.app.layoutManager()
         layoutManager.setLayout(customLayoutId1)
@@ -577,7 +581,7 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.viewNode2 = slicer.mrmlScene.GetFirstNodeByName("View2")
         self.viewNode3 = slicer.mrmlScene.GetFirstNodeByName("View3")
         self.viewNode4 = slicer.mrmlScene.GetFirstNodeByName("View4")
-        
+
         # Configure all views
         for viewNode in [self.viewNode1, self.viewNode2, self.viewNode3, self.viewNode4]:
             viewNode.SetAxisLabelsVisible(False)
@@ -636,14 +640,14 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.viewNode2.SetLinkedControl(False)
         self.viewNode3.SetLinkedControl(False)
         self.viewNode4.SetLinkedControl(False)
-        
+
         #update views
         self.update3DViews()
 
         # Set camera orientations
         # View 1: Superior view (looking down from top)
         # View 3: Side/Lateral view (90 degree rotation)
-        # View 2: Superior view 
+        # View 2: Superior view
         # View 4: Side/Lateral view
         self.setCameraOrientation(self.viewNode1, viewUp=[0, 1, 0], position=[0, 0, 1])
         self.setCameraOrientation(self.viewNode3, viewUp=[0, 0, 1], position=[1, 0, 0])
@@ -658,7 +662,7 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         #translate all nodes to origin
         self.centerNodes(node1, node2)
-    
+
     def setCameraOrientation(self, viewNode, viewUp, position):
         """Set camera orientation for a specific view"""
         camera = slicer.modules.cameras.logic().GetViewActiveCameraNode(viewNode)
