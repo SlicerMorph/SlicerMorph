@@ -115,7 +115,7 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
 
     # connections
     self.mergeButton.connect('clicked(bool)', self.onMergeButton)
-    self.markupsView.connect('currentItemChanged(vtkIdType)', self.updateMergeButton)
+    self.markupsView.selectionModel().selectionChanged.connect(self.updateMergeButton)
 
     ################ Landmark Set Tab
     #
@@ -168,7 +168,7 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     # connections
     self.mergeLMButton.connect('clicked(bool)', self.onMergeLMButton)
     self.ApplyLMButton.connect('clicked(bool)', self.onApplyLMButton)
-    self.markupsFiducialView.connect('currentItemChanged(vtkIdType)', self.updateMergeLMButton)
+    self.markupsFiducialView.selectionModel().selectionChanged.connect(self.updateMergeLMButton)
     self.LandmarkTypeSelection.connect('currentIndexChanged(int)', self.updateApplyLMButton)
 
     ################ All Markups Tab
@@ -205,7 +205,7 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
 
     # connections
     self.mergeAllButton.connect('clicked(bool)', self.onMergeAllButton)
-    self.markupsView.connect('currentItemChanged(vtkIdType)', self.updateMergeAllButton)
+    self.markupsView.selectionModel().selectionChanged.connect(self.updateMergeAllButton)
 
     ################ Batch Run LM Merge Tab
     #
