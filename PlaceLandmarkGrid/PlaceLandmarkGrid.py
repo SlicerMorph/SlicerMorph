@@ -1127,7 +1127,7 @@ class PlaceLandmarkGridLogic(ScriptedLoadableModuleLogic):
             "patchID": patch.gridID,
             "patchName": patch.name,
             "resolution": int(patch.resolution),
-            "landmarkIndices": patch.landmarkIndices
+            "landmarkIndices": list(patch.landmarkIndices)  # Ensure it's a list
           }
           template["patches"].append(patchData)
       
@@ -1139,7 +1139,19 @@ class PlaceLandmarkGridLogic(ScriptedLoadableModuleLogic):
       with open(filePath, 'w') as f:
         json.dump(template, f, indent=2)
       
-      print(f"Saved grid template with {len(template['patches'])} patches to {filePath}")
+      # Verify the file was written correctly by reading it back
+      try:
+        with open(filePath, 'r') as f:
+          verification = json.load(f)
+        if "patches" not in verification or len(verification["patches"]) == 0:
+          print(f"Error: Template file verification failed - file may be corrupted")
+          return False
+        print(f"Saved grid template with {len(template['patches'])} patches to {filePath}")
+        print(f"Verification: Successfully wrote {len(verification['patches'])} patches")
+      except Exception as e:
+        print(f"Error: Template file verification failed: {str(e)}")
+        return False
+      
       return True
 
     def loadAndApplyGridTemplate(self, filePath, landmarkNode, modelNode, widget):
@@ -1167,17 +1179,21 @@ class PlaceLandmarkGridLogic(ScriptedLoadableModuleLogic):
         failCount = 0
         
         # Create patches from template
-        for patchData in template["patches"]:
+        for patchIndex, patchData in enumerate(template["patches"]):
           # Validate patch structure
           if not isinstance(patchData, dict):
-            print("Error: Patch entry is not a dictionary. Skipping.")
+            print(f"Error: Patch entry {patchIndex} is not a dictionary. Skipping.")
             failCount += 1
             continue
+          
+          print(f"Debug: Processing patch {patchIndex}, keys: {list(patchData.keys())}")
           
           required_keys = ["landmarkIndices", "resolution", "patchName"]
           missing_keys = [key for key in required_keys if key not in patchData]
           if missing_keys:
-            print(f"Error: Patch missing required keys {missing_keys}. Skipping patch.")
+            print(f"Error: Patch {patchIndex} missing required keys {missing_keys}. Skipping patch.")
+            print(f"Debug: Available keys in patch: {list(patchData.keys())}")
+            print(f"Debug: Patch data: {patchData}")
             failCount += 1
             continue
           
