@@ -1188,18 +1188,28 @@ class PlaceLandmarkGridLogic(ScriptedLoadableModuleLogic):
           
           print(f"Debug: Processing patch {patchIndex}, keys: {list(patchData.keys())}")
           
-          required_keys = ["landmarkIndices", "resolution", "patchName"]
-          missing_keys = [key for key in required_keys if key not in patchData]
-          if missing_keys:
-            print(f"Error: Patch {patchIndex} missing required keys {missing_keys}. Skipping patch.")
+          # Support both old and new format
+          # Old format: cornerLandmarkIndices, name
+          # New format: landmarkIndices, patchName
+          if "landmarkIndices" in patchData:
+            landmarkIndices = patchData["landmarkIndices"]
+            patchName = patchData.get("patchName", f"patch_{patchIndex}")
+          elif "cornerLandmarkIndices" in patchData:
+            landmarkIndices = patchData["cornerLandmarkIndices"]
+            patchName = patchData.get("name", f"patch_{patchIndex}")
+          else:
+            print(f"Error: Patch {patchIndex} missing landmark indices (neither 'landmarkIndices' nor 'cornerLandmarkIndices'). Skipping.")
             print(f"Debug: Available keys in patch: {list(patchData.keys())}")
             print(f"Debug: Patch data: {patchData}")
             failCount += 1
             continue
           
-          landmarkIndices = patchData["landmarkIndices"]
+          if "resolution" not in patchData:
+            print(f"Error: Patch {patchIndex} missing 'resolution'. Skipping patch.")
+            failCount += 1
+            continue
+          
           resolution = patchData["resolution"]
-          patchName = patchData["patchName"]
           
           # Validate landmarkIndices
           if not isinstance(landmarkIndices, list) or len(landmarkIndices) != 4:
