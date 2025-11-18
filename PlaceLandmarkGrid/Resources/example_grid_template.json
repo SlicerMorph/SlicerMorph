@@ -1,0 +1,17 @@
+{
+  "landmarkNodeName": "ManualLandmarks",
+  "patches": [
+    {
+      "patchID": "0",
+      "patchName": "gridPatch_0",
+      "resolution": 7,
+      "landmarkIndices": [0, 1, 2, 3]
+    },
+    {
+      "patchID": "1",
+      "patchName": "gridPatch_1",
+      "resolution": 5,
+      "landmarkIndices": [4, 5, 6, 7]
+    }
+  ]
+}
