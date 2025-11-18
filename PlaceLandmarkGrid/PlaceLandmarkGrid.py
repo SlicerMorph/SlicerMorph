@@ -448,6 +448,8 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
       self.logic.activeOutline = None
       self.updatingGUI = False
       self.onSampleGrid()
+      # Update template button states after adding patch
+      self.updateTemplateButtonStates()
 
     def updateCurrentPatch(self, newPatch):
       self.patch.setLockPatch(True)
@@ -487,9 +489,13 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
       filePath = qt.QFileDialog.getSaveFileName(slicer.util.mainWindow(),
         "Save Grid Template", "", "JSON Files (*.json)")
       if filePath:
-        logic.saveGridTemplate(self.patchList, landmarkNode, filePath)
-        qt.QMessageBox.information(slicer.util.mainWindow(),
-          'Success', 'Grid template saved successfully.')
+        success = logic.saveGridTemplate(self.patchList, landmarkNode, filePath)
+        if success:
+          qt.QMessageBox.information(slicer.util.mainWindow(),
+            'Success', 'Grid template saved successfully.')
+        else:
+          qt.QMessageBox.warning(slicer.util.mainWindow(),
+            'Warning', 'No valid patches could be associated with landmarks. Please ensure patches are created with landmarks nearby.')
 
     def onLoadTemplateButton(self):
       logic = PlaceLandmarkGridLogic()
@@ -517,19 +523,21 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
           qt.QMessageBox.warning(slicer.util.mainWindow(),
             'Error', 'Failed to apply grid template. Check that landmark indices match.')
 
-    def onLandmarkSelect(self):
+    def updateTemplateButtonStates(self):
+      """Update the enabled state of template save/load buttons"""
       hasLandmarks = bool(self.landmarkSelector.currentNode())
       self.saveTemplateButton.enabled = hasLandmarks and len(self.patchList) > 0
       self.loadTemplateButton.enabled = hasLandmarks and bool(self.modelSelector.currentNode())
+
+    def onLandmarkSelect(self):
+      self.updateTemplateButtonStates()
 
     def updateMergeGridButton(self):
       gridNodes=self.gridView.selectedIndexes()
       markupsGridNodes = self.markupsGridView.selectedIndexes()
       self.mergeGridButton.enabled = bool(gridNodes or markupsGridNodes)
       # Update template button states
-      hasLandmarks = bool(self.landmarkSelector.currentNode())
-      self.saveTemplateButton.enabled = hasLandmarks and len(self.patchList) > 0
-      self.loadTemplateButton.enabled = hasLandmarks and bool(self.modelSelector.currentNode())
+      self.updateTemplateButtonStates()
 
 #
 # InteractivePatch class definition
@@ -1062,7 +1070,6 @@ class PlaceLandmarkGridLogic(ScriptedLoadableModuleLogic):
       """
       Associate a patch with landmarks by finding the closest landmark to each corner point.
       """
-      tolerance = 0.01  # Small tolerance for matching
       patch.landmarkNode = landmarkNode
       patch.landmarkIndices = []
       
@@ -1083,8 +1090,15 @@ class PlaceLandmarkGridLogic(ScriptedLoadableModuleLogic):
         if closestIndex >= 0:
           patch.landmarkIndices.append(closestIndex)
       
+      # Validate that we found 4 indices and they are all unique
       if len(patch.landmarkIndices) == 4:
-        print(f"Patch {patch.name} associated with landmarks: {patch.landmarkIndices}")
+        if len(set(patch.landmarkIndices)) != 4:
+          print(f"Warning: Patch {patch.name} has duplicate landmark indices: {patch.landmarkIndices}")
+          print("This may indicate corner points are too close together or landmarks are not well-distributed")
+          patch.landmarkIndices = []
+          patch.landmarkNode = None
+        else:
+          print(f"Patch {patch.name} associated with landmarks: {patch.landmarkIndices}")
       else:
         print(f"Warning: Could not associate all corners for patch {patch.name}")
         patch.landmarkIndices = []
@@ -1117,10 +1131,16 @@ class PlaceLandmarkGridLogic(ScriptedLoadableModuleLogic):
           }
           template["patches"].append(patchData)
       
+      # Validate that we have at least one patch to save
+      if len(template["patches"]) == 0:
+        print("Warning: No valid patches could be associated with landmarks. Template not saved.")
+        return False
+      
       with open(filePath, 'w') as f:
         json.dump(template, f, indent=2)
       
       print(f"Saved grid template with {len(template['patches'])} patches to {filePath}")
+      return True
 
     def loadAndApplyGridTemplate(self, filePath, landmarkNode, modelNode, widget):
       """
@@ -1130,16 +1150,57 @@ class PlaceLandmarkGridLogic(ScriptedLoadableModuleLogic):
         with open(filePath, 'r') as f:
           template = json.load(f)
         
+        # Validate template structure
+        if not isinstance(template, dict):
+          print("Error: Template file does not contain a valid JSON object.")
+          return False
+        if "patches" not in template:
+          print("Error: Template missing required 'patches' key.")
+          return False
+        if not isinstance(template["patches"], list):
+          print("Error: Template 'patches' key must be a list.")
+          return False
+        
         print(f"Loading grid template with {len(template['patches'])} patches")
+        
+        successCount = 0
+        failCount = 0
         
         # Create patches from template
         for patchData in template["patches"]:
+          # Validate patch structure
+          if not isinstance(patchData, dict):
+            print("Error: Patch entry is not a dictionary. Skipping.")
+            failCount += 1
+            continue
+          
+          required_keys = ["landmarkIndices", "resolution", "patchName"]
+          missing_keys = [key for key in required_keys if key not in patchData]
+          if missing_keys:
+            print(f"Error: Patch missing required keys {missing_keys}. Skipping patch.")
+            failCount += 1
+            continue
+          
           landmarkIndices = patchData["landmarkIndices"]
           resolution = patchData["resolution"]
+          patchName = patchData["patchName"]
+          
+          # Validate landmarkIndices
+          if not isinstance(landmarkIndices, list) or len(landmarkIndices) != 4:
+            print(f"Error: 'landmarkIndices' for patch '{patchName}' must be a list of 4 indices. Skipping patch.")
+            failCount += 1
+            continue
+          
+          # Validate resolution
+          if not isinstance(resolution, int):
+            print(f"Error: 'resolution' for patch '{patchName}' must be an integer. Skipping patch.")
+            failCount += 1
+            continue
           
           # Verify all landmarks exist
           if any(idx >= landmarkNode.GetNumberOfControlPoints() for idx in landmarkIndices):
-            print(f"Warning: Landmark indices out of range for patch {patchData['patchName']}")
+            print(f"Warning: Landmark indices out of range for patch {patchName}")
+            failCount += 1
             continue
           
           # Get positions from landmarks
@@ -1182,8 +1243,20 @@ class PlaceLandmarkGridLogic(ScriptedLoadableModuleLogic):
           outlineCurve.HideFromEditorsOn()
           
           print(f"Created patch {patch.name} from template")
+          successCount += 1
         
-        return True
+        # Update template button states after loading patches
+        widget.updateTemplateButtonStates()
+        
+        # Report results
+        if successCount > 0:
+          print(f"Successfully loaded {successCount} patches from template")
+          if failCount > 0:
+            print(f"Warning: {failCount} patches failed to load")
+          return True
+        else:
+          print(f"Error: No patches could be loaded from template ({failCount} failed)")
+          return False
         
       except Exception as e:
         print(f"Error loading grid template: {str(e)}")
