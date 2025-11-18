@@ -10,6 +10,7 @@ from slicer.util import VTKObservationMixin
 import math
 import numpy as np
 import scipy.linalg as sp
+import json
 
 #
 # PlaceLandmarkGrid
@@ -101,6 +102,20 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         self.modelSelector.showHidden = False
         self.modelSelector.setMRMLScene( slicer.mrmlScene )
         parametersFormLayout.addRow("Model: ", self.modelSelector)
+
+        #
+        # Select landmark node (optional, for grid transfer)
+        #
+        self.landmarkSelector = slicer.qMRMLNodeComboBox()
+        self.landmarkSelector.nodeTypes = ( ("vtkMRMLMarkupsFiducialNode"), "" )
+        self.landmarkSelector.selectNodeUponCreation = False
+        self.landmarkSelector.addEnabled = False
+        self.landmarkSelector.removeEnabled = False
+        self.landmarkSelector.noneEnabled = True
+        self.landmarkSelector.showHidden = False
+        self.landmarkSelector.setMRMLScene( slicer.mrmlScene )
+        self.landmarkSelector.setToolTip("Optional: Select landmark node to enable grid transfer to other specimens")
+        parametersFormLayout.addRow("Landmark node (optional): ", self.landmarkSelector)
 
         #
         # Select active patch
@@ -271,10 +286,37 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         self.mergeGridButton.enabled = False
         parametersGridFormLayout.addRow(self.mergeGridButton)
 
+        #
+        # Grid Template Section
+        #
+        templateCollapsibleButton = ctk.ctkCollapsibleButton()
+        templateCollapsibleButton.text = "Grid Template Transfer"
+        parametersGridFormLayout.addRow(templateCollapsibleButton)
+        templateFormLayout = qt.QFormLayout(templateCollapsibleButton)
+
+        #
+        # Save Grid Template Button
+        #
+        self.saveTemplateButton = qt.QPushButton("Save grid template")
+        self.saveTemplateButton.toolTip = "Save grid configuration for transfer to other specimens"
+        self.saveTemplateButton.enabled = False
+        templateFormLayout.addRow(self.saveTemplateButton)
+
+        #
+        # Load and Apply Grid Template Button
+        #
+        self.loadTemplateButton = qt.QPushButton("Load and apply grid template")
+        self.loadTemplateButton.toolTip = "Load a saved grid template and apply to current specimen"
+        self.loadTemplateButton.enabled = False
+        templateFormLayout.addRow(self.loadTemplateButton)
+
         # Connections
         self.mergeGridButton.connect('clicked(bool)', self.onMergeGridButton)
+        self.saveTemplateButton.connect('clicked(bool)', self.onSaveTemplateButton)
+        self.loadTemplateButton.connect('clicked(bool)', self.onLoadTemplateButton)
         self.gridView.connect('currentItemChanged(vtkIdType)', self.updateMergeGridButton)
         self.markupsGridView.connect('currentItemChanged(vtkIdType)', self.updateMergeGridButton)
+        self.landmarkSelector.connect('currentNodeChanged(vtkMRMLNode*)', self.onLandmarkSelect)
 
     @vtk.calldata_type(vtk.VTK_INT)
     def onSampleRateChanged(self):
@@ -430,12 +472,64 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
     def onMergeGridButton(self):
       logic =  PlaceLandmarkGridLogic()
       toleranceValue = self.projectionDistanceSlider.value/100
-      logic.mergeGrids(self.gridView, self.markupsGridView, toleranceValue)
+      landmarkNode = self.landmarkSelector.currentNode()
+      logic.mergeGrids(self.gridView, self.markupsGridView, toleranceValue, self.patchList, landmarkNode)
+
+    def onSaveTemplateButton(self):
+      logic = PlaceLandmarkGridLogic()
+      landmarkNode = self.landmarkSelector.currentNode()
+      if not landmarkNode:
+        qt.QMessageBox.warning(slicer.util.mainWindow(),
+          'Warning', 'Please select a landmark node before saving template.')
+        return
+      
+      # Get file path from user
+      filePath = qt.QFileDialog.getSaveFileName(slicer.util.mainWindow(),
+        "Save Grid Template", "", "JSON Files (*.json)")
+      if filePath:
+        logic.saveGridTemplate(self.patchList, landmarkNode, filePath)
+        qt.QMessageBox.information(slicer.util.mainWindow(),
+          'Success', 'Grid template saved successfully.')
+
+    def onLoadTemplateButton(self):
+      logic = PlaceLandmarkGridLogic()
+      landmarkNode = self.landmarkSelector.currentNode()
+      modelNode = self.modelSelector.currentNode()
+      
+      if not landmarkNode:
+        qt.QMessageBox.warning(slicer.util.mainWindow(),
+          'Warning', 'Please select a landmark node before loading template.')
+        return
+      if not modelNode:
+        qt.QMessageBox.warning(slicer.util.mainWindow(),
+          'Warning', 'Please select a model before loading template.')
+        return
+      
+      # Get file path from user
+      filePath = qt.QFileDialog.getOpenFileName(slicer.util.mainWindow(),
+        "Load Grid Template", "", "JSON Files (*.json)")
+      if filePath:
+        success = logic.loadAndApplyGridTemplate(filePath, landmarkNode, modelNode, self)
+        if success:
+          qt.QMessageBox.information(slicer.util.mainWindow(),
+            'Success', 'Grid template applied successfully.')
+        else:
+          qt.QMessageBox.warning(slicer.util.mainWindow(),
+            'Error', 'Failed to apply grid template. Check that landmark indices match.')
+
+    def onLandmarkSelect(self):
+      hasLandmarks = bool(self.landmarkSelector.currentNode())
+      self.saveTemplateButton.enabled = hasLandmarks and len(self.patchList) > 0
+      self.loadTemplateButton.enabled = hasLandmarks and bool(self.modelSelector.currentNode())
 
     def updateMergeGridButton(self):
       gridNodes=self.gridView.selectedIndexes()
       markupsGridNodes = self.markupsGridView.selectedIndexes()
       self.mergeGridButton.enabled = bool(gridNodes or markupsGridNodes)
+      # Update template button states
+      hasLandmarks = bool(self.landmarkSelector.currentNode())
+      self.saveTemplateButton.enabled = hasLandmarks and len(self.patchList) > 0
+      self.loadTemplateButton.enabled = hasLandmarks and bool(self.modelSelector.currentNode())
 
 #
 # InteractivePatch class definition
@@ -450,6 +544,9 @@ class InteractivePatch:
     self.colorValue=[0,0,0]
     colorNode=slicer.util.getNode("vtkMRMLColorTableNodeLabels")
     colorNode.GetLookupTable().GetColor(int(gridID)+1,self.colorValue)
+    # Track associated landmark node and indices for grid transfer
+    self.landmarkNode = None
+    self.landmarkIndices = []  # Indices of landmarks used as corners (0-3)
 
     self.cornerPoint0 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsFiducialNode", "cornerPoint0")
     self.cornerPoint0.AddControlPoint(closedCurve.GetNthControlPointPosition(0))
@@ -872,7 +969,7 @@ class PlaceLandmarkGridLogic(ScriptedLoadableModuleLogic):
         p = pdNewPoints.GetPoint(i)
         gridNode.SetNthControlPointPosition(i,p)
 
-    def mergeGrids(self, gridTreeView, markupsTreeView, tolerance):
+    def mergeGrids(self, gridTreeView, markupsTreeView, tolerance, patchList=None, landmarkNode=None):
       mergedNodeName = "mergedGridMarkupsNode"
       mergedNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode', mergedNodeName)
       purple=[1,0,1]
@@ -892,6 +989,14 @@ class PlaceLandmarkGridLogic(ScriptedLoadableModuleLogic):
           currentNode = slicer.util.getNode(id.data())
           markupNodeList.AddItem(currentNode)
       self.mergePointsAndGrids(gridNodeList, markupNodeList, mergedNode, tolerance)
+      
+      # If we have patches and landmarks, associate them for template creation
+      if patchList and landmarkNode:
+        for patch in patchList:
+          if patch.hasGrid and patch.landmarkNode is None:
+            # Try to match corner points to landmarks
+            self.associatePatchWithLandmarks(patch, landmarkNode)
+      
       mergedNode.SetLocked(True)
       return True
 
@@ -952,4 +1057,137 @@ class PlaceLandmarkGridLogic(ScriptedLoadableModuleLogic):
       print("Total Landmarks: ", mergedNode.GetNumberOfControlPoints())
       print("Fixed Landmarks: ", fixedPointCount)
       print("Semi-Landmarks: ", semiLMPointCount)
+
+    def associatePatchWithLandmarks(self, patch, landmarkNode):
+      """
+      Associate a patch with landmarks by finding the closest landmark to each corner point.
+      """
+      tolerance = 0.01  # Small tolerance for matching
+      patch.landmarkNode = landmarkNode
+      patch.landmarkIndices = []
+      
+      cornerPoints = [patch.cornerPoint0, patch.cornerPoint1, patch.cornerPoint2, patch.cornerPoint3]
+      
+      for cornerPoint in cornerPoints:
+        cornerPos = cornerPoint.GetNthControlPointPosition(0)
+        closestIndex = -1
+        minDistance = float('inf')
+        
+        for i in range(landmarkNode.GetNumberOfControlPoints()):
+          lmPos = landmarkNode.GetNthControlPointPosition(i)
+          distance = vtk.vtkMath().Distance2BetweenPoints(cornerPos, lmPos)
+          if distance < minDistance:
+            minDistance = distance
+            closestIndex = i
+        
+        if closestIndex >= 0:
+          patch.landmarkIndices.append(closestIndex)
+      
+      if len(patch.landmarkIndices) == 4:
+        print(f"Patch {patch.name} associated with landmarks: {patch.landmarkIndices}")
+      else:
+        print(f"Warning: Could not associate all corners for patch {patch.name}")
+        patch.landmarkIndices = []
+        patch.landmarkNode = None
+
+    def saveGridTemplate(self, patchList, landmarkNode, filePath):
+      """
+      Save grid template configuration to a JSON file.
+      """
+      template = {
+        "landmarkNodeName": landmarkNode.GetName(),
+        "patches": []
+      }
+      
+      for patch in patchList:
+        if not patch.hasGrid:
+          continue
+          
+        # If not already associated, try to associate now
+        if patch.landmarkNode is None:
+          self.associatePatchWithLandmarks(patch, landmarkNode)
+        
+        # Only save patches that have valid landmark associations
+        if patch.landmarkNode and len(patch.landmarkIndices) == 4:
+          patchData = {
+            "patchID": patch.gridID,
+            "patchName": patch.name,
+            "resolution": int(patch.resolution),
+            "landmarkIndices": patch.landmarkIndices
+          }
+          template["patches"].append(patchData)
+      
+      with open(filePath, 'w') as f:
+        json.dump(template, f, indent=2)
+      
+      print(f"Saved grid template with {len(template['patches'])} patches to {filePath}")
+
+    def loadAndApplyGridTemplate(self, filePath, landmarkNode, modelNode, widget):
+      """
+      Load grid template and apply to current specimen.
+      """
+      try:
+        with open(filePath, 'r') as f:
+          template = json.load(f)
+        
+        print(f"Loading grid template with {len(template['patches'])} patches")
+        
+        # Create patches from template
+        for patchData in template["patches"]:
+          landmarkIndices = patchData["landmarkIndices"]
+          resolution = patchData["resolution"]
+          
+          # Verify all landmarks exist
+          if any(idx >= landmarkNode.GetNumberOfControlPoints() for idx in landmarkIndices):
+            print(f"Warning: Landmark indices out of range for patch {patchData['patchName']}")
+            continue
+          
+          # Get positions from landmarks
+          positions = []
+          for idx in landmarkIndices:
+            pos = landmarkNode.GetNthControlPointPosition(idx)
+            positions.append(pos)
+          
+          # Create a new curve with these positions
+          widget.patchCounter += 1
+          outlineCurve = widget.initializeNewCurve(modelNode, widget.patchCounter)
+          
+          for i, pos in enumerate(positions):
+            outlineCurve.SetNthControlPointPosition(i, pos)
+          
+          # Create the patch
+          patch = InteractivePatch(outlineCurve, modelNode, str(widget.patchCounter))
+          patch.landmarkNode = landmarkNode
+          patch.landmarkIndices = landmarkIndices
+          patch.resolution = resolution
+          
+          # Add to widget's patch list
+          widget.patchList.append(patch)
+          widget.gridSelector.addItem(patch.name)
+          
+          # Initialize the grid with the specified resolution
+          patch.initializeGrid(resolution)
+          logic = PlaceLandmarkGridLogic()
+          logic.placeGrid(resolution, patch)
+          logic.relaxGrid(patch.gridNode, patch.constraintNode, resolution, 
+                         widget.relaxationSlider.value, int(widget.iterationsSlider.value))
+          logic.projectPatch(patch.constraintNode, patch.gridNode, patch.gridModel, 
+                            widget.projectionDistanceSlider.value, widget.flipNormalsCheckBox.checked)
+          
+          # Lock the patch
+          patch.setLockPatch(True)
+          
+          # Hide the outline curve
+          outlineCurve.SetDisplayVisibility(False)
+          outlineCurve.HideFromEditorsOn()
+          
+          print(f"Created patch {patch.name} from template")
+        
+        return True
+        
+      except Exception as e:
+        print(f"Error loading grid template: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return False
 
