@@ -96,14 +96,14 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     #
     # markups view
     #
-    self.markupsView = slicer.qMRMLSubjectHierarchyTreeView()
-    self.markupsView.setMRMLScene(slicer.mrmlScene)
-    self.markupsView.setMultiSelection(True)
-    self.markupsView.setAlternatingRowColors(True)
-    self.markupsView.setDragDropMode(qt.QAbstractItemView().DragDrop)
-    self.markupsView.setColumnHidden(self.markupsView.model().transformColumn, True)
-    self.markupsView.sortFilterProxyModel().setNodeTypes(["vtkMRMLMarkupsCurveNode"])
-    parametersCurveFormLayout.addRow(self.markupsView)
+    self.markupsCurveView = slicer.qMRMLSubjectHierarchyTreeView()
+    self.markupsCurveView.setMRMLScene(slicer.mrmlScene)
+    self.markupsCurveView.setMultiSelection(True)
+    self.markupsCurveView.setAlternatingRowColors(True)
+    self.markupsCurveView.setDragDropMode(qt.QAbstractItemView().DragDrop)
+    self.markupsCurveView.setColumnHidden(self.markupsCurveView.model().transformColumn, True)
+    self.markupsCurveView.sortFilterProxyModel().setNodeTypes(["vtkMRMLMarkupsCurveNode"])
+    parametersCurveFormLayout.addRow(self.markupsCurveView)
 
     #
     # Merge Button
@@ -115,7 +115,7 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
 
     # connections
     self.mergeButton.connect('clicked(bool)', self.onMergeButton)
-    self.markupsView.selectionModel().selectionChanged.connect(self.updateMergeButton)
+    self.markupsCurveView.selectionModel().selectionChanged.connect(self.updateMergeButton)
 
     ################ Landmark Set Tab
     #
@@ -136,7 +136,7 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     self.markupsFiducialView.setMultiSelection(True)
     self.markupsFiducialView.setAlternatingRowColors(True)
     self.markupsFiducialView.setDragDropMode(qt.QAbstractItemView().DragDrop)
-    self.markupsFiducialView.setColumnHidden(self.markupsView.model().transformColumn, True)
+    self.markupsFiducialView.setColumnHidden(self.markupsFiducialView.model().transformColumn, True)
     self.markupsFiducialView.sortFilterProxyModel().setNodeTypes(["vtkMRMLMarkupsFiducialNode"])
     parametersLMFormLayout.addWidget(self.markupsFiducialView,0,0,1,3)
 
@@ -305,10 +305,10 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
 
   def onMergeButton(self):
     logic = MergeMarkupsLogic()
-    logic.runCurves(self.markupsView, self.continuousCurvesCheckBox.checked)
+    logic.runCurves(self.markupsCurveView, self.continuousCurvesCheckBox.checked)
 
   def updateMergeButton(self):
-    nodes=self.markupsView.selectedIndexes()
+    nodes=self.markupsCurveView.selectedIndexes()
     self.mergeButton.enabled = bool(nodes)
 
   def updateMergeLMButton(self):
