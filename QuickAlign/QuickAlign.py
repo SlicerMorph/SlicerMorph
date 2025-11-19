@@ -430,8 +430,9 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             landmarks2 = self.ui.landmarksSelector2.currentNode()
             
             # Determine which nodes were being edited
-            editNode1 = node1 if (node1 and node1.GetNodeTagName() == "MarkupsFiducial") else landmarks1
-            editNode2 = node2 if (node2 and node2.GetNodeTagName() == "MarkupsFiducial") else landmarks2
+            # Check if node is valid before calling GetNodeTagName()
+            editNode1 = node1 if (node1 is not None and hasattr(node1, 'GetNodeTagName') and node1.GetNodeTagName() == "MarkupsFiducial") else landmarks1
+            editNode2 = node2 if (node2 is not None and hasattr(node2, 'GetNodeTagName') and node2.GetNodeTagName() == "MarkupsFiducial") else landmarks2
             
             if editNode1 and editNode2:
                 self.logic.endJointMarkupEditing(editNode1, editNode2, self.observerList)
@@ -512,12 +513,28 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     def cleanUpTransformNodes(self):
         # remove alignment transforms from previous runs
         if hasattr(self, 'centerNode1Transform'):
+          # First detach the transform before removal
+          if self.centerNode1Transform:
+            self.centerNode1Transform.GetTransformToParent().Identity()
+            self.centerNode1Transform.SetAndObserveTransformNodeID(None)
           slicer.mrmlScene.RemoveNode(self.centerNode1Transform)
         if hasattr(self, 'centerNode2Transform'):
+          # First detach the transform before removal
+          if self.centerNode2Transform:
+            self.centerNode2Transform.GetTransformToParent().Identity()
+            self.centerNode2Transform.SetAndObserveTransformNodeID(None)
           slicer.mrmlScene.RemoveNode(self.centerNode2Transform)
         if hasattr(self, 'alignmentTransform'):
+          # First detach the transform before removal
+          if self.alignmentTransform:
+            self.alignmentTransform.GetTransformToParent().Identity()
+            self.alignmentTransform.SetAndObserveTransformNodeID(None)
           slicer.mrmlScene.RemoveNode(self.alignmentTransform)
         if hasattr(self, 'scalingTransformNode'):
+          # First detach the transform before removal
+          if self.scalingTransformNode:
+            self.scalingTransformNode.GetTransformToParent().Identity()
+            self.scalingTransformNode.SetAndObserveTransformNodeID(None)
           slicer.mrmlScene.RemoveNode(self.scalingTransformNode)
         self.removeZoomSyncObservers()
 
@@ -714,6 +731,10 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if norm > 1e-6:
           newPos = focal + direction / norm * newDist
           tgtCam.SetPosition(*newPos)
+        else:
+          # Degenerate case: camera position equals focal point
+          import logging
+          logging.warning("QuickAlign: Camera position equals focal point, skipping zoom sync")
       targetCamNode.Modified()
 
     def onZoomSourceModified(self, caller, event):
