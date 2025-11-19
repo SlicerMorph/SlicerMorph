@@ -1936,24 +1936,42 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       # get landmark node selected
       logic = GPALogic()
       self.sourceLMNode= slicer.util.loadMarkups(self.FudSelect.currentPath)
-      # check if landmark number is valid
-      if self.sourceLMNode.GetNumberOfControlPoints() != self.LM.lmOrig.shape[0]:
-        # error message
-        logging.debug("Number of landmarks selected for 3D visualization does not match the analysis\n")
-        slicer.util.messageBox(f"Error: Expected {self.LM.lmOrig.shape[0]} landmarks but loaded file has {self.sourceLMNode.GetNumberOfControlPoints()}")
-        slicer.mrmlScene.RemoveNode(self.sourceLMNode)
-        return
-      self.initializeOnSelect()
-      GPANodeCollection.AddItem(self.sourceLMNode)
-      self.sourceLMnumpy=logic.convertFudicialToNP(self.sourceLMNode)
 
-      # remove any excluded landmarks
+      # Convert landmarks to numpy array first
+      self.sourceLMnumpy=logic.convertFudicialToNP(self.sourceLMNode)
+      loadedLMCount = self.sourceLMNode.GetNumberOfControlPoints()
+
+      # Remove any excluded landmarks from the loaded landmarks
       j=len(self.LMExclusionList)
       if (j != 0):
         indexToRemove=[]
         for i in range(j):
           indexToRemove.append(self.LMExclusionList[i]-1)
         self.sourceLMnumpy=np.delete(self.sourceLMnumpy,indexToRemove,axis=0)
+
+      # Check if landmark number is valid after removing excluded landmarks
+      expectedLMCount = self.LM.lmOrig.shape[0]
+      actualLMCount = self.sourceLMnumpy.shape[0]
+
+      if actualLMCount != expectedLMCount:
+        # Provide meaningful error message based on whether exclusions were applied
+        if j != 0:
+          logging.debug(f"Number of landmarks for 3D visualization does not match after removing excluded landmarks\n")
+          errorMsg = (f"Error: Dimension mismatch after removing excluded landmarks.\n\n"
+                     f"Loaded file has {loadedLMCount} landmarks.\n"
+                     f"After removing {j} excluded landmarks (indices: {self.LMExclusionList}), "
+                     f"expected {expectedLMCount} landmarks but have {actualLMCount}.\n\n"
+                     f"Please verify the landmark file corresponds to the analysis data.")
+        else:
+          logging.debug("Number of landmarks selected for 3D visualization does not match the analysis\n")
+          errorMsg = (f"Error: Expected {expectedLMCount} landmarks but loaded file has {loadedLMCount}.\n\n"
+                     f"Please verify the landmark file corresponds to the analysis data.")
+        slicer.util.messageBox(errorMsg)
+        slicer.mrmlScene.RemoveNode(self.sourceLMNode)
+        return
+
+      self.initializeOnSelect()
+      GPANodeCollection.AddItem(self.sourceLMNode)
 
       # set up transform
       targetLMVTK=logic.convertNumpyToVTK(self.rawMeanLandmarks)
