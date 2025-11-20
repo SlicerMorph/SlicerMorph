@@ -1327,7 +1327,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
           logging.debug(f"Covariate table import failed, covariate {self.factorTableNode.GetTable().GetColumnName(i)} has no value for {subjectID}")
           runAnalysis = slicer.util.confirmYesNoDisplay(f"Error: Covariate import failed. Covariate {self.factorTableNode.GetTable().GetColumnName(i)} has no value for {subjectID}. Missing observation(s) in the covariates table are not allowed. \n\nYou can continue analysis without covariates or stop and edit your sample selection and/or covariate table. \n\nWould you like to proceed with the analysis?")
           return runAnalysis
-        if self.factorTableNode.GetTable().GetValue(j,i).ToString().isnumeric():
+        value = self.factorTableNode.GetTable().GetValue(j,i)
+        if GPALogic.isNumericValue(value.ToString()):
           hasNumericValue = True
       if hasNumericValue:
         self.GPALogTextbox.insertPlainText(f"Covariate: {self.factorTableNode.GetTable().GetColumnName(i)} contains numeric values and will not be loaded for plotting\n")
@@ -2548,6 +2549,19 @@ class GPALogic(ScriptedLoadableModuleLogic):
       for j in range(4):
         a[i,j]=A.GetElement(i,j)
     return a
+
+  @staticmethod
+  def isNumericValue(s):
+    """
+    Check if a string can be converted to a numeric value.
+    Returns True for strings that can be converted to float, False otherwise.
+    This includes integers, floats, negative numbers, and scientific notation.
+    """
+    try:
+      float(s)
+      return True
+    except (ValueError, TypeError):
+      return False
 
   def process(self, inputVolume, outputVolume, imageThreshold, invert=False, showResult=True):
     """
