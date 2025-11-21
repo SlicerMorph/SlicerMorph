@@ -352,7 +352,7 @@ class LMData:
     if k>i*j: # limit results returned if sample number is less than observations
       self.val, self.vec = sp.eigh(covMatrix)
     else:
-      self.val, self.vec=sp.eigh(covMatrix, eigvals=(i * j - k, i * j - 1))
+      self.val, self.vec=sp.eigh(covMatrix, subset_by_index=(i * j - k, i * j - 1))
     self.val=self.val[::-1]
     self.vec=self.vec[:, ::-1]
     self.sortedEig = gpa_lib.pairEig(self.val, self.vec)
@@ -1028,7 +1028,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
           logging.debug(f"Covariate table import failed, covariate {self.factorTableNode.GetTable().GetColumnName(i)} has no value for {subjectID}")
           runAnalysis = slicer.util.confirmYesNoDisplay(f"Error: Covariate import failed. Covariate {self.factorTableNode.GetTable().GetColumnName(i)} has no value for {subjectID}. Missing observation(s) in the covariates table are not allowed. \n\nYou can continue analysis without covariates or stop and edit your sample selection and/or covariate table. \n\nWould you like to proceed with the analysis?")
           return runAnalysis
-        if self.factorTableNode.GetTable().GetValue(j,i).ToString().isnumeric():
+        value = self.factorTableNode.GetTable().GetValue(j,i)
+        if GPALogic.isNumericValue(value.ToString()):
           hasNumericValue = True
       if hasNumericValue:
         self.ui.GPALogTextbox.insertPlainText(f"Covariate: {self.factorTableNode.GetTable().GetColumnName(i)} contains numeric values and will not be loaded for plotting\n")
@@ -1090,7 +1091,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       # if any cell in column is numeric, treat as numeric and skip
       has_numeric = False
       for r in range(numRows):
-        if self.factorTableNode.GetTable().GetValue(r, c).ToString().isnumeric():
+        value = self.factorTableNode.GetTable().GetValue(r, c)
+        if GPALogic.isNumericValue(value.ToString()):
           has_numeric = True
           break
       if not has_numeric and name:
@@ -1891,24 +1893,42 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       # get landmark node selected
       logic = GPALogic()
       self.sourceLMNode= slicer.util.loadMarkups(self.ui.FudSelect.currentPath)
-      # check if landmark number is valid
-      if self.sourceLMNode.GetNumberOfControlPoints() != self.LM.lmOrig.shape[0]:
-        # error message
-        logging.debug("Number of landmarks selected for 3D visualization does not match the analysis\n")
-        slicer.util.messageBox(f"Error: Expected {self.LM.lmOrig.shape[0]} landmarks but loaded file has {self.sourceLMNode.GetNumberOfControlPoints()}")
-        slicer.mrmlScene.RemoveNode(self.sourceLMNode)
-        return
-      self.initializeOnSelect()
-      GPANodeCollection.AddItem(self.sourceLMNode)
-      self.sourceLMnumpy=logic.convertFudicialToNP(self.sourceLMNode)
 
-      # remove any excluded landmarks
+      # Convert landmarks to numpy array first
+      self.sourceLMnumpy=logic.convertFudicialToNP(self.sourceLMNode)
+      loadedLMCount = self.sourceLMNode.GetNumberOfControlPoints()
+
+      # Remove any excluded landmarks from the loaded landmarks
       j=len(self.LMExclusionList)
       if (j != 0):
         indexToRemove=[]
         for i in range(j):
           indexToRemove.append(self.LMExclusionList[i]-1)
         self.sourceLMnumpy=np.delete(self.sourceLMnumpy,indexToRemove,axis=0)
+
+      # Check if landmark number is valid after removing excluded landmarks
+      expectedLMCount = self.LM.lmOrig.shape[0]
+      actualLMCount = self.sourceLMnumpy.shape[0]
+
+      if actualLMCount != expectedLMCount:
+        # Provide meaningful error message based on whether exclusions were applied
+        if j != 0:
+          logging.debug(f"Number of landmarks for 3D visualization does not match after removing excluded landmarks\n")
+          errorMsg = (f"Error: Dimension mismatch after removing excluded landmarks.\n\n"
+                     f"Loaded file has {loadedLMCount} landmarks.\n"
+                     f"After removing {j} excluded landmarks (indices: {self.LMExclusionList}), "
+                     f"expected {expectedLMCount} landmarks but have {actualLMCount}.\n\n"
+                     f"Please verify the landmark file corresponds to the analysis data.")
+        else:
+          logging.debug("Number of landmarks selected for 3D visualization does not match the analysis\n")
+          errorMsg = (f"Error: Expected {expectedLMCount} landmarks but loaded file has {loadedLMCount}.\n\n"
+                     f"Please verify the landmark file corresponds to the analysis data.")
+        slicer.util.messageBox(errorMsg)
+        slicer.mrmlScene.RemoveNode(self.sourceLMNode)
+        return
+
+      self.initializeOnSelect()
+      GPANodeCollection.AddItem(self.sourceLMNode)
 
       # set up transform
       targetLMVTK=logic.convertNumpyToVTK(self.rawMeanLandmarks)
@@ -2558,6 +2578,19 @@ class GPALogic(ScriptedLoadableModuleLogic):
       for j in range(4):
         a[i,j]=A.GetElement(i,j)
     return a
+
+  @staticmethod
+  def isNumericValue(s):
+    """
+    Check if a string can be converted to a numeric value.
+    Returns True for strings that can be converted to float, False otherwise.
+    This includes integers, floats, negative numbers, and scientific notation.
+    """
+    try:
+      float(s)
+      return True
+    except (ValueError, TypeError):
+      return False
 
   def process(self, inputVolume, outputVolume, imageThreshold, invert=False, showResult=True):
     """
