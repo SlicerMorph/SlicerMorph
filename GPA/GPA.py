@@ -829,6 +829,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.ui.FudSelect.setCurrentPath("")
     self.ui.grayscaleSelector.enabled = False
     self.ui.FudSelect.enabled = False
+    self.ui.grayscaleSelectorLabel.enabled = False
+    self.ui.FudSelectLabel.enabled = False
     self.pcController.clear()
     self.ui.vectorOne.clear()
     self.ui.vectorTwo.clear()
@@ -844,7 +846,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     # Disable buttons for workflow
     self.ui.plotButton.enabled = False
-    self.inputFactorButton.enabled = False
     self.ui.lolliButton.enabled = False
     self.ui.plotDistributionButton.enabled = False
     self.ui.plotMeanButton3D.enabled = False
@@ -1901,10 +1902,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       # Remove any excluded landmarks from the loaded landmarks
       j=len(self.LMExclusionList)
       if (j != 0):
-        indexToRemove=[]
-        for i in range(j):
-          indexToRemove.append(self.LMExclusionList[i]-1)
-        self.sourceLMnumpy=np.delete(self.sourceLMnumpy,indexToRemove,axis=0)
+        # Convert 1-based landmark indices to 0-based array indices
+        indexToRemove = [x - 1 for x in self.LMExclusionList]
+        self.sourceLMnumpy = np.delete(self.sourceLMnumpy, indexToRemove, axis=0)
 
       # Check if landmark number is valid after removing excluded landmarks
       expectedLMCount = self.LM.lmOrig.shape[0]
