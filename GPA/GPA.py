@@ -1124,6 +1124,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.FudSelect.setCurrentPath("")
     self.grayscaleSelector.enabled = False
     self.FudSelect.enabled = False
+    self.grayscaleSelectorLabel.enabled = False
+    self.FudSelectLabel.enabled = False
 
     self.slider1.clear()
 
@@ -1133,7 +1135,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.XcomboBox.clear()
     self.YcomboBox.clear()
     self.selectFactor.clear()
-    self.factorName.setText("")
+    self.factorNames.setText("")
     self.scaleSlider.value=3
 
     self.scaleMeanShapeSlider.value=3
@@ -1143,7 +1145,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     # Disable buttons for workflow
     self.plotButton.enabled = False
-    self.inputFactorButton.enabled = False
     self.lolliButton.enabled = False
     self.plotDistributionButton.enabled = False
     self.plotMeanButton3D.enabled = False
@@ -1945,10 +1946,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       # Remove any excluded landmarks from the loaded landmarks
       j=len(self.LMExclusionList)
       if (j != 0):
-        indexToRemove=[]
-        for i in range(j):
-          indexToRemove.append(self.LMExclusionList[i]-1)
-        self.sourceLMnumpy=np.delete(self.sourceLMnumpy,indexToRemove,axis=0)
+        # Convert 1-based landmark indices to 0-based array indices
+        indexToRemove = [x - 1 for x in self.LMExclusionList]
+        self.sourceLMnumpy = np.delete(self.sourceLMnumpy, indexToRemove, axis=0)
 
       # Check if landmark number is valid after removing excluded landmarks
       expectedLMCount = self.LM.lmOrig.shape[0]
