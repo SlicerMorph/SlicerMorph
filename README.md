@@ -6,7 +6,7 @@ Our project aims to enhance the open-source 3D Slicer platform with cutting-edge
 
 SlicerMorph streamlines digital morphology research by enabling effortless data import, visualization, measurement, annotation, and geometric morphometric analysis on 3D data, including volumetric scans (CTs and MRs) and 3D surface scans, all within the 3D Slicer application. Say goodbye to multiple programs, different file formats, and workflows!
 
-[SlicerMorph: An open and extensible platform to retrieve, visualize and analyze 3D morphology](https://besjournals.onlinelibrary.wiley.com/doi/10.1111/2041-210X.13669) is now available in Methods in Ecology and Evolution as an open-access paper. A more detailed version of this manuscript that explains all digital anatomy workflows in Slicer is also [available as a preprint on Biorxiv](https://www.biorxiv.org/content/10.1101/2020.11.09.374926v1).
+[SlicerMorph: An open and extensible platform to retrieve, visualize and analyze 3D morphology](https://besjournals.onlinelibrary.wiley.com/doi/10.1111/2041-210X.13669) is available in Methods in Ecology and Evolution as an open-access paper.
 
 ## Installation
 Official method of obtaining SlicerMorph is through extension mechanism of 3D Slicer. To obtain SlicerMorph, please first install the latest **stable release** of [3D Slicer](https://download.slicer.org/) and use the [Extensions Manager module](https://www.slicer.org/wiki/Documentation/Nightly/SlicerApplication/ExtensionsManager) to search for and install the SlicerMorph extension. After restarting 3D Slicer, all SlicerMorph modules will be available in the application.
