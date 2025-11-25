@@ -14,8 +14,11 @@ set(MODULE_PYTHON_RESOURCES
   Resources/Icons/LayoutSlicerMorphView.png
   Resources/Icons/LayoutTableOnlyView.png
   Resources/Icons/LayoutPlotOnlyView.png
-  )
-
+  Resources/UI/GPA_SetupAnalysis.ui
+  Resources/UI/GPA_ExploreDataResults.ui
+  Resources/UI/GPA_Interactive3D.ui
+  Resources/UI/GPA_GeomorphLR.ui
+)
 #-----------------------------------------------------------------------------
 slicerMacroBuildScriptedModule(
   NAME ${MODULE_NAME}
