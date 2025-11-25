@@ -23,7 +23,7 @@ class PlaceLandmarkGrid(ScriptedLoadableModule):
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
         self.parent.title = "PlaceLandmarkGrid"
-        self.parent.categories = ["SlicerMorph.SlicerMorph Utilities"]
+        self.parent.categories = ["SlicerMorph.Utilities"]
         self.parent.dependencies = []
         self.parent.contributors = ["Sara Rolfe (SCRI), Murat Maga (SCRI, UW)"]
         self.parent.helpText = """
