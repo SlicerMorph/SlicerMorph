@@ -1470,6 +1470,72 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
 
+    def validateSourceFilesMatch(self, sourceModelList, sourceLMList, sourceModelPath, sourceLandmarkPath):
+        """
+        Validate that source models and landmarks match in count and naming.
+        Returns: (is_valid, error_message)
+        """
+        # Get base names (without extensions) for models and landmarks
+        modelBaseNames = set()
+        for modelPath in sourceModelList:
+            # Handle both full paths and filenames
+            fileName = os.path.basename(modelPath) if os.path.sep in modelPath else modelPath
+            baseName = os.path.splitext(fileName)[0]
+            modelBaseNames.add(baseName)
+        
+        landmarkBaseNames = set()
+        for lmPath in sourceLMList:
+            # Handle both full paths and filenames
+            fileName = os.path.basename(lmPath) if os.path.sep in lmPath else lmPath
+            # Remove .mrk.json or .fcsv extensions
+            if fileName.endswith('.mrk.json'):
+                baseName = fileName[:-9]  # Remove .mrk.json
+            elif fileName.endswith('.fcsv'):
+                baseName = fileName[:-5]  # Remove .fcsv
+            elif fileName.endswith('.json'):
+                baseName = fileName[:-5]  # Remove .json
+            else:
+                baseName = os.path.splitext(fileName)[0]
+            landmarkBaseNames.add(baseName)
+        
+        # Check if counts match
+        if len(modelBaseNames) != len(landmarkBaseNames):
+            error_msg = f"\n🛑 ERROR: Mismatch in file counts!\n"
+            error_msg += f"   Source models directory: {sourceModelPath}\n"
+            error_msg += f"   Source landmarks directory: {sourceLandmarkPath}\n"
+            error_msg += f"   Number of source models: {len(modelBaseNames)}\n"
+            error_msg += f"   Number of source landmarks: {len(landmarkBaseNames)}\n"
+            error_msg += f"\n   The number of source model files and landmark files must match.\n"
+            return False, error_msg
+        
+        # Check if all models have corresponding landmarks
+        models_without_landmarks = modelBaseNames - landmarkBaseNames
+        landmarks_without_models = landmarkBaseNames - modelBaseNames
+        
+        if models_without_landmarks or landmarks_without_models:
+            error_msg = f"\n🛑 ERROR: File name mismatch detected!\n"
+            error_msg += f"   Source models directory: {sourceModelPath}\n"
+            error_msg += f"   Source landmarks directory: {sourceLandmarkPath}\n\n"
+            
+            if models_without_landmarks:
+                error_msg += f"   Source models WITHOUT matching landmarks ({len(models_without_landmarks)}):  \n"
+                for name in sorted(models_without_landmarks):
+                    error_msg += f"      - {name}\n"
+                error_msg += "\n"
+            
+            if landmarks_without_models:
+                error_msg += f"   Source landmarks WITHOUT matching models ({len(landmarks_without_models)}):\n"
+                for name in sorted(landmarks_without_models):
+                    error_msg += f"      - {name}\n"
+                error_msg += "\n"
+            
+            error_msg += "   Please ensure that each source model has a corresponding landmark file\n"
+            error_msg += "   with the same base name (excluding file extensions).\n"
+            error_msg += "\n   Example: 'specimen_01.ply' should match with 'specimen_01.fcsv' or 'specimen_01.mrk.json'\n"
+            return False, error_msg
+        
+        return True, ""
+    
     def runLandmarkMultiprocess(
         self,
         sourceModelPath,
@@ -1495,7 +1561,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             os.makedirs(specimenOutput, exist_ok=True)
             os.makedirs(medianOutput, exist_ok=True)
             for file in os.listdir(sourceModelPath):
-                if file.endswith((".ply", ".obj", ".vtk")):
+                if file.endswith((".ply", ".obj", ".vtk", ".vtp")):
                     sourceFilePath = os.path.join(sourceModelPath, file)
                     sourceModelList.append(sourceFilePath)
         else:
@@ -1507,9 +1573,24 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
                     sourceLMList.append(sourceFilePath)
         else:
             sourceLMList.append(sourceLandmarkPath)
+        
+        # Validate that source models and landmarks match (only for multi-template mode)
+        if os.path.isdir(sourceModelPath) and os.path.isdir(sourceLandmarkPath):
+            is_valid, error_message = self.validateSourceFilesMatch(
+                sourceModelList, sourceLMList, sourceModelPath, sourceLandmarkPath
+            )
+            if not is_valid:
+                print(error_message)
+                qt.QMessageBox.critical(
+                    slicer.util.mainWindow(),
+                    "Source Files Mismatch",
+                    error_message
+                )
+                return  # Stop processing
+        
         # Iterate through target models
         for targetFileName in os.listdir(targetModelDirectory):
-            if targetFileName.endswith((".ply", ".obj", ".vtk")):
+            if targetFileName.endswith((".ply", ".obj", ".vtk", ".vtp")):
                 targetFilePath = os.path.join(targetModelDirectory, targetFileName)
                 TargetModelList.append(targetFilePath)
                 rootName = os.path.splitext(targetFileName)[0]
@@ -1519,21 +1600,31 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
                         medianOutput, f"{rootName}_median" + extensionLM
                     )
                     if not os.path.exists(outputMedianPath):
-                        for file in sourceModelList:
-                            sourceFilePath = os.path.join(sourceModelPath, file)
-                            (baseName, ext) = os.path.splitext(os.path.basename(file))
+                        for sourceFilePath in sourceModelList:
+                            # sourceFilePath is already a full path from sourceModelList
+                            (baseName, ext) = os.path.splitext(os.path.basename(sourceFilePath))
                             sourceLandmarkFile = None
-                            for lmFile in sourceLMList:
-                                if baseName in lmFile:
-                                    sourceLandmarkFile = os.path.join(
-                                        sourceLandmarkPath, lmFile
-                                    )
+                            # Find matching landmark file by exact basename match
+                            for lmFilePath in sourceLMList:
+                                lmFileName = os.path.basename(lmFilePath)
+                                # Extract base name from landmark file (handling .mrk.json)
+                                if lmFileName.endswith('.mrk.json'):
+                                    lmBaseName = lmFileName[:-9]
+                                elif lmFileName.endswith('.fcsv'):
+                                    lmBaseName = lmFileName[:-5]
+                                elif lmFileName.endswith('.json'):
+                                    lmBaseName = lmFileName[:-5]
+                                else:
+                                    lmBaseName = os.path.splitext(lmFileName)[0]
+                                
+                                if baseName == lmBaseName:  # Exact match
+                                    sourceLandmarkFile = lmFilePath  # Already full path
+                                    break
+                            
                             if sourceLandmarkFile is None:
-                                print(
-                                    "::::Could not find the file corresponding to ",
-                                    file,
-                                )
-                                next
+                                error_msg = f"ERROR: Could not find matching landmark file for model: {os.path.basename(sourceFilePath)} (basename: {baseName})"
+                                print(error_msg)
+                                continue
                             outputFilePath = os.path.join(
                                 specimenOutput, f"{rootName}_{baseName}" + extensionLM
                             )
