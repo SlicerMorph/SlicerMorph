@@ -7,6 +7,7 @@ set(MODULE_PYTHON_SCRIPTS
   Support/__init__.py
   Support/gpa_lib.py
   Support/vtk_lib.py
+  Support/geomorph_lr.py
   )
 
 set(MODULE_PYTHON_RESOURCES
