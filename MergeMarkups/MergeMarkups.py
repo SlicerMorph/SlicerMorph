@@ -8,6 +8,12 @@ import  numpy as np
 import random
 import math
 
+try:
+  from dataset_matcher import match_datasets, DatasetError
+except ImportError:
+  slicer.util.pip_install('git+https://github.com/SlicerMorph/dataset-matcher.git')
+  from dataset_matcher import match_datasets, DatasetError
+
 
 #
 # MergeMarkups
@@ -296,6 +302,10 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     self.outputDirectorySelector.connect('validInputChanged(bool)', self.onSelectDirectory)
     self.batchMergeButton.connect('clicked(bool)', self.onBatchMergeButton)
     self.clearButton.connect('clicked(bool)', self.onClearButton)
+    
+    # Initialize file path lists
+    self.fixedFilePaths = []
+    self.semiFilePaths = []
 
     # Add vertical spacer
     self.layout.addStretch(1)
@@ -359,19 +369,34 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
 
   def onBatchMergeButton(self):
     logic = MergeMarkupsLogic()
-    if len(self.fixedFilePaths) == 0 or len(self.semiFilePaths)==0:
+    
+    # Read file paths from the text widgets (allows manual editing)
+    fixedFilePaths = [p.strip() for p in self.fixedFileTable.plainText.split('\n') if p.strip()]
+    semiFilePaths = [p.strip() for p in self.semiFileTable.plainText.split('\n') if p.strip()]
+    
+    if len(fixedFilePaths) == 0 or len(semiFilePaths)==0:
       warning = "Error: There are 0 files selected to merge."
       logging.debug(warning)
       slicer.util.messageBox(warning)
       return False
-    if len(self.fixedFilePaths) != len(self.semiFilePaths):
-      warning = "Error: The number of files in the fixed and semi-landmark selection boxes needs to be equal."
+
+    # Use dataset_matcher to match files by basename
+    try:
+      # Match semi-landmark files to fixed landmark files by basename
+      matchedSemiFilePaths = match_datasets(
+        fixedFilePaths, 
+        semiFilePaths,
+        name="semi-landmarks"
+      )
+    except DatasetError as e:
+      warning = f"Error matching files: {e}"
       logging.debug(warning)
       slicer.util.messageBox(warning)
       return False
-    for index in range(len(self.fixedFilePaths)):
-      fixed =  slicer.util.loadMarkups(self.fixedFilePaths[index])
-      semi =  slicer.util.loadMarkups(self.semiFilePaths[index])
+
+    for index in range(len(fixedFilePaths)):
+      fixed =  slicer.util.loadMarkups(fixedFilePaths[index])
+      semi =  slicer.util.loadMarkups(matchedSemiFilePaths[index])
       tempNode = logic.mergeLMNodes(fixed, semi)
       tempNode.SetName(fixed.GetName()+'_merged')
       outputFilePath = os.path.join(self.outputDirectorySelector.currentPath, tempNode.GetName() + ".mrk.json")
