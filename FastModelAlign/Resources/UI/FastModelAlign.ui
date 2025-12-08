@@ -33,7 +33,7 @@
        <item>
         <widget class="ctkCollapsibleButton" name="alignSingleWidget">
          <property name="text">
-          <string>Set up source and target models</string>
+          <string>Input/Output</string>
          </property>
          <property name="collapsed">
           <bool>false</bool>
@@ -52,7 +52,7 @@
              <bool>true</bool>
             </property>
             <property name="toolTip">
-             <string>Select source model</string>
+             <string>Select source model (will be transformed to match target)</string>
             </property>
             <property name="nodeTypes">
              <stringlist>
@@ -89,7 +89,7 @@
              <bool>true</bool>
             </property>
             <property name="toolTip">
-             <string>Select target model</string>
+             <string>Select target model (reference)</string>
             </property>
             <property name="nodeTypes">
              <stringlist>
@@ -108,30 +108,13 @@
            </widget>
           </item>
           <item row="2" column="0">
-           <widget class="QLabel" name="scalingLabel">
-            <property name="text">
-             <string>Apply scaling</string>
-            </property>
-           </widget>
-          </item>
-          <item row="2" column="1">
-           <widget class="QCheckBox" name="scalingCheckBox">
-            <property name="toolTip">
-             <string>Whether to apply scaling during alignment (highly recommended).</string>
-            </property>
-            <property name="checked">
-             <bool>true</bool>
-            </property>
-           </widget>
-          </item>
-          <item row="3" column="0">
            <widget class="QLabel" name="outputModelOptionalLabel">
             <property name="text">
              <string>Output registered model: </string>
             </property>
            </widget>
           </item>
-          <item row="3" column="1">
+          <item row="2" column="1">
            <widget class="qMRMLNodeComboBox" name="outputSelector">
             <property name="enabled">
              <bool>true</bool>
@@ -162,21 +145,123 @@
         </widget>
        </item>
        <item>
-        <widget class="ctkCollapsibleButton" name="testPTDensityWidget">
+        <widget class="ctkCollapsibleButton" name="registrationStepsWidget">
          <property name="text">
-          <string>Rigid registration</string>
+          <string>Registration Steps</string>
          </property>
          <property name="collapsed">
           <bool>false</bool>
          </property>
-         <layout class="QGridLayout" name="gridLayout">
-          <item row="4" column="0" colspan="2">
+         <layout class="QVBoxLayout" name="registrationStepsLayout">
+          <item>
+           <layout class="QHBoxLayout" name="checkboxLayout">
+            <item>
+             <widget class="QCheckBox" name="scalingCheckBox">
+              <property name="toolTip">
+               <string>Apply scaling to match model sizes</string>
+              </property>
+              <property name="text">
+               <string>Scaling</string>
+              </property>
+              <property name="checked">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QCheckBox" name="rigidCheckBox">
+              <property name="toolTip">
+               <string>Apply rigid registration (rotation + translation)</string>
+              </property>
+              <property name="text">
+               <string>Rigid</string>
+              </property>
+              <property name="checked">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QCheckBox" name="affineCheckBox">
+              <property name="toolTip">
+               <string>Apply affine registration (adds shear)</string>
+              </property>
+              <property name="text">
+               <string>Affine</string>
+              </property>
+              <property name="checked">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QCheckBox" name="deformableCheckBox">
+              <property name="toolTip">
+               <string>Apply deformable registration (non-rigid warping)</string>
+              </property>
+              <property name="text">
+               <string>Deformable</string>
+              </property>
+              <property name="checked">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QFormLayout" name="subsamplingLayout">
+            <item row="0" column="0">
+             <widget class="QLabel" name="pointDensityAdjustmentLabel">
+              <property name="text">
+               <string>Point Density:</string>
+              </property>
+             </widget>
+            </item>
+            <item row="0" column="1">
+             <widget class="ctkSliderWidget" name="pointDensitySlider">
+              <property name="toolTip">
+               <string>Adjust the density of the pointclouds. Larger values increase the number of points, and vice versa.</string>
+              </property>
+              <property name="singleStep">
+               <double>0.100000000000000</double>
+              </property>
+              <property name="maximum">
+               <double>2.000000000000000</double>
+              </property>
+              <property name="value">
+               <double>1.000000000000000</double>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QPushButton" name="subsampleButton">
+            <property name="enabled">
+             <bool>false</bool>
+            </property>
+            <property name="toolTip">
+             <string>Preview the subsampled pointclouds before running registration</string>
+            </property>
+            <property name="text">
+             <string>Preview pointcloud subsampling</string>
+            </property>
+           </widget>
+          </item>
+          <item>
            <widget class="QPlainTextEdit" name="subsampleInfo">
             <property name="sizePolicy">
              <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
               <horstretch>0</horstretch>
               <verstretch>0</verstretch>
              </sizepolicy>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>16777215</width>
+              <height>60</height>
+             </size>
             </property>
             <property name="plainText">
              <string/>
@@ -186,52 +271,19 @@
             </property>
            </widget>
           </item>
-          <item row="0" column="1">
-           <widget class="ctkSliderWidget" name="pointDensitySlider">
-            <property name="toolTip">
-             <string>Adjust the density of the pointclouds. Larger values increase the number of points, and vice versa.</string>
-            </property>
-            <property name="singleStep">
-             <double>0.100000000000000</double>
-            </property>
-            <property name="maximum">
-             <double>2.000000000000000</double>
-            </property>
-            <property name="value">
-             <double>1.000000000000000</double>
-            </property>
-           </widget>
-          </item>
-          <item row="2" column="0" colspan="2">
-           <widget class="QPushButton" name="subsampleButton">
+          <item>
+           <widget class="QPushButton" name="runRegistrationButton">
             <property name="enabled">
              <bool>false</bool>
             </property>
             <property name="toolTip">
-             <string>Run subsampling of the source and target pointclouds</string>
+             <string>Run all selected registration steps</string>
             </property>
             <property name="text">
-             <string>Test pointcloud subsampling</string>
+             <string>Run Registration</string>
             </property>
-           </widget>
-          </item>
-          <item row="0" column="0">
-           <widget class="QLabel" name="pointDensityAdjustmentLabel">
-            <property name="text">
-             <string>Point Density Adjustment</string>
-            </property>
-           </widget>
-          </item>
-          <item row="3" column="0" colspan="2">
-           <widget class="QPushButton" name="runRigidRegistrationButton">
-            <property name="enabled">
-             <bool>false</bool>
-            </property>
-            <property name="toolTip">
-             <string>Run a full pairwise ALPACA</string>
-            </property>
-            <property name="text">
-             <string>Run rigid registration</string>
+            <property name="styleSheet">
+             <string>font-weight: bold;</string>
             </property>
            </widget>
           </item>
@@ -239,37 +291,12 @@
         </widget>
        </item>
        <item>
-        <widget class="ctkCollapsibleButton" name="runSingleRegistrationWidget">
+        <widget class="ctkCollapsibleButton" name="deformableParametersWidget">
          <property name="text">
-          <string>Affine registration</string>
+          <string>Deformable Registration Parameters</string>
          </property>
          <property name="collapsed">
-          <bool>false</bool>
-         </property>
-         <layout class="QFormLayout" name="runSingleALPACAWidgetLayout">
-          <item row="2" column="0" colspan="2">
-           <widget class="QPushButton" name="runCPDAffineButton">
-            <property name="enabled">
-             <bool>false</bool>
-            </property>
-            <property name="toolTip">
-             <string>Run CPD affine registration on the rigidly aligned model</string>
-            </property>
-            <property name="text">
-             <string>Run affine registration</string>
-            </property>
-           </widget>
-          </item>
-         </layout>
-        </widget>
-       </item>
-       <item>
-        <widget class="ctkCollapsibleButton" name="deformableRegistrationWidget">
-         <property name="text">
-          <string>Deformable registration</string>
-         </property>
-         <property name="collapsed">
-          <bool>false</bool>
+          <bool>true</bool>
          </property>
          <layout class="QFormLayout" name="deformableRegistrationLayout">
           <item row="0" column="0">
@@ -385,7 +412,7 @@
           <item row="4" column="0">
            <widget class="QLabel" name="fastModeLabel">
             <property name="text">
-             <string>Fast mode (no transform):</string>
+             <string>Fast mode (no grid transform):</string>
             </property>
            </widget>
           </item>
@@ -395,25 +422,51 @@
              <string>If checked, directly deform model vertices without creating a grid transform node. Faster but no reusable transform.</string>
             </property>
             <property name="checked">
-             <bool>false</bool>
+             <bool>true</bool>
             </property>
            </widget>
           </item>
-          <item row="5" column="0" colspan="2">
-           <widget class="QPushButton" name="runCPDDeformableButton">
-            <property name="enabled">
-             <bool>false</bool>
-            </property>
-            <property name="toolTip">
-             <string>Run CPD deformable registration</string>
-            </property>
+          <item row="5" column="0">
+           <widget class="QLabel" name="gridSpacingLabel">
             <property name="text">
-             <string>Run deformable registration</string>
+             <string>Grid density (if not fast):</string>
+            </property>
+           </widget>
+          </item>
+          <item row="5" column="1">
+           <widget class="ctkSliderWidget" name="gridSpacingSlider">
+            <property name="toolTip">
+             <string>Grid density control. Lower = finer grid (more accurate, slower). Higher = coarser grid (faster).</string>
+            </property>
+            <property name="singleStep">
+             <double>0.500000000000000</double>
+            </property>
+            <property name="minimum">
+             <double>1.000000000000000</double>
+            </property>
+            <property name="maximum">
+             <double>10.000000000000000</double>
+            </property>
+            <property name="value">
+             <double>2.000000000000000</double>
             </property>
            </widget>
           </item>
          </layout>
         </widget>
+       </item>
+       <item>
+        <spacer name="verticalSpacer">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>40</height>
+          </size>
+         </property>
+        </spacer>
        </item>
       </layout>
      </widget>
@@ -431,7 +484,7 @@
           </sizepolicy>
          </property>
          <property name="text">
-          <string>Point density and max projection</string>
+          <string>Point density</string>
          </property>
          <property name="collapsed">
           <bool>false</bool>
@@ -456,7 +509,7 @@
              <double>0.100000000000000</double>
             </property>
             <property name="maximum">
-             <double>3.000000000000000</double>
+             <double>2.000000000000000</double>
             </property>
             <property name="value">
              <double>1.000000000000000</double>
@@ -467,7 +520,7 @@
         </widget>
        </item>
        <item>
-        <widget class="ctkCollapsibleButton" name="rigidRegistrationWidget">
+        <widget class="ctkCollapsibleButton" name="rigidRegistrationAdvancedWidget">
          <property name="sizePolicy">
           <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
            <horstretch>0</horstretch>
@@ -480,7 +533,7 @@
          <property name="collapsed">
           <bool>false</bool>
          </property>
-         <layout class="QFormLayout" name="rigidRegistrationWidget">
+         <layout class="QFormLayout" name="rigidRegistrationWidgetLayout">
           <item row="0" column="0">
            <widget class="QLabel" name="normalSearchRadiusLabel">
             <property name="text">
@@ -520,7 +573,7 @@
              <string>Set size of the neighborhood used when computing FPFH features</string>
             </property>
             <property name="minimum">
-             <double>3.000000000000000</double>
+             <double>2.000000000000000</double>
             </property>
             <property name="maximum">
              <double>20.000000000000000</double>
@@ -549,7 +602,7 @@
              <double>6.000000000000000</double>
             </property>
             <property name="value">
-             <double>3.000000000000000</double>
+             <double>2.000000000000000</double>
             </property>
            </widget>
           </item>
@@ -612,7 +665,7 @@
              <double>0.100000000000000</double>
             </property>
             <property name="maximum">
-             <double>3.000000000000000</double>
+             <double>2.000000000000000</double>
             </property>
             <property name="value">
              <double>1.500000000000000</double>
@@ -649,48 +702,17 @@
         </widget>
        </item>
        <item>
-        <widget class="ctkCollapsibleButton" name="deformableAdvancedWidget">
-         <property name="sizePolicy">
-          <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
-           <horstretch>0</horstretch>
-           <verstretch>0</verstretch>
-          </sizepolicy>
+        <spacer name="advancedVerticalSpacer">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
          </property>
-         <property name="text">
-          <string>Deformable registration (Grid Transform)</string>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>40</height>
+          </size>
          </property>
-         <property name="collapsed">
-          <bool>false</bool>
-         </property>
-         <layout class="QFormLayout" name="deformableAdvancedLayout">
-          <item row="0" column="0">
-           <widget class="QLabel" name="gridSpacingLabel">
-            <property name="text">
-             <string>Grid spacing multiplier:</string>
-            </property>
-           </widget>
-          </item>
-          <item row="0" column="1">
-           <widget class="ctkSliderWidget" name="gridSpacingSlider">
-            <property name="toolTip">
-             <string>Multiplier for automatic grid spacing (based on voxel size). Higher = coarser grid, faster. Lower = finer grid, more accurate.</string>
-            </property>
-            <property name="singleStep">
-             <double>0.500000000000000</double>
-            </property>
-            <property name="minimum">
-             <double>1.000000000000000</double>
-            </property>
-            <property name="maximum">
-             <double>10.000000000000000</double>
-            </property>
-            <property name="value">
-             <double>3.000000000000000</double>
-            </property>
-           </widget>
-          </item>
-         </layout>
-        </widget>
+        </spacer>
        </item>
       </layout>
      </widget>

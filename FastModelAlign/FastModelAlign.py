@@ -130,16 +130,21 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.targetModelSelector.setMRMLScene( slicer.mrmlScene)
         self.ui.outputSelector.setMRMLScene( slicer.mrmlScene)
         self.ui.outputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onSelect)
-        #run subsampling
+        
+        # Run subsampling
         self.ui.pointDensitySlider.connect('valueChanged(double)', self.onChangeDensitySingle)
         self.ui.subsampleButton.connect('clicked(bool)', self.onSubsampleButton)
-        # Buttons
-        self.ui.runRigidRegistrationButton.connect('clicked(bool)', self.onApplyButton)
-        self.ui.runCPDAffineButton.connect('clicked(bool)', self.onRunCPDAffineButton)
+        
+        # Main registration button
+        self.ui.runRegistrationButton.connect('clicked(bool)', self.onRunRegistrationButton)
+        
+        # Registration step checkboxes
+        self.ui.scalingCheckBox.connect("toggled(bool)", self.onSelect)
+        self.ui.rigidCheckBox.connect("toggled(bool)", self.onSelect)
+        self.ui.affineCheckBox.connect("toggled(bool)", self.onSelect)
+        self.ui.deformableCheckBox.connect("toggled(bool)", self.onSelect)
 
-
-        # Deformable registration connections
-        self.ui.runCPDDeformableButton.connect('clicked(bool)', self.onRunCPDDeformableButton)
+        # Deformable registration parameter connections
         self.ui.alphaSlider.connect('valueChanged(double)', self.onChangeDeformable)
         self.ui.betaSlider.connect('valueChanged(double)', self.onChangeDeformable)
         self.ui.cpdIterationsSlider.connect('valueChanged(double)', self.onChangeDeformable)
@@ -178,10 +183,18 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 
     def onSelect(self):
-        #Enable subsampling pointcloud button
-        self.ui.subsampleButton.enabled = bool(self.ui.sourceModelSelector.currentNode() and self.ui.targetModelSelector.currentNode() and self.ui.outputSelector.currentNode())
-        #Enable run registration button
-        self.ui.runRigidRegistrationButton.enabled = bool ( self.ui.sourceModelSelector.currentNode() and self.ui.targetModelSelector.currentNode() and self.ui.outputSelector.currentNode())
+        # Check if source and target are selected
+        hasInputs = bool(self.ui.sourceModelSelector.currentNode() and self.ui.targetModelSelector.currentNode())
+        
+        # Check if at least one registration step is selected
+        hasSteps = (self.ui.scalingCheckBox.checked or self.ui.rigidCheckBox.checked or 
+                    self.ui.affineCheckBox.checked or self.ui.deformableCheckBox.checked)
+        
+        # Enable subsampling preview button
+        self.ui.subsampleButton.enabled = hasInputs
+        
+        # Enable run registration button only if we have inputs, output, and at least one step
+        self.ui.runRegistrationButton.enabled = hasInputs and hasSteps
 
     def updateLayout(self):
         layoutManager = slicer.app.layoutManager()
@@ -324,146 +337,196 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       else:
         self.ui.outputSelector.setCurrentNode(node)
 
-
-
-    def onApplyButton(self):
+    def onRunRegistrationButton(self):
         """
-        Run processing when user clicks "Apply" button.
+        Run all selected registration steps in sequence.
         """
         try:
-            self.sourceModelNode.GetDisplayNode().SetVisibility(False)
-            if self.targetCloudNodeTest is not None:
-                slicer.mrmlScene.RemoveNode(self.targetCloudNodeTest)  # Remove targe cloud node created in the subsampling to avoid confusion
+            if hasattr(self, 'targetCloudNodeTest') and self.targetCloudNodeTest is not None:
+                slicer.mrmlScene.RemoveNode(self.targetCloudNodeTest)
                 self.targetCloudNodeTest = None
         except:
             pass
 
+        # Get source and target models
         self.sourceModelNode_orig = self.ui.sourceModelSelector.currentNode()
         self.sourceModelNode_orig.GetDisplayNode().SetVisibility(False)
-
         self.sourceModelName = self.sourceModelNode_orig.GetName()
-
-        # Clone the original source mesh stored in the node sourceModelNode_orig
-        shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(
-            slicer.mrmlScene
-        )
+        self.targetModelNode = self.ui.targetModelSelector.currentNode()
+        
+        logic = FastModelAlignLogic()
+        
+        # Clone the source model for registration
+        shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
         itemIDToClone = shNode.GetItemByDataNode(self.sourceModelNode_orig)
-        clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(
-            shNode, itemIDToClone
-        )
+        clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(shNode, itemIDToClone)
         self.sourceModelNode = shNode.GetItemDataNode(clonedItemID)
         self.sourceModelNode.GetDisplayNode().SetVisibility(False)
-        self.sourceModelNode.SetName("Source model(rigidly registered)")  # Create a cloned source model node
-
-        self.targetModelNode = self.ui.targetModelSelector.currentNode()
-        logic = FastModelAlignLogic()
-
-        self.sourcePoints, self.targetPoints, self.scalingTransformNode, self.ICPTransformNode, self.voxelSize = logic.ITKRegistration(self.sourceModelNode, self.targetModelNode, self.ui.scalingCheckBox.checked,
-            self.parameterDictionary, self.ui.poissonSubsampleCheckBox.checked)
-
-        scalingNodeName = self.sourceModelName + "_scaling"
-        rigidNodeName = self.sourceModelName + "_rigid"
-        self.scalingTransformNode.SetName(scalingNodeName)
-        self.ICPTransformNode.SetName(rigidNodeName)
-
-        red = [1, 0, 0]
-        if bool(self.ui.outputSelector.currentNode()):
-            self.outputModelNode = self.ui.outputSelector.currentNode()
-            self.sourcePolyData = self.sourceModelNode.GetPolyData()
-            self.outputModelNode.SetAndObservePolyData(self.sourcePolyData)
-            #Create a display node
-            self.outputModelNode.CreateDefaultDisplayNodes()
-            #
-            self.outputModelNode.GetDisplayNode().SetVisibility(True)
-            self.outputModelNode.GetDisplayNode().SetColor(red)
-
-        slicer.mrmlScene.RemoveNode(self.sourceModelNode)
-
-        if not self.ui.scalingCheckBox.checked:
-            slicer.mrmlScene.RemoveNode(self.scalingTransformNode)
-
-        self.ui.runCPDAffineButton.enabled = True
-        self.ui.runCPDDeformableButton.enabled = True
-
-
-    def onRunCPDAffineButton(self):
-        logic = FastModelAlignLogic()
-        if bool(self.ui.outputSelector.currentNode()):
-            transformation, translation = logic.CPDAffineTransform(self.outputModelNode, self.sourcePoints, self.targetPoints)
-        else:
-            transformation, translation = logic.CPDAffineTransform(self.sourceModelNode, self.sourcePoints, self.targetPoints)
-        matrix_vtk = vtk.vtkMatrix4x4()
-        for i in range(3):
-          for j in range(3):
-            matrix_vtk.SetElement(i,j,transformation[j][i])
-        for i in range(3):
-          matrix_vtk.SetElement(i,3,translation[i])
-        affineTransform = vtk.vtkTransform()
-        affineTransform.SetMatrix(matrix_vtk)
-        affineTransformNode =  slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', "Affine_transform_matrix")
-        affineTransformNode.SetAndObserveTransformToParent( affineTransform )
-
-        affineNodeName = self.sourceModelName + "_affine"
-        affineTransformNode.SetName(affineNodeName)
-
-        #Put affine transform node under scaling  transform node, which has been put under the rigid transform node
-        self.ICPTransformNode.SetAndObserveTransformNodeID(affineTransformNode.GetID())
-        self.ui.runCPDAffineButton.enabled = False
-        self.ui.runCPDDeformableButton.enabled = True
-
-
-    def onRunCPDDeformableButton(self):
-        """Run CPD deformable registration"""
-        logic = FastModelAlignLogic()
+        self.sourceModelNode.SetName("Source_working_copy")
         
-        # Get the current output model (which has been rigidly/affinely aligned)
-        if bool(self.ui.outputSelector.currentNode()):
-            modelToDeform = self.ui.outputSelector.currentNode()
-        else:
-            modelToDeform = self.sourceModelNode
+        # Determine which steps to run
+        doScaling = self.ui.scalingCheckBox.checked
+        doRigid = self.ui.rigidCheckBox.checked
+        doAffine = self.ui.affineCheckBox.checked
+        doDeformable = self.ui.deformableCheckBox.checked
         
-        # Check if fast mode is enabled
-        useFastMode = self.ui.fastModeCheckBox.checked
+        # Initialize transform nodes
+        self.scalingTransformNode = None
+        self.ICPTransformNode = None
+        affineTransformNode = None
         
-        # Show wait cursor during processing
-        with slicer.util.WaitCursor():
-            slicer.app.processEvents()
+        # ============ RIGID REGISTRATION (with optional scaling) ============
+        if doRigid or doScaling:
+            # Run full rigid registration with FPFH features
+            self.sourcePoints, self.targetPoints, self.scalingTransformNode, self.ICPTransformNode, self.voxelSize = logic.ITKRegistration(
+                self.sourceModelNode, 
+                self.targetModelNode, 
+                doScaling,
+                self.parameterDictionary, 
+                self.ui.poissonSubsampleCheckBox.checked
+            )
             
-            if useFastMode:
-                # Fast mode: directly deform vertices, no transform node
-                deformedModelNode = logic.CPDDeformableTransformDirect(
-                    modelToDeform,
-                    self.sourcePoints,
-                    self.targetPoints,
-                    self.parameterDictionary
-                )
-                deformedNodeName = self.sourceModelName + "_deformed"
-                deformedModelNode.SetName(deformedNodeName)
+            # Name and handle transform nodes based on what user requested
+            if doScaling:
+                scalingNodeName = self.sourceModelName + "_scaling"
+                self.scalingTransformNode.SetName(scalingNodeName)
             else:
-                # Grid transform mode: create reusable transform
-                deformableTransformNode, deformedModelNode = logic.CPDDeformableTransformGrid(
-                    modelToDeform,
-                    self.sourcePoints,
-                    self.targetPoints,
-                    self.voxelSize,
-                    self.parameterDictionary
-                )
-                
-                # Name the nodes
-                deformableNodeName = self.sourceModelName + "_deformable"
-                deformableTransformNode.SetName(deformableNodeName)
-                deformedNodeName = self.sourceModelName + "_deformed"
-                deformedModelNode.SetName(deformedNodeName)
-                
-                # Put the source model under the deformable transform
-                modelToDeform.SetAndObserveTransformNodeID(deformableTransformNode.GetID())
+                # Remove scaling transform if not explicitly requested
+                slicer.mrmlScene.RemoveNode(self.scalingTransformNode)
+                self.scalingTransformNode = None
+            
+            if doRigid:
+                rigidNodeName = self.sourceModelName + "_rigid"
+                self.ICPTransformNode.SetName(rigidNodeName)
+            else:
+                # Scaling only - rigid transform was needed internally but user didn't request it
+                # Keep it with a different name to indicate it's part of the scaling workflow
+                self.ICPTransformNode.SetName(self.sourceModelName + "_scaling_alignment")
+        else:
+            # No rigid/scaling - just subsample for affine/deformable
+            # Models are assumed to be pre-aligned
+            import ALPACA
+            alpaca_logic = ALPACA.ALPACALogic()
+            (
+                self.sourcePoints,
+                self.targetPoints,
+                sourceFeatures,
+                targetFeatures,
+                self.voxelSize,
+                scaling,
+            ) = alpaca_logic.runSubsample(
+                self.sourceModelNode,
+                self.targetModelNode,
+                False,  # No scaling
+                self.parameterDictionary,
+                self.ui.poissonSubsampleCheckBox.checked,
+            )
         
-        # Display the deformed model
+        # ============ AFFINE REGISTRATION ============
+        if doAffine:
+            # CPDAffineTransform modifies the model vertices directly AND returns the transform
+            # It also returns transformed source points for use in subsequent steps
+            transformation, translation, self.sourcePoints = logic.CPDAffineTransform(
+                self.sourceModelNode, 
+                self.sourcePoints, 
+                self.targetPoints
+            )
+            
+            # Create affine transform node for reference (model already transformed)
+            matrix_vtk = vtk.vtkMatrix4x4()
+            for i in range(3):
+                for j in range(3):
+                    matrix_vtk.SetElement(i, j, transformation[j][i])
+            for i in range(3):
+                matrix_vtk.SetElement(i, 3, translation[i])
+            affineTransform = vtk.vtkTransform()
+            affineTransform.SetMatrix(matrix_vtk)
+            affineTransformNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', "Affine_transform")
+            affineTransformNode.SetAndObserveTransformToParent(affineTransform)
+            
+            affineNodeName = self.sourceModelName + "_affine"
+            affineTransformNode.SetName(affineNodeName)
+            
+            # Chain transforms for reference: put rigid under affine
+            if self.ICPTransformNode:
+                self.ICPTransformNode.SetAndObserveTransformNodeID(affineTransformNode.GetID())
+        
+        # ============ DEFORMABLE REGISTRATION ============
+        if doDeformable:
+            useFastMode = self.ui.fastModeCheckBox.checked
+            
+            with slicer.util.WaitCursor():
+                slicer.app.processEvents()
+                
+                if useFastMode:
+                    # Fast mode: directly deform vertices
+                    deformedModelNode = logic.CPDDeformableTransformDirect(
+                        self.sourceModelNode,
+                        self.sourcePoints,
+                        self.targetPoints,
+                        self.parameterDictionary
+                    )
+                    deformedNodeName = self.sourceModelName + "_deformed"
+                    deformedModelNode.SetName(deformedNodeName)
+                    
+                    # Display the deformed model
+                    green = [0, 1, 0]
+                    deformedModelNode.GetDisplayNode().SetColor(green)
+                    deformedModelNode.GetDisplayNode().SetVisibility(True)
+                else:
+                    # Grid transform mode
+                    deformableTransformNode, deformedModelNode = logic.CPDDeformableTransformGrid(
+                        self.sourceModelNode,
+                        self.sourcePoints,
+                        self.targetPoints,
+                        self.voxelSize,
+                        self.parameterDictionary
+                    )
+                    
+                    deformableNodeName = self.sourceModelName + "_deformable"
+                    deformableTransformNode.SetName(deformableNodeName)
+                    deformedNodeName = self.sourceModelName + "_deformed"
+                    deformedModelNode.SetName(deformedNodeName)
+                    
+                    # Display the deformed model
+                    green = [0, 1, 0]
+                    deformedModelNode.GetDisplayNode().SetColor(green)
+                    deformedModelNode.GetDisplayNode().SetVisibility(True)
+        
+        # ============ OUTPUT MODEL ============
+        red = [1, 0, 0]
         green = [0, 1, 0]
-        deformedModelNode.GetDisplayNode().SetColor(green)
-        deformedModelNode.GetDisplayNode().SetVisibility(True)
+        if not doDeformable:
+            # For rigid/affine only, use the working copy as output
+            if bool(self.ui.outputSelector.currentNode()):
+                self.outputModelNode = self.ui.outputSelector.currentNode()
+                self.sourcePolyData = self.sourceModelNode.GetPolyData()
+                self.outputModelNode.SetAndObservePolyData(self.sourcePolyData)
+                self.outputModelNode.CreateDefaultDisplayNodes()
+                self.outputModelNode.GetDisplayNode().SetVisibility(True)
+                self.outputModelNode.GetDisplayNode().SetColor(red)
+                # Clean up working copy
+                slicer.mrmlScene.RemoveNode(self.sourceModelNode)
+            else:
+                # Use the working copy directly as the result
+                self.sourceModelNode.SetName(self.sourceModelName + "_registered")
+                self.sourceModelNode.GetDisplayNode().SetVisibility(True)
+                self.sourceModelNode.GetDisplayNode().SetColor(red)
+        else:
+            # Deformable was done - copy deformed model to output selector if specified
+            if bool(self.ui.outputSelector.currentNode()):
+                self.outputModelNode = self.ui.outputSelector.currentNode()
+                self.outputModelNode.SetAndObservePolyData(deformedModelNode.GetPolyData())
+                self.outputModelNode.CreateDefaultDisplayNodes()
+                self.outputModelNode.GetDisplayNode().SetVisibility(True)
+                self.outputModelNode.GetDisplayNode().SetColor(green)
+                # Remove the separately created deformed model since we copied to output
+                slicer.mrmlScene.RemoveNode(deformedModelNode)
+            # Clean up working copy
+            slicer.mrmlScene.RemoveNode(self.sourceModelNode)
         
-        self.ui.runCPDDeformableButton.enabled = False
+        # Make sure target is visible
+        self.targetModelNode.GetDisplayNode().SetVisibility(True)
 
 
     def initializeParameterNode(self):
@@ -556,7 +619,8 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
     def ITKRegistration(self, sourceModelNode, targetModelNode, scalingOption, parameterDictionary, usePoisson):
         import ALPACA
         
-        self.progress = ProgressHelper("Rigid Registration")
+        titleText = "Rigid Registration" + (" with Scaling" if scalingOption else "")
+        self.progress = ProgressHelper(titleText)
         self.progress.start("Subsampling point clouds...", 100)
         
         logic = ALPACA.ALPACALogic()
@@ -575,7 +639,10 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
             usePoisson,
         )
         
-        self.progress.update(30, "Creating scaling transform...")
+        if scalingOption:
+            self.progress.update(30, f"Creating scaling transform (factor: {scaling:.4f})...")
+        else:
+            self.progress.update(30, "Preparing transform...")
 
         #Scaling transform
         print("scaling factor for the source is: " + str(scaling))
@@ -649,12 +716,15 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
        points.SetData(vtkArray)
        polyData.Modified()
 
+       # Also transform the source points for use in subsequent steps
+       transformedSourcePoints = reg.transform_point_cloud(sourcePoints)
+
        affine_matrix, translation = reg.get_registration_parameters()
        
        self.progress.update(100, "Affine registration complete.")
        self.progress.finish()
 
-       return affine_matrix, translation
+       return affine_matrix, translation, transformedSourcePoints
 
     def CPDDeformableTransformDirect(self, sourceModelNode, sourcePoints, targetPoints, parameters):
         """Apply CPD deformable registration directly to model vertices (fast mode).
@@ -798,18 +868,31 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
             smoothing=0.1
         )
 
-        # Calculate grid spacing from voxel size
-        gridSpacing = voxelSize * parameters["gridSpacingMultiplier"]
-        print(f"Grid spacing: {gridSpacing} (voxelSize={voxelSize}, multiplier={parameters['gridSpacingMultiplier']})")
-
-        # Get bounding box of source model with padding
+        # Get bounding box of source model
         bounds = sourceModelNode.GetPolyData().GetBounds()
+        modelSize = [
+            bounds[1] - bounds[0],
+            bounds[3] - bounds[2],
+            bounds[5] - bounds[4]
+        ]
+        maxModelDim = max(modelSize)
+        
+        # Calculate grid spacing based on model size and desired grid density
+        # Slider controls grid density: 1 = finest (256 pts), 10 = coarsest (64 pts)
+        # This gives grids from 64³ to 256³ depending on slider
+        targetGridPoints = int(256 / parameters["gridSpacingMultiplier"])
+        targetGridPoints = max(64, min(256, targetGridPoints))  # Clamp to 64-256
+        gridSpacing = maxModelDim / targetGridPoints
+        
+        print(f"Grid: {targetGridPoints} points across {maxModelDim:.1f}mm, spacing={gridSpacing:.2f}mm")
+
+        # Add padding around the model
         padding = gridSpacing * 2
         origin = [bounds[0] - padding, bounds[2] - padding, bounds[4] - padding]
         size = [
-            bounds[1] - bounds[0] + 2 * padding,
-            bounds[3] - bounds[2] + 2 * padding,
-            bounds[5] - bounds[4] + 2 * padding
+            modelSize[0] + 2 * padding,
+            modelSize[1] + 2 * padding,
+            modelSize[2] + 2 * padding
         ]
 
         self.progress.update(60, "Creating grid transform...")
@@ -833,17 +916,18 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
         """Create a vtkMRMLGridTransformNode using RBF interpolation.
         The RBF operates in normalized space, so we transform grid points accordingly.
         """
-        # Calculate grid dimensions with limit to prevent memory issues
-        maxGridDim = 50  # Limit each dimension to prevent huge grids
+        # Calculate grid dimensions
+        # Allow up to 256 points per dimension (~16M grid points max)
+        maxGridDim = 256
         dims = [
             min(int(np.ceil(size[0] / spacing)) + 1, maxGridDim),
             min(int(np.ceil(size[1] / spacing)) + 1, maxGridDim),
             min(int(np.ceil(size[2] / spacing)) + 1, maxGridDim)
         ]
         
-        print(f"Grid dimensions: {dims}")
+        print(f"Grid dimensions: {dims[0]}x{dims[1]}x{dims[2]}")
         totalGridPoints = dims[0] * dims[1] * dims[2]
-        print(f"Total grid points: {totalGridPoints}")
+        print(f"Total grid points: {totalGridPoints:,}")
 
         # Create grid points in original coordinate space
         x = np.linspace(origin[0], origin[0] + size[0], dims[0])
@@ -914,6 +998,18 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
         # Apply and harden transform
         deformedModelNode.SetAndObserveTransformNodeID(transformNode.GetID())
         slicer.vtkSlicerTransformLogic().hardenTransform(deformedModelNode)
+        
+        # Ensure display node exists and copy properties from source
+        if not deformedModelNode.GetDisplayNode():
+            deformedModelNode.CreateDefaultDisplayNodes()
+        
+        # Copy display properties from source if available
+        sourceDisplayNode = sourceModelNode.GetDisplayNode()
+        deformedDisplayNode = deformedModelNode.GetDisplayNode()
+        if sourceDisplayNode and deformedDisplayNode:
+            deformedDisplayNode.SetColor(sourceDisplayNode.GetColor())
+            deformedDisplayNode.SetOpacity(sourceDisplayNode.GetOpacity())
+            deformedDisplayNode.SetVisibility(True)
 
         return deformedModelNode
 
