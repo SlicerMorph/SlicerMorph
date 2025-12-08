@@ -263,6 +263,31 @@
          </layout>
         </widget>
        </item>
+       <item>
+        <widget class="ctkCollapsibleButton" name="runCPDDeformableWidget">
+         <property name="text">
+          <string>Deformable (CPD) registration</string>
+         </property>
+         <property name="collapsed">
+          <bool>false</bool>
+         </property>
+         <layout class="QFormLayout" name="runCPDDeformableWidgetLayout">
+          <item row="0" column="0" colspan="2">
+           <widget class="QPushButton" name="runCPDDeformableButton">
+            <property name="enabled">
+             <bool>false</bool>
+            </property>
+            <property name="toolTip">
+             <string>Run deformable mesh registration using Coherent Point Drift (CPD)</string>
+            </property>
+            <property name="text">
+             <string>Run deformable (CPD) registration</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
       </layout>
      </widget>
      <widget class="QWidget" name="advancedSettingsTab">
@@ -490,6 +515,131 @@
             </property>
             <property name="value">
              <double>100.000000000000000</double>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="ctkCollapsibleButton" name="CPDParametersWidget">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="text">
+          <string>CPD Deformable Registration Parameters</string>
+         </property>
+         <property name="collapsed">
+          <bool>true</bool>
+         </property>
+         <layout class="QFormLayout" name="formLayout_4">
+          <item row="0" column="0">
+           <widget class="QLabel" name="alphaLabel">
+            <property name="text">
+             <string>Alpha (Regularization):</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="ctkSliderWidget" name="alpha">
+            <property name="toolTip">
+             <string>Regularization parameter for CPD deformable registration (controls smoothness)</string>
+            </property>
+            <property name="decimals">
+             <number>1</number>
+            </property>
+            <property name="minimum">
+             <double>0.100000000000000</double>
+            </property>
+            <property name="maximum">
+             <double>10.000000000000000</double>
+            </property>
+            <property name="value">
+             <double>2.000000000000000</double>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="betaLabel">
+            <property name="text">
+             <string>Beta (Width):</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="ctkSliderWidget" name="beta">
+            <property name="toolTip">
+             <string>Width parameter for CPD deformable registration</string>
+            </property>
+            <property name="decimals">
+             <number>1</number>
+            </property>
+            <property name="minimum">
+             <double>0.100000000000000</double>
+            </property>
+            <property name="maximum">
+             <double>10.000000000000000</double>
+            </property>
+            <property name="value">
+             <double>2.000000000000000</double>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="0">
+           <widget class="QLabel" name="CPDIterationsLabel">
+            <property name="text">
+             <string>CPD Maximum Iterations:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="1">
+           <widget class="ctkSliderWidget" name="CPDIterationsSlider">
+            <property name="toolTip">
+             <string>Maximum number of iterations for CPD deformable registration</string>
+            </property>
+            <property name="decimals">
+             <number>0</number>
+            </property>
+            <property name="minimum">
+             <double>10.000000000000000</double>
+            </property>
+            <property name="maximum">
+             <double>200.000000000000000</double>
+            </property>
+            <property name="value">
+             <double>100.000000000000000</double>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="0">
+           <widget class="QLabel" name="CPDToleranceLabel">
+            <property name="text">
+             <string>CPD Tolerance:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="1">
+           <widget class="ctkSliderWidget" name="CPDToleranceSlider">
+            <property name="toolTip">
+             <string>Convergence tolerance for CPD deformable registration</string>
+            </property>
+            <property name="decimals">
+             <number>6</number>
+            </property>
+            <property name="minimum">
+             <double>0.000001000000000</double>
+            </property>
+            <property name="maximum">
+             <double>0.001000000000000</double>
+            </property>
+            <property name="singleStep">
+             <double>0.000001000000000</double>
+            </property>
+            <property name="value">
+             <double>0.000010000000000</double>
             </property>
            </widget>
           </item>

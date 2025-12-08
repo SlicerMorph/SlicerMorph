@@ -134,6 +134,7 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # Buttons
         self.ui.runRigidRegistrationButton.connect('clicked(bool)', self.onApplyButton)
         self.ui.runCPDAffineButton.connect('clicked(bool)', self.onRunCPDAffineButton)
+        self.ui.runCPDDeformableButton.connect('clicked(bool)', self.onRunCPDDeformableButton)
 
 
         # Advanced Settings connections
@@ -146,6 +147,10 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.poissonSubsampleCheckBox.connect("toggled(bool)", self.onChangeAdvanced)
         self.ui.ICPDistanceThresholdSlider.connect('valueChanged(double)', self.onChangeAdvanced)
         self.ui.FPFHNeighborsSlider.connect("valueChanged(double)", self.onChangeAdvanced)
+        self.ui.alpha.connect('valueChanged(double)', self.onChangeAdvanced)
+        self.ui.beta.connect('valueChanged(double)', self.onChangeAdvanced)
+        self.ui.CPDIterationsSlider.connect('valueChanged(double)', self.onChangeAdvanced)
+        self.ui.CPDToleranceSlider.connect('valueChanged(double)', self.onChangeAdvanced)
 
         # initialize the parameter dictionary from single run parameters
         self.parameterDictionary = {
@@ -155,7 +160,11 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             "FPFHSearchRadius": self.ui.FPFHSearchRadiusSlider.value,
             "distanceThreshold": self.ui.maximumCPDThreshold.value,
             "maxRANSAC": int(self.ui.maxRANSAC.value),
-            "ICPDistanceThreshold": float(self.ui.ICPDistanceThresholdSlider.value)
+            "ICPDistanceThreshold": float(self.ui.ICPDistanceThresholdSlider.value),
+            "alpha": self.ui.alpha.value,
+            "beta": self.ui.beta.value,
+            "CPDIterations": int(self.ui.CPDIterationsSlider.value),
+            "CPDTolerance": self.ui.CPDToleranceSlider.value
             }
 
 
@@ -190,6 +199,10 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.parameterDictionary["distanceThreshold"] = self.ui.maximumCPDThreshold.value
             self.parameterDictionary["maxRANSAC"] = int(self.ui.maxRANSAC.value)
             self.parameterDictionary["ICPDistanceThreshold"] = self.ui.ICPDistanceThresholdSlider.value
+            self.parameterDictionary["alpha"] = self.ui.alpha.value
+            self.parameterDictionary["beta"] = self.ui.beta.value
+            self.parameterDictionary["CPDIterations"] = int(self.ui.CPDIterationsSlider.value)
+            self.parameterDictionary["CPDTolerance"] = self.ui.CPDToleranceSlider.value
 
 
     def cleanup(self):
@@ -357,6 +370,7 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             slicer.mrmlScene.RemoveNode(self.scalingTransformNode)
 
         self.ui.runCPDAffineButton.enabled = True
+        self.ui.runCPDDeformableButton.enabled = True
 
 
     def onRunCPDAffineButton(self):
@@ -382,6 +396,42 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         #Put affine transform node under scaling  transform node, which has been put under the rigid transform node
         self.ICPTransformNode.SetAndObserveTransformNodeID(affineTransformNode.GetID())
         self.ui.runCPDAffineButton.enabled = False
+
+
+    def onRunCPDDeformableButton(self):
+        """
+        Run CPD deformable registration when user clicks "Run deformable (CPD) registration" button.
+        """
+        logic = FastModelAlignLogic()
+        
+        # Get the model to apply CPD to (output model if exists, otherwise source model)
+        if bool(self.ui.outputSelector.currentNode()):
+            modelToDeform = self.ui.outputSelector.currentNode()
+        else:
+            # If no output model, we need the source model - create a new node for output
+            modelToDeform = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode', self.sourceModelName + "_deformed")
+            modelToDeform.CreateDefaultDisplayNodes()
+            
+        # Run CPD deformable registration
+        deformedModel, cpdTransformNode = logic.CPDDeformableRegistration(
+            modelToDeform, 
+            self.sourcePoints, 
+            self.targetPoints, 
+            self.parameterDictionary,
+            self.sourceModelName
+        )
+        
+        # Set display properties
+        green = [0, 1, 0]
+        deformedModel.GetDisplayNode().SetVisibility(True)
+        deformedModel.GetDisplayNode().SetColor(green)
+        
+        # Put CPD transform under the rigid transform hierarchy
+        if hasattr(self, 'ICPTransformNode') and self.ICPTransformNode:
+            self.ICPTransformNode.SetAndObserveTransformNodeID(cpdTransformNode.GetID())
+        
+        # Disable the button after execution to prevent re-running
+        self.ui.runCPDDeformableButton.enabled = False
 
 
     def initializeParameterNode(self):
@@ -520,6 +570,125 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
        affine_matrix, translation = reg.get_registration_parameters()
 
        return affine_matrix, translation
+
+    def CPDDeformableRegistration(self, sourceModelNode, sourcePoints, targetPoints, parameters, sourceModelName):
+        """
+        Perform deformable mesh registration using Coherent Point Drift (CPD).
+        Similar to ALPACA's runCPDRegistration but for meshes without landmarks.
+        
+        Args:
+            sourceModelNode: The source model node to deform
+            sourcePoints: Source point cloud (numpy array)
+            targetPoints: Target point cloud (numpy array)
+            parameters: Dictionary containing CPD parameters (alpha, beta, CPDIterations, CPDTolerance)
+            sourceModelName: Name for the source model (for naming output)
+            
+        Returns:
+            deformedModelNode: The deformed model node
+            transformNode: Transform node containing the deformation (as TPS)
+        """
+        from cpdalp import DeformableRegistration
+        import vtk.util.numpy_support as nps
+        import numpy as np
+        import ALPACA
+        
+        logic = ALPACA.ALPACALogic()
+        
+        # Prepare arrays for CPD registration
+        # Normalize the point clouds for better CPD performance
+        targetArray = np.asarray(targetPoints)
+        sourceArray = np.asarray(sourcePoints)
+        
+        cloudSize = np.max(targetArray, 0) - np.min(targetArray, 0)
+        targetArray = targetArray * 25 / cloudSize
+        sourceArray = sourceArray * 25 / cloudSize
+        
+        print("-----------------------------------------------------------")
+        print("Performing CPD Deformable Registration")
+        print(f"Source points: {sourceArray.shape}, Target points: {targetArray.shape}")
+        print(f"Alpha: {parameters['alpha']}, Beta: {parameters['beta']}")
+        print(f"Iterations: {parameters['CPDIterations']}, Tolerance: {parameters['CPDTolerance']}")
+        
+        # Run CPD deformable registration
+        registrationOutput = DeformableRegistration(
+            **{
+                "X": targetArray,
+                "Y": sourceArray,
+                "max_iterations": parameters["CPDIterations"],
+                "tolerance": parameters["CPDTolerance"],
+                "low_rank": True,
+            },
+            alpha=parameters["alpha"],
+            beta=parameters["beta"],
+        )
+        
+        deformed_array, _ = registrationOutput.register()
+        
+        # Denormalize the deformed array
+        deformed_array = deformed_array * cloudSize / 25
+        
+        print("CPD Registration completed")
+        
+        # Get the mesh points from the source model
+        polyData = sourceModelNode.GetPolyData()
+        points = polyData.GetPoints()
+        numpyModelPoints = nps.vtk_to_numpy(points.GetData())
+        
+        # Normalize model points
+        numpyModelPoints_normalized = numpyModelPoints * 25 / cloudSize
+        
+        # Transform the model points using the same CPD transformation
+        deformed_model_points = registrationOutput.transform_point_cloud(numpyModelPoints_normalized)
+        
+        # Denormalize the deformed model points
+        deformed_model_points = deformed_model_points * cloudSize / 25
+        
+        # Create the deformed model node
+        deformedModelNode = slicer.mrmlScene.AddNewNodeByClass(
+            'vtkMRMLModelNode', sourceModelName + "_CPD_deformed"
+        )
+        deformedModelNode.CreateDefaultDisplayNodes()
+        
+        # Create new polydata with deformed points
+        deformedPolyData = vtk.vtkPolyData()
+        deformedPolyData.DeepCopy(polyData)
+        
+        # Update points
+        deformedPoints = vtk.vtkPoints()
+        deformedPointsArray = nps.numpy_to_vtk(deformed_model_points, deep=True)
+        deformedPoints.SetData(deformedPointsArray)
+        deformedPolyData.SetPoints(deformedPoints)
+        
+        deformedModelNode.SetAndObservePolyData(deformedPolyData)
+        
+        # Create a TPS transform from source to deformed point clouds
+        # This allows the deformation to be represented as a transform
+        sourcePointsVTK = logic.convertPointsToVTK(sourceArray * cloudSize / 25)
+        deformedPointsVTK = logic.convertPointsToVTK(deformed_array)
+        
+        # Convert to vtkPoints for TPS
+        sourceVTKPoints = vtk.vtkPoints()
+        deformedVTKPoints = vtk.vtkPoints()
+        
+        for i in range(sourcePointsVTK.GetNumberOfPoints()):
+            sourceVTKPoints.InsertNextPoint(sourcePointsVTK.GetPoint(i))
+            deformedVTKPoints.InsertNextPoint(deformedPointsVTK.GetPoint(i))
+        
+        # Create TPS transform
+        tpsTransform = vtk.vtkThinPlateSplineTransform()
+        tpsTransform.SetSourceLandmarks(sourceVTKPoints)
+        tpsTransform.SetTargetLandmarks(deformedVTKPoints)
+        tpsTransform.SetBasisToR()  # for 3D transform
+        
+        # Create transform node
+        transformNode = slicer.mrmlScene.AddNewNodeByClass(
+            'vtkMRMLTransformNode', sourceModelName + "_CPD_transform"
+        )
+        transformNode.SetAndObserveTransformToParent(tpsTransform)
+        
+        print("Deformed model created successfully")
+        
+        return deformedModelNode, transformNode
 
 
 
