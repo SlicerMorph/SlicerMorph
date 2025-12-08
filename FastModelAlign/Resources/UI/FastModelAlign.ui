@@ -10,7 +10,7 @@
     <x>0</x>
     <y>0</y>
     <width>778</width>
-    <height>800</height>
+    <height>900</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
@@ -253,10 +253,162 @@
              <bool>false</bool>
             </property>
             <property name="toolTip">
-             <string>Switch the the Advanced Settings tab to change parameters and run/re-run ALPACA</string>
+             <string>Run CPD affine registration on the rigidly aligned model</string>
             </property>
             <property name="text">
              <string>Run affine registration</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="ctkCollapsibleButton" name="deformableRegistrationWidget">
+         <property name="text">
+          <string>Deformable registration</string>
+         </property>
+         <property name="collapsed">
+          <bool>false</bool>
+         </property>
+         <layout class="QFormLayout" name="deformableRegistrationLayout">
+          <item row="0" column="0">
+           <widget class="QLabel" name="alphaLabel">
+            <property name="text">
+             <string>Alpha (smoothness):</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="ctkSliderWidget" name="alphaSlider">
+            <property name="toolTip">
+             <string>Controls motion coherence. Higher values produce smoother deformations.</string>
+            </property>
+            <property name="singleStep">
+             <double>0.100000000000000</double>
+            </property>
+            <property name="minimum">
+             <double>0.100000000000000</double>
+            </property>
+            <property name="maximum">
+             <double>10.000000000000000</double>
+            </property>
+            <property name="value">
+             <double>2.000000000000000</double>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="betaLabel">
+            <property name="text">
+             <string>Beta (width):</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="ctkSliderWidget" name="betaSlider">
+            <property name="toolTip">
+             <string>Gaussian kernel width. Higher values allow larger deformations.</string>
+            </property>
+            <property name="singleStep">
+             <double>0.100000000000000</double>
+            </property>
+            <property name="minimum">
+             <double>0.100000000000000</double>
+            </property>
+            <property name="maximum">
+             <double>10.000000000000000</double>
+            </property>
+            <property name="value">
+             <double>2.000000000000000</double>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="0">
+           <widget class="QLabel" name="cpdIterationsLabel">
+            <property name="text">
+             <string>Max iterations:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="1">
+           <widget class="ctkSliderWidget" name="cpdIterationsSlider">
+            <property name="toolTip">
+             <string>Maximum number of CPD iterations.</string>
+            </property>
+            <property name="decimals">
+             <number>0</number>
+            </property>
+            <property name="singleStep">
+             <double>10.000000000000000</double>
+            </property>
+            <property name="minimum">
+             <double>10.000000000000000</double>
+            </property>
+            <property name="maximum">
+             <double>500.000000000000000</double>
+            </property>
+            <property name="value">
+             <double>100.000000000000000</double>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="0">
+           <widget class="QLabel" name="cpdToleranceLabel">
+            <property name="text">
+             <string>Tolerance:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="1">
+           <widget class="ctkSliderWidget" name="cpdToleranceSlider">
+            <property name="toolTip">
+             <string>Convergence tolerance for CPD.</string>
+            </property>
+            <property name="decimals">
+             <number>5</number>
+            </property>
+            <property name="singleStep">
+             <double>0.000100000000000</double>
+            </property>
+            <property name="minimum">
+             <double>0.000010000000000</double>
+            </property>
+            <property name="maximum">
+             <double>0.010000000000000</double>
+            </property>
+            <property name="value">
+             <double>0.001000000000000</double>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="0">
+           <widget class="QLabel" name="fastModeLabel">
+            <property name="text">
+             <string>Fast mode (no transform):</string>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="1">
+           <widget class="QCheckBox" name="fastModeCheckBox">
+            <property name="toolTip">
+             <string>If checked, directly deform model vertices without creating a grid transform node. Faster but no reusable transform.</string>
+            </property>
+            <property name="checked">
+             <bool>false</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="5" column="0" colspan="2">
+           <widget class="QPushButton" name="runCPDDeformableButton">
+            <property name="enabled">
+             <bool>false</bool>
+            </property>
+            <property name="toolTip">
+             <string>Run CPD deformable registration</string>
+            </property>
+            <property name="text">
+             <string>Run deformable registration</string>
             </property>
            </widget>
           </item>
@@ -490,6 +642,50 @@
             </property>
             <property name="value">
              <double>100.000000000000000</double>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="ctkCollapsibleButton" name="deformableAdvancedWidget">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="text">
+          <string>Deformable registration (Grid Transform)</string>
+         </property>
+         <property name="collapsed">
+          <bool>false</bool>
+         </property>
+         <layout class="QFormLayout" name="deformableAdvancedLayout">
+          <item row="0" column="0">
+           <widget class="QLabel" name="gridSpacingLabel">
+            <property name="text">
+             <string>Grid spacing multiplier:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="ctkSliderWidget" name="gridSpacingSlider">
+            <property name="toolTip">
+             <string>Multiplier for automatic grid spacing (based on voxel size). Higher = coarser grid, faster. Lower = finer grid, more accurate.</string>
+            </property>
+            <property name="singleStep">
+             <double>0.500000000000000</double>
+            </property>
+            <property name="minimum">
+             <double>1.000000000000000</double>
+            </property>
+            <property name="maximum">
+             <double>10.000000000000000</double>
+            </property>
+            <property name="value">
+             <double>3.000000000000000</double>
             </property>
            </widget>
           </item>

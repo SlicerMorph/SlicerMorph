@@ -1,7 +1,9 @@
 import logging
 import os
 
+import numpy as np
 import vtk
+import vtk.util.numpy_support as vtk_np
 
 import slicer
 from slicer.ScriptedLoadableModule import *
@@ -136,6 +138,13 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.runCPDAffineButton.connect('clicked(bool)', self.onRunCPDAffineButton)
 
 
+        # Deformable registration connections
+        self.ui.runCPDDeformableButton.connect('clicked(bool)', self.onRunCPDDeformableButton)
+        self.ui.alphaSlider.connect('valueChanged(double)', self.onChangeDeformable)
+        self.ui.betaSlider.connect('valueChanged(double)', self.onChangeDeformable)
+        self.ui.cpdIterationsSlider.connect('valueChanged(double)', self.onChangeDeformable)
+        self.ui.cpdToleranceSlider.connect('valueChanged(double)', self.onChangeDeformable)
+
         # Advanced Settings connections
         self.ui.pointDensityAdvancedSlider.connect('valueChanged(double)', self.onChangeAdvanced)
         self.ui.normalSearchRadiusSlider.connect('valueChanged(double)', self.onChangeAdvanced)
@@ -146,6 +155,7 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.poissonSubsampleCheckBox.connect("toggled(bool)", self.onChangeAdvanced)
         self.ui.ICPDistanceThresholdSlider.connect('valueChanged(double)', self.onChangeAdvanced)
         self.ui.FPFHNeighborsSlider.connect("valueChanged(double)", self.onChangeAdvanced)
+        self.ui.gridSpacingSlider.connect('valueChanged(double)', self.onChangeAdvanced)
 
         # initialize the parameter dictionary from single run parameters
         self.parameterDictionary = {
@@ -155,8 +165,16 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             "FPFHSearchRadius": self.ui.FPFHSearchRadiusSlider.value,
             "distanceThreshold": self.ui.maximumCPDThreshold.value,
             "maxRANSAC": int(self.ui.maxRANSAC.value),
-            "ICPDistanceThreshold": float(self.ui.ICPDistanceThresholdSlider.value)
+            "ICPDistanceThreshold": float(self.ui.ICPDistanceThresholdSlider.value),
+            "alpha": self.ui.alphaSlider.value,
+            "beta": self.ui.betaSlider.value,
+            "CPDIterations": int(self.ui.cpdIterationsSlider.value),
+            "CPDTolerance": self.ui.cpdToleranceSlider.value,
+            "gridSpacingMultiplier": self.ui.gridSpacingSlider.value
             }
+        
+        # Store voxel size for grid transform estimation
+        self.voxelSize = None
 
 
     def onSelect(self):
@@ -180,6 +198,9 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.pointDensityAdvancedSlider.value = self.ui.pointDensitySlider.value
         self.updateParameterDictionary()
 
+    def onChangeDeformable(self):
+        self.updateParameterDictionary()
+
     def updateParameterDictionary(self):
         # update the parameter dictionary from single run parameters
         if hasattr(self, "parameterDictionary"):
@@ -190,6 +211,11 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.parameterDictionary["distanceThreshold"] = self.ui.maximumCPDThreshold.value
             self.parameterDictionary["maxRANSAC"] = int(self.ui.maxRANSAC.value)
             self.parameterDictionary["ICPDistanceThreshold"] = self.ui.ICPDistanceThresholdSlider.value
+            self.parameterDictionary["alpha"] = self.ui.alphaSlider.value
+            self.parameterDictionary["beta"] = self.ui.betaSlider.value
+            self.parameterDictionary["CPDIterations"] = int(self.ui.cpdIterationsSlider.value)
+            self.parameterDictionary["CPDTolerance"] = self.ui.cpdToleranceSlider.value
+            self.parameterDictionary["gridSpacingMultiplier"] = self.ui.gridSpacingSlider.value
 
 
     def cleanup(self):
@@ -332,7 +358,7 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.targetModelNode = self.ui.targetModelSelector.currentNode()
         logic = FastModelAlignLogic()
 
-        self.sourcePoints, self.targetPoints, self.scalingTransformNode, self.ICPTransformNode = logic.ITKRegistration(self.sourceModelNode, self.targetModelNode, self.ui.scalingCheckBox.checked,
+        self.sourcePoints, self.targetPoints, self.scalingTransformNode, self.ICPTransformNode, self.voxelSize = logic.ITKRegistration(self.sourceModelNode, self.targetModelNode, self.ui.scalingCheckBox.checked,
             self.parameterDictionary, self.ui.poissonSubsampleCheckBox.checked)
 
         scalingNodeName = self.sourceModelName + "_scaling"
@@ -357,6 +383,7 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             slicer.mrmlScene.RemoveNode(self.scalingTransformNode)
 
         self.ui.runCPDAffineButton.enabled = True
+        self.ui.runCPDDeformableButton.enabled = True
 
 
     def onRunCPDAffineButton(self):
@@ -382,6 +409,61 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         #Put affine transform node under scaling  transform node, which has been put under the rigid transform node
         self.ICPTransformNode.SetAndObserveTransformNodeID(affineTransformNode.GetID())
         self.ui.runCPDAffineButton.enabled = False
+        self.ui.runCPDDeformableButton.enabled = True
+
+
+    def onRunCPDDeformableButton(self):
+        """Run CPD deformable registration"""
+        logic = FastModelAlignLogic()
+        
+        # Get the current output model (which has been rigidly/affinely aligned)
+        if bool(self.ui.outputSelector.currentNode()):
+            modelToDeform = self.ui.outputSelector.currentNode()
+        else:
+            modelToDeform = self.sourceModelNode
+        
+        # Check if fast mode is enabled
+        useFastMode = self.ui.fastModeCheckBox.checked
+        
+        # Show wait cursor during processing
+        with slicer.util.WaitCursor():
+            slicer.app.processEvents()
+            
+            if useFastMode:
+                # Fast mode: directly deform vertices, no transform node
+                deformedModelNode = logic.CPDDeformableTransformDirect(
+                    modelToDeform,
+                    self.sourcePoints,
+                    self.targetPoints,
+                    self.parameterDictionary
+                )
+                deformedNodeName = self.sourceModelName + "_deformed"
+                deformedModelNode.SetName(deformedNodeName)
+            else:
+                # Grid transform mode: create reusable transform
+                deformableTransformNode, deformedModelNode = logic.CPDDeformableTransformGrid(
+                    modelToDeform,
+                    self.sourcePoints,
+                    self.targetPoints,
+                    self.voxelSize,
+                    self.parameterDictionary
+                )
+                
+                # Name the nodes
+                deformableNodeName = self.sourceModelName + "_deformable"
+                deformableTransformNode.SetName(deformableNodeName)
+                deformedNodeName = self.sourceModelName + "_deformed"
+                deformedModelNode.SetName(deformedNodeName)
+                
+                # Put the source model under the deformable transform
+                modelToDeform.SetAndObserveTransformNodeID(deformableTransformNode.GetID())
+        
+        # Display the deformed model
+        green = [0, 1, 0]
+        deformedModelNode.GetDisplayNode().SetColor(green)
+        deformedModelNode.GetDisplayNode().SetVisibility(True)
+        
+        self.ui.runCPDDeformableButton.enabled = False
 
 
     def initializeParameterNode(self):
@@ -500,26 +582,285 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
         #Put scaling transform under ICP transform = rigid transform after scaling
         scalingTransformNode.SetAndObserveTransformNodeID(ICPTransformNode.GetID())
 
-        return sourcePoints, targetPoints, scalingTransformNode, ICPTransformNode
+        return sourcePoints, targetPoints, scalingTransformNode, ICPTransformNode, voxelSize
 
     def CPDAffineTransform(self, sourceModelNode, sourcePoints, targetPoints):
        from cpdalp import AffineRegistration
-       import vtk.util.numpy_support as nps
 
        polyData = sourceModelNode.GetPolyData()
        points = polyData.GetPoints()
-       numpyModel = nps.vtk_to_numpy(points.GetData())
+       numpyModel = vtk_np.vtk_to_numpy(points.GetData())
 
        reg = AffineRegistration(**{'X': targetPoints, 'Y': sourcePoints, 'low_rank':True})
        reg.register()
        TY = reg.transform_point_cloud(numpyModel)
-       vtkArray = nps.numpy_to_vtk(TY)
+       vtkArray = vtk_np.numpy_to_vtk(TY)
        points.SetData(vtkArray)
        polyData.Modified()
 
        affine_matrix, translation = reg.get_registration_parameters()
 
        return affine_matrix, translation
+
+    def CPDDeformableTransformDirect(self, sourceModelNode, sourcePoints, targetPoints, parameters):
+        """Apply CPD deformable registration directly to model vertices (fast mode).
+        Uses RBF interpolation to apply the learned displacement field to mesh vertices.
+        Returns the deformed model node.
+        """
+        from cpdalp import DeformableRegistration
+        from scipy.interpolate import RBFInterpolator
+
+        # Normalize point clouds for CPD (same as ALPACA)
+        # Use combined bounds for consistent normalization
+        allPoints = np.vstack([sourcePoints, targetPoints])
+        cloudMin = np.min(allPoints, axis=0)
+        cloudMax = np.max(allPoints, axis=0)
+        cloudSize = cloudMax - cloudMin
+        
+        # Normalize to [0, 25] range
+        targetNorm = (targetPoints - cloudMin) * 25 / cloudSize
+        sourceNorm = (sourcePoints - cloudMin) * 25 / cloudSize
+
+        # Run CPD deformable registration on pointclouds
+        print("Running CPD Deformable Registration (Fast Mode)...")
+        print(f"Source points: {len(sourcePoints)}, Target points: {len(targetPoints)}")
+        slicer.app.processEvents()
+        
+        reg = DeformableRegistration(
+            **{
+                'X': targetNorm,
+                'Y': sourceNorm,
+                'max_iterations': parameters["CPDIterations"],
+                'tolerance': parameters["CPDTolerance"],
+                'low_rank': True
+            },
+            alpha=parameters["alpha"],
+            beta=parameters["beta"]
+        )
+        reg.register()
+        print("CPD registration complete.")
+        slicer.app.processEvents()
+
+        # Get the deformed source points from CPD (in normalized space)
+        deformedSourceNorm = reg.TY  # CPD stores deformed Y points here
+        
+        # Compute displacements at source landmark locations (in normalized space)
+        displacementsNorm = deformedSourceNorm - sourceNorm
+        print(f"Building RBF interpolator from {len(sourcePoints)} control points...")
+        slicer.app.processEvents()
+
+        # Build RBF interpolator for the displacement field
+        # thin_plate_spline is smooth and handles extrapolation gracefully
+        rbf = RBFInterpolator(
+            sourceNorm,          # Control point locations (normalized source landmarks)
+            displacementsNorm,   # Displacement vectors at control points
+            kernel='thin_plate_spline',
+            smoothing=0.1        # Small smoothing for numerical stability
+        )
+
+        # Get model vertices
+        polyData = sourceModelNode.GetPolyData()
+        points = polyData.GetPoints()
+        numpyModel = vtk_np.vtk_to_numpy(points.GetData()).copy()
+        numVertices = len(numpyModel)
+        print(f"Interpolating displacements for {numVertices} mesh vertices...")
+        slicer.app.processEvents()
+        
+        # Normalize mesh vertices using the SAME normalization as source pointcloud
+        numpyModelNorm = (numpyModel - cloudMin) * 25 / cloudSize
+
+        # Interpolate displacements to mesh vertices using RBF
+        interpDisplacements = rbf(numpyModelNorm)
+        
+        # Apply displacements in normalized space
+        deformedModelNorm = numpyModelNorm + interpDisplacements
+        
+        # Denormalize back to original coordinate space
+        deformedModel = (deformedModelNorm * cloudSize / 25) + cloudMin
+
+        # Create new model node with deformed vertices
+        deformedPolyData = vtk.vtkPolyData()
+        deformedPolyData.DeepCopy(polyData)
+        deformedPoints = vtk.vtkPoints()
+        deformedPoints.SetData(vtk_np.numpy_to_vtk(deformedModel))
+        deformedPolyData.SetPoints(deformedPoints)
+
+        deformedModelNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode', 'Deformed Model')
+        deformedModelNode.SetAndObservePolyData(deformedPolyData)
+        deformedModelNode.CreateDefaultDisplayNodes()
+
+        print("CPD Deformable Registration (Fast Mode) complete.")
+        return deformedModelNode
+
+    def CPDDeformableTransformGrid(self, sourceModelNode, sourcePoints, targetPoints, voxelSize, parameters):
+        """Apply CPD deformable registration and create a grid transform.
+        Uses RBF interpolation to create a smooth displacement field.
+        Returns (transformNode, deformedModelNode).
+        """
+        from cpdalp import DeformableRegistration
+        from scipy.interpolate import RBFInterpolator
+
+        # Normalize point clouds for CPD using combined bounds
+        allPoints = np.vstack([sourcePoints, targetPoints])
+        cloudMin = np.min(allPoints, axis=0)
+        cloudMax = np.max(allPoints, axis=0)
+        cloudSize = cloudMax - cloudMin
+        
+        # Normalize to [0, 25] range
+        targetNorm = (targetPoints - cloudMin) * 25 / cloudSize
+        sourceNorm = (sourcePoints - cloudMin) * 25 / cloudSize
+
+        # Run CPD deformable registration on pointclouds
+        print("Running CPD Deformable Registration...")
+        print(f"Source points: {len(sourcePoints)}, Target points: {len(targetPoints)}")
+        slicer.app.processEvents()
+        
+        reg = DeformableRegistration(
+            **{
+                'X': targetNorm,
+                'Y': sourceNorm,
+                'max_iterations': parameters["CPDIterations"],
+                'tolerance': parameters["CPDTolerance"],
+                'low_rank': True
+            },
+            alpha=parameters["alpha"],
+            beta=parameters["beta"]
+        )
+        reg.register()
+        print("CPD registration complete.")
+        slicer.app.processEvents()
+        
+        # Get the deformed source points from CPD (in normalized space)
+        deformedSourceNorm = reg.TY
+        
+        # Compute displacements at source landmark locations (in normalized space)
+        displacementsNorm = deformedSourceNorm - sourceNorm
+        
+        # Build RBF interpolator for the displacement field (in normalized space)
+        print(f"Building RBF interpolator from {len(sourcePoints)} control points...")
+        slicer.app.processEvents()
+        rbf = RBFInterpolator(
+            sourceNorm,
+            displacementsNorm,
+            kernel='thin_plate_spline',
+            smoothing=0.1
+        )
+
+        # Calculate grid spacing from voxel size
+        gridSpacing = voxelSize * parameters["gridSpacingMultiplier"]
+        print(f"Grid spacing: {gridSpacing} (voxelSize={voxelSize}, multiplier={parameters['gridSpacingMultiplier']})")
+
+        # Get bounding box of source model with padding
+        bounds = sourceModelNode.GetPolyData().GetBounds()
+        padding = gridSpacing * 2
+        origin = [bounds[0] - padding, bounds[2] - padding, bounds[4] - padding]
+        size = [
+            bounds[1] - bounds[0] + 2 * padding,
+            bounds[3] - bounds[2] + 2 * padding,
+            bounds[5] - bounds[4] + 2 * padding
+        ]
+
+        # Create the grid transform using RBF interpolation
+        print("Creating grid transform from displacement field...")
+        slicer.app.processEvents()
+        gridTransformNode = self.createGridTransformFromRBF(
+            rbf, cloudMin, cloudSize, origin, size, gridSpacing
+        )
+
+        # Create hardened deformed model
+        print("Creating hardened deformed model...")
+        deformedModelNode = self.createHardenedModel(sourceModelNode, gridTransformNode)
+
+        print("CPD Deformable Registration with Grid Transform complete.")
+        return gridTransformNode, deformedModelNode
+
+    def createGridTransformFromRBF(self, rbf, cloudMin, cloudSize, origin, size, spacing):
+        """Create a vtkMRMLGridTransformNode using RBF interpolation.
+        The RBF operates in normalized space, so we transform grid points accordingly.
+        """
+        # Calculate grid dimensions with limit to prevent memory issues
+        maxGridDim = 50  # Limit each dimension to prevent huge grids
+        dims = [
+            min(int(np.ceil(size[0] / spacing)) + 1, maxGridDim),
+            min(int(np.ceil(size[1] / spacing)) + 1, maxGridDim),
+            min(int(np.ceil(size[2] / spacing)) + 1, maxGridDim)
+        ]
+        
+        print(f"Grid dimensions: {dims}")
+        totalGridPoints = dims[0] * dims[1] * dims[2]
+        print(f"Total grid points: {totalGridPoints}")
+
+        # Create grid points in original coordinate space
+        x = np.linspace(origin[0], origin[0] + size[0], dims[0])
+        y = np.linspace(origin[1], origin[1] + size[1], dims[1])
+        z = np.linspace(origin[2], origin[2] + size[2], dims[2])
+        
+        # Create meshgrid for all grid points
+        X, Y, Z = np.meshgrid(x, y, z, indexing='ij')
+        gridPoints = np.column_stack([X.ravel(), Y.ravel(), Z.ravel()])
+
+        # Normalize grid points to the same space as the RBF
+        gridPointsNorm = (gridPoints - cloudMin) * 25 / cloudSize
+
+        # Interpolate displacements at grid points using RBF (in normalized space)
+        print("Interpolating displacements to grid using RBF...")
+        slicer.app.processEvents()
+        displacementsNorm = rbf(gridPointsNorm)
+        
+        # Convert displacements back to original scale
+        displacements = displacementsNorm * cloudSize / 25
+
+        # Create displacement field image
+        # VTK uses (i,j,k) ordering, need to reshape appropriately
+        displField = np.zeros((dims[0], dims[1], dims[2], 3), dtype=np.float64)
+        displField[:, :, :, 0] = displacements[:, 0].reshape(dims)
+        displField[:, :, :, 1] = displacements[:, 1].reshape(dims)
+        displField[:, :, :, 2] = displacements[:, 2].reshape(dims)
+
+        # Create VTK image for displacement field
+        # Calculate actual spacing for each dimension
+        spacingX = size[0] / max(dims[0] - 1, 1) if dims[0] > 1 else size[0]
+        spacingY = size[1] / max(dims[1] - 1, 1) if dims[1] > 1 else size[1]
+        spacingZ = size[2] / max(dims[2] - 1, 1) if dims[2] > 1 else size[2]
+        
+        displImage = vtk.vtkImageData()
+        displImage.SetDimensions(dims[0], dims[1], dims[2])
+        displImage.SetOrigin(origin[0], origin[1], origin[2])
+        displImage.SetSpacing(spacingX, spacingY, spacingZ)
+        
+        print(f"Displacement field created: dims={dims}, spacing=({spacingX:.2f}, {spacingY:.2f}, {spacingZ:.2f})")
+
+        # Convert displacement array to VTK
+        displArray = vtk_np.numpy_to_vtk(displField.ravel(), deep=True, array_type=vtk.VTK_DOUBLE)
+        displArray.SetNumberOfComponents(3)
+        displArray.SetName("DisplacementField")
+        displImage.GetPointData().SetVectors(displArray)
+
+        # Create grid transform
+        gridTransform = vtk.vtkGridTransform()
+        gridTransform.SetDisplacementGridData(displImage)
+        gridTransform.SetInterpolationModeToCubic()
+
+        # Create transform node
+        gridTransformNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLGridTransformNode', 'Deformable Transform')
+        gridTransformNode.SetAndObserveTransformFromParent(gridTransform)
+
+        return gridTransformNode
+
+    def createHardenedModel(self, sourceModelNode, transformNode):
+        """Create a copy of the model with the transform hardened."""
+        # Clone the model
+        shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+        itemIDToClone = shNode.GetItemByDataNode(sourceModelNode)
+        clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(shNode, itemIDToClone)
+        deformedModelNode = shNode.GetItemDataNode(clonedItemID)
+        deformedModelNode.SetName("Deformed Model (hardened)")
+
+        # Apply and harden transform
+        deformedModelNode.SetAndObserveTransformNodeID(transformNode.GetID())
+        slicer.vtkSlicerTransformLogic().hardenTransform(deformedModelNode)
+
+        return deformedModelNode
 
 
 
@@ -612,7 +953,7 @@ class FastModelAlignTest(ScriptedLoadableModuleTest):
             }
 
 
-        self.sourcePoints_test, self.targetPoints_test, self.scalingTransformNode_test, self.ICPTransformNode_test = logic.ITKRegistration(self.sourceModelNode_test, self.targetModelNode_test, False,
+        self.sourcePoints_test, self.targetPoints_test, self.scalingTransformNode_test, self.ICPTransformNode_test, self.voxelSize_test = logic.ITKRegistration(self.sourceModelNode_test, self.targetModelNode_test, False,
             self.parameterDictionary_test, True)
 
         scalingNodeName_test = self.sourceModelName_test + "_scaling_test"
