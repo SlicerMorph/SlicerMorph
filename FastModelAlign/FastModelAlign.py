@@ -401,30 +401,35 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     def onRunCPDDeformableButton(self):
         """
         Run CPD deformable registration when user clicks "Run deformable (CPD) registration" button.
+        Creates both a transform node and a deformed output model.
         """
         logic = FastModelAlignLogic()
         
-        # Get the model to apply CPD to (output model if exists, otherwise source model)
+        # Get the model to apply CPD to (output model if exists, otherwise use source)
         if bool(self.ui.outputSelector.currentNode()):
-            modelToDeform = self.ui.outputSelector.currentNode()
+            inputModelNode = self.ui.outputSelector.currentNode()
         else:
-            # If no output model, we need the source model - create a new node for output
-            modelToDeform = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode', self.sourceModelName + "_deformed")
-            modelToDeform.CreateDefaultDisplayNodes()
+            # Need to get the source model - it was deleted, so get it from the original
+            inputModelNode = self.ui.sourceModelSelector.currentNode()
             
         # Run CPD deformable registration
-        deformedModel, cpdTransformNode = logic.CPDDeformableRegistration(
-            modelToDeform, 
+        # This creates a TPS transform and a deformed output model
+        deformedModelNode, cpdTransformNode = logic.CPDDeformableRegistration(
+            inputModelNode, 
             self.sourcePoints, 
             self.targetPoints, 
             self.parameterDictionary,
             self.sourceModelName
         )
         
-        # Set display properties
+        # Set display properties for the deformed model
         green = [0, 1, 0]
-        deformedModel.GetDisplayNode().SetVisibility(True)
-        deformedModel.GetDisplayNode().SetColor(green)
+        deformedModelNode.GetDisplayNode().SetVisibility(True)
+        deformedModelNode.GetDisplayNode().SetColor(green)
+        
+        # Put the original input model under the CPD transform to show the transformation
+        if inputModelNode:
+            inputModelNode.SetAndObserveTransformNodeID(cpdTransformNode.GetID())
         
         # Put CPD transform under the rigid transform hierarchy
         if hasattr(self, 'ICPTransformNode') and self.ICPTransformNode:
