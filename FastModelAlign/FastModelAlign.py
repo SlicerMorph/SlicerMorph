@@ -193,9 +193,9 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # update the parameter dictionary from single run parameters
         if hasattr(self, "parameterDictionary"):
             self.parameterDictionary["pointDensity"] = self.ui.pointDensityAdvancedSlider.value
-            self.parameterDictionary["normalSearchRadius"] = int(self.ui.normalSearchRadiusSlider.value)
+            self.parameterDictionary["normalSearchRadius"] = self.ui.normalSearchRadiusSlider.value
             self.parameterDictionary["FPFHNeighbors"] = int(self.ui.FPFHNeighborsSlider.value)
-            self.parameterDictionary["FPFHSearchRadius"] = int(self.ui.FPFHSearchRadiusSlider.value)
+            self.parameterDictionary["FPFHSearchRadius"] = self.ui.FPFHSearchRadiusSlider.value
             self.parameterDictionary["distanceThreshold"] = self.ui.maximumCPDThreshold.value
             self.parameterDictionary["maxRANSAC"] = int(self.ui.maxRANSAC.value)
             self.parameterDictionary["ICPDistanceThreshold"] = self.ui.ICPDistanceThresholdSlider.value
@@ -433,7 +433,7 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         
         # Put CPD transform under the rigid transform hierarchy
         if hasattr(self, 'ICPTransformNode') and self.ICPTransformNode:
-            self.ICPTransformNode.SetAndObserveTransformNodeID(cpdTransformNode.GetID())
+            cpdTransformNode.SetAndObserveTransformNodeID(self.ICPTransformNode.GetID())
         
         # Disable the button after execution to prevent re-running
         self.ui.runCPDDeformableButton.enabled = False
@@ -605,6 +605,8 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
         sourceArray = np.asarray(sourcePoints)
         
         cloudSize = np.max(targetArray, 0) - np.min(targetArray, 0)
+        # Prevent division by zero for planar or degenerate point clouds
+        cloudSize = np.where(cloudSize == 0, 1, cloudSize)
         targetArray = targetArray * 25 / cloudSize
         sourceArray = sourceArray * 25 / cloudSize
         
@@ -668,16 +670,26 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
         
         # Create a TPS transform from source to deformed point clouds
         # This allows the deformation to be represented as a transform
-        sourcePointsVTK = logic.convertPointsToVTK(sourceArray * cloudSize / 25)
-        deformedPointsVTK = logic.convertPointsToVTK(deformed_array)
+        # Convert numpy arrays to VTK polydata using vtk.util.numpy_support
+        sourcePointsArray_vtk = nps.numpy_to_vtk(sourceArray * cloudSize / 25, deep=True, array_type=vtk.VTK_FLOAT)
+        sourcePointsVTK = vtk.vtkPoints()
+        sourcePointsVTK.SetData(sourcePointsArray_vtk)
+        sourcePolyDataVTK = vtk.vtkPolyData()
+        sourcePolyDataVTK.SetPoints(sourcePointsVTK)
+        
+        deformedPointsArray_vtk = nps.numpy_to_vtk(deformed_array, deep=True, array_type=vtk.VTK_FLOAT)
+        deformedPointsVTK = vtk.vtkPoints()
+        deformedPointsVTK.SetData(deformedPointsArray_vtk)
+        deformedPolyDataVTK = vtk.vtkPolyData()
+        deformedPolyDataVTK.SetPoints(deformedPointsVTK)
         
         # Convert to vtkPoints for TPS
         sourceVTKPoints = vtk.vtkPoints()
         deformedVTKPoints = vtk.vtkPoints()
         
-        for i in range(sourcePointsVTK.GetNumberOfPoints()):
-            sourceVTKPoints.InsertNextPoint(sourcePointsVTK.GetPoint(i))
-            deformedVTKPoints.InsertNextPoint(deformedPointsVTK.GetPoint(i))
+        for i in range(sourcePolyDataVTK.GetNumberOfPoints()):
+            sourceVTKPoints.InsertNextPoint(sourcePolyDataVTK.GetPoint(i))
+            deformedVTKPoints.InsertNextPoint(deformedPolyDataVTK.GetPoint(i))
         
         # Create TPS transform
         tpsTransform = vtk.vtkThinPlateSplineTransform()
