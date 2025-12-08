@@ -502,6 +502,39 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 # FastModelAlignLogic
 #
 
+class ProgressHelper:
+    """Helper class for showing progress during long operations."""
+    
+    def __init__(self, title="Processing"):
+        self.progressDialog = None
+        self.title = title
+        
+    def start(self, message="Starting...", maxValue=100):
+        """Start showing progress dialog."""
+        self.progressDialog = slicer.util.createProgressDialog(
+            windowTitle=self.title,
+            labelText=message,
+            maximum=maxValue
+        )
+        self.progressDialog.setCancelButton(None)  # Disable cancel for now
+        slicer.app.processEvents()
+        
+    def update(self, value, message=None):
+        """Update progress value and optionally the message."""
+        if self.progressDialog:
+            self.progressDialog.setValue(value)
+            if message:
+                self.progressDialog.setLabelText(message)
+            slicer.app.processEvents()
+            
+    def finish(self):
+        """Close the progress dialog."""
+        if self.progressDialog:
+            self.progressDialog.close()
+            self.progressDialog = None
+            slicer.app.processEvents()
+
+
 class FastModelAlignLogic(ScriptedLoadableModuleLogic):
     """This class should implement all the actual
     computation done by your module.  The interface
@@ -517,10 +550,15 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
         Called when the logic class is instantiated. Can be used for initializing member variables.
         """
         ScriptedLoadableModuleLogic.__init__(self)
+        self.progress = None
 
 
     def ITKRegistration(self, sourceModelNode, targetModelNode, scalingOption, parameterDictionary, usePoisson):
         import ALPACA
+        
+        self.progress = ProgressHelper("Rigid Registration")
+        self.progress.start("Subsampling point clouds...", 100)
+        
         logic = ALPACA.ALPACALogic()
         (
             sourcePoints,
@@ -536,6 +574,8 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
             parameterDictionary,
             usePoisson,
         )
+        
+        self.progress.update(30, "Creating scaling transform...")
 
         #Scaling transform
         print("scaling factor for the source is: " + str(scaling))
@@ -550,6 +590,7 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
         scalingTransformNode =  slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', "scaling_transform_matrix")
         scalingTransformNode.SetAndObserveTransformToParent(scalingTransform)
 
+        self.progress.update(40, "Estimating rigid transform...")
 
         ICPTransform_similarity, similarityFlag = logic.estimateTransform(
             sourcePoints,
@@ -561,6 +602,7 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
             parameterDictionary,
         )
 
+        self.progress.update(80, "Applying transform...")
 
         vtkSimilarityTransform = logic.itkToVTKTransform(
             ICPTransform_similarity, similarityFlag
@@ -582,23 +624,35 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
         #Put scaling transform under ICP transform = rigid transform after scaling
         scalingTransformNode.SetAndObserveTransformNodeID(ICPTransformNode.GetID())
 
+        self.progress.update(100, "Rigid registration complete.")
+        self.progress.finish()
+
         return sourcePoints, targetPoints, scalingTransformNode, ICPTransformNode, voxelSize
 
     def CPDAffineTransform(self, sourceModelNode, sourcePoints, targetPoints):
        from cpdalp import AffineRegistration
+       
+       self.progress = ProgressHelper("Affine Registration")
+       self.progress.start("Running CPD affine registration...", 100)
 
        polyData = sourceModelNode.GetPolyData()
        points = polyData.GetPoints()
        numpyModel = vtk_np.vtk_to_numpy(points.GetData())
 
+       self.progress.update(20, "Optimizing affine parameters...")
        reg = AffineRegistration(**{'X': targetPoints, 'Y': sourcePoints, 'low_rank':True})
        reg.register()
+       
+       self.progress.update(70, "Transforming model vertices...")
        TY = reg.transform_point_cloud(numpyModel)
        vtkArray = vtk_np.numpy_to_vtk(TY)
        points.SetData(vtkArray)
        polyData.Modified()
 
        affine_matrix, translation = reg.get_registration_parameters()
+       
+       self.progress.update(100, "Affine registration complete.")
+       self.progress.finish()
 
        return affine_matrix, translation
 
@@ -609,6 +663,9 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
         """
         from cpdalp import DeformableRegistration
         from scipy.interpolate import RBFInterpolator
+
+        self.progress = ProgressHelper("Deformable Registration (Fast Mode)")
+        self.progress.start("Normalizing point clouds...", 100)
 
         # Normalize point clouds for CPD (same as ALPACA)
         # Use combined bounds for consistent normalization
@@ -621,10 +678,7 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
         targetNorm = (targetPoints - cloudMin) * 25 / cloudSize
         sourceNorm = (sourcePoints - cloudMin) * 25 / cloudSize
 
-        # Run CPD deformable registration on pointclouds
-        print("Running CPD Deformable Registration (Fast Mode)...")
-        print(f"Source points: {len(sourcePoints)}, Target points: {len(targetPoints)}")
-        slicer.app.processEvents()
+        self.progress.update(10, f"Running CPD on {len(sourcePoints)} source points...")
         
         reg = DeformableRegistration(
             **{
@@ -638,16 +692,14 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
             beta=parameters["beta"]
         )
         reg.register()
-        print("CPD registration complete.")
-        slicer.app.processEvents()
+        
+        self.progress.update(50, "Building RBF interpolator...")
 
         # Get the deformed source points from CPD (in normalized space)
         deformedSourceNorm = reg.TY  # CPD stores deformed Y points here
         
         # Compute displacements at source landmark locations (in normalized space)
         displacementsNorm = deformedSourceNorm - sourceNorm
-        print(f"Building RBF interpolator from {len(sourcePoints)} control points...")
-        slicer.app.processEvents()
 
         # Build RBF interpolator for the displacement field
         # thin_plate_spline is smooth and handles extrapolation gracefully
@@ -663,14 +715,16 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
         points = polyData.GetPoints()
         numpyModel = vtk_np.vtk_to_numpy(points.GetData()).copy()
         numVertices = len(numpyModel)
-        print(f"Interpolating displacements for {numVertices} mesh vertices...")
-        slicer.app.processEvents()
+        
+        self.progress.update(60, f"Interpolating displacements for {numVertices:,} vertices...")
         
         # Normalize mesh vertices using the SAME normalization as source pointcloud
         numpyModelNorm = (numpyModel - cloudMin) * 25 / cloudSize
 
         # Interpolate displacements to mesh vertices using RBF
         interpDisplacements = rbf(numpyModelNorm)
+        
+        self.progress.update(85, "Applying displacements...")
         
         # Apply displacements in normalized space
         deformedModelNorm = numpyModelNorm + interpDisplacements
@@ -689,7 +743,9 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
         deformedModelNode.SetAndObservePolyData(deformedPolyData)
         deformedModelNode.CreateDefaultDisplayNodes()
 
-        print("CPD Deformable Registration (Fast Mode) complete.")
+        self.progress.update(100, "Deformable registration complete.")
+        self.progress.finish()
+        
         return deformedModelNode
 
     def CPDDeformableTransformGrid(self, sourceModelNode, sourcePoints, targetPoints, voxelSize, parameters):
@@ -699,6 +755,9 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
         """
         from cpdalp import DeformableRegistration
         from scipy.interpolate import RBFInterpolator
+
+        self.progress = ProgressHelper("Deformable Registration (Grid Transform)")
+        self.progress.start("Normalizing point clouds...", 100)
 
         # Normalize point clouds for CPD using combined bounds
         allPoints = np.vstack([sourcePoints, targetPoints])
@@ -710,10 +769,7 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
         targetNorm = (targetPoints - cloudMin) * 25 / cloudSize
         sourceNorm = (sourcePoints - cloudMin) * 25 / cloudSize
 
-        # Run CPD deformable registration on pointclouds
-        print("Running CPD Deformable Registration...")
-        print(f"Source points: {len(sourcePoints)}, Target points: {len(targetPoints)}")
-        slicer.app.processEvents()
+        self.progress.update(10, f"Running CPD on {len(sourcePoints)} source points...")
         
         reg = DeformableRegistration(
             **{
@@ -727,18 +783,14 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
             beta=parameters["beta"]
         )
         reg.register()
-        print("CPD registration complete.")
-        slicer.app.processEvents()
+        
+        self.progress.update(40, "Building RBF interpolator...")
         
         # Get the deformed source points from CPD (in normalized space)
         deformedSourceNorm = reg.TY
         
         # Compute displacements at source landmark locations (in normalized space)
         displacementsNorm = deformedSourceNorm - sourceNorm
-        
-        # Build RBF interpolator for the displacement field (in normalized space)
-        print(f"Building RBF interpolator from {len(sourcePoints)} control points...")
-        slicer.app.processEvents()
         rbf = RBFInterpolator(
             sourceNorm,
             displacementsNorm,
@@ -760,18 +812,21 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
             bounds[5] - bounds[4] + 2 * padding
         ]
 
+        self.progress.update(60, "Creating grid transform...")
+        
         # Create the grid transform using RBF interpolation
-        print("Creating grid transform from displacement field...")
-        slicer.app.processEvents()
         gridTransformNode = self.createGridTransformFromRBF(
             rbf, cloudMin, cloudSize, origin, size, gridSpacing
         )
 
+        self.progress.update(85, "Creating hardened deformed model...")
+        
         # Create hardened deformed model
-        print("Creating hardened deformed model...")
         deformedModelNode = self.createHardenedModel(sourceModelNode, gridTransformNode)
 
-        print("CPD Deformable Registration with Grid Transform complete.")
+        self.progress.update(100, "Deformable registration complete.")
+        self.progress.finish()
+        
         return gridTransformNode, deformedModelNode
 
     def createGridTransformFromRBF(self, rbf, cloudMin, cloudSize, origin, size, spacing):
@@ -803,8 +858,8 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
         gridPointsNorm = (gridPoints - cloudMin) * 25 / cloudSize
 
         # Interpolate displacements at grid points using RBF (in normalized space)
-        print("Interpolating displacements to grid using RBF...")
-        slicer.app.processEvents()
+        if self.progress:
+            self.progress.update(70, f"Interpolating displacements to {totalGridPoints:,} grid points...")
         displacementsNorm = rbf(gridPointsNorm)
         
         # Convert displacements back to original scale
