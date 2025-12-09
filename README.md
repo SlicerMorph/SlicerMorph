@@ -124,3 +124,6 @@ This project is supported by NSF Advances in Biological Informatics (1759883) an
 
 ## License
 See License.md
+
+## Repo Traffic
+[See the traffic on repository (collection started on 9/1/2025)](https://muratmaga.github.io/repoStats/slicermorph_views.svg)
