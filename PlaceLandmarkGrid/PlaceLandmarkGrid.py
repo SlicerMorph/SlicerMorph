@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import qt
@@ -182,6 +183,22 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         self.createGridFromPointsButton.enabled = False
         parametersFormLayout.addRow(self.createGridFromPointsButton)
 
+        #
+        # Create Template Button
+        #
+        self.createTemplateButton = qt.QPushButton("Create new template")
+        self.createTemplateButton.toolTip = "Create new template from selected grid patch"
+        self.createTemplateButton.enabled = False
+        parametersFormLayout.addRow(self.createTemplateButton)
+
+        #
+        # Load Template Button
+        #
+        self.loadTemplateButton = qt.QPushButton("Load a template")
+        self.loadTemplateButton.toolTip = "Load the selected template to the current model"
+        self.loadTemplateButton.enabled = False
+        parametersFormLayout.addRow(self.loadTemplateButton)
+
         # Create logic class. Logic implements all computations that should be possible to run
         # in batch mode, without a graphical user interface.
         self.logic = PlaceLandmarkGridLogic()
@@ -193,6 +210,8 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         self.flipNormalsCheckBox.connect('stateChanged(int)', self.onResampleGrid)
         self.createGridButton.connect('clicked(bool)', self.onCreateGridButton)
         self.createGridFromPointsButton.connect('clicked(bool)', self.onCreateGridFromPointsButton)
+        self.createTemplateButton.clicked.connect(self.onCreateTemplateButtonClicked)
+        self.loadTemplateButton.clicked.connect(self.onLoadTemplateButtonClicked)
         self.sampleRate.connect('valueChanged(double )', self.onSampleRateChanged)
         self.projectionDistanceSlider.connect('valueChanged(double )', self.onResampleGrid)
 
@@ -253,17 +272,6 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         advancedFormLayout = qt.QFormLayout(advancedCollapsibleButton)
 
         #
-        # Spatial filtering slider
-        #
-        self.projectionDistanceSlider = ctk.ctkSliderWidget()
-        self.projectionDistanceSlider.singleStep = 5
-        self.projectionDistanceSlider.minimum = 0
-        self.projectionDistanceSlider.maximum = 100
-        self.projectionDistanceSlider.value = 20
-        self.projectionDistanceSlider.setToolTip("Set the maximum point merging distance as a percentage of grid size")
-        advancedFormLayout.addRow("Set point merging distance (percentage of grid size): ", self.projectionDistanceSlider)
-
-        #
         # Merge Button
         #
         self.mergeGridButton = qt.QPushButton("Merge highlighted nodes")
@@ -293,9 +301,17 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
     def onSelect(self):
         self.createGridButton.enabled = bool(self.modelSelector.currentNode())
         self.createGridFromPointsButton.enabled = bool(self.modelSelector.currentNode())
+        self.loadTemplateButton.enabled = bool(self.modelSelector.currentNode())
+
+        if self.modelSelector.currentNode() and self.gridSelector.currentText != "None":
+          self.createTemplateButton.enabled = True
+        else:
+          self.createTemplateButton.enabled = False
 
     def onSelectGrid(self):
+        #TODO: Reset gui(?) delete patches from grid selector combo box after clearing scene.
         if self.gridSelector.currentText == "None":
+          self.createTemplateButton.enabled = False
           return
         if not self.updatingGUI:
           try:
@@ -306,12 +322,15 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
             qt.QMessageBox.critical(slicer.util.mainWindow(),
             'Error', 'The selected landmark grid patch is not valid.')
             self.gridSelector.setCurrentIndex(0)
+        # Enable create template button after new grid is selected and model selector is not empty
+        if self.modelSelector.currentNode():
+          self.createTemplateButton.enabled = bool(self.gridSelector.currentIndex >= 0)
 
     def onCreateGridFromPointsButton(self):
         self.patchCounter += 1
         constraintNode = self.modelSelector.currentNode()
         self.outlineCurve = self.initializeNewCurve(constraintNode, self.patchCounter)
-        # add observer for curve completion
+        # Add observer for curve completion
         observerTagPointAdded = self.outlineCurve.AddObserver(slicer.vtkMRMLMarkupsClosedCurveNode.PointPositionDefinedEvent, self.initializeInteractivePatch)
         self.logic.activeOutline = self.outlineCurve
 
@@ -321,9 +340,159 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         self.outlineCurve = self.initializeNewCurve(constraintNode, self.patchCounter)
         slicer.modules.markups.toolBar().onPlacePointShortcut()
 
-        # add observer for curve completion
+        # Add observer for curve completion
         observerTagPointAdded = self.outlineCurve.AddObserver(slicer.vtkMRMLMarkupsClosedCurveNode.PointPositionDefinedEvent, self.initializeInteractivePatch)
         self.logic.activeOutline = self.outlineCurve
+  
+    def onCreateTemplateButtonClicked(self):
+        selectedModelName = self.modelSelector.currentNode().GetName()
+        # Assuming the fiducials node name is the same as the model name, minus the "_" and number on the end of the string
+        fiducialsNodeName = selectedModelName.rsplit('_', 1)[0]
+
+        # fiducialsNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLMarkupsFiducialNode")
+        fiducialsNode = slicer.mrmlScene.GetFirstNodeByName(fiducialsNodeName)
+        numberOfLandmarks = fiducialsNode.GetNumberOfControlPoints()
+
+        landmarks = {}
+        # Get the landmarks from the selected fiducial node
+        for i in range(numberOfLandmarks):
+          pos = [0.0, 0.0, 0.0]
+          fiducialsNode.GetNthControlPointPosition(i, pos)
+          label = fiducialsNode.GetNthControlPointLabel(i)
+          landmarks[label] = pos
+
+        cornerPointNodes = [self.patch.cornerPoint0, self.patch.cornerPoint1, self.patch.cornerPoint2, self.patch.cornerPoint3]
+        cornerPoints = {}
+        # Get the corner point positions from the four corner point nodes
+        for cornerNode in cornerPointNodes:
+          if cornerNode:
+            pos = [0.0, 0.0, 0.0]
+            cornerNode.GetNthControlPointPosition(0, pos)
+            cornerPoints[cornerNode.name] = pos
+
+        # Dictionary to store the associations
+        cornerToLandmark = {}
+
+        for cornerName, cornerPos in cornerPoints.items():
+          for landmarkLabel, landmarkPos in landmarks.items():
+            # Check if coordinates match exactly
+            if cornerPos == landmarkPos:
+              cornerToLandmark[cornerName] = landmarkLabel
+              print(f'{cornerName} matches {landmarkLabel}')
+              break
+          else:
+            qt.QMessageBox.critical(slicer.util.mainWindow(), 'Error', f'No matching landmark found for {cornerName}')
+            return
+
+        associatedLandmarkIndexes = []
+        # Get corner points and landmarks in order
+        landmarksInOrder = list(cornerToLandmark.values())
+        for landmark in landmarksInOrder:
+          try:
+            # Indexing starts from 0, landmark numbers starts from 1
+            index = int(landmark.split('-')[1]) - 1
+            associatedLandmarkIndexes.append(index)
+          except (IndexError, ValueError):
+            qt.QMessageBox.critical(slicer.util.mainWindow(), 'Error', f'Error: Could not extract index from {landmark}')
+            return
+
+        advancedSettings = {
+          "projection_factor": self.projectionDistanceSlider.value,
+          "relaxation_factor": self.relaxationSlider.value,
+          "grid_smoothing_iterations": self.iterationsSlider.value
+          }
+
+        data = {
+          "number_of_landmarks": numberOfLandmarks,
+          "associated_landmark_indexes": associatedLandmarkIndexes,
+          "properties": advancedSettings
+        }
+
+        # Save number of landmarks and corner points with associated landmarks to json
+        jsonFilePath = qt.QFileDialog.getSaveFileName(slicer.util.mainWindow(), 'Export As JSON', 'template', 'JSON Files (*.json)')
+        if not jsonFilePath:
+          return  # User cancelled
+        with open(jsonFilePath, 'w') as jsonFile:
+          json.dump(data, jsonFile, indent=2)
+
+    def onLoadTemplateButtonClicked(self):
+        # First, create new grid outline
+        self.onCreateGridFromPointsButton()
+        # Select template file
+        jsonFilePath = qt.QFileDialog.getOpenFileName(slicer.util.mainWindow(), 'Load template', '', 'JSON Files (*.json)')
+        if not jsonFilePath:
+          return  # User cancelled
+
+        # Load template file data
+        with open(jsonFilePath, 'r') as jsonFile:
+          data = json.load(jsonFile)
+        #TODO: Before, it creates a gridOutline, if json is incorrect, created gridOutline will stay in subject hierarchy unused.
+        #TODO: Check all the necessities?
+        if 'number_of_landmarks' not in data:
+          qt.QMessageBox.critical(slicer.util.mainWindow(), 'Error', 'File does not have the number of landmarks. Load a template with the correct data.')
+          return
+        templateNumberOfLandmarks = data["number_of_landmarks"]
+        associatedLandmarks = data["associated_landmark_indexes"]
+        advancedSettings = data["properties"]
+        # Check if number of landmarks is the same
+        selectedModelName = self.modelSelector.currentNode().GetName()
+        fiducialsNodeName = selectedModelName.rsplit('_', 1)[0]
+
+        # fiducialsNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLMarkupsFiducialNode")
+        fiducialsNode = slicer.mrmlScene.GetFirstNodeByName(fiducialsNodeName)
+        numberOfLandmarks = fiducialsNode.GetNumberOfControlPoints()
+        if numberOfLandmarks != templateNumberOfLandmarks:
+          qt.QMessageBox.critical(slicer.util.mainWindow(), 'Error', 'The number of landmarks are different in the template than the loaded specimen.')
+          return
+
+        self.addLandmarksFromTemplateToGrid(associatedLandmarks)
+        self.setAdvancedSettingsFromTemplate(advancedSettings)
+
+    def addLandmarksFromTemplateToGrid(self, associatedLandmarks):
+        #TODO: Get fiducials node by the selected model node(?)
+        selectedModelName = self.modelSelector.currentNode().GetName()
+        fiducialsNodeName = selectedModelName.rsplit("_", 1)[0]
+
+        # fiducialsNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLMarkupsFiducialNode")
+        fiducialsNode = slicer.mrmlScene.GetFirstNodeByName(fiducialsNodeName)
+        if not fiducialsNode:
+          qt.QMessageBox.critical(slicer.util.mainWindow(), 'Error', 'No fiducial node found in the scene.')
+          return
+
+        # Get the active grid outline from the PlaceLandmarkGrid module
+        gridOutline = self.logic.activeOutline
+        if gridOutline is None:
+          try:
+            # Fallback: Get the active outline from the PlaceLandmarkGrid module
+            placeLandmarkGridWidget = slicer.modules.placelandmarkgrid.widgetRepresentation()
+            gridOutline = placeLandmarkGridWidget.self().logic.activeOutline
+          except AttributeError:
+            qt.QMessageBox.critical(slicer.util.mainWindow(), 'Error', 'Please initialize the grid from the PlaceLandmarkGrid module.')
+            return
+
+        # Set the corner points in the grid outline
+        try:
+          setPointNumber = gridOutline.GetNumberOfDefinedControlPoints()
+          if setPointNumber < 4:
+            for idx in associatedLandmarks:
+              fiducialPosition = [0.0, 0.0, 0.0]
+              fiducialsNode.GetNthControlPointPosition(idx, fiducialPosition)
+              gridOutline.SetNthControlPointPosition(setPointNumber, *fiducialPosition)
+              setPointNumber += 1
+          else:
+            qt.QMessageBox.critical(slicer.util.mainWindow(), 'Error', f'The active grid already has {setPointNumber} defined points.')
+        except Exception as e:
+          qt.QMessageBox.critical(slicer.util.mainWindow(), 'Error', f'Error setting control points: {str(e)}')
+
+    def setAdvancedSettingsFromTemplate(self, advancedSettings):
+        # Order of properties: projection factor, relaxation factor, grid smoothing iterations
+        projectionFactor = advancedSettings['projection_factor']
+        relaxation = advancedSettings['relaxation_factor']
+        iterations = advancedSettings['grid_smoothing_iterations']
+
+        self.projectionDistanceSlider.value = projectionFactor
+        self.relaxationSlider.value = relaxation
+        self.iterationsSlider.value = iterations
 
     def initializeNewCurve(self, constraintNode, patchCount):
         curve = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsClosedCurveNode", f"gridOutline_{patchCount}")
