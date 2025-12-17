@@ -104,9 +104,22 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         parametersFormLayout.addRow("Model: ", self.modelSelector)
 
         #
+        # Select fiducial
+        #
+        self.fiducialSelector = slicer.qMRMLNodeComboBox()
+        self.fiducialSelector.nodeTypes = ["vtkMRMLMarkupsFiducialNode"]
+        self.fiducialSelector.selectNodeUponCreation = False
+        self.fiducialSelector.addEnabled = False
+        self.fiducialSelector.removeEnabled = False
+        self.fiducialSelector.noneEnabled = True
+        self.fiducialSelector.showHidden = False
+        self.fiducialSelector.setMRMLScene( slicer.mrmlScene )
+        parametersFormLayout.addRow("Fiducial list: ", self.fiducialSelector)
+
+        #
         # Select active patch
         #
-        self.gridSelector = qt.QComboBox()
+        self.gridSelector = qt.QComboBox()  #TODO: Make this a qMRMLSubjectHierarchyComboBox. For this it is needed to refactor how patches are stored. Also the SH folders will need to have an attribute for which the combobox can filter.
         self.gridSelector.addItem('None')
         parametersFormLayout.addRow("Active patch: ", self.gridSelector)
 
@@ -182,19 +195,6 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         self.createGridFromPointsButton.toolTip = "Initiate placement of a new grid markup from existing points"
         self.createGridFromPointsButton.enabled = False
         parametersFormLayout.addRow(self.createGridFromPointsButton)
-
-        #
-        # Select fiducial
-        #
-        self.fiducialSelector = slicer.qMRMLNodeComboBox()
-        self.fiducialSelector.nodeTypes = ["vtkMRMLMarkupsFiducialNode"]
-        self.fiducialSelector.selectNodeUponCreation = False
-        self.fiducialSelector.addEnabled = False
-        self.fiducialSelector.removeEnabled = False
-        self.fiducialSelector.noneEnabled = True
-        self.fiducialSelector.showHidden = False
-        self.fiducialSelector.setMRMLScene( slicer.mrmlScene )
-        parametersFormLayout.addRow("Fiducial list: ", self.fiducialSelector)
 
         #
         # Spacer
@@ -367,7 +367,7 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         # Add observer for curve completion
         observerTagPointAdded = self.outlineCurve.AddObserver(slicer.vtkMRMLMarkupsClosedCurveNode.PointPositionDefinedEvent, self.initializeInteractivePatch)
         self.logic.activeOutline = self.outlineCurve
-  
+
     def onCreateTemplateButtonClicked(self):
         """
         Creates a template JSON file from the selected grid patch and fiducial node.
@@ -388,32 +388,43 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
           landmarkIndex = fiducialNode.GetNthControlPointIndexByID(landmarkID)
           landmarkIndexesToPositions[landmarkIndex] = pos
 
-        cornerPointNodes = [self.patch.cornerPoint0, self.patch.cornerPoint1, self.patch.cornerPoint2, self.patch.cornerPoint3]
-        cornerPointNamesToPositions = {}
-        # Get the corner point positions from the four corner point nodes
-        for cornerNode in cornerPointNodes:
-          if cornerNode:
-            pos = np.zeros(3)
-            cornerNode.GetNthControlPointPosition(0, pos)
-            cornerPointNamesToPositions[cornerNode.name] = pos
+        # List to store all available grid patches
+        allGridPatches = []
 
-        # Dictionary to store the associations
-        cornerNameToLandmarkIndexes = {}
+        # Iterate through the patch list and get all corner point nodes
+        for i in range(self.patchCounter + 1):
+          patch = self.patchList[i]
 
-        # Match corner point names to landmark indexes based on coordinates
-        for cornerName, cornerPos in cornerPointNamesToPositions.items():
-          for landmarkIndex, landmarkPos in landmarkIndexesToPositions.items():
-            # Check if coordinates match exactly
-            if np.allclose(cornerPos, landmarkPos):
-              cornerNameToLandmarkIndexes[cornerName] = landmarkIndex
-              break
-          else:
-            qt.QMessageBox.critical(slicer.util.mainWindow(),
-            'Wrong position for corner point', f'No matching landmark found for {cornerName}. The corner point is not placed at a landmark position. Please recreate the grid patch.')
-            return
+          cornerPointNodes = [patch.cornerPoint0, patch.cornerPoint1, patch.cornerPoint2, patch.cornerPoint3]
+          cornerPointNamesToPositions = {}
+          # Get the corner point positions from the four corner point nodes
+          for cornerNode in cornerPointNodes:
+            if cornerNode:
+              pos = np.zeros(3)
+              cornerNode.GetNthControlPointPosition(0, pos)
+              cornerPointNamesToPositions[cornerNode.name] = pos
 
-        # Create list of associated landmark indexes in order: corner0, corner1, corner2, corner3
-        associatedLandmarkIndexes = list(cornerNameToLandmarkIndexes.values())
+          # Dictionary to store the associations
+          cornerNameToLandmarkIndexes = {}
+
+          # Match corner point names to landmark indexes based on coordinates
+          for cornerName, cornerPos in cornerPointNamesToPositions.items():
+            for landmarkIndex, landmarkPos in landmarkIndexesToPositions.items():
+              # Check if coordinates match exactly
+              if np.allclose(cornerPos, landmarkPos):
+                cornerNameToLandmarkIndexes[cornerName] = landmarkIndex
+                break
+            else:
+              qt.QMessageBox.critical(slicer.util.mainWindow(),
+              'Wrong position for corner point', f'No matching landmark found for {cornerName}. The corner point is not placed at a landmark position. Please recreate the grid patch.')
+              return
+
+          # Create list of associated landmark indexes in order: corner0, corner1, corner2, corner3
+          associatedLandmarkIndexes = list(cornerNameToLandmarkIndexes.values())
+
+          allGridPatches.append({
+            "associated_landmark_indexes": associatedLandmarkIndexes
+          })
 
         advancedSettings = {
           "projection_factor": self.projectionDistanceSlider.value,
@@ -423,8 +434,8 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
 
         data = {
           "number_of_landmarks": numberOfLandmarks,
-          "associated_landmark_indexes": associatedLandmarkIndexes,
-          "properties": advancedSettings
+          "properties": advancedSettings,
+          "patches": allGridPatches
         }
 
         # Save number of landmarks and corner points with associated landmarks to json
@@ -438,8 +449,6 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         """
         Loads a template JSON file and applies it to the current model and fiducial node.
         """
-        # First, create new grid outline
-        self.onCreateGridFromPointsButton()
         # Select template file
         jsonFilePath = qt.QFileDialog.getOpenFileName(slicer.util.mainWindow(), 'Load template', '', 'JSON Files (*.json)')
         if not jsonFilePath:
@@ -448,21 +457,26 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         # Load template file data
         with open(jsonFilePath, 'r') as jsonFile:
           data = json.load(jsonFile)
-        #TODO: Before, it creates a gridOutline, if json is incorrect, created gridOutline will stay in subject hierarchy unused.
-        requiredKeys = ["number_of_landmarks", "associated_landmark_indexes", "properties"]
+        requiredKeys = ["number_of_landmarks", "properties", "patches"]
         for key in requiredKeys:
           if key not in data:
             qt.QMessageBox.critical(slicer.util.mainWindow(), 'Key missing', f'File does not contain the required key: {key}. Make sure you are loading a valid template file.')
             return
 
         templateNumberOfLandmarks = data["number_of_landmarks"]
-        associatedLandmarks = data["associated_landmark_indexes"]
         advancedSettings = data["properties"]
 
         fiducialNode = self.fiducialSelector.currentNode()
         if not fiducialNode:
           qt.QMessageBox.critical(slicer.util.mainWindow(), 'Missing fiducial list', 'No fiducial list is selected. Please select one.')
           return
+
+        # Iterate through each patch in the template
+        for patchData in data["patches"]:
+          associatedLandmarks = patchData["associated_landmark_indexes"]
+          # First, create new grid outline
+          self.onCreateGridFromPointsButton()
+          self.logic.addLandmarksFromTemplateToGrid(associatedLandmarks, fiducialNode)
 
         numberOfLandmarks = fiducialNode.GetNumberOfControlPoints()
         # Check if number of landmarks is the same
@@ -471,7 +485,6 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
           'Landmark count mismatch', 'The number of landmarks are different in the template than the loaded specimen. Make sure the correct fiducial list is selected.')
           return
 
-        self.logic.addLandmarksFromTemplateToGrid(associatedLandmarks, fiducialNode)
         self.setAdvancedSettingsFromTemplate(advancedSettings)
 
     def setAdvancedSettingsFromTemplate(self, advancedSettings):
