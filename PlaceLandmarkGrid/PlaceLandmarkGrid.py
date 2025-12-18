@@ -64,6 +64,19 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
             else:
               slicer.util.restart()
 
+    def cleanup(self):
+        """
+        Called when the widget is destroyed.
+        """
+        # Remove scene observer
+        if hasattr(self, 'sceneCloseObserver'):
+            slicer.mrmlScene.RemoveObserver(self.sceneCloseObserver)
+        # Remove subject hierarchy observer
+        if hasattr(self, 'observerTagDeleteGrid'):
+            shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
+            if shNode:
+                shNode.RemoveObserver(self.observerTagDeleteGrid)
+    
     def setup(self):
         """
         Called when the user opens the module the first time and the widget is initialized.
@@ -114,7 +127,7 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         self.fiducialSelector.noneEnabled = True
         self.fiducialSelector.showHidden = False
         self.fiducialSelector.setMRMLScene( slicer.mrmlScene )
-        parametersFormLayout.addRow("Fiducial list: ", self.fiducialSelector)
+        parametersFormLayout.addRow("Point list: ", self.fiducialSelector)
 
         #
         # Select active patch
@@ -242,6 +255,9 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         self.updatingGUI = False
         shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
         self.observerTagDeleteGrid = shNode.AddObserver(shNode.SubjectHierarchyItemAboutToBeRemovedEvent, self.deleteObservers)
+        
+        # Add observer for scene close events
+        self.sceneCloseObserver = slicer.mrmlScene.AddObserver(slicer.mrmlScene.StartCloseEvent, self.onSceneClose)
 
         ################## Grid Tab
         #
@@ -423,7 +439,8 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
           associatedLandmarkIndexes = list(cornerNameToLandmarkIndexes.values())
 
           allGridPatches.append({
-            "associated_landmark_indexes": associatedLandmarkIndexes
+            "associated_landmark_indexes": associatedLandmarkIndexes,
+            "grid_resolution": int(patch.resolution)
           })
 
         advancedSettings = {
@@ -474,9 +491,19 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         # Iterate through each patch in the template
         for patchData in data["patches"]:
           associatedLandmarks = patchData["associated_landmark_indexes"]
+          # Get the grid resolution for this patch (default to 5 if not specified for backward compatibility)
+          patchResolution = patchData.get("grid_resolution", 5)
           # First, create new grid outline
           self.onCreateGridFromPointsButton()
+          # Add landmarks from template - this will trigger grid creation
           self.logic.addLandmarksFromTemplateToGrid(associatedLandmarks, fiducialNode)
+          # Update the resolution if it differs from what was just created
+          if self.patchList:
+            currentPatch = self.patchList[-1]  # Get the patch we just created
+            if int(currentPatch.resolution) != patchResolution:
+              self.sampleRate.value = patchResolution
+              self.patch = currentPatch
+              self.onResampleGrid()
 
         numberOfLandmarks = fiducialNode.GetNumberOfControlPoints()
         # Check if number of landmarks is the same
@@ -588,6 +615,59 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
       self.patch.setLockPatch(False)
       self.sampleRate.value = self.patch.resolution
 
+    def onSceneClose(self, caller, event):
+      """
+      Called when the scene is about to be closed. Clean up all patches and reset state.
+      """
+      # Prevent GUI updates from triggering during cleanup
+      self.updatingGUI = True
+      
+      # Clean up observers from all patches before clearing
+      for patch in self.patchList:
+        try:
+          if hasattr(patch, 'tagC0') and patch.cornerPoint0:
+            patch.cornerPoint0.RemoveObserver(patch.tagC0)
+          if hasattr(patch, 'tagC1') and patch.cornerPoint1:
+            patch.cornerPoint1.RemoveObserver(patch.tagC1)
+          if hasattr(patch, 'tagC2') and patch.cornerPoint2:
+            patch.cornerPoint2.RemoveObserver(patch.tagC2)
+          if hasattr(patch, 'tagC3') and patch.cornerPoint3:
+            patch.cornerPoint3.RemoveObserver(patch.tagC3)
+          if hasattr(patch, 'tag_M0') and patch.midPoint0:
+            patch.midPoint0.RemoveObserver(patch.tag_M0)
+          if hasattr(patch, 'tag_M1') and patch.midPoint1:
+            patch.midPoint1.RemoveObserver(patch.tag_M1)
+          if hasattr(patch, 'tag_M2') and patch.midPoint2:
+            patch.midPoint2.RemoveObserver(patch.tag_M2)
+          if hasattr(patch, 'tag_M3') and patch.midPoint3:
+            patch.midPoint3.RemoveObserver(patch.tag_M3)
+        except:
+          pass  # Node may already be deleted
+      
+      # Clear the patch list
+      self.patchList = []
+      
+      # Reset counter
+      self.patchCounter = -1
+      
+      # Clear current patch reference
+      if hasattr(self, 'patch'):
+        self.patch = None
+      
+      # Clear logic's active outline
+      if self.logic:
+        self.logic.activeOutline = None
+      
+      # Clear the dropdown (keep only "None")
+      while self.gridSelector.count > 1:
+        self.gridSelector.removeItem(1)
+      
+      # Reset to "None"
+      self.gridSelector.setCurrentIndex(0)
+      
+      # Re-enable GUI updates
+      self.updatingGUI = False
+    
     @vtk.calldata_type(vtk.VTK_INT)
     def deleteObservers(self, caller, event, removedItem):
       shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
