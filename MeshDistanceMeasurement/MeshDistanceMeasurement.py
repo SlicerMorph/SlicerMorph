@@ -1,15 +1,11 @@
 import os
-import unittest
 import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
 import logging
-import fnmatch
 import  numpy as np
-import random
-import math
+import vtk.util.numpy_support as vtk_np
 
 import re
-import csv
 #
 # MeshDistanceMeasurement
 #
@@ -176,7 +172,7 @@ class MeshDistanceMeasurementWidget(ScriptedLoadableModuleWidget):
     self.modelSelector.connect('currentNodeChanged(vtkMRMLNode*)', self.onSelect)
     self.baseLMSelect.connect('currentNodeChanged(vtkMRMLNode*)', self.onSelect)
     self.meshDirectory.connect('validInputChanged(bool)', self.onSelect)
-    self.baseSLMSelect.connect('currentNodeChanged(bool)', self.onSelectBaseSLM)
+    self.baseSLMSelect.connect('currentNodeChanged(vtkMRMLNode*)', self.onSelectBaseSLM)
     self.semilandmarkDirectory.connect('validInputChanged(bool)', self.onSelect)
 
     self.applyButton.connect('clicked(bool)', self.onApplyButton)
@@ -206,20 +202,37 @@ class MeshDistanceMeasurementLogic(ScriptedLoadableModuleLogic):
     Uses ScriptedLoadableModuleLogic base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
-  def mergeLandmarks(self, templateLM, templateSLM):
-    landmarkPoint = [0,0,0]
-    for landmarkIndex in range(templateLM.GetNumberOfMarkups()):
-      templateLM.GetMarkupPoint(0,landmarkIndex,landmarkPoint)
-      templateSLM.AddFiducialFromArray(landmarkPoint)
-    return templateSLM
+  def mergeLandmarks(self, lmNode, slmNode):
+    """Merge landmark and semi-landmark nodes into a new combined node."""
+    mergedNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode', 'MergedLandmarks')
+    for i in range(lmNode.GetNumberOfControlPoints()):
+      p = lmNode.GetNthControlPointPosition(i)
+      mergedNode.AddControlPoint(p)
+    for i in range(slmNode.GetNumberOfControlPoints()):
+      p = slmNode.GetNthControlPointPosition(i)
+      mergedNode.AddControlPoint(p)
+    return mergedNode
 
   def findCorrespondingFilePath(self, searchDirectory, templateFileName):
     fileList = os.listdir(searchDirectory)
-    regex = re.compile(r'\d+')
-    subjectID = [int(x) for x in regex.findall(templateFileName)][0]
+    # Extract the stem (filename without extension) for matching
+    templateStem = os.path.splitext(templateFileName)[0]
     for filename in fileList:
-      if str(subjectID) in filename:
+      fileStem = os.path.splitext(filename)[0]
+      if templateStem == fileStem:
+        return os.path.join(searchDirectory, filename), templateStem
+    # No exact match found - try numeric ID matching as fallback
+    regex = re.compile(r'\d+')
+    matches = regex.findall(templateFileName)
+    if not matches:
+      return None, None
+    subjectID = matches[0]
+    # Use word-boundary match to avoid e.g. "1" matching "10" or "11"
+    idPattern = re.compile(r'(?<!\d)' + re.escape(subjectID) + r'(?!\d)')
+    for filename in fileList:
+      if idPattern.search(os.path.splitext(filename)[0]):
         return os.path.join(searchDirectory, filename), subjectID
+    return None, None
 
 
   def run(self, templateMesh, templateLM, templateSLM, meshDirectory, lmDirectory, slmDirectory, outDirectory, signedDistanceOption):
@@ -230,9 +243,8 @@ class MeshDistanceMeasurementLogic(ScriptedLoadableModuleLogic):
       templateLMTotal = templateLM
     #get template points as vtk array
     templatePoints = vtk.vtkPoints()
-    p=[0,0,0]
-    for i in range(templateLMTotal.GetNumberOfMarkups()):
-      templateLMTotal.GetMarkupPoint(0,i,p)
+    for i in range(templateLMTotal.GetNumberOfControlPoints()):
+      p = templateLMTotal.GetNthControlPointPosition(i)
       templatePoints.InsertNextPoint(p)
 
     # write selected triangles to table
@@ -248,32 +260,46 @@ class MeshDistanceMeasurementLogic(ScriptedLoadableModuleLogic):
     for meshFileName in os.listdir(meshDirectory):
       if(not meshFileName.startswith(".")):
         #get corresponding landmarks
-        lmFilePath, subjectID = self.findCorrespondingFilePath(lmDirectory, meshFileName)
-        if(lmFilePath):
-          currentLMNode = slicer.util.loadMarkupsFiducialList(lmFilePath)
-          if bool(slmDirectory): # add semi-landmarks if present
-            slmFilePath, sID = self.findCorrespondingFilePath(slmDirectory, meshFileName)
-            if(slmFilePath):
-              currentSLMNode = slicer.util.loadMarkupsFiducialList(slmFilePath)
-              currentLMTotal = self.mergeLandmarks(templateLM, currentSLMNode)
-            else:
-              print("problem with reading semi-landmarks")
-              return False
+        result = self.findCorrespondingFilePath(lmDirectory, meshFileName)
+        if result[0] is None:
+          logging.warning(f"No landmark file found for {meshFileName}, skipping")
+          continue
+        lmFilePath, subjectID = result
+        currentLMNode = slicer.util.loadMarkups(lmFilePath)
+        currentSLMNode = None
+        if bool(slmDirectory): # add semi-landmarks if present
+          slmFilePath, sID = self.findCorrespondingFilePath(slmDirectory, meshFileName)
+          if(slmFilePath):
+            currentSLMNode = slicer.util.loadMarkups(slmFilePath)
+            currentLMTotal = self.mergeLandmarks(currentLMNode, currentSLMNode)
           else:
-            currentLMTotal = currentLMNode
+            slicer.mrmlScene.RemoveNode(currentLMNode)
+            if templateLMTotal is not templateLM:
+              slicer.mrmlScene.RemoveNode(templateLMTotal)
+            logging.error(f"No semi-landmark file found for {meshFileName}")
+            return False
         else:
-          print("problem with reading landmarks")
-          return False
+          currentLMTotal = currentLMNode
           # if mesh and lm file with same subject id exist, load into scene
         meshFilePath = os.path.join(meshDirectory, meshFileName)
         currentMeshNode = slicer.util.loadModel(meshFilePath)
 
         #get subject points into vtk array
         subjectPoints = vtk.vtkPoints()
-        p=[0,0,0]
-        for i in range(currentLMTotal.GetNumberOfMarkups()):
-          currentLMTotal.GetMarkupPoint(0,i,p)
+        for i in range(currentLMTotal.GetNumberOfControlPoints()):
+          p = currentLMTotal.GetNthControlPointPosition(i)
           subjectPoints.InsertNextPoint(p)
+
+        if subjectPoints.GetNumberOfPoints() != templatePoints.GetNumberOfPoints():
+          logging.warning(f"Control point count mismatch for {meshFileName}: "
+            f"expected {templatePoints.GetNumberOfPoints()}, got {subjectPoints.GetNumberOfPoints()}. Skipping.")
+          slicer.mrmlScene.RemoveNode(currentMeshNode)
+          slicer.mrmlScene.RemoveNode(currentLMNode)
+          if currentLMTotal is not currentLMNode:
+            slicer.mrmlScene.RemoveNode(currentLMTotal)
+          if currentSLMNode:
+            slicer.mrmlScene.RemoveNode(currentSLMNode)
+          continue
 
         transform = vtk.vtkThinPlateSplineTransform()
         transform.SetSourceLandmarks( subjectPoints )
@@ -313,139 +339,16 @@ class MeshDistanceMeasurementLogic(ScriptedLoadableModuleLogic):
         slicer.mrmlScene.RemoveNode(transformNode)
         slicer.mrmlScene.RemoveNode(currentMeshNode)
         slicer.mrmlScene.RemoveNode(currentLMNode)
+        if currentLMTotal is not currentLMNode:
+          slicer.mrmlScene.RemoveNode(currentLMTotal)
+        if bool(slmDirectory) and currentSLMNode:
+          slicer.mrmlScene.RemoveNode(currentSLMNode)
 
-  def rmse(self, signedDistanceArray):
-    return np.sqrt(np.square(signedDistanceArray).mean())
+    # clean up template merged node
+    if templateLMTotal is not templateLM:
+      slicer.mrmlScene.RemoveNode(templateLMTotal)
 
-  def takeScreenshot(self,name,description,type=-1):
-    # show the message even if not taking a screen shot
-    slicer.util.delayDisplay('Take screenshot: '+description+'.\nResult is available in the Annotations module.', 3000)
+  def rmse(self, vtkArray):
+    numpyArray = vtk_np.vtk_to_numpy(vtkArray)
+    return np.sqrt(np.square(numpyArray).mean())
 
-    lm = slicer.app.layoutManager()
-    # switch on the type to get the requested window
-    widget = 0
-    if type == slicer.qMRMLScreenShotDialog.FullLayout:
-      # full layout
-      widget = lm.viewport()
-    elif type == slicer.qMRMLScreenShotDialog.ThreeD:
-      # just the 3D window
-      widget = lm.threeDWidget(0).threeDView()
-    elif type == slicer.qMRMLScreenShotDialog.Red:
-      # red slice window
-      widget = lm.sliceWidget("Red")
-    elif type == slicer.qMRMLScreenShotDialog.Yellow:
-      # yellow slice window
-      widget = lm.sliceWidget("Yellow")
-    elif type == slicer.qMRMLScreenShotDialog.Green:
-      # green slice window
-      widget = lm.sliceWidget("Green")
-    else:
-      # default to using the full window
-      widget = slicer.util.mainWindow()
-      # reset the type so that the node is set correctly
-      type = slicer.qMRMLScreenShotDialog.FullLayout
-
-    # grab and convert to vtk image data
-    qimage = ctk.ctkWidgetsUtils.grabWidget(widget)
-    imageData = vtk.vtkImageData()
-    slicer.qMRMLUtils().qImageToVtkImageData(qimage,imageData)
-
-    annotationLogic = slicer.modules.annotations.logic()
-    annotationLogic.CreateSnapShot(name, description, type, 1, imageData)
-
-  def process(self, inputVolume, outputVolume, imageThreshold, invert=False, showResult=True):
-    """
-    Run the processing algorithm.
-    Can be used without GUI widget.
-    :param inputVolume: volume to be thresholded
-    :param outputVolume: thresholding result
-    :param imageThreshold: values above/below this threshold will be set to 0
-    :param invert: if True then values above the threshold will be set to 0, otherwise values below are set to 0
-    :param showResult: show output volume in slice viewers
-    """
-
-    if not inputVolume or not outputVolume:
-      raise ValueError("Input or output volume is invalid")
-
-    import time
-    startTime = time.time()
-    logging.info('Processing started')
-
-    # Compute the thresholded output volume using the "Threshold Scalar Volume" CLI module
-    cliParams = {
-      'InputVolume': inputVolume.GetID(),
-      'OutputVolume': outputVolume.GetID(),
-      'ThresholdValue' : imageThreshold,
-      'ThresholdType' : 'Above' if invert else 'Below'
-      }
-    cliNode = slicer.cli.run(slicer.modules.thresholdscalarvolume, None, cliParams, wait_for_completion=True, update_display=showResult)
-    # We don't need the CLI module node anymore, remove it to not clutter the scene with it
-    slicer.mrmlScene.RemoveNode(cliNode)
-
-    stopTime = time.time()
-    logging.info(f'Processing completed in {stopTime-startTime:.2f} seconds')
-
-
-class MeshDistanceMeasurementTest(ScriptedLoadableModuleTest):
-  """
-    This is the test case for your scripted module.
-    Uses ScriptedLoadableModuleTest base class, available at:
-    https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
-    """
-
-  def setUp(self):
-    """ Do whatever is needed to reset the state - typically a scene clear will be enough.
-      """
-    slicer.mrmlScene.Clear(0)
-
-  def runTest(self):
-    """Run as few or as many tests as needed here.
-      """
-    self.setUp()
-    self.test_MeshDistanceMeasurement1()
-
-  def test_MeshDistanceMeasurement1(self):
-    """ Ideally you should have several levels of tests.  At the lowest level
-    tests should exercise the functionality of the logic with different inputs
-    (both valid and invalid).  At higher levels your tests should emulate the
-    way the user would interact with your code and confirm that it still works
-    the way you intended.
-    One of the most important features of the tests is that it should alert other
-    developers when their changes will have an impact on the behavior of your
-    module.  For example, if a developer removes a feature that you depend on,
-    your test should break so they know that the feature is needed.
-    """
-
-    self.delayDisplay("Starting the test")
-
-    # Get/create input data
-
-    import SampleData
-    registerSampleData()
-    inputVolume = SampleData.downloadSample('TemplateKey1')
-    self.delayDisplay('Loaded test data set')
-
-    inputScalarRange = inputVolume.GetImageData().GetScalarRange()
-    self.assertEqual(inputScalarRange[0], 0)
-    self.assertEqual(inputScalarRange[1], 695)
-
-    outputVolume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode")
-    threshold = 100
-
-    # Test the module logic
-
-    logic = MeshDistanceMeasurementLogic()
-
-    # Test algorithm with non-inverted threshold
-    logic.process(inputVolume, outputVolume, threshold, True)
-    outputScalarRange = outputVolume.GetImageData().GetScalarRange()
-    self.assertEqual(outputScalarRange[0], inputScalarRange[0])
-    self.assertEqual(outputScalarRange[1], threshold)
-
-    # Test algorithm with inverted threshold
-    logic.process(inputVolume, outputVolume, threshold, False)
-    outputScalarRange = outputVolume.GetImageData().GetScalarRange()
-    self.assertEqual(outputScalarRange[0], inputScalarRange[0])
-    self.assertEqual(outputScalarRange[1], inputScalarRange[1])
-
-    self.delayDisplay('Test passed')
