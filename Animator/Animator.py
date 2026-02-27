@@ -195,7 +195,7 @@ class ROIAction(AnimatorAction):
     return(roiAction)
 
   def act(self, action, scriptTime):
-    if action['startROIID'] is None or action['startROIID'] is None:
+    if action['startROIID'] is None or action['endROIID'] is None:
       return
     startROI = slicer.mrmlScene.GetNodeByID(action['startROIID'])
     endROI = slicer.mrmlScene.GetNodeByID(action['endROIID'])
