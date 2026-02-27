@@ -55,10 +55,10 @@ class ALPACA(ScriptedLoadableModule):
           </view>
          </item>
          <item>
-          <view class=\"vtkMRMLTableViewNode\" singletontag=\"TableViewerWindow_1\">"
-           <property name=\"viewlabel\" action=\"default\">T</property>"
-          </view>"
-         </item>"
+          <view class=\"vtkMRMLTableViewNode\" singletontag=\"TableViewerWindow_1\">
+           <property name=\"viewlabel\" action=\"default\">T</property>
+          </view>
+         </item>
        </item>
       </layout>
   """
@@ -66,10 +66,10 @@ class ALPACA(ScriptedLoadableModule):
         slicer.customLayoutTableOnly = """
       <layout type=\"horizontal\" >
        <item>
-        <view class=\"vtkMRMLTableViewNode\" singletontag=\"TableViewerWindow_1\">"
-         <property name=\"viewlabel\" action=\"default\">T</property>"
-        </view>"
-       </item>"
+        <view class=\"vtkMRMLTableViewNode\" singletontag=\"TableViewerWindow_1\">
+         <property name=\"viewlabel\" action=\"default\">T</property>
+        </view>
+       </item>
       </layout>
   """
 
@@ -78,8 +78,8 @@ class ALPACA(ScriptedLoadableModule):
        <item>
         <view class=\"vtkMRMLPlotViewNode\" singletontag=\"PlotViewerWindow_1\">
          <property name=\"viewlabel\" action=\"default\">1</property>
-        </view>"
-       </item>"
+        </view>
+       </item>
       </layout>
   """
 
@@ -745,8 +745,8 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
         targetCloudItem = folderNode.GetItemByDataNode(self.targetCloudNode_2)
         ICPTransformItem = folderNode.GetItemByDataNode(self.ICPTransformNode)
         sourceLMItem = folderNode.GetItemByDataNode(self.sourceLMNode)
-        nonProjectLMItem = folderNode.GetItemByDataNode(self.warpedSourceNode)
-        warpedSourceItem = folderNode.GetItemByDataNode(self.outputPoints)
+        warpedSourceItem = folderNode.GetItemByDataNode(self.warpedSourceNode)
+        nonProjectLMItem = folderNode.GetItemByDataNode(self.outputPoints)
         #
         folderNode.SetItemParent(sourceModelItem, newFolder)
         folderNode.SetItemParent(sourceCloudItem, newFolder)
@@ -1435,9 +1435,9 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
         else:
             self.ui.BCPDFolder.enabled = False
             self.ui.subsampleButton.enabled = bool(
-                self.ui.sourceModelSelector.currentNode
-                and self.ui.targetModelSelector.currentNode
-                and self.ui.sourceLandmarkSetSelector.currentNode
+                self.ui.sourceModelSelector.currentNode()
+                and self.ui.targetModelSelector.currentNode()
+                and self.ui.sourceLandmarkSetSelector.currentNode()
             )
             self.ui.applyLandmarkMultiButton.enabled = bool(
                 self.ui.sourceModelMultiSelector.currentPath
@@ -1716,20 +1716,19 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
                     for file in sourceModelList:
                         currentSourceIndex += 1
                         self.updateProgress(f"    Using template {currentSourceIndex}/{totalSourceModels}: {os.path.basename(file)}")
-                        sourceFilePath = os.path.join(sourceModelPath, file)
+                        sourceFilePath = file
                         (baseName, ext) = os.path.splitext(os.path.basename(file))
                         sourceLandmarkFile = None
                         for lmFile in sourceLMList:
-                            if baseName in lmFile:
-                                sourceLandmarkFile = os.path.join(
-                                    sourceLandmarkPath, lmFile
-                                )
+                            lmBaseName = os.path.splitext(os.path.basename(lmFile))[0]
+                            if baseName == lmBaseName:
+                                sourceLandmarkFile = lmFile
                         if sourceLandmarkFile is None:
                             print(
                                 "::::Could not find the file corresponding to ",
                                 file,
                             )
-                            next
+                            continue
                         outputFilePath = os.path.join(
                             specimenOutput, f"{rootName}_{baseName}" + extensionLM
                         )
@@ -1794,7 +1793,8 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         }
         extras.update(parameters)
         parameterFile = os.path.join(outputDirectory, "advancedParameters.txt")
-        json.dump(extras, open(parameterFile, "w"), indent=2)
+        with open(parameterFile, "w") as f:
+            json.dump(extras, f, indent=2)
 
     def pairwiseAlignment(
         self,
@@ -2153,7 +2153,10 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
                 fitness = fitness + 1
                 inlier_rmse = inlier_rmse + distance
 
-        return fitness / movingPointSet.GetNumberOfPoints(), inlier_rmse / fitness
+        n = movingPointSet.GetNumberOfPoints()
+        if fitness == 0 or n == 0:
+            return 0.0, float('inf')
+        return fitness / n, inlier_rmse / fitness
 
     # RANSAC using package
     def ransac_using_package(
@@ -2364,7 +2367,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             fixed_array,
             moving_array,
             fitness,
-            inlier_rmse / fitness,
+            inlier_rmse / fitness if fitness > 0 else float('inf'),
             np.array(index_array),
         )
 
@@ -2610,8 +2613,12 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             for k in range(matched_src_pt_normals.shape[0]):
                 v1 = matched_src_pt_normals[k, :]
                 v2 = matched_dst_pt_normals[k, :]
-                cos_angle = v1.dot(v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
-                angles[k] = np.arccos(cos_angle) / np.pi * 180
+                norm_product = np.linalg.norm(v1) * np.linalg.norm(v2)
+                if norm_product < 1e-12:
+                    angles[k] = 0.0
+                else:
+                    cos_angle = np.clip(v1.dot(v2) / norm_product, -1.0, 1.0)
+                    angles[k] = np.arccos(cos_angle) / np.pi * 180
 
             # and reject the bad corresponding
             # dist_threshold = np.inf
@@ -3011,8 +3018,8 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         print("parameters are ", parameters)
         print(":: Loading point clouds and downsampling")
 
-        sourceModelMesh = sourceModel.GetMesh()
-        targetModelMesh = targetModel.GetMesh()
+        sourceModelMesh = sourceModel.GetPolyData()
+        targetModelMesh = targetModel.GetPolyData()
 
         # Scale the mesh and the landmark points
         fixedBoxLengths, fixedlength = self.getBoxLengths(targetModelMesh)
