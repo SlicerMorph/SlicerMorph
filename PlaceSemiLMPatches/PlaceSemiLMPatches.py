@@ -166,7 +166,7 @@ class PlaceSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
             meshNode =slicer.util.loadModel(meshFilePath)
             smoothNormalArray = SLLogic.getSmoothNormals(meshNode,smoothingIterations)
             lmFilePath = os.path.join(lmDirectory, lmFileName)
-            [success, landmarkNode] = slicer.util.loadMarkupsFiducialList(lmFilePath)
+            landmarkNode = slicer.util.loadMarkups(lmFilePath)
             landmarkNumber=landmarkNode.GetNumberOfControlPoints()
             for n in range(landmarkNumber):
               landmarkNode.SetNthControlPointLabel(n, str(n+1))

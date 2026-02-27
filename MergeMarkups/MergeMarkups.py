@@ -57,6 +57,10 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
 
     # Instantiate and connect widgets ...
 
+    # Initialize batch file paths
+    self.fixedFilePaths = []
+    self.semiFilePaths = []
+
     # Set up tabs to split workflow
     tabsWidget = qt.QTabWidget()
     curvesTab = qt.QWidget()
@@ -407,16 +411,16 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
     # fixed/semiLM box they were entered in
     mergedNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode')
     for index in range(fixedLM.GetNumberOfControlPoints()):
-      pt = fixedLM.GetNthControlPointPositionVector(index)
+      pt = fixedLM.GetNthControlPointPosition(index)
       fiducialLabel = fixedLM.GetNthControlPointLabel(index)
       fiducialDescription = fixedLM.GetNthControlPointDescription(index)
       if fiducialDescription == "":
         fiducialDescription = "Fixed"
       mergedNode.AddControlPoint(pt,fiducialLabel)
-      mergedNode.SetNthControlPointDescription(index,"Fixed")
+      mergedNode.SetNthControlPointDescription(index,fiducialDescription)
 
     for index in range(semiLM.GetNumberOfControlPoints()):
-      pt = semiLM.GetNthControlPointPositionVector(index)
+      pt = semiLM.GetNthControlPointPosition(index)
       fiducialLabel = semiLM.GetNthControlPointLabel(index)
       fiducialDescription = semiLM.GetNthControlPointDescription(index)
       mergedNode.AddControlPoint(pt,fiducialLabel)
@@ -473,8 +477,8 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
     for currentNode in nodeList:
       for index in range(currentNode.GetNumberOfControlPoints()):
         if not(index==0 and continuousCurveOption and connectingNode):
-          pt = currentNode.GetNthControlPointPositionVector(index)
-          pt_array = [pt.GetX(), pt.GetY(), pt.GetZ()]
+          pt = currentNode.GetNthControlPointPosition(index)
+          pt_array = list(pt)
           if pt_array not in pointList:
             pointList.append(pt_array)
             fiducialLabel = currentNode.GetNthControlPointLabel(index)
