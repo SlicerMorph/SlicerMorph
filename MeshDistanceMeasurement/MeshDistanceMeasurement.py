@@ -213,12 +213,20 @@ class MeshDistanceMeasurementLogic(ScriptedLoadableModuleLogic):
       mergedNode.AddControlPoint(p)
     return mergedNode
 
+  @staticmethod
+  def _stripExtension(filename):
+    """Strip extension, handling compound .mrk.json correctly."""
+    stem, ext = os.path.splitext(filename)
+    if ext.lower() == '.json' and stem.lower().endswith('.mrk'):
+      stem = stem[:-4]
+    return stem
+
   def findCorrespondingFilePath(self, searchDirectory, templateFileName):
     fileList = os.listdir(searchDirectory)
     # Extract the stem (filename without extension) for matching
-    templateStem = os.path.splitext(templateFileName)[0]
+    templateStem = self._stripExtension(templateFileName)
     for filename in fileList:
-      fileStem = os.path.splitext(filename)[0]
+      fileStem = self._stripExtension(filename)
       if templateStem == fileStem:
         return os.path.join(searchDirectory, filename), templateStem
     # No exact match found - try numeric ID matching as fallback
@@ -230,7 +238,7 @@ class MeshDistanceMeasurementLogic(ScriptedLoadableModuleLogic):
     # Use word-boundary match to avoid e.g. "1" matching "10" or "11"
     idPattern = re.compile(r'(?<!\d)' + re.escape(subjectID) + r'(?!\d)')
     for filename in fileList:
-      if idPattern.search(os.path.splitext(filename)[0]):
+      if idPattern.search(self._stripExtension(filename)):
         return os.path.join(searchDirectory, filename), subjectID
     return None, None
 
