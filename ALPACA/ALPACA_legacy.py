@@ -1094,6 +1094,8 @@ class ALPACA_legacyLogic(ScriptedLoadableModuleLogic):
               sourceLandmarkFile = None
               for lmFile in sourceLMList:
                 lmBaseName = os.path.splitext(os.path.basename(lmFile))[0]
+                if lmBaseName.endswith('.mrk'):
+                  lmBaseName = lmBaseName[:-4]
                 if baseName == lmBaseName:
                   sourceLandmarkFile = lmFile
               if sourceLandmarkFile is None:
@@ -1102,6 +1104,9 @@ class ALPACA_legacyLogic(ScriptedLoadableModuleLogic):
               outputFilePath = os.path.join(specimenOutput, f'{rootName}_{baseName}' + extensionLM)
               array = self.pairwiseAlignment(sourceFilePath, sourceLandmarkFile, targetFilePath, outputFilePath, skipScaling, projectionFactor, parameters)
               landmarkList.append(array)
+            if not landmarkList:
+              print(f'::::No templates matched for {targetFileName}, skipping median computation')
+              continue
             medianLandmark = np.median(landmarkList, axis=0)
             outputMedianNode = self.exportPointCloud(medianLandmark, "Median Predicted Landmarks")
             slicer.util.saveNode(outputMedianNode, outputMedianPath)

@@ -1721,6 +1721,8 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
                         sourceLandmarkFile = None
                         for lmFile in sourceLMList:
                             lmBaseName = os.path.splitext(os.path.basename(lmFile))[0]
+                            if lmBaseName.endswith('.mrk'):
+                                lmBaseName = lmBaseName[:-4]
                             if baseName == lmBaseName:
                                 sourceLandmarkFile = lmFile
                         if sourceLandmarkFile is None:
@@ -1746,6 +1748,9 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
                             parameters,
                         )
                         landmarkList.append(array)
+                    if not landmarkList:
+                        print(f"::::No templates matched for {targetFileName}, skipping median computation")
+                        continue
                     self.updateProgress(f"Computing median landmarks for {targetFileName}...")
                     medianLandmark = np.median(landmarkList, axis=0)
                     outputMedianNode = self.exportPointCloud(
