@@ -418,6 +418,7 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
       selectedItem = self.outputSelector.currentItem()
       outputNode = shNode.GetItemDataNode(selectedItem)
+      return outputNode
     else:
       return self.outputSelector.currentNode()
 
@@ -440,9 +441,10 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     outputBounds = None
     if self.outputROINode:
       center = [0.0, 0.0, 0.0]
-      radius = [0.0, 0.0, 0.0]
-      self.outputROINode.GetXYZ(center)
-      self.outputROINode.GetRadiusXYZ(radius)
+      self.outputROINode.GetCenter(center)
+      size = [0.0, 0.0, 0.0]
+      self.outputROINode.GetSize(size)
+      radius = [s / 2.0 for s in size]
       outputBounds = [
         center[0]-radius[0], center[0]+radius[0],
         center[1]-radius[1], center[1]+radius[1],
@@ -680,7 +682,6 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
 
     fileName, fileExtension = os.path.splitext(filePath)
     if fileExtension.lower() == ".nhdr" or fileExtension.lower() == ".nrrd":
-        self._filePaths[0]
         reader.ReadImageInformation()
 
         self.originalVolumeDimensions = reader.GetSize()

@@ -323,10 +323,11 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def currentNode(self):
       # TODO: this should be moved to qMRMLSubjectHierarchyComboBox::currentNode()
-      if self.outputSelector.className() == "qMRMLSubjectHierarchyComboBox":
+      if self.ui.outputSelector.className() == "qMRMLSubjectHierarchyComboBox":
         shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
-        selectedItem = self.outputSelector.currentItem()
+        selectedItem = self.ui.outputSelector.currentItem()
         outputNode = shNode.GetItemDataNode(selectedItem)
+        return outputNode
       else:
         return self.ui.outputSelector.currentNode()
 

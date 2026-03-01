@@ -318,7 +318,7 @@ class LMData:
       return 1
     except:
       print("Error loading results")
-      self.ui.GPALogTextbox.insertPlainText("Error loading results: Failed to initialize from file \n")
+      self.ui.GPALogTextbox.insertPlainText("Error loading results: Failed to initialize from file\n")
       return 0
 
   def calcLMVariation(self, SampleScaleFactor, BoasOption):
@@ -767,7 +767,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.ui.vectorThree.addItem(string)
 
   def factorStringChanged(self):
-    if self.ui.factorNames.text != "" and getattr(self, 'inputFilePaths', None) and self.inputFilePaths is not []:
+    if self.ui.factorNames.text != "" and hasattr(self, 'inputFilePaths') and len(self.inputFilePaths) > 0:
       self.ui.generateCovariatesTableButton.enabled = True
     else:
       self.ui.generateCovariatesTableButton.enabled = False
@@ -862,9 +862,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
   def nodeCleanUp(self):
     # clear all nodes created by the module
-    for node in GPANodeCollection:
-
-      GPANodeCollection.RemoveItem(node)
+    nodes = [GPANodeCollection.GetItemAsObject(i) for i in range(GPANodeCollection.GetNumberOfItems())]
+    GPANodeCollection.RemoveAllItems()
+    for node in nodes:
       slicer.mrmlScene.RemoveNode(node)
 
   def addLayoutButton(self, layoutID, buttonAction, toolTip, imageFileName, layoutDiscription):
@@ -898,8 +898,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.ui.inputFileTable.plainText = '\n'.join(self.inputFilePaths)
     self.ui.clearButton.enabled = True
     #enable load button if required fields are complete
-    filePathsExist = bool(self.inputFilePaths is not [] )
-    self.ui.loadButton.enabled = bool (filePathsExist and getattr(self, 'outputDirectory', None))
+    filePathsExist = bool(len(self.inputFilePaths) > 0)
+    self.ui.loadButton.enabled = bool (filePathsExist and hasattr(self, 'outputDirectory'))
     if filePathsExist:
       self.LM_dir_name = os.path.dirname(self.inputFilePaths[0])
       basename, self.extension = os.path.splitext(self.inputFilePaths[0])
@@ -919,7 +919,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.outputDirectory=qt.QFileDialog().getExistingDirectory()
     self.ui.outText.setText(self.outputDirectory)
     try:
-      filePathsExist = self.inputFilePaths is not []
+      filePathsExist = len(self.inputFilePaths) > 0
       self.ui.loadButton.enabled = bool (filePathsExist and self.outputDirectory)
     except AttributeError:
       self.ui.loadButton.enabled = False
@@ -971,7 +971,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.covariateTableFile = os.path.join(covariateFolder, "covariateTable.csv")
       slicer.util.saveNode(self.factorTableNode, self.covariateTableFile)
     except:
-      self.ui.GPALogTextbox.insertPlainText("Covariate table output failed: Could not write {self.factorTableNode} to {self.covariateTableFile}\n")
+      self.ui.GPALogTextbox.insertPlainText(f"Covariate table output failed: Could not write {self.factorTableNode} to {self.covariateTableFile}\n")
     slicer.mrmlScene.RemoveNode(self.factorTableNode)
     self.ui.selectCovariatesText.setText(self.covariateTableFile)
     qpath = qt.QUrl.fromLocalFile(os.path.dirname(covariateFolder+os.path.sep))
@@ -1139,7 +1139,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.LMExclusionList = logData['GPALog'][0]['ExcludedLM']
     except:
       logging.debug('Log import failed: Cannot read the log file')
-      self.ui.GPALogTextbox.insertPlainText("logging.debug('Log import failed: Cannot read the log file\n")
+      self.ui.GPALogTextbox.insertPlainText("Log import failed: Cannot read the log file\n")
 
     # Initialize variables
     self.LM=LMData()
@@ -1351,7 +1351,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
           slicer.util.saveNode(self.factorTableNode, self.outputFolder + os.sep + "covariateTable.csv")
           GPANodeCollection.AddItem(self.factorTableNode)
         except:
-          self.ui.GPALogTextbox.insertPlainText("Covariate table output failed: Could not write {self.factorTableNode} to {self.outputFolder+os.sep}covariateTable.csv\n")
+          self.ui.GPALogTextbox.insertPlainText(f"Covariate table output failed: Could not write {self.factorTableNode} to {self.outputFolder+os.sep}covariateTable.csv\n")
       self.writeAnalysisLogFile(self.LM_dir_name, self.outputFolder, self.files)
       self.ui.openResultsButton.enabled = True
     except:
@@ -2240,11 +2240,11 @@ class GPALogic(ScriptedLoadableModuleLogic):
     Adjusts the resolution is log(nhrd) file is found returns kXd array of landmark data. k=# of landmarks d=dimension
     """
     # import data file
-    datafile=open(filePath)
-    data=[]
-    for row in datafile:
-      if not fnmatch.fnmatch(row[0],"#*"):
-        data.append(row.strip().split(','))
+    with open(filePath) as datafile:
+      data=[]
+      for row in datafile:
+        if not fnmatch.fnmatch(row[0],"#*"):
+          data.append(row.strip().split(','))
     # Make Landmark array
     dataArray=np.zeros(shape=(len(data),3))
     j=0
@@ -2265,15 +2265,15 @@ class GPALogic(ScriptedLoadableModuleLogic):
     dim=3
     subjectNumber = len(files)
     # import data file
-    datafile=open(files[0])
-    landmarkType = []
-    rowNumber=0
-    for row in datafile:
-      if not fnmatch.fnmatch(row[0],"#*"):
-        rowNumber+=1
-        tmp=(row.strip().split(','))
-        if tmp[12] == 'Semi':
-          landmarkType.append(str(rowNumber))
+    with open(files[0]) as datafile:
+      landmarkType = []
+      rowNumber=0
+      for row in datafile:
+        if not fnmatch.fnmatch(row[0],"#*"):
+          rowNumber+=1
+          tmp=(row.strip().split(','))
+          if tmp[12] == 'Semi':
+            landmarkType.append(str(rowNumber))
     i = rowNumber
     landmarks=np.zeros(shape=(rowNumber,dim,subjectNumber))
     return landmarks, landmarkType

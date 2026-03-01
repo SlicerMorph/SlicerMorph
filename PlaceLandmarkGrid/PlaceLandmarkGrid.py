@@ -1181,7 +1181,7 @@ class PlaceLandmarkGridLogic(ScriptedLoadableModuleLogic):
               mergedNode.AddControlPoint(currentPoint)
               currentPointIndex = mergedNode.GetNumberOfControlPoints()-1
               mergedNode.SetNthControlPointDescription(currentPointIndex,"Semi")
-      overallSpatialConstraint = min(resolutions) * tolerance
+      overallSpatialConstraint = min(resolutions) * tolerance if resolutions else tolerance
       # add markup points - fixed landmarks
       for currentNode in markupList:
         for i in range(currentNode.GetNumberOfControlPoints()):
