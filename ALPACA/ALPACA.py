@@ -1568,7 +1568,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         
         # Check source model(s)
         if os.path.isdir(sourceModelPath):
-            sourceFiles = [f for f in os.listdir(sourceModelPath) if f.endswith((".ply", ".obj", ".vtk"))]
+            sourceFiles = [f for f in os.listdir(sourceModelPath) if f.endswith((".ply", ".obj", ".vtk", ".vtp"))]
             for sourceFile in sourceFiles:
                 sourcePath = os.path.join(sourceModelPath, sourceFile)
                 is_valid, error_msg = self.performMeshQC(sourcePath)
@@ -1580,9 +1580,9 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             if not is_valid:
                 qc_failed_models.append(f"SOURCE: {error_msg}")
                 self.updateProgress(f"  ⚠️  QC FAILED - SOURCE: {error_msg}")
-        
+
         # Check target models
-        targetModelFiles = [f for f in os.listdir(targetModelDirectory) if f.endswith((".ply", ".obj", ".vtk"))]
+        targetModelFiles = [f for f in os.listdir(targetModelDirectory) if f.endswith((".ply", ".obj", ".vtk", ".vtp"))]
         for targetFile in targetModelFiles:
             targetPath = os.path.join(targetModelDirectory, targetFile)
             is_valid, error_msg = self.performMeshQC(targetPath)
@@ -1600,7 +1600,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             self.updateProgress(f"💡 Tip: You can disable mesh QC to proceed anyway (not recommended)")
             return False
         else:
-            num_source_models = len([f for f in os.listdir(sourceModelPath) if f.endswith((".ply", ".obj", ".vtk"))]) if os.path.isdir(sourceModelPath) else 1
+            num_source_models = len([f for f in os.listdir(sourceModelPath) if f.endswith((".ply", ".obj", ".vtk", ".vtp"))]) if os.path.isdir(sourceModelPath) else 1
             self.updateProgress(f"✅ All {len(targetModelFiles) + num_source_models} meshes passed QC checks")
             self.updateProgress(f"")
             return True
@@ -1875,7 +1875,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
                 )
                 self.updateProgress(f"  Completed processing {targetFileName}")
             else:
-                self.updateProgress(f"ERROR: Could not find the file or directory for {targetFileName}")
+                self.updateProgress(f"ERROR: Source model path is neither a file nor directory: {sourceModelPath}")
         extras = {
             "Source": sourceModelList,
             "SourceLandmarks": sourceLMList,

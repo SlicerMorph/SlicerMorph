@@ -218,6 +218,8 @@ class ProjectSemiLMLogic(ScriptedLoadableModuleLogic):
     targetPoints = vtk.vtkPoints()
     # estimate a sample size usingn semi-landmark spacing
     sampleSize = min(25, semiLMNode.GetNumberOfControlPoints())
+    if sampleSize < 2:
+      raise ValueError(f"Need at least 2 semi-landmarks to estimate mesh spacing, got {sampleSize}")
     sampleArray=np.zeros(shape=(sampleSize,3))
     for i in range(sampleSize):
       point = semiLMNode.GetNthControlPointPosition(i)

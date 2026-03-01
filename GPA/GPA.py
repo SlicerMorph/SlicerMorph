@@ -318,7 +318,7 @@ class LMData:
       return 1
     except:
       print("Error loading results")
-      self.ui.GPALogTextbox.insertPlainText("Error loading results: Failed to initialize from file\n")
+      logging.debug("Error loading results: Failed to initialize from file")
       return 0
 
   def calcLMVariation(self, SampleScaleFactor, BoasOption):
@@ -1461,7 +1461,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     logFilePath = outputPath+os.sep+"analysis.json"
     with open(logFilePath, 'w') as logFile:
       print(json.dumps(logData, indent=2), file=logFile)
-    logFile.close()
 
 
   # ---- PC magnification helpers (class-level) ----
@@ -2190,7 +2189,6 @@ class GPALogic(ScriptedLoadableModuleLogic):
         except:
           slicer.util.messageBox(f"Error: Load file {filePathList[i]} failed:.")
           logging.debug(f"Error: Load file {filePathList[i]} failed:.")
-          self.ui.GPALogTextbox.insertPlainText(f"Error: Load file {filePathList[i]} failed:\n")
         if len(tmp1) == landmarkNumber:
           lmArray = tmp1['position'].to_numpy()
           landmarkIndex = 0
