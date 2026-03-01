@@ -1622,8 +1622,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         
         # Objective function: sum of Euclidean distances to all points
         def objective(x, points):
-            x_reshaped = x.reshape(-1, n_dims)
-            distances = np.sqrt(np.sum((points - x_reshaped[np.newaxis, :, :])**2, axis=2))
+            distances = np.sqrt(np.sum((points - x)**2, axis=1))
             return np.sum(distances)
         
         # Optimize for each landmark separately for better convergence
@@ -1657,14 +1656,13 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         modelBaseNames = set()
         for modelPath in sourceModelList:
             # Handle both full paths and filenames
-            fileName = os.path.basename(modelPath) if os.path.sep in modelPath else modelPath
+            fileName = os.path.basename(modelPath)
             baseName = os.path.splitext(fileName)[0]
             modelBaseNames.add(baseName)
-        
+
         landmarkBaseNames = set()
         for lmPath in sourceLMList:
-            # Handle both full paths and filenames
-            fileName = os.path.basename(lmPath) if os.path.sep in lmPath else lmPath
+            fileName = os.path.basename(lmPath)
             # Remove .mrk.json or .fcsv extensions
             if fileName.endswith('.mrk.json'):
                 baseName = fileName[:-9]  # Remove .mrk.json
@@ -1732,7 +1730,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             extensionLM = ".fcsv"
         sourceModelList = []
         sourceLMList = []
-        TargetModelList = []
+        targetModelList = []
         if os.path.isdir(sourceModelPath):
             specimenOutput = os.path.join(outputDirectory, "individualEstimates")
             medianOutput = os.path.join(outputDirectory, "medianEstimates")
@@ -1778,7 +1776,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         for targetFileName in targetModelFiles:
             currentModelIndex += 1
             targetFilePath = os.path.join(targetModelDirectory, targetFileName)
-            TargetModelList.append(targetFilePath)
+            targetModelList.append(targetFilePath)
             rootName = os.path.splitext(targetFileName)[0]
 
             # Display progress message
@@ -1789,7 +1787,9 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
                 outputMedianPath = os.path.join(
                     medianOutput, f"{rootName}_median" + extensionLM
                 )
-                if not os.path.exists(outputMedianPath):
+                if os.path.exists(outputMedianPath):
+                    self.updateProgress(f"  Skipping {targetFileName} (output already exists)")
+                else:
                     totalSourceModels = len(sourceModelList)
                     currentSourceIndex = 0
                     self.updateProgress(f"Multi-template mode: Processing {totalSourceModels} templates for {targetFileName}")
@@ -1860,7 +1860,6 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
                     self.updateProgress(f"  Completed processing {targetFileName}")
             elif os.path.isfile(sourceModelPath):
                 self.updateProgress(f"Single template mode: Processing {targetFileName}")
-                rootName = os.path.splitext(targetFileName)[0]
                 outputFilePath = os.path.join(
                     outputDirectory, rootName + extensionLM
                 )
@@ -1879,7 +1878,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         extras = {
             "Source": sourceModelList,
             "SourceLandmarks": sourceLMList,
-            "Target": TargetModelList,
+            "Target": targetModelList,
             "Output": outputDirectory,
             "Scaling ?": bool(scalingOption),
         }

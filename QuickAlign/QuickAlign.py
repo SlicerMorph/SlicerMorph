@@ -449,7 +449,12 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         
         self.update3DViews()
         self.ui.initializeViewButton.enabled = True
-        markupsTypeNodes = bool(node1.GetNodeTagName() == "MarkupsFiducial" and node2.GetNodeTagName() == "MarkupsFiducial")
+        node1 = self.ui.inputSelector1.currentNode()
+        node2 = self.ui.inputSelector2.currentNode()
+        if node1 and node2 and hasattr(node1, 'GetNodeTagName') and hasattr(node2, 'GetNodeTagName'):
+            markupsTypeNodes = bool(node1.GetNodeTagName() == "MarkupsFiducial" and node2.GetNodeTagName() == "MarkupsFiducial")
+        else:
+            markupsTypeNodes = False
         self.ui.jointEditCheckBox.enabled = markupsTypeNodes
 
     def addLayoutButton(self, layoutID, buttonAction, toolTip, imageFileName, layoutDiscription):
@@ -692,10 +697,11 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             cam.OrthogonalizeViewUp()
             # Reset the clipping range
             layoutManager = slicer.app.layoutManager()
-            threeDWidget = layoutManager.threeDWidget(viewNode)
-            if threeDWidget:
-                threeDView = threeDWidget.threeDView()
-                threeDView.resetFocalPoint()
+            for i in range(layoutManager.threeDViewCount):
+                widget = layoutManager.threeDWidget(i)
+                if widget.mrmlViewNode() == viewNode:
+                    widget.threeDView().resetFocalPoint()
+                    break
 
     # ---- Zoom synchronization helpers ----
     def setupZoomSyncPairs(self):
@@ -769,7 +775,6 @@ class QuickAlignLogic(ScriptedLoadableModuleLogic):
         Called when the logic class is instantiated. Can be used for initializing member variables.
         """
         ScriptedLoadableModuleLogic.__init__(self)
-    @vtk.calldata_type(vtk.VTK_INT)
 
     def getCameraAlignmentTransform(self, camera1, camera2):
       #get transform matrices from cameras
