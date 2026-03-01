@@ -145,7 +145,6 @@ class IDAVLMConverterLogic(ScriptedLoadableModuleLogic):
     Run the actual algorithm
     """
     # set landmark filename and length of header
-    headerSize = 2  #number of lines in the header
     landmarkFileName = os.path.basename(landmarkFilePath)
     (landmarkFileBase, ext) = os.path.splitext(landmarkFileName)
 
@@ -162,14 +161,14 @@ class IDAVLMConverterLogic(ScriptedLoadableModuleLogic):
     landmarkFile.close()
 
     #iterate through list of and place in markups node
-    for i in range(headerSize,len(lines)-1):
+    for i in range(int(headerSize),len(lines)):
       # in this file format, lines contain [name, x-coordinate, y-coordinate, z-coordinate]
       # by default, split command splits by whitespace
       lineData = lines[i].split()
       if len(lineData) == 4:
         coordinates = [float(lineData[1]), float(lineData[2]), float(lineData[3])]
         name = lineData[0]
-        fiducialNode.AddFiducialFromArray(coordinates, name)
+        fiducialNode.AddControlPoint(vtk.vtkVector3d(coordinates), name)
       else:
         logging.debug("Error: not a supported landmark file format")
 

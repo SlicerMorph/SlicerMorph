@@ -800,7 +800,7 @@ class QuickAlignLogic(ScriptedLoadableModuleLogic):
         self.updatingNodesActive = True
         for i in range(self.node2.GetNumberOfControlPoints()):
           self.node1.SetNthControlPointSelected(i,self.node2.GetNthControlPointSelected(i))
-          self.updatingNodesActive = False
+        self.updatingNodesActive = False
 
     def startJointMarkupEditing(self, inputNode1, inputNode2):
         logging.info('Enabling joint editing of point list nodes')
