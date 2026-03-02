@@ -120,7 +120,7 @@ class PCRDataObject:
                 self.dimensions[0] = int(element.split('=', 1)[1])
             if(element.find("Volume_SizeY=")>=0):
                 self.dimensions[1] = int(element.split('=', 1)[1])
-            if(element.find("Volume_SizeZ")>=0):
+            if(element.find("Volume_SizeZ=")>=0):
                 self.dimensions[2] = int(element.split('=', 1)[1])
             if(element.find("VoxelSizeRec=")>=0):
                 self.spacing = float(element.split('=', 1)[1])

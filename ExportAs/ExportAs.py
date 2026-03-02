@@ -145,10 +145,14 @@ class ExportAsSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin):
       fileFilter = allExtensionsFilter + ";;" + writerFilter + ";;All files *"
       filePath = qt.QFileDialog.getSaveFileName(slicer.util.mainWindow(),
                                             "Export As...", node.GetName()+extension, fileFilter, None, qt.QFileDialog.DontUseNativeDialog)
+    if not filePath:
+      if transformedFlag:
+        slicer.mrmlScene.RemoveNode(clonedNode.GetStorageNode())
+        slicer.mrmlScene.RemoveNode(clonedNode.GetDisplayNode())
+        slicer.mrmlScene.RemoveNode(clonedNode)
+      return
     if not filePath.endswith(extension):
       filePath = filePath + extension
-    if filePath == "":
-      return
     writerType = slicer.app.coreIOManager().fileWriterFileType(node)
     success = slicer.app.coreIOManager().saveNodes(writerType, {"nodeID": node.GetID(), "fileName": filePath})
     if success:

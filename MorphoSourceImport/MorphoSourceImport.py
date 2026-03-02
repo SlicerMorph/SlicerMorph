@@ -1218,6 +1218,8 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
 
     def downloadCheckedItems(self):
         _config_dict = self.prepareDownloadConfig()
+        if _config_dict is None:
+            return
 
         # Disable buttons
         self.disableButtons()
