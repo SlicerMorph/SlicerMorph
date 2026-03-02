@@ -465,11 +465,11 @@ class CreateSemiLMPatchesLogic(ScriptedLoadableModuleLogic):
     return landmarkArray
 
   def readLandmarkFile(self, landmarkFilename):
-    datafile=open(landmarkFilename)
-    data=[]
-    for row in datafile:
-      if not fnmatch.fnmatch(row[0],"#*"):  #if not a commented line
-        data.append(row.strip().split(','))
+    with open(landmarkFilename) as datafile:
+      data=[]
+      for row in datafile:
+        if not fnmatch.fnmatch(row[0],"#*"):  #if not a commented line
+          data.append(row.strip().split(','))
     dataArray=np.zeros(shape=(len(data),3))
     j=0
     sorter=[]
