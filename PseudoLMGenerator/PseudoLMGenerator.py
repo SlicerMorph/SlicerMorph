@@ -344,7 +344,7 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
     for i in range(outputPoints.GetNumberOfPoints()):
       point = outputPoints.GetPoint(i)
       sphereSampleLMNode.AddControlPoint(point)
-      print("inserting fiducial point: ", p)
+      print("inserting fiducial point: ", point)
 
     landmarkTypeSemi=True
     self.setAllLandmarksType(sphereSampleLMNode, landmarkTypeSemi)
@@ -720,7 +720,7 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
     pointPolyData.SetPoints(pointsVTK)
     model = modelNode.GetPolyData()
     for i in range(landmarkNode.GetNumberOfControlPoints()):
-      pointsVTK.InsertNextPoint(landmarkNode.GetNthControlPointPositionVector(i))
+      pointsVTK.InsertNextPoint(landmarkNode.GetNthControlPointPosition(i))
     geometryFilter = vtk.vtkVertexGlyphFilter()
     geometryFilter.SetInputData(pointPolyData)
     geometryFilter.Update()
