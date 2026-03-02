@@ -124,14 +124,14 @@ class ExportMorphoJLandmarkFileLogic(ScriptedLoadableModuleLogic):
     if(fileList == []):
       logging.info("No landmark files found in: ", inputDirectory)
       return False
-    success, currentLMNode = slicer.util.loadMarkupsFiducialList(fileList[0])
+    currentLMNode = slicer.util.loadMarkups(fileList[0])
     subjectNumber = len(fileList)
-    landmarkNumber = currentLMNode.GetNumberOfFiducials()
+    landmarkNumber = currentLMNode.GetNumberOfControlPoints()
     LMArray=np.zeros(shape=(subjectNumber,landmarkNumber,3))
     fileIndex=0
     fileStems=[];
     headerLM = ["Subject"]
-    for pointIndex in range(currentLMNode.GetNumberOfMarkups()):
+    for pointIndex in range(currentLMNode.GetNumberOfControlPoints()):
       headerLM.append(currentLMNode.GetNthControlPointLabel(pointIndex)+'_X')
       headerLM.append(currentLMNode.GetNthControlPointLabel(pointIndex)+'_Y')
       headerLM.append(currentLMNode.GetNthControlPointLabel(pointIndex)+'_Z')
@@ -140,11 +140,11 @@ class ExportMorphoJLandmarkFileLogic(ScriptedLoadableModuleLogic):
     point = [0,0,0]
     for file in fileList:
       if fileIndex>0:
-        success, currentLMNode = slicer.util.loadMarkupsFiducialList(file)
+        currentLMNode = slicer.util.loadMarkups(file)
       fileStems.append(os.path.basename(file.split(extensionInput)[0]))
-      for pointIndex in range(currentLMNode.GetNumberOfMarkups()):
-        point=currentLMNode.GetNthControlPointPositionVector(pointIndex)
-        point.Set(point[0]*LPS[0],point[1]*LPS[1],point[2]*LPS[2])
+      for pointIndex in range(currentLMNode.GetNumberOfControlPoints()):
+        point=currentLMNode.GetNthControlPointPosition(pointIndex)
+        point = [point[0]*LPS[0], point[1]*LPS[1], point[2]*LPS[2]]
         LMArray[fileIndex, pointIndex,:]=point
       slicer.mrmlScene.RemoveNode(currentLMNode)
       fileIndex+=1

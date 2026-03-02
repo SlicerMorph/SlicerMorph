@@ -217,8 +217,11 @@ class ProjectSemiLMLogic(ScriptedLoadableModuleLogic):
     SLLogic=CreateSemiLMPatches.CreateSemiLMPatchesLogic()
     targetPoints = vtk.vtkPoints()
     # estimate a sample size usingn semi-landmark spacing
-    sampleArray=np.zeros(shape=(25,3))
-    for i in range(25):
+    sampleSize = min(25, semiLMNode.GetNumberOfControlPoints())
+    if sampleSize < 2:
+      raise ValueError(f"Need at least 2 semi-landmarks to estimate mesh spacing, got {sampleSize}")
+    sampleArray=np.zeros(shape=(sampleSize,3))
+    for i in range(sampleSize):
       point = semiLMNode.GetNthControlPointPosition(i)
       sampleArray[i,:]=point
     sampleDistances = self.distanceMatrix(sampleArray)
@@ -238,7 +241,7 @@ class ProjectSemiLMLogic(ScriptedLoadableModuleLogic):
             # if mesh and lm file with same subject id exist, load into scene
             currentMeshNode = slicer.util.loadModel(meshFilePath)
             lmFilePath = os.path.join(lmDirectory, lmFileName)
-            success, currentLMNode = slicer.util.loadMarkupsFiducialList(lmFilePath)
+            currentLMNode = slicer.util.loadMarkups(lmFilePath)
 
             # set up transform between base lms and current lms
             sourcePoints = vtk.vtkPoints()
