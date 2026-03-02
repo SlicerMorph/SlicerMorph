@@ -344,8 +344,8 @@ class SkyscanReconImportWidget(ScriptedLoadableModuleWidget):
             finally:
                 progress.setValue(i + 1)  # Update the progress value regardless of success or failure
 
-                if progress.wasCanceled:
-                    break  # Allow the user to cancel the operation
+            if progress.wasCanceled:
+                break  # Allow the user to cancel the operation
 
         progress.close()  # Close the progress dialog once processing is complete
 
