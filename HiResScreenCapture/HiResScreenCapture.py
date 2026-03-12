@@ -84,6 +84,7 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         self.logic = None
         self.undockViewerButton = None
         self.redockViewerButton = None
+        self._layoutTransitioning = False
 
     def setup(self) -> None:
         """
@@ -179,6 +180,12 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         self.updateApplyButtonState()
 
     def updateResolutionDisplay(self):
+        # On macOS, processEvents() inside layout-changing operations can deliver
+        # already-dispatched timer events from the Cocoa event loop even after the
+        # timer has been stopped. Skip the update to avoid calling threeDWidget(0)
+        # while the layout manager's widget list may be in an intermediate state.
+        if self._layoutTransitioning:
+            return
         try:
             # If viewer is undocked and using custom size, show that
             if self.logic and self.logic.viewerIsUndocked and self.logic.customViewerWidth and self.logic.customViewerHeight:
@@ -257,10 +264,13 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         """
         Redock the 3D viewer back to its original layout.
         """
-        # Stop the timer before layout changes to prevent it from calling threeDWidget()
-        # during the intermediate layout transition, which causes a segfault.
+        # Stop the timer and set the transitioning flag to prevent
+        # updateResolutionDisplay() from calling threeDWidget(0) if stale
+        # timer events are delivered during processEvents() on macOS/Cocoa.
         if self.updateTimer:
             self.updateTimer.stop()
+        # Guard against stale timer events delivered during processEvents() on macOS
+        self._layoutTransitioning = True
         self.logic.redockViewer()
         # Defer button state updates and timer restart to allow layout changes to settle
         qt.QTimer.singleShot(500, self._completeRedock)
@@ -268,9 +278,11 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
 
     def _completeRedock(self):
         """
-        Restart the update timer and update button states after redocking is complete.
+        Clear the layout-transitioning flag, update button states, and restart
+        the update timer after redocking is complete.
         Called via a deferred timer to allow the layout transition to fully settle.
         """
+        self._layoutTransitioning = False
         self.updateButtonStatesAfterRedock()
         if self.updateTimer:
             self.updateTimer.start(100)
@@ -319,9 +331,11 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         # Stop the timer to prevent it from calling threeDWidget() during layout changes
         if self.updateTimer:
             self.updateTimer.stop()
+        self._layoutTransitioning = True
         try:
             self.logic.runScreenCapture()
         finally:
+            self._layoutTransitioning = False
             if self.updateTimer:
                 self.updateTimer.start(100)
 
@@ -396,22 +410,19 @@ class HiResScreenCaptureLogic(ScriptedLoadableModuleLogic):
             self.viewerIsUndocked = False
             self.customViewerWidth = None
             self.customViewerHeight = None
-            threeDWidget = self.threeDWidget
 
-            # Close the detached window first so its C++ object is properly
-            # destroyed before the layout manager tries to recreate the view.
-            # Without this, changing the layout leaves a dangling pointer inside
-            # the layout manager, causing a segfault on the next threeDWidget(0) call.
-            threeDWidget.close()
+            # Hide the floating window. Do NOT call close() — on macOS/Cocoa,
+            # close() triggers NSWindow release which can destroy the underlying
+            # C++ QWidget while the layout manager still holds an internal
+            # pointer to it, leaving a dangling reference that segfaults on
+            # the next threeDWidget(0) call.  hide() merely removes the window
+            # from screen without affecting the C++ object lifetime.
+            self.threeDWidget.hide()
             self.threeDWidget = None
-            slicer.app.processEvents()
 
-            # Use an intermediate layout to force the layout manager to fully
-            # recreate the 3D widget (mirrors what runScreenCapture does).
-            intermLayout = (slicer.vtkMRMLLayoutNode.SlicerLayoutFourUp
-                            if originalLayout == slicer.vtkMRMLLayoutNode.SlicerLayoutOneUp3DView
-                            else slicer.vtkMRMLLayoutNode.SlicerLayoutOneUp3DView)
-            layoutManager.setLayout(intermLayout)
+            # Force the layout manager to rebuild its widget list by switching
+            # to an empty layout (no 3D views) then back to the original.
+            layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutCustomView)
             slicer.app.processEvents()
             layoutManager.setLayout(originalLayout)
             slicer.app.processEvents()
