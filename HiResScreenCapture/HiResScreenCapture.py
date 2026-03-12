@@ -243,20 +243,38 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         """
         Undock the 3D viewer for user adjustment.
         """
+        # Stop the timer to prevent it from calling threeDWidget() during layout changes
+        if self.updateTimer:
+            self.updateTimer.stop()
         self.logic.undockViewer()
         self.undockViewerButton.enabled = False
         self.redockViewerButton.enabled = True
+        if self.updateTimer:
+            self.updateTimer.start(100)
         print("3D Viewer undocked")
 
     def onRedockViewer(self):
         """
         Redock the 3D viewer back to its original layout.
         """
+        # Stop the timer before layout changes to prevent it from calling threeDWidget()
+        # during the intermediate layout transition, which causes a segfault.
+        if self.updateTimer:
+            self.updateTimer.stop()
         self.logic.redockViewer()
-        # Defer button state updates to allow layout changes to complete
-        qt.QTimer.singleShot(100, lambda: self.updateButtonStatesAfterRedock())
+        # Defer button state updates and timer restart to allow layout changes to settle
+        qt.QTimer.singleShot(500, self._completeRedock)
         print("3D Viewer redocked")
-    
+
+    def _completeRedock(self):
+        """
+        Restart the update timer and update button states after redocking is complete.
+        Called via a deferred timer to allow the layout transition to fully settle.
+        """
+        self.updateButtonStatesAfterRedock()
+        if self.updateTimer:
+            self.updateTimer.start(100)
+
     def updateButtonStatesAfterRedock(self):
         """
         Update button states after redocking completes.
@@ -298,7 +316,14 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         self.initialDir = os.path.dirname(outputPath)
         self.logic.setOutputPath(outputPath)
         self.logic.setResolutionFactor(self.currentScaleFactor)
-        self.logic.runScreenCapture()
+        # Stop the timer to prevent it from calling threeDWidget() during layout changes
+        if self.updateTimer:
+            self.updateTimer.stop()
+        try:
+            self.logic.runScreenCapture()
+        finally:
+            if self.updateTimer:
+                self.updateTimer.start(100)
 
 
 #
@@ -365,13 +390,31 @@ class HiResScreenCaptureLogic(ScriptedLoadableModuleLogic):
 
         if self.threeDWidget and self.originalLayout is not None:
             layoutManager = slicer.app.layoutManager()
-            # Change layout to force reparenting
-            layoutManager.layout = slicer.vtkMRMLLayoutNode.SlicerLayoutCustomView
-            layoutManager.layout = self.originalLayout
+            originalLayout = self.originalLayout
+
+            # Clear state before touching widgets/layout
             self.viewerIsUndocked = False
-            self.threeDWidget = None
             self.customViewerWidth = None
             self.customViewerHeight = None
+            threeDWidget = self.threeDWidget
+
+            # Close the detached window first so its C++ object is properly
+            # destroyed before the layout manager tries to recreate the view.
+            # Without this, changing the layout leaves a dangling pointer inside
+            # the layout manager, causing a segfault on the next threeDWidget(0) call.
+            threeDWidget.close()
+            self.threeDWidget = None
+            slicer.app.processEvents()
+
+            # Use an intermediate layout to force the layout manager to fully
+            # recreate the 3D widget (mirrors what runScreenCapture does).
+            intermLayout = (slicer.vtkMRMLLayoutNode.SlicerLayoutFourUp
+                            if originalLayout == slicer.vtkMRMLLayoutNode.SlicerLayoutOneUp3DView
+                            else slicer.vtkMRMLLayoutNode.SlicerLayoutOneUp3DView)
+            layoutManager.setLayout(intermLayout)
+            slicer.app.processEvents()
+            layoutManager.setLayout(originalLayout)
+            slicer.app.processEvents()
             print("3D Viewer docked back to original layout")
 
     def runScreenCapture(self) -> None:
