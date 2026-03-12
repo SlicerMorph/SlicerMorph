@@ -243,20 +243,38 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         """
         Undock the 3D viewer for user adjustment.
         """
+        # Stop the timer to prevent it from calling threeDWidget() during layout changes
+        if self.updateTimer:
+            self.updateTimer.stop()
         self.logic.undockViewer()
         self.undockViewerButton.enabled = False
         self.redockViewerButton.enabled = True
+        if self.updateTimer:
+            self.updateTimer.start(100)
         print("3D Viewer undocked")
 
     def onRedockViewer(self):
         """
         Redock the 3D viewer back to its original layout.
         """
+        # Stop the timer before layout changes to prevent it from calling threeDWidget()
+        # during the intermediate layout transition, which causes a segfault.
+        if self.updateTimer:
+            self.updateTimer.stop()
         self.logic.redockViewer()
-        # Defer button state updates to allow layout changes to complete
-        qt.QTimer.singleShot(100, lambda: self.updateButtonStatesAfterRedock())
+        # Defer button state updates and timer restart to allow layout changes to settle
+        qt.QTimer.singleShot(500, self._completeRedock)
         print("3D Viewer redocked")
-    
+
+    def _completeRedock(self):
+        """
+        Restart the update timer and update button states after redocking is complete.
+        Called via a deferred timer to allow the layout transition to fully settle.
+        """
+        self.updateButtonStatesAfterRedock()
+        if self.updateTimer:
+            self.updateTimer.start(100)
+
     def updateButtonStatesAfterRedock(self):
         """
         Update button states after redocking completes.
@@ -298,7 +316,14 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         self.initialDir = os.path.dirname(outputPath)
         self.logic.setOutputPath(outputPath)
         self.logic.setResolutionFactor(self.currentScaleFactor)
-        self.logic.runScreenCapture()
+        # Stop the timer to prevent it from calling threeDWidget() during layout changes
+        if self.updateTimer:
+            self.updateTimer.stop()
+        try:
+            self.logic.runScreenCapture()
+        finally:
+            if self.updateTimer:
+                self.updateTimer.start(100)
 
 
 #
