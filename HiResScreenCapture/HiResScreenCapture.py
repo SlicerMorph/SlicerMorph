@@ -390,13 +390,31 @@ class HiResScreenCaptureLogic(ScriptedLoadableModuleLogic):
 
         if self.threeDWidget and self.originalLayout is not None:
             layoutManager = slicer.app.layoutManager()
-            # Change layout to force reparenting
-            layoutManager.layout = slicer.vtkMRMLLayoutNode.SlicerLayoutCustomView
-            layoutManager.layout = self.originalLayout
+            originalLayout = self.originalLayout
+
+            # Clear state before touching widgets/layout
             self.viewerIsUndocked = False
-            self.threeDWidget = None
             self.customViewerWidth = None
             self.customViewerHeight = None
+            threeDWidget = self.threeDWidget
+
+            # Close the detached window first so its C++ object is properly
+            # destroyed before the layout manager tries to recreate the view.
+            # Without this, changing the layout leaves a dangling pointer inside
+            # the layout manager, causing a segfault on the next threeDWidget(0) call.
+            threeDWidget.close()
+            self.threeDWidget = None
+            slicer.app.processEvents()
+
+            # Use an intermediate layout to force the layout manager to fully
+            # recreate the 3D widget (mirrors what runScreenCapture does).
+            intermLayout = (slicer.vtkMRMLLayoutNode.SlicerLayoutFourUp
+                            if originalLayout == slicer.vtkMRMLLayoutNode.SlicerLayoutOneUp3DView
+                            else slicer.vtkMRMLLayoutNode.SlicerLayoutOneUp3DView)
+            layoutManager.setLayout(intermLayout)
+            slicer.app.processEvents()
+            layoutManager.setLayout(originalLayout)
+            slicer.app.processEvents()
             print("3D Viewer docked back to original layout")
 
     def runScreenCapture(self) -> None:
