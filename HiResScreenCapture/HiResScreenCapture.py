@@ -44,7 +44,7 @@ class HiResScreenCapture(ScriptedLoadableModule):
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
         self.parent.title = "HiRes Screen Capture"  # TODO: make this more human readable by adding spaces
-        self.parent.categories = ["SlicerMorph.Utilities"]  # TODO: set categories (folders where the module
+        self.parent.categories = ["SlicerMorph.SlicerMorph Utilities"]  # TODO: set categories (folders where the module
         # shows up in the module selector)
         self.parent.dependencies = []  # TODO: add here list of module names that this module requires
         self.parent.contributors = ["Murat Maga (UW), Oshane Thomas(SCRI)"]  # TODO: replace with "Firstname Lastname
@@ -81,7 +81,11 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         self.applyButton = None
         self.resolutionSpinBox = None  # Use a QDoubleSpinBox for resolution factor
         self.outputFileLineEdit = None
+        self.removeBackgroundCheckBox = None
         self.logic = None
+        self.undockViewerButton = None
+        self.redockViewerButton = None
+        self.viewerComboBox = None
 
     def setup(self) -> None:
         """
@@ -98,9 +102,62 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
 
         parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
 
+        # 3D Viewer Size Section
+        viewerSizeLabel = qt.QLabel("<b>3D Viewer Size Settings</b>")
+        parametersFormLayout.addRow(viewerSizeLabel)
+
+        # Viewer selector
+        self.viewerComboBox = qt.QComboBox()
+        self.viewerComboBox.toolTip = "Select which 3D viewer to undock"
+        self.viewerComboBox.setMaximumWidth(200)
+        parametersFormLayout.addRow("3D Viewer:", self.viewerComboBox)
+
+        # Undock/Redock buttons in vertical layout, left-aligned
+        buttonVBox = qt.QVBoxLayout()
+        buttonVBox.setAlignment(qt.Qt.AlignLeft)
+        
+        self.undockViewerButton = qt.QPushButton("Undock 3D Viewer")
+        self.undockViewerButton.toolTip = "Undocks the 3D viewer for the user to adjust correct aspect ratios for their visualization."
+        self.undockViewerButton.clicked.connect(self.onUndockViewer)
+        self.undockViewerButton.setMaximumWidth(150)
+        buttonVBox.addWidget(self.undockViewerButton)
+        
+        self.redockViewerButton = qt.QPushButton("Redock 3D Viewer")
+        self.redockViewerButton.toolTip = "Redock the 3D viewer back to its original layout"
+        self.redockViewerButton.clicked.connect(self.onRedockViewer)
+        self.redockViewerButton.enabled = False
+        self.redockViewerButton.setMaximumWidth(150)
+        buttonVBox.addWidget(self.redockViewerButton)
+        
+        parametersFormLayout.addRow("", buttonVBox)
+
+        # Separator
+        separatorLabel = qt.QLabel("")
+        parametersFormLayout.addRow(separatorLabel)
+
+        # Screenshot Output Section
+        screenshotLabel = qt.QLabel("<b>Screenshot Settings</b>")
+        parametersFormLayout.addRow(screenshotLabel)
+
+        # Resolution Scaling Factor (using QDoubleSpinBox)
+        self.resolutionSpinBox = qt.QDoubleSpinBox()
+        self.resolutionSpinBox.setRange(0.1, 100.0)  # Set appropriate range
+        self.resolutionSpinBox.setSingleStep(0.1)
+        self.resolutionSpinBox.setDecimals(2)
+        self.resolutionSpinBox.setValue(self.currentScaleFactor)
+        self.resolutionSpinBox.setMaximumWidth(100)
+        self.resolutionSpinBox.valueChanged.connect(self.onResolutionFactorChanged)
+        parametersFormLayout.addRow("Scaling Factor:", self.resolutionSpinBox)
+
+        self.resolutionDisplayLabel = qt.QLabel("Current Resolution: Unknown")
+        self.finalresolutionDisplayLabel = qt.QLabel("Current Resolution: Unknown")
+        parametersFormLayout.addRow("Viewer Size:", self.resolutionDisplayLabel)
+        parametersFormLayout.addRow("Output Size:", self.finalresolutionDisplayLabel)
+
         # Output file QLineEdit
         self.outputFileLineEdit = qt.QLineEdit()
         self.outputFileLineEdit.setPlaceholderText("e.g., /path/to/screenshot.png")
+        self.outputFileLineEdit.setMinimumWidth(200)
         self.initialDir = slicer.mrmlScene.GetRootDirectory()
         self.selectOutputFileButton = qt.QPushButton("Select Output File")
         self.selectOutputFileButton.clicked.connect(self.selectOutputFile)
@@ -109,19 +166,13 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         fileHBox.addWidget(self.selectOutputFileButton)
         parametersFormLayout.addRow("Output File:", fileHBox)
 
-        # Resolution Scaling Factor (using QDoubleSpinBox)
-        self.resolutionSpinBox = qt.QDoubleSpinBox()
-        self.resolutionSpinBox.setRange(0.1, 100.0)  # Set appropriate range
-        self.resolutionSpinBox.setSingleStep(0.1)
-        self.resolutionSpinBox.setDecimals(2)
-        self.resolutionSpinBox.setValue(self.currentScaleFactor)
-        self.resolutionSpinBox.valueChanged.connect(self.onResolutionFactorChanged)
-        parametersFormLayout.addRow("Resolution Scaling Factor:", self.resolutionSpinBox)
-
-        self.resolutionDisplayLabel = qt.QLabel("Current Resolution: Unknown")
-        self.finalresolutionDisplayLabel = qt.QLabel("Current Resolution: Unknown")
-        parametersFormLayout.addRow("3D Viewer Size:", self.resolutionDisplayLabel)
-        parametersFormLayout.addRow("Screenshot Output Resolution:", self.finalresolutionDisplayLabel)
+        # Remove background checkbox (only applicable for PNG output)
+        self.removeBackgroundCheckBox = qt.QCheckBox("Remove background")
+        self.removeBackgroundCheckBox.toolTip = ("If checked, the background will be transparent in the captured image. "
+                                                 "Only available for PNG format.")
+        self.removeBackgroundCheckBox.checked = False
+        self.removeBackgroundCheckBox.enabled = False
+        parametersFormLayout.addRow("", self.removeBackgroundCheckBox)
 
         # Initialize the timer for updating the resolution display
         self.updateTimer = qt.QTimer()
@@ -137,6 +188,10 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         self.logic = HiResScreenCaptureLogic()
         self.logic.setCurrentScalFactor(self.currentScaleFactor)  # set default scale factor
 
+        # Populate the viewer selector and keep it in sync with layout changes
+        self._populateViewerComboBox()
+        slicer.app.layoutManager().layoutChanged.connect(self._populateViewerComboBox)
+
         # Connect signals
         self.outputFileLineEdit.textChanged.connect(self.updateApplyButtonState)
 
@@ -144,14 +199,46 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         self.updateApplyButtonState()
 
     def updateResolutionDisplay(self):
-        threeDWidget = slicer.app.layoutManager().threeDWidget(0)
-        if threeDWidget:
-            view = threeDWidget.threeDView()
-            width = view.width
-            height = view.height
-            self.resolutionDisplayLabel.setText(f"{width} x {height}")
+        try:
+            # If viewer is undocked and using custom size, show that
+            if self.logic and self.logic.viewerIsUndocked and self.logic.customViewerWidth and self.logic.customViewerHeight:
+                width = self.logic.customViewerWidth
+                height = self.logic.customViewerHeight
+                self.resolutionDisplayLabel.setText(f"{width} x {height} (custom)")
+            else:
+                layoutManager = slicer.app.layoutManager()
+                if layoutManager:
+                    threeDWidget = layoutManager.threeDWidget(0)
+                    if threeDWidget:
+                        view = threeDWidget.threeDView()
+                        width = view.width
+                        height = view.height
+                        self.resolutionDisplayLabel.setText(f"{width} x {height}")
+                        
+            # Calculate final output resolution
+            if self.logic and self.logic.customViewerWidth and self.logic.customViewerHeight:
+                width = self.logic.customViewerWidth
+                height = self.logic.customViewerHeight
+            else:
+                layoutManager = slicer.app.layoutManager()
+                if layoutManager:
+                    threeDWidget = layoutManager.threeDWidget(0)
+                    if threeDWidget:
+                        view = threeDWidget.threeDView()
+                        width = view.width
+                        height = view.height
+                    else:
+                        width = 0
+                        height = 0
+                else:
+                    width = 0
+                    height = 0
+
             self.finalresolutionDisplayLabel.setText(f"{int(round(width*self.currentScaleFactor))} x "
                                                      f"{int(round(height*self.currentScaleFactor))}")
+        except Exception as e:
+            # Silently handle errors during layout transitions
+            pass
 
     def cleanup(self):
         """
@@ -159,6 +246,10 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         """
         if self.updateTimer:
             self.updateTimer.stop()
+        try:
+            slicer.app.layoutManager().layoutChanged.disconnect(self._populateViewerComboBox)
+        except Exception:
+            pass
 
         # Properly call super with the current class name and `self`
         super().cleanup()
@@ -171,6 +262,48 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         if selectedFile:
             self.outputFileLineEdit.setText(selectedFile)
             self.initialDir = os.path.dirname(selectedFile)
+
+    def onUndockViewer(self):
+        """
+        Undock the 3D viewer for user adjustment.
+        """
+        # Refresh combo in case the layout changed since setup
+        self._populateViewerComboBox()
+        viewerIndex = self.viewerComboBox.currentIndex
+        self.logic.undockViewer(viewerIndex)
+        self.undockViewerButton.enabled = False
+        self.redockViewerButton.enabled = True
+        print("3D Viewer undocked")
+
+    def onRedockViewer(self):
+        """
+        Redock the 3D viewer back to its original layout.
+        """
+        self.logic.redockViewer()
+        # Defer button state updates to allow layout changes to complete
+        qt.QTimer.singleShot(100, lambda: self.updateButtonStatesAfterRedock())
+        print("3D Viewer redocked")
+    
+    def _populateViewerComboBox(self):
+        """
+        Fill the combo box with all available 3D views.
+        """
+        layoutManager = slicer.app.layoutManager()
+        current = self.viewerComboBox.currentIndex
+        self.viewerComboBox.clear()
+        for i in range(layoutManager.threeDViewCount):
+            node = layoutManager.threeDWidget(i).mrmlViewNode()
+            self.viewerComboBox.addItem(node.GetName() if node.GetName() else f"3D View {i+1}")
+        # Restore previous selection if still valid
+        if 0 <= current < self.viewerComboBox.count:
+            self.viewerComboBox.currentIndex = current
+
+    def updateButtonStatesAfterRedock(self):
+        """
+        Update button states after redocking completes.
+        """
+        self.undockViewerButton.enabled = True
+        self.redockViewerButton.enabled = False
 
     def onResolutionFactorChanged(self, value):
         """
@@ -187,6 +320,7 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         if self.outputFileLineEdit.text:
           extensionList = ['.png', '.bmp', '.jpg', '.jpeg', '.tiff']
           root, ext = os.path.splitext(self.outputFileLineEdit.text)
+          ext = ext.lower()
           directoryValid = os.path.isdir(os.path.dirname(self.outputFileLineEdit.text))
           if not directoryValid:
             print("Please choose a valid directory")
@@ -194,16 +328,24 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
           if not extensionValid:
             print("Please choose a valid extension (png, bmp, jpg, tiff)")
           self.applyButton.setEnabled(extensionValid and directoryValid)
+          # Remove background only works with PNG (alpha channel support)
+          self.removeBackgroundCheckBox.setEnabled(ext == '.png')
+          if ext != '.png':
+            self.removeBackgroundCheckBox.setChecked(False)
         else:
           self.applyButton.setEnabled(False)
+          self.removeBackgroundCheckBox.setEnabled(False)
 
     def applyButtonClicked(self):
         """
         Handles the apply button click to execute screenshot logic with the current scale factor.
         """
         outputPath = self.outputFileLineEdit.text
+        # Remember the directory for next time
+        self.initialDir = os.path.dirname(outputPath)
         self.logic.setOutputPath(outputPath)
         self.logic.setResolutionFactor(self.currentScaleFactor)
+        self.logic.setRemoveBackground(self.removeBackgroundCheckBox.checked)
         self.logic.runScreenCapture()
 
 
@@ -229,6 +371,12 @@ class HiResScreenCaptureLogic(ScriptedLoadableModuleLogic):
         self.currentScaleFactor = None
         self.resolutionFactor = None
         self.outputPath = None
+        self.customViewerWidth = None
+        self.customViewerHeight = None
+        self.viewerIsUndocked = False
+        self.originalLayout = None
+        self.threeDWidget = None
+        self.removeBackground = False
 
     def setResolutionFactor(self, resolutionFactor: int) -> None:
         self.resolutionFactor = resolutionFactor
@@ -239,36 +387,161 @@ class HiResScreenCaptureLogic(ScriptedLoadableModuleLogic):
     def setOutputPath(self, outputPath: str) -> None:
         self.outputPath = outputPath
 
+    def setRemoveBackground(self, removeBackground: bool) -> None:
+        self.removeBackground = removeBackground
+
+    def undockViewer(self, viewerIndex=0) -> None:
+        """
+        Undock the 3D viewer for user adjustment.
+        """
+        if self.viewerIsUndocked:
+            return
+
+        layoutManager = slicer.app.layoutManager()
+        self.originalLayout = layoutManager.layout
+        self.threeDWidget = layoutManager.threeDWidget(viewerIndex)
+
+        # Undock the widget
+        self.threeDWidget.setParent(None)
+        self.threeDWidget.show()
+        # On macOS the VTK OpenGL surface does not repaint automatically after
+        # reparenting — process pending events first so the window is fully
+        # created, then force a render so the view is not blank.
+        slicer.app.processEvents()
+        self.threeDWidget.threeDView().renderWindow().Render()
+        self.viewerIsUndocked = True
+
+        print("3D Viewer undocked")
+
+    def redockViewer(self) -> None:
+        """
+        Dock the 3D viewer back to its original layout.
+        """
+        if not self.viewerIsUndocked:
+            return
+
+        if self.threeDWidget and self.originalLayout is not None:
+            layoutManager = slicer.app.layoutManager()
+            # Change layout to force reparenting
+            layoutManager.layout = slicer.vtkMRMLLayoutNode.SlicerLayoutCustomView
+            layoutManager.layout = self.originalLayout
+            self.viewerIsUndocked = False
+            self.threeDWidget = None
+            self.customViewerWidth = None
+            self.customViewerHeight = None
+            print("3D Viewer docked back to original layout")
+
     def runScreenCapture(self) -> None:
         if self.resolutionFactor and self.outputPath:
             layoutManager = slicer.app.layoutManager()
             currentLayout = layoutManager.layout
-            threeDWidget = layoutManager.threeDWidget(0)
+            wasAlreadyUndocked = self.viewerIsUndocked
 
-            threeDWidget.setParent(None)
-            threeDWidget.show()
+            # Use the already undocked viewer if available, otherwise undock temporarily
+            if self.viewerIsUndocked and self.threeDWidget:
+                threeDWidget = self.threeDWidget
+                print("Using already undocked 3D viewer")
+            else:
+                threeDWidget = layoutManager.threeDWidget(0)
+                threeDWidget.setParent(None)
+                threeDWidget.show()
+
+            # Capture current viewer dimensions
             originalSize = threeDWidget.size
-            print("Original Image size:", threeDWidget.size)
+            self.customViewerWidth = originalSize.width()
+            self.customViewerHeight = originalSize.height()
+            print("Original viewer size:", originalSize.width(), "x", originalSize.height())
 
             viewNode = threeDWidget.mrmlViewNode()
             originalScaleFactor = viewNode.GetScreenScaleFactor()
-            print("Original Markup Scale Factor:", originalScaleFactor)
+            print("Original Screen Scale Factor:", originalScaleFactor)
+            
+            # Scale BOTH the widget size AND the screen scale factor for true high-res rendering
             viewNode.SetScreenScaleFactor(originalScaleFactor * self.currentScaleFactor)
+            
+            scaledWidth = int(originalSize.width() * self.currentScaleFactor)
+            scaledHeight = int(originalSize.height() * self.currentScaleFactor)
+            threeDWidget.size = qt.QSize(scaledWidth, scaledHeight)
+            print("Scaled image size:", scaledWidth, "x", scaledHeight)
+            print("Updated Screen Scale Factor:", viewNode.GetScreenScaleFactor())
 
-            threeDWidget.size = qt.QSize(originalSize.width() * self.currentScaleFactor,
-                                         originalSize.height() * self.currentScaleFactor)
-            print("Updated Image size:", threeDWidget.size)
+            if self.removeBackground:
+                # Use the VTK rendering pipeline to capture with a transparent background
+                view = threeDWidget.threeDView()
+                renderWindow = view.renderWindow()
 
-            print("Updated Markup Scale Factor:", viewNode.GetScreenScaleFactor())
+                # Save state for all renderers
+                renderers = renderWindow.GetRenderers()
+                rendererStates = []
+                renderers.InitTraversal()
+                renderer = renderers.GetNextItem()
+                while renderer:
+                    rendererStates.append({
+                        'renderer': renderer,
+                        'background': renderer.GetBackground(),
+                        'background2': renderer.GetBackground2(),
+                        'gradientBackground': renderer.GetGradientBackground(),
+                        'backgroundAlpha': renderer.GetBackgroundAlpha(),
+                    })
+                    renderer.SetBackground(0, 0, 0)
+                    renderer.SetBackground2(0, 0, 0)
+                    renderer.SetGradientBackground(False)
+                    renderer.SetBackgroundAlpha(0.0)
+                    renderer = renderers.GetNextItem()
 
-            # Capture the view
-            threeDWidget.grab().save(self.outputPath)
+                # Enable alpha bit planes for transparent rendering
+                originalAlphaBitPlanes = renderWindow.GetAlphaBitPlanes()
+                renderWindow.SetAlphaBitPlanes(1)
+                renderWindow.Render()
 
+                # Capture the view with an RGBA buffer
+                wti = vtk.vtkWindowToImageFilter()
+                wti.SetInput(renderWindow)
+                wti.SetInputBufferTypeToRGBA()
+                wti.ReadFrontBufferOff()
+                wti.Update()
+
+                writer = vtk.vtkPNGWriter()
+                writer.SetFileName(self.outputPath)
+                writer.SetInputConnection(wti.GetOutputPort())
+                writer.Write()
+                print(f"Transparent screenshot saved to: {self.outputPath}")
+
+                # Restore all renderer background settings
+                for state in rendererStates:
+                    r = state['renderer']
+                    r.SetBackground(*state['background'])
+                    r.SetBackground2(*state['background2'])
+                    r.SetGradientBackground(state['gradientBackground'])
+                    r.SetBackgroundAlpha(state['backgroundAlpha'])
+                renderWindow.SetAlphaBitPlanes(originalAlphaBitPlanes)
+                renderWindow.Render()
+            else:
+                # Capture the view
+                threeDWidget.grab().save(self.outputPath)
+                print(f"Screenshot saved to: {self.outputPath}")
+
+            # Restore original scale factor and size
             viewNode.SetScreenScaleFactor(originalScaleFactor)
+            threeDWidget.size = originalSize
 
-            # make sure the layout changes so that the threeDWidget is reparented and resized
-            layoutManager.layout = slicer.vtkMRMLLayoutNode.SlicerLayoutCustomView
-            layoutManager.layout = currentLayout
+            # Dock the viewer back only if it wasn't already undocked
+            if not wasAlreadyUndocked:
+                # Close the undocked window and force layout refresh
+                threeDWidget.close()
+                slicer.app.processEvents()
+                # Switch layout to force recreation of the 3D widget
+                layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUp3DView)
+                slicer.app.processEvents()
+                layoutManager.setLayout(currentLayout)
+                slicer.app.processEvents()
+                self.customViewerWidth = None
+                self.customViewerHeight = None
+                print("3D Viewer docked back to original layout")
+            else:
+                # Restore original size even if staying undocked
+                threeDWidget.resize(originalSize)
+                print("Keeping 3D Viewer undocked as it was before capture")
 
     #
 # HiResScreenCaptureTest
