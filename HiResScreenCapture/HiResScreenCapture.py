@@ -85,6 +85,7 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         self.logic = None
         self.undockViewerButton = None
         self.redockViewerButton = None
+        self.viewerComboBox = None
 
     def setup(self) -> None:
         """
@@ -104,6 +105,12 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         # 3D Viewer Size Section
         viewerSizeLabel = qt.QLabel("<b>3D Viewer Size Settings</b>")
         parametersFormLayout.addRow(viewerSizeLabel)
+
+        # Viewer selector
+        self.viewerComboBox = qt.QComboBox()
+        self.viewerComboBox.toolTip = "Select which 3D viewer to undock"
+        self.viewerComboBox.setMaximumWidth(200)
+        parametersFormLayout.addRow("3D Viewer:", self.viewerComboBox)
 
         # Undock/Redock buttons in vertical layout, left-aligned
         buttonVBox = qt.QVBoxLayout()
@@ -181,6 +188,10 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         self.logic = HiResScreenCaptureLogic()
         self.logic.setCurrentScalFactor(self.currentScaleFactor)  # set default scale factor
 
+        # Populate the viewer selector and keep it in sync with layout changes
+        self._populateViewerComboBox()
+        slicer.app.layoutManager().layoutChanged.connect(self._populateViewerComboBox)
+
         # Connect signals
         self.outputFileLineEdit.textChanged.connect(self.updateApplyButtonState)
 
@@ -235,6 +246,10 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         """
         if self.updateTimer:
             self.updateTimer.stop()
+        try:
+            slicer.app.layoutManager().layoutChanged.disconnect(self._populateViewerComboBox)
+        except Exception:
+            pass
 
         # Properly call super with the current class name and `self`
         super().cleanup()
@@ -252,7 +267,10 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         """
         Undock the 3D viewer for user adjustment.
         """
-        self.logic.undockViewer()
+        # Refresh combo in case the layout changed since setup
+        self._populateViewerComboBox()
+        viewerIndex = self.viewerComboBox.currentIndex
+        self.logic.undockViewer(viewerIndex)
         self.undockViewerButton.enabled = False
         self.redockViewerButton.enabled = True
         print("3D Viewer undocked")
@@ -266,6 +284,20 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         qt.QTimer.singleShot(100, lambda: self.updateButtonStatesAfterRedock())
         print("3D Viewer redocked")
     
+    def _populateViewerComboBox(self):
+        """
+        Fill the combo box with all available 3D views.
+        """
+        layoutManager = slicer.app.layoutManager()
+        current = self.viewerComboBox.currentIndex
+        self.viewerComboBox.clear()
+        for i in range(layoutManager.threeDViewCount):
+            node = layoutManager.threeDWidget(i).mrmlViewNode()
+            self.viewerComboBox.addItem(node.GetName() if node.GetName() else f"3D View {i+1}")
+        # Restore previous selection if still valid
+        if 0 <= current < self.viewerComboBox.count:
+            self.viewerComboBox.currentIndex = current
+
     def updateButtonStatesAfterRedock(self):
         """
         Update button states after redocking completes.
@@ -358,7 +390,7 @@ class HiResScreenCaptureLogic(ScriptedLoadableModuleLogic):
     def setRemoveBackground(self, removeBackground: bool) -> None:
         self.removeBackground = removeBackground
 
-    def undockViewer(self) -> None:
+    def undockViewer(self, viewerIndex=0) -> None:
         """
         Undock the 3D viewer for user adjustment.
         """
@@ -367,11 +399,16 @@ class HiResScreenCaptureLogic(ScriptedLoadableModuleLogic):
 
         layoutManager = slicer.app.layoutManager()
         self.originalLayout = layoutManager.layout
-        self.threeDWidget = layoutManager.threeDWidget(0)
+        self.threeDWidget = layoutManager.threeDWidget(viewerIndex)
 
         # Undock the widget
         self.threeDWidget.setParent(None)
         self.threeDWidget.show()
+        # On macOS the VTK OpenGL surface does not repaint automatically after
+        # reparenting — process pending events first so the window is fully
+        # created, then force a render so the view is not blank.
+        slicer.app.processEvents()
+        self.threeDWidget.threeDView().renderWindow().Render()
         self.viewerIsUndocked = True
 
         print("3D Viewer undocked")
