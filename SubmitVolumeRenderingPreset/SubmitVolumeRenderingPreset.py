@@ -142,11 +142,10 @@ class SubmitVolumeRenderingPresetWidget(ScriptedLoadableModuleWidget):
         self.exportButton.enabled = False
         self.layout.addWidget(self.exportButton)
 
-        self.submitButton = qt.QPushButton("2 – Open GitHub submission page")
+        self.submitButton = qt.QPushButton("2 – Upload and submit to GitHub")
         self.submitButton.toolTip = (
-            "Opens a pre-filled GitHub issue in your browser.\n"
-            "The JSON is embedded automatically. Drag only the PNG\n"
-            "into the Screenshot field, then click Submit."
+            "Uploads the preset files to cloud storage, then opens a pre-filled\n"
+            "GitHub issue in your browser. Just click Submit new issue — done!"
         )
         self.submitButton.enabled = False
         self.layout.addWidget(self.submitButton)
@@ -285,54 +284,106 @@ class SubmitVolumeRenderingPresetWidget(ScriptedLoadableModuleWidget):
         self.submitButton.enabled = True
         self._setStatus(
             f"✓ Exported:\n  {os.path.basename(jsonPath)}\n  {os.path.basename(pngPath)}\n\n"
-            f"Now click button 2 to open the GitHub submission page.",
+            f"Now click button 2 to upload and submit to GitHub.",
             "darkgreen",
         )
 
         # Open the output folder in Finder so files are easy to drag
         qt.QDesktopServices.openUrl(qt.QUrl.fromLocalFile(outDir))
 
-    # --- submit (open browser) -------------------------------------------
+    # --- submit (upload + open browser) ------------------------------------
 
     def _onSubmit(self):
         name = self.nameEdit.text.strip()
-        desc = self.descEdit.text.strip()
-        author = self.authorEdit.text.strip()
 
-        # Read the exported JSON so we can put it on the clipboard.
-        # (Embedding it in the URL hits GitHub's URL length limit.)
-        json_content = ""
-        if self._exportedJson and os.path.isfile(self._exportedJson):
-            with open(self._exportedJson) as fh:
-                json_content = fh.read().strip()
-
-        if not json_content:
+        if not self._exportedJson or not os.path.isfile(self._exportedJson):
+            self._setStatus(
+                "⚠ Please export the preset first (button 1), then click this button again.",
+                "orange",
+            )
+            return
+        if not self._exportedPng or not os.path.isfile(self._exportedPng):
             self._setStatus(
                 "⚠ Please export the preset first (button 1), then click this button again.",
                 "orange",
             )
             return
 
-        # Copy JSON to clipboard so the user can paste it into the form field.
-        qt.QApplication.clipboard().setText(json_content)
+        # 1. Fetch current presigned PUT URLs from the repo
+        self._setStatus("Fetching upload configuration…", "gray")
+        slicer.app.processEvents()
+        raw_url = f"https://raw.githubusercontent.com/{self.REPO}/main/staging-urls.json"
+        try:
+            with urllib.request.urlopen(raw_url, timeout=15) as resp:
+                staging = json.loads(resp.read())
+        except Exception as e:
+            self._setStatus(f"Could not fetch upload configuration: {e}", "red")
+            return
 
-        # Open the GitHub new-issue URL with just the title pre-filled.
-        # The body template is defined in the issue template YAML on GitHub,
-        # so the user only needs to paste the JSON and drag the PNG.
+        json_put_url = staging["json_url"]
+        png_put_url  = staging["png_url"]
+        uid          = staging["uuid"]
+
+        # Check that the URLs haven't expired
+        from datetime import datetime, timezone
+        expires_at = datetime.strptime(
+            staging["expires_at"], "%Y-%m-%dT%H:%M:%SZ"
+        ).replace(tzinfo=timezone.utc)
+        remaining = (expires_at - datetime.now(timezone.utc)).total_seconds()
+        if remaining < 300:
+            self._setStatus(
+                "Upload configuration has just expired. "
+                "Please wait a moment for the hourly refresh and try again.",
+                "orange",
+            )
+            return
+
+        # 2. Upload JSON
+        self._setStatus("Uploading preset JSON…", "gray")
+        slicer.app.processEvents()
+        with open(self._exportedJson, "rb") as fh:
+            json_data = fh.read()
+        try:
+            req = urllib.request.Request(json_put_url, data=json_data, method="PUT")
+            with urllib.request.urlopen(req) as resp:
+                if resp.status not in (200, 204):
+                    raise RuntimeError(f"HTTP {resp.status}")
+        except Exception as e:
+            self._setStatus(f"Failed to upload preset JSON: {e}", "red")
+            return
+
+        # 3. Upload PNG
+        self._setStatus("Uploading screenshot…", "gray")
+        slicer.app.processEvents()
+        with open(self._exportedPng, "rb") as fh:
+            png_data = fh.read()
+        try:
+            req = urllib.request.Request(png_put_url, data=png_data, method="PUT")
+            with urllib.request.urlopen(req) as resp:
+                if resp.status not in (200, 204):
+                    raise RuntimeError(f"HTTP {resp.status}")
+        except Exception as e:
+            self._setStatus(f"Failed to upload screenshot: {e}", "red")
+            return
+
+        # 4. Open pre-filled GitHub issue in the browser
+        issue_body = (
+            f"Preset files uploaded automatically via SlicerMorph.\n"
+            f"<!-- DO NOT EDIT THE LINE BELOW -->\n"
+            f"staging: {uid}"
+        )
         params = urllib.parse.urlencode({
-            "template": "preset-submission.yml",
-            "title": f"New preset: {name}",
             "labels": "preset-submission",
+            "title":  f"New preset: {name}",
+            "body":   issue_body,
         })
         url = f"https://github.com/{self.REPO}/issues/new?{params}"
         qt.QDesktopServices.openUrl(qt.QUrl(url))
 
         self._setStatus(
-            "✓ GitHub opened in your browser.\n\n"
-            "The JSON has been copied to your clipboard.\n"
-            "  1. Click into the Preset JSON field and press Cmd+V to paste it.\n"
-            "  2. Drag the PNG from the Finder window into the Screenshot field.\n"
-            "  3. Click Submit new issue.",
+            "✓ Files uploaded successfully!\n\n"
+            "A GitHub issue form has been opened in your browser.\n"
+            "Just click \"Submit new issue\" — no copy-paste needed.",
             "darkgreen",
         )
 
