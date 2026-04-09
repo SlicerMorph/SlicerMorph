@@ -327,7 +327,7 @@ class SubmitVolumeRenderingPresetWidget(ScriptedLoadableModuleWidget):
         self._setStatus(
             "✓ Files uploaded successfully!\n\n"
             "A GitHub issue form has been opened in your browser.\n"
-            "Just click \"Submit new issue\" — no copy-paste needed.",
+            "Just click \"Submit new issue\" — no editing needed.",
             "darkgreen",
         )
 
