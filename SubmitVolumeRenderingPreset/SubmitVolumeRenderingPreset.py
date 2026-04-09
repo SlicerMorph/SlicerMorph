@@ -46,6 +46,22 @@ class SubmitVolumeRenderingPresetWidget(ScriptedLoadableModuleWidget):
         self.logic = SubmitVolumeRenderingPresetLogic()
         self.layout.setAlignment(qt.Qt.AlignTop)
 
+        # ---- GitHub account notice ----
+        noticeLabel = qt.QLabel(
+            "<b>Note:</b> Submitting a preset requires a free "
+            "<a href='https://github.com/signup'>GitHub account</a>. "
+            "If you don't have one, create it at "
+            "<a href='https://github.com/signup'>github.com/signup</a> "
+            "before clicking the submission button."
+        )
+        noticeLabel.wordWrap = True
+        noticeLabel.openExternalLinks = True
+        noticeLabel.setStyleSheet(
+            "background-color: #fff8c5; border: 1px solid #e3b341; "
+            "border-radius: 4px; padding: 6px; margin-bottom: 4px;"
+        )
+        self.layout.addWidget(noticeLabel)
+
         # ---- Collapsible: Preset Info ----
         infoBox = self._collapsible("Preset Information")
         formLayout = qt.QFormLayout(infoBox)
