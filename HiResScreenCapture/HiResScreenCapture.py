@@ -254,8 +254,10 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
                             height = view.height
                 if width and height:
                     self._timerUpdatingSize = True
-                    self.widthSpinBox.setValue(width)
-                    self.heightSpinBox.setValue(height)
+                    if not self.widthSpinBox.hasFocus():
+                        self.widthSpinBox.setValue(width)
+                    if not self.heightSpinBox.hasFocus():
+                        self.heightSpinBox.setValue(height)
                     self._timerUpdatingSize = False
 
             if width and height:
