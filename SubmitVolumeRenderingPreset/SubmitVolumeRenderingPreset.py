@@ -330,7 +330,7 @@ class SubmitVolumeRenderingPresetWidget(ScriptedLoadableModuleWidget):
             staging["expires_at"], "%Y-%m-%dT%H:%M:%SZ"
         ).replace(tzinfo=timezone.utc)
         remaining = (expires_at - datetime.now(timezone.utc)).total_seconds()
-        if remaining < 300:
+        if remaining < 180:
             self._setStatus(
                 "Upload configuration has just expired. "
                 "Please wait a moment for the hourly refresh and try again.",
