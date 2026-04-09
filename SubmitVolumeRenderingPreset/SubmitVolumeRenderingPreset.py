@@ -299,61 +299,40 @@ class SubmitVolumeRenderingPresetWidget(ScriptedLoadableModuleWidget):
         desc = self.descEdit.text.strip()
         author = self.authorEdit.text.strip()
 
-        # Read the exported JSON so we can embed it as a code block.
-        # GitHub's issue form uses `render: json` for the Preset JSON field,
-        # which expects pasted text — file attachments are not accessible to
-        # the automation token, so we embed the content directly.
+        # Read the exported JSON so we can put it on the clipboard.
+        # (Embedding it in the URL hits GitHub's URL length limit.)
         json_content = ""
         if self._exportedJson and os.path.isfile(self._exportedJson):
             with open(self._exportedJson) as fh:
                 json_content = fh.read().strip()
 
-        body_lines = [
-            "## Volume Rendering Preset Submission",
-            "",
-            f"**Preset name:** {name}",
-        ]
-        if desc:
-            body_lines.append(f"**Description:** {desc}")
-        if author:
-            body_lines.append(f"**Author:** {author}")
+        if not json_content:
+            self._setStatus(
+                "⚠ Please export the preset first (button 1), then click this button again.",
+                "orange",
+            )
+            return
 
-        if json_content:
-            body_lines += [
-                "",
-                "### Preset JSON",
-                "```json",
-                json_content,
-                "```",
-            ]
-        else:
-            body_lines += [
-                "",
-                "### Preset JSON",
-                "_Please export first (button 1), then click this button again._",
-            ]
+        # Copy JSON to clipboard so the user can paste it into the form field.
+        qt.QApplication.clipboard().setText(json_content)
 
-        body_lines += [
-            "",
-            "### Screenshot",
-            f"_Drag and drop `{name}.png` from the Finder window that opened into this box._",
-            "",
-            "---",
-            "_Submitted via SlicerMorph SubmitVolumeRenderingPreset module_",
-        ]
-        body = "\n".join(body_lines)
-
+        # Open the GitHub new-issue URL with just the title pre-filled.
+        # The body template is defined in the issue template YAML on GitHub,
+        # so the user only needs to paste the JSON and drag the PNG.
         params = urllib.parse.urlencode({
+            "template": "preset-submission.yml",
             "title": f"New preset: {name}",
             "labels": "preset-submission",
-            "body": body,
         })
         url = f"https://github.com/{self.REPO}/issues/new?{params}"
         qt.QDesktopServices.openUrl(qt.QUrl(url))
 
         self._setStatus(
-            "✓ GitHub opened in your browser.\n"
-            "Drag only the PNG from the Finder window into the Screenshot section, then submit.",
+            "✓ GitHub opened in your browser.\n\n"
+            "The JSON has been copied to your clipboard.\n"
+            "  1. Click into the Preset JSON field and press Cmd+V to paste it.\n"
+            "  2. Drag the PNG from the Finder window into the Screenshot field.\n"
+            "  3. Click Submit new issue.",
             "darkgreen",
         )
 
