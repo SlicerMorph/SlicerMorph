@@ -145,7 +145,8 @@ class SubmitVolumeRenderingPresetWidget(ScriptedLoadableModuleWidget):
         self.submitButton = qt.QPushButton("2 – Open GitHub submission page")
         self.submitButton.toolTip = (
             "Opens a pre-filled GitHub issue in your browser.\n"
-            "Drag the two exported files into the issue, then click Submit."
+            "The JSON is embedded automatically. Drag only the PNG\n"
+            "into the Screenshot field, then click Submit."
         )
         self.submitButton.enabled = False
         self.layout.addWidget(self.submitButton)
@@ -298,6 +299,15 @@ class SubmitVolumeRenderingPresetWidget(ScriptedLoadableModuleWidget):
         desc = self.descEdit.text.strip()
         author = self.authorEdit.text.strip()
 
+        # Read the exported JSON so we can embed it as a code block.
+        # GitHub's issue form uses `render: json` for the Preset JSON field,
+        # which expects pasted text — file attachments are not accessible to
+        # the automation token, so we embed the content directly.
+        json_content = ""
+        if self._exportedJson and os.path.isfile(self._exportedJson):
+            with open(self._exportedJson) as fh:
+                json_content = fh.read().strip()
+
         body_lines = [
             "## Volume Rendering Preset Submission",
             "",
@@ -307,14 +317,26 @@ class SubmitVolumeRenderingPresetWidget(ScriptedLoadableModuleWidget):
             body_lines.append(f"**Description:** {desc}")
         if author:
             body_lines.append(f"**Author:** {author}")
+
+        if json_content:
+            body_lines += [
+                "",
+                "### Preset JSON",
+                "```json",
+                json_content,
+                "```",
+            ]
+        else:
+            body_lines += [
+                "",
+                "### Preset JSON",
+                "_Please export first (button 1), then click this button again._",
+            ]
+
         body_lines += [
             "",
-            "### Files",
-            f"Please attach the two files exported from Slicer:",
-            f"- `{name}.vp.json`",
-            f"- `{name}.png`",
-            "",
-            "Drag and drop both files into this text box, then click **Submit new issue**.",
+            "### Screenshot",
+            f"_Drag and drop `{name}.png` from the Finder window that opened into this box._",
             "",
             "---",
             "_Submitted via SlicerMorph SubmitVolumeRenderingPreset module_",
@@ -331,7 +353,7 @@ class SubmitVolumeRenderingPresetWidget(ScriptedLoadableModuleWidget):
 
         self._setStatus(
             "✓ GitHub opened in your browser.\n"
-            "Drag the two exported files from the Finder window into the issue, then submit.",
+            "Drag only the PNG from the Finder window into the Screenshot section, then submit.",
             "darkgreen",
         )
 
