@@ -66,20 +66,21 @@ class SubmitVolumeRenderingPresetWidget(ScriptedLoadableModuleWidget):
         selBox = self._collapsible("Select Preset")
         selLayout = qt.QFormLayout(selBox)
 
-        # Volume rendering node selector row (combo + refresh button)
-        vrRow = qt.QHBoxLayout()
-        self.vrCombo = qt.QComboBox()
-        self.vrCombo.toolTip = (
-            "Volumes that currently have volume rendering enabled.\n"
-            "Enable volume rendering in the Volume Rendering module first,\n"
-            "then return here and click Refresh."
+        # VolumeProperty node selector row (combo + refresh button)
+        vpRow = qt.QHBoxLayout()
+        self.vpCombo = qt.QComboBox()
+        self.vpCombo.toolTip = (
+            "All VolumeProperty presets currently loaded in the scene.\n"
+            "Select the preset you want to share. Rename it first in the\n"
+            "Volume Rendering module (Property dropdown) if needed,\n"
+            "then click Refresh."
         )
-        vrRow.addWidget(self.vrCombo)
+        vpRow.addWidget(self.vpCombo)
         self.refreshButton = qt.QPushButton("Refresh")
-        self.refreshButton.toolTip = "Re-scan the scene for volume-rendering-enabled volumes."
+        self.refreshButton.toolTip = "Re-scan the scene for VolumeProperty presets."
         self.refreshButton.setFixedWidth(70)
-        vrRow.addWidget(self.refreshButton)
-        selLayout.addRow("Volume (VR enabled):", vrRow)
+        vpRow.addWidget(self.refreshButton)
+        selLayout.addRow("Preset (Property node):", vpRow)
 
         # Editable preset name — auto-filled from selected volume, but overrideable
         self.nameEdit = qt.QLineEdit()
@@ -151,7 +152,7 @@ class SubmitVolumeRenderingPresetWidget(ScriptedLoadableModuleWidget):
 
         # ---- Connections ----
         self.refreshButton.clicked.connect(self._populateSelectors)
-        self.vrCombo.currentIndexChanged.connect(self._onVrComboChanged)
+        self.vpCombo.currentIndexChanged.connect(self._onVpComboChanged)
         self.nameEdit.textChanged.connect(self._onNameChanged)
         self.exportButton.clicked.connect(self._onExport)
         self.submitButton.clicked.connect(self._onSubmit)
@@ -176,40 +177,36 @@ class SubmitVolumeRenderingPresetWidget(ScriptedLoadableModuleWidget):
         self.statusLabel.setStyleSheet(f"color:{color};")
 
     def _populateSelectors(self):
-        """Refresh the VR-node combo and the 3-D view combo from the current scene."""
-        # --- Volume rendering nodes ---
-        self.vrCombo.blockSignals(True)
-        prevNodeId = self.vrCombo.currentData  # preserve selection across refresh
-        self.vrCombo.clear()
+        """Refresh the VolumeProperty combo and the 3-D view combo from the current scene."""
+        # --- VolumeProperty nodes (the actual presets) ---
+        self.vpCombo.blockSignals(True)
+        prevNodeId = self.vpCombo.currentData
+        self.vpCombo.clear()
 
-        vrLogic = slicer.modules.volumerendering.logic()
-        col = slicer.mrmlScene.GetNodesByClass("vtkMRMLScalarVolumeNode")
+        col = slicer.mrmlScene.GetNodesByClass("vtkMRMLVolumePropertyNode")
         col.InitTraversal()
         found = []
         node = col.GetNextItemAsObject()
         while node:
-            dn = vrLogic.GetFirstVolumeRenderingDisplayNode(node)
-            if dn is not None and dn.GetVolumePropertyNode() is not None:
-                found.append((node.GetName(), node.GetID()))
+            found.append((node.GetName(), node.GetID()))
             node = col.GetNextItemAsObject()
 
         if found:
             for name, nodeId in found:
-                self.vrCombo.addItem(name, nodeId)
-            # restore previous selection if still present
+                self.vpCombo.addItem(name, nodeId)
             idx = next((i for i, (_, nid) in enumerate(found) if nid == prevNodeId), 0)
-            self.vrCombo.setCurrentIndex(idx)
+            self.vpCombo.setCurrentIndex(idx)
             self._setStatus("")
         else:
-            self.vrCombo.addItem("(no volume rendering presets in scene)")
+            self.vpCombo.addItem("(no VolumeProperty presets in scene)")
             self._setStatus(
-                "No volumes with volume rendering enabled found.\n"
-                "Enable volume rendering in the Volume Rendering module, then click Refresh.",
+                "No VolumeProperty presets found in the scene.\n"
+                "Load a volume, enable volume rendering, then click Refresh.",
                 "orange",
             )
 
-        self.vrCombo.blockSignals(False)
-        self._onVrComboChanged(self.vrCombo.currentIndex)
+        self.vpCombo.blockSignals(False)
+        self._onVpComboChanged(self.vpCombo.currentIndex)
 
         # --- 3-D views ---
         self.viewCombo.blockSignals(True)
@@ -228,8 +225,8 @@ class SubmitVolumeRenderingPresetWidget(ScriptedLoadableModuleWidget):
             self.viewCombo.setCurrentIndex(existing)
         self.viewCombo.blockSignals(False)
 
-    def _onVrComboChanged(self, index):
-        nodeId = self.vrCombo.itemData(index)
+    def _onVpComboChanged(self, index):
+        nodeId = self.vpCombo.itemData(index)
         if not nodeId:
             self.exportButton.enabled = False
             return
@@ -250,7 +247,7 @@ class SubmitVolumeRenderingPresetWidget(ScriptedLoadableModuleWidget):
         self._updateExportButton()
 
     def _updateExportButton(self):
-        nodeId = self.vrCombo.currentData
+        nodeId = self.vpCombo.currentData
         nameOk = bool(re.match(r'^[A-Za-z0-9_-]+$', self.nameEdit.text))
         self.exportButton.enabled = bool(nodeId) and nameOk
 
@@ -261,7 +258,7 @@ class SubmitVolumeRenderingPresetWidget(ScriptedLoadableModuleWidget):
         desc = self.descEdit.text.strip()
         author = self.authorEdit.text.strip()
         outDir = self.outputDirButton.currentPath
-        nodeId = self.vrCombo.currentData
+        nodeId = self.vpCombo.currentData
         viewIndex = self.viewCombo.currentData if self.viewCombo.currentData is not None else 0
 
         if not os.path.isdir(outDir):
@@ -349,31 +346,22 @@ class SubmitVolumeRenderingPresetLogic(ScriptedLoadableModuleLogic):
     def exportPreset(self, name, outputDir, nodeId=None, viewIndex=0,
                      description="", author=""):
         """
-        Export the selected volume-rendering preset.
+        Export the selected VolumeProperty preset node.
 
+        nodeId: ID of a vtkMRMLVolumePropertyNode.
         Returns (jsonPath, pngPath).
         Raises RuntimeError on failure.
         """
-        vrLogic = slicer.modules.volumerendering.logic()
-
         if nodeId:
-            volNode = slicer.mrmlScene.GetNodeByID(nodeId)
+            vpNode = slicer.mrmlScene.GetNodeByID(nodeId)
         else:
-            volNode = self._getActiveVolumeNode()
+            vpNode = None
 
-        if volNode is None:
-            raise RuntimeError("No volume node found. Load a volume first.")
-
-        displayNode = vrLogic.GetFirstVolumeRenderingDisplayNode(volNode)
-        if displayNode is None:
-            raise RuntimeError(
-                "Volume rendering is not enabled for this volume. "
-                "Enable it in the Volume Rendering module first."
-            )
-
-        vpNode = displayNode.GetVolumePropertyNode()
         if vpNode is None:
-            raise RuntimeError("Could not find VolumePropertyNode.")
+            raise RuntimeError(
+                "No VolumeProperty preset selected. "
+                "Select a preset from the dropdown and click Refresh if needed."
+            )
 
         jsonPath = os.path.join(outputDir, f"{name}.vp.json")
         pngPath = os.path.join(outputDir, f"{name}.png")
@@ -487,7 +475,7 @@ class SubmitVolumeRenderingPresetLogic(ScriptedLoadableModuleLogic):
             json.dump(data, fh, indent=4)
 
     def _captureScreenshot(self, path, viewIndex=0):
-        """Capture the selected 3-D view and save to PNG."""
+        """Capture the selected 3-D view, centre-crop to square, and save to PNG."""
         import vtk
         lm = slicer.app.layoutManager()
         threeDWidget = lm.threeDWidget(viewIndex)
@@ -503,9 +491,21 @@ class SubmitVolumeRenderingPresetLogic(ScriptedLoadableModuleLogic):
         cap.ReadFrontBufferOff()
         cap.Update()
 
+        # Centre-crop to square so thumbnails look consistent in the gallery
+        img = cap.GetOutput()
+        w, h, _ = img.GetDimensions()
+        size = min(w, h)
+        x0 = (w - size) // 2
+        y0 = (h - size) // 2
+
+        crop = vtk.vtkExtractVOI()
+        crop.SetInputConnection(cap.GetOutputPort())
+        crop.SetVOI(x0, x0 + size - 1, y0, y0 + size - 1, 0, 0)
+        crop.Update()
+
         writer = vtk.vtkPNGWriter()
         writer.SetFileName(path)
-        writer.SetInputConnection(cap.GetOutputPort())
+        writer.SetInputConnection(crop.GetOutputPort())
         writer.Write()
 
 
