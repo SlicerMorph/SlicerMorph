@@ -107,45 +107,26 @@ class SubmitVolumeRenderingPresetWidget(ScriptedLoadableModuleWidget):
         self.viewCombo = qt.QComboBox()
         self.viewCombo.toolTip = (
             "Choose which 3-D view to capture for the preview image.\n"
-            "Arrange the view exactly as you want it before exporting."
+            "Arrange the view exactly as you want it before submitting."
         )
         ssLayout.addRow("3-D view to capture:", self.viewCombo)
 
         ssHint = qt.QLabel(
-            "<i>Tip: arrange the 3-D view (rotation, zoom, lighting) before exporting.</i>"
+            "<i>Tip: arrange the 3-D view (rotation, zoom, lighting) before submitting.</i>"
         )
         ssHint.wordWrap = True
         ssLayout.addRow("", ssHint)
-
-        # ---- Collapsible: Output folder ----
-        outBox = self._collapsible("Output Folder")
-        outLayout = qt.QFormLayout(outBox)
-
-        self.outputDirButton = ctk_PathLineEdit()
-        self.outputDirButton.filters = self.outputDirButton.Dirs
-        self.outputDirButton.currentPath = os.path.expanduser("~/Desktop")
-        self.outputDirButton.toolTip = (
-            "Folder where the .vp.json and .png files will be saved before upload."
-        )
-        outLayout.addRow("Save to:", self.outputDirButton)
 
         # ---- Status label ----
         self.statusLabel = qt.QLabel("")
         self.statusLabel.wordWrap = True
         self.layout.addWidget(self.statusLabel)
 
-        # ---- Buttons ----
-        self.exportButton = qt.QPushButton("1 – Export preset files")
-        self.exportButton.toolTip = (
-            "Save <name>.vp.json and <name>.png to the output folder."
-        )
-        self.exportButton.enabled = False
-        self.layout.addWidget(self.exportButton)
-
-        self.submitButton = qt.QPushButton("2 – Upload and submit to GitHub")
+        # ---- Single submit button ----
+        self.submitButton = qt.QPushButton("Submit preset to GitHub")
         self.submitButton.toolTip = (
-            "Uploads the preset files to cloud storage, then opens a pre-filled\n"
-            "GitHub issue in your browser. Just click Submit new issue — done!"
+            "Exports the preset, uploads files to cloud storage, then opens\n"
+            "a pre-filled GitHub issue. Just click Submit new issue — done!"
         )
         self.submitButton.enabled = False
         self.layout.addWidget(self.submitButton)
@@ -154,11 +135,7 @@ class SubmitVolumeRenderingPresetWidget(ScriptedLoadableModuleWidget):
         self.refreshButton.clicked.connect(self._populateSelectors)
         self.vpCombo.currentIndexChanged.connect(self._onVpComboChanged)
         self.nameEdit.textChanged.connect(self._onNameChanged)
-        self.exportButton.clicked.connect(self._onExport)
         self.submitButton.clicked.connect(self._onSubmit)
-
-        self._exportedJson = None
-        self._exportedPng = None
 
         # Initial population
         self._populateSelectors()
@@ -228,13 +205,13 @@ class SubmitVolumeRenderingPresetWidget(ScriptedLoadableModuleWidget):
     def _onVpComboChanged(self, index):
         nodeId = self.vpCombo.itemData(index)
         if not nodeId:
-            self.exportButton.enabled = False
+            self.submitButton.enabled = False
             return
         node = slicer.mrmlScene.GetNodeByID(nodeId)
         if node:
             safeName = re.sub(r'[^A-Za-z0-9_-]', '_', node.GetName())
             self.nameEdit.setText(safeName)
-        self._updateExportButton()
+        self._updateSubmitButton()
 
     def _onNameChanged(self, text):
         valid = bool(re.match(r'^[A-Za-z0-9_-]+$', text))
@@ -244,69 +221,36 @@ class SubmitVolumeRenderingPresetWidget(ScriptedLoadableModuleWidget):
             )
         else:
             self._setStatus("")
-        self._updateExportButton()
+        self._updateSubmitButton()
 
-    def _updateExportButton(self):
+    def _updateSubmitButton(self):
         nodeId = self.vpCombo.currentData
         nameOk = bool(re.match(r'^[A-Za-z0-9_-]+$', self.nameEdit.text))
-        self.exportButton.enabled = bool(nodeId) and nameOk
+        self.submitButton.enabled = bool(nodeId) and nameOk
 
-    # --- export ----------------------------------------------------------
+    # --- submit (export to temp + upload + open browser) -------------------
 
-    def _onExport(self):
+    def _onSubmit(self):
+        import tempfile
         name = self.nameEdit.text.strip()
         desc = self.descEdit.text.strip()
         author = self.authorEdit.text.strip()
-        outDir = self.outputDirButton.currentPath
         nodeId = self.vpCombo.currentData
         viewIndex = self.viewCombo.currentData if self.viewCombo.currentData is not None else 0
 
-        if not os.path.isdir(outDir):
-            try:
-                os.makedirs(outDir)
-            except OSError as e:
-                self._setStatus(f"Cannot create output folder: {e}", "red")
-                return
-
+        # Export to a temp directory — no permanent files left on disk
+        tmpDir = tempfile.mkdtemp(prefix="slicermorph_vp_")
+        self._setStatus("Exporting preset…", "gray")
+        slicer.app.processEvents()
         try:
             jsonPath, pngPath = self.logic.exportPreset(
-                name, outDir, nodeId=nodeId, viewIndex=viewIndex,
+                name, tmpDir, nodeId=nodeId, viewIndex=viewIndex,
                 description=desc, author=author,
             )
         except Exception as e:
             self._setStatus(f"Export failed: {e}", "red")
             import traceback
             traceback.print_exc()
-            return
-
-        self._exportedJson = jsonPath
-        self._exportedPng = pngPath
-        self.submitButton.enabled = True
-        self._setStatus(
-            f"✓ Exported:\n  {os.path.basename(jsonPath)}\n  {os.path.basename(pngPath)}\n\n"
-            f"Now click button 2 to upload and submit to GitHub.",
-            "darkgreen",
-        )
-
-        # Open the output folder in Finder so files are easy to drag
-        qt.QDesktopServices.openUrl(qt.QUrl.fromLocalFile(outDir))
-
-    # --- submit (upload + open browser) ------------------------------------
-
-    def _onSubmit(self):
-        name = self.nameEdit.text.strip()
-
-        if not self._exportedJson or not os.path.isfile(self._exportedJson):
-            self._setStatus(
-                "⚠ Please export the preset first (button 1), then click this button again.",
-                "orange",
-            )
-            return
-        if not self._exportedPng or not os.path.isfile(self._exportedPng):
-            self._setStatus(
-                "⚠ Please export the preset first (button 1), then click this button again.",
-                "orange",
-            )
             return
 
         # 1. Fetch current presigned PUT URLs from the repo
@@ -341,7 +285,7 @@ class SubmitVolumeRenderingPresetWidget(ScriptedLoadableModuleWidget):
         # 2. Upload JSON
         self._setStatus("Uploading preset JSON…", "gray")
         slicer.app.processEvents()
-        with open(self._exportedJson, "rb") as fh:
+        with open(jsonPath, "rb") as fh:
             json_data = fh.read()
         try:
             req = urllib.request.Request(json_put_url, data=json_data, method="PUT")
@@ -355,7 +299,7 @@ class SubmitVolumeRenderingPresetWidget(ScriptedLoadableModuleWidget):
         # 3. Upload PNG
         self._setStatus("Uploading screenshot…", "gray")
         slicer.app.processEvents()
-        with open(self._exportedPng, "rb") as fh:
+        with open(pngPath, "rb") as fh:
             png_data = fh.read()
         try:
             req = urllib.request.Request(png_put_url, data=png_data, method="PUT")
