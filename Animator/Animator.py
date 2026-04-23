@@ -1053,16 +1053,13 @@ class AnimatorWidget(ScriptedLoadableModuleWidget):
     if not logic.isFfmpegPathValid():
       slicer.util.errorDisplay(
         "Animator export requires ffmpeg, which is not installed or not "
-        "configured.\n\n"
-        "1. Install ffmpeg:\n"
-        "    macOS:   brew install ffmpeg\n"
-        "    Linux:   use your package manager (apt, dnf, ...)\n"
-        "    Windows: Slicer can download it for you in the next step.\n\n"
-        "2. Open the Screen Capture module (Utilities -> Screen Capture), "
-        "expand 'Advanced' and set 'ffmpeg executable path' to the installed "
-        "ffmpeg binary.\n\n"
-        "3. Re-run Animator export.")
-      # Offer to jump straight to the ScreenCapture module.
+        "configured in Slicer.\n\n"
+        "Please install ffmpeg and set its path in the Screen Capture "
+        "module. See:\n"
+        "https://slicer.readthedocs.io/en/latest/user_guide/modules/"
+        "screencapture.html#setting-up-ffmpeg\n\n"
+        "Then re-run Animator export.")
+      # Jump to the Screen Capture module so the user can set the path.
       try:
         slicer.util.selectModule('ScreenCapture')
       except Exception:
