@@ -70,6 +70,27 @@ def apply_camera_state(camera_node, state):
     cam.SetParallelProjection(int(state['parallelProjection']))
     cam.OrthogonalizeViewUp()
     camera_node.Modified()
+    # When the camera moves between snapshots VTK does not auto-update the
+    # near/far clipping range, so volumes can get sliced off as the view
+    # interpolates. Reset the clipping range on every 3D view whose active
+    # camera matches this node.
+    _reset_clipping_range_for_camera(cam)
+
+
+def _reset_clipping_range_for_camera(vtk_camera):
+    try:
+        lm = slicer.app.layoutManager()
+        if lm is None:
+            return
+        for i in range(lm.threeDViewCount):
+            view = lm.threeDWidget(i).threeDView()
+            renderer = view.renderWindow().GetRenderers().GetFirstRenderer()
+            if renderer is None:
+                continue
+            if renderer.GetActiveCamera() is vtk_camera:
+                renderer.ResetCameraClippingRange()
+    except Exception:
+        pass
 
 
 def _lerp_vec(a, b, t):
