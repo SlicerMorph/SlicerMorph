@@ -714,12 +714,12 @@ class AnimatorWidget(ScriptedLoadableModuleWidget):
     # Animator's export pipeline depends on this helper to undock the 3D
     # viewer and snap to a codec-friendly size before recording.
     try:
-      from SlicerMorphViewerSize import ViewerSizeController, snap_to_codec_size
+      from HiResScreenCaptureLib.SlicerMorphViewerSize import ViewerSizeController, snap_to_codec_size
       self._ViewerSizeController = ViewerSizeController
       self._snap_to_codec_size = snap_to_codec_size
     except ImportError as e:
       logging.error(
-        "Animator: failed to import SlicerMorphViewerSize from HiResScreenCapture: %s. "
+        "Animator: failed to import HiResScreenCaptureLib.SlicerMorphViewerSize from HiResScreenCapture: %s. "
         "Make sure the HiResScreenCapture module is installed and enabled.", e)
       self._ViewerSizeController = None
       self._snap_to_codec_size = None

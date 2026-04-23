@@ -7,7 +7,7 @@ import vtk
 import ScreenCapture
 from slicer.ScriptedLoadableModule import *
 
-from SlicerMorphViewerSize import ViewerSizeController
+from HiResScreenCaptureLib.SlicerMorphViewerSize import ViewerSizeController
 
 
 def isActorVisible(camera, actor):
