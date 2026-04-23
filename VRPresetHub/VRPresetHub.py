@@ -52,6 +52,8 @@ class VRPresetHubWidget(ScriptedLoadableModuleWidget):
         self.browserEntries = []
         self.filteredBrowserEntries = []
         self.previewPixmapCache = {}
+        # (volumeNodeId, originalVolumePropertyNodeId) for last Apply, used by Revert.
+        self._lastOriginalVP = (None, None)
 
         self.tabWidget = qt.QTabWidget()
         self.layout.addWidget(self.tabWidget)
@@ -217,8 +219,13 @@ class VRPresetHubWidget(ScriptedLoadableModuleWidget):
         browserButtonLayout = qt.QHBoxLayout()
         self.browserImportButton = qt.QPushButton("Import into Scene")
         self.browserApplyButton = qt.QPushButton("Apply to Active Volume")
+        self.browserRevertButton = qt.QPushButton("Revert to Original")
+        self.browserRevertButton.setToolTip(
+            "Restore the volume rendering property that was active before "
+            "the most recent 'Apply to Active Volume'.")
         self.browserOpenPreviewButton = qt.QPushButton("Open Preview")
-        for button in (self.browserImportButton, self.browserApplyButton, self.browserOpenPreviewButton):
+        for button in (self.browserImportButton, self.browserApplyButton,
+                       self.browserRevertButton, self.browserOpenPreviewButton):
             button.enabled = False
             browserButtonLayout.addWidget(button)
         browserDetailsLayout.addLayout(browserButtonLayout)
@@ -240,6 +247,7 @@ class VRPresetHubWidget(ScriptedLoadableModuleWidget):
         self.browserList.itemDoubleClicked.connect(self._onImportBrowserPreset)
         self.browserImportButton.clicked.connect(self._onImportBrowserPreset)
         self.browserApplyButton.clicked.connect(self._onApplyBrowserPreset)
+        self.browserRevertButton.clicked.connect(self._onRevertBrowserPreset)
         self.browserOpenPreviewButton.clicked.connect(self._onOpenBrowserPreview)
 
     # --- helpers ---------------------------------------------------------
@@ -414,13 +422,43 @@ class VRPresetHubWidget(ScriptedLoadableModuleWidget):
     def _onApplyBrowserPreset(self):
         try:
             presetNode = self._loadBrowserPreset()
-            volumeNode, _displayNode = self.logic.applyPresetToActiveVolume(presetNode)
+            volumeNode, _displayNode, originalVPNodeId = (
+                self.logic.applyPresetToActiveVolume(presetNode))
         except Exception as e:
             self._setBrowserStatus(f"Failed to apply preset: {e}", "red")
             return
 
+        self._lastOriginalVP = (volumeNode.GetID(), originalVPNodeId)
+        self.browserRevertButton.enabled = bool(originalVPNodeId)
+        if originalVPNodeId:
+            originalNode = slicer.mrmlScene.GetNodeByID(originalVPNodeId)
+            originalName = originalNode.GetName() if originalNode else "previous property"
+            self.browserRevertButton.setToolTip(
+                f"Revert '{volumeNode.GetName()}' to its previous volume "
+                f"property ('{originalName}').")
         self._setBrowserStatus(
             f"Loaded and applied preset to active volume '{volumeNode.GetName()}'.",
+            "darkgreen",
+        )
+
+    def _onRevertBrowserPreset(self):
+        volumeId, originalVPNodeId = self._lastOriginalVP
+        if not (volumeId and originalVPNodeId):
+            self._setBrowserStatus(
+                "Nothing to revert — no preset has been applied this session.",
+                "orange")
+            return
+        try:
+            volumeNode = self.logic.revertVolumePropertyForVolume(
+                volumeId, originalVPNodeId)
+        except Exception as e:
+            self._setBrowserStatus(f"Failed to revert: {e}", "red")
+            return
+        # Single revert; require another Apply before another Revert is possible.
+        self._lastOriginalVP = (None, None)
+        self.browserRevertButton.enabled = False
+        self._setBrowserStatus(
+            f"Reverted '{volumeNode.GetName()}' to its previous volume property.",
             "darkgreen",
         )
 
@@ -652,9 +690,33 @@ class VRPresetHubLogic(ScriptedLoadableModuleLogic):
         if displayNode is None:
             raise RuntimeError("Could not create volume rendering nodes for the active volume.")
 
+        # Remember the previously bound VolumeProperty node so the caller can
+        # revert. SetAndObserveVolumePropertyNodeID only swaps the reference --
+        # the previous VP node remains in the scene untouched.
+        previousVP = displayNode.GetVolumePropertyNode()
+        previousVPNodeId = previousVP.GetID() if previousVP is not None else None
+
         displayNode.SetAndObserveVolumePropertyNodeID(presetNode.GetID())
         displayNode.SetVisibility(True)
-        return volumeNode, displayNode
+        return volumeNode, displayNode, previousVPNodeId
+
+    def revertVolumePropertyForVolume(self, volumeId, originalVPNodeId):
+        """Re-apply the snapshotted VolumeProperty to the volume's display node."""
+        if not (volumeId and originalVPNodeId):
+            raise RuntimeError("No original VolumeProperty was recorded.")
+        volumeNode = slicer.mrmlScene.GetNodeByID(volumeId)
+        originalVP = slicer.mrmlScene.GetNodeByID(originalVPNodeId)
+        if volumeNode is None:
+            raise RuntimeError("Original volume is no longer in the scene.")
+        if originalVP is None:
+            raise RuntimeError("Original VolumeProperty node is no longer in the scene.")
+        volumeRenderingLogic = slicer.modules.volumerendering.logic()
+        displayNode = volumeRenderingLogic.GetFirstVolumeRenderingDisplayNode(volumeNode)
+        if displayNode is None:
+            raise RuntimeError("Volume has no active volume-rendering display node.")
+        displayNode.SetAndObserveVolumePropertyNodeID(originalVP.GetID())
+        displayNode.SetVisibility(True)
+        return volumeNode
 
     def exportPreset(self, name, outputDir, nodeId=None, viewIndex=0,
                      description="", author=""):
