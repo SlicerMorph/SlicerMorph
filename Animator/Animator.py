@@ -754,6 +754,148 @@ class ExplodeModelsAction(AnimatorAction):
 
     ExplodeModelsAction.cache[action['id']] = cache
 
+
+class SceneSnapshotAction(AnimatorAction):
+  """Snapshot-based animation: capture the current camera (and optionally
+  Volume Property) state at moments along the timeline; the action
+  interpolates linearly between consecutive snapshots.
+
+  Each keyframe stores absolute master-time seconds (not a fraction),
+  so the action's startTime/endTime are derived from min/max keyframe
+  time. Per-segment behavior is selectable: ``interpolate`` (default)
+  or ``hold``.
+  """
+  def __init__(self):
+    super().__init__()
+    self.name = "Scene Snapshot"
+
+  def defaultAction(self):
+    layoutManager = slicer.app.layoutManager()
+    threeDWidget = layoutManager.threeDWidget(0) if layoutManager else None
+    threeDView = threeDWidget.threeDView() if threeDWidget else None
+    cameraNode = threeDView.cameraNode() if threeDView else None
+    if cameraNode is None:
+      logging.error("SceneSnapshotAction: no 3D view / camera available")
+      return None
+
+    # Optional VP target if there's a volume rendering in the scene.
+    animatedVolumePropertyID = None
+    volumeRenderingNode = slicer.mrmlScene.GetFirstNodeByName('VolumeRendering')
+    if volumeRenderingNode is not None:
+      vp = volumeRenderingNode.GetVolumePropertyNode()
+      if vp is not None:
+        animatedVolumePropertyID = vp.GetID()
+
+    actionId = 'sceneSnapshot-' + str(self.uuid)
+
+    from AnimatorLib.SceneSnapshot import (
+      capture_current_scene, capture_thumbnail)
+    first_kf = capture_current_scene(
+      animated_camera_id=cameraNode.GetID(),
+      animated_vp_id=animatedVolumePropertyID,
+      action_id=actionId,
+      time_seconds=0.0,
+      label="Snapshot 1",
+    )
+    first_kf['thumbnailPath'] = capture_thumbnail(threeDView, first_kf['id'])
+
+    return {
+      'name': 'Scene Snapshot',
+      'class': 'SceneSnapshotAction',
+      'id': actionId,
+      'startTime': 0,
+      'endTime': 0,
+      'interpolation': 'linear',
+      'animatedCameraID': cameraNode.GetID(),
+      'animatedVolumePropertyID': animatedVolumePropertyID,
+      'keyframes': [first_kf],
+    }
+
+  def act(self, action, scriptTime):
+    from AnimatorLib.SceneSnapshot import evaluate_at, apply_camera_state
+    cam_state = evaluate_at(action, float(scriptTime))
+    if cam_state is None:
+      return
+    cam_id = action.get('animatedCameraID')
+    if not cam_id:
+      return
+    cam_node = slicer.mrmlScene.GetNodeByID(cam_id)
+    if cam_node is None:
+      return
+    apply_camera_state(cam_node, cam_state)
+
+  def cleanup(self, action):
+    """Remove the snapshot VP nodes we created so the scene doesn't leak."""
+    for kf in action.get('keyframes', []):
+      vp_id = kf.get('volumePropertyID')
+      if vp_id:
+        node = slicer.mrmlScene.GetNodeByID(vp_id)
+        if node is not None:
+          slicer.mrmlScene.RemoveNode(node)
+
+  def gui(self, action, layout):
+    super().gui(action, layout)
+
+    # Camera + VP selectors (advanced; usually defaults are fine)
+    self.cameraSelector = slicer.qMRMLNodeComboBox()
+    self.cameraSelector.nodeTypes = ["vtkMRMLCameraNode"]
+    self.cameraSelector.addEnabled = False
+    self.cameraSelector.removeEnabled = False
+    self.cameraSelector.noneEnabled = False
+    self.cameraSelector.showHidden = True
+    self.cameraSelector.showChildNodeTypes = True
+    self.cameraSelector.setMRMLScene(slicer.mrmlScene)
+    self.cameraSelector.currentNodeID = action.get('animatedCameraID', '')
+    self.cameraSelector.setToolTip(
+      "Camera that the snapshot timeline drives.")
+    layout.addRow("Animated camera", self.cameraSelector)
+
+    self.vpSelector = slicer.qMRMLNodeComboBox()
+    self.vpSelector.nodeTypes = ["vtkMRMLVolumePropertyNode"]
+    self.vpSelector.addEnabled = False
+    self.vpSelector.removeEnabled = False
+    self.vpSelector.noneEnabled = True
+    self.vpSelector.showHidden = True
+    self.vpSelector.showChildNodeTypes = True
+    self.vpSelector.setMRMLScene(slicer.mrmlScene)
+    self.vpSelector.currentNodeID = action.get('animatedVolumePropertyID') or ''
+    self.vpSelector.setToolTip(
+      "Optional: Volume Property node that the snapshot also tweens. "
+      "Leave empty for camera-only animation.")
+    layout.addRow("Animated VolumeProperty", self.vpSelector)
+
+    info = qt.QLabel(
+      "Each tile below is a keyframe (a snapshot of the 3D view). The "
+      "animation tweens smoothly between consecutive tiles. To add a "
+      "new tile: set up the 3D view how you want, then click 'Capture "
+      "current state'. Drag the preview slider to see the tween in real "
+      "time before exporting.")
+    info.setWordWrap(True)
+    layout.addRow(info)
+
+    # The actual timeline editor
+    layoutManager = slicer.app.layoutManager()
+    threeDView = layoutManager.threeDWidget(0).threeDView() if layoutManager else None
+    from AnimatorLib.SnapshotTimelineWidget import SnapshotTimelineWidget
+    self._timelineWidget = SnapshotTimelineWidget(
+      action=action,
+      threeDView=threeDView,
+      onChanged=lambda: None,
+    )
+    layout.addRow(self._timelineWidget)
+
+  def updateFromGUI(self, action):
+    if hasattr(self, 'cameraSelector') and self.cameraSelector.currentNodeID:
+      action['animatedCameraID'] = self.cameraSelector.currentNodeID
+    if hasattr(self, 'vpSelector'):
+      action['animatedVolumePropertyID'] = self.vpSelector.currentNodeID or None
+    # Sync action time range to keyframe span
+    kfs = action.get('keyframes', [])
+    if kfs:
+      times = [kf['time'] for kf in kfs]
+      action['startTime'] = min(times)
+      action['endTime'] = max(times)
+
 # add an module-specific dict for any module other to add animator plugins.
 # these must be subclasses (or duck types) of the
 # AnimatorAction class below.  Dict keys are action types
@@ -766,6 +908,7 @@ slicer.modules.animatorActionPlugins['CameraRotationAction'] = CameraRotationAct
 slicer.modules.animatorActionPlugins['ROIAction'] = ROIAction
 slicer.modules.animatorActionPlugins['VolumePropertyAction'] = VolumePropertyAction
 slicer.modules.animatorActionPlugins['ExplodeModelsAction'] = ExplodeModelsAction
+slicer.modules.animatorActionPlugins['SceneSnapshotAction'] = SceneSnapshotAction
 
 
 #

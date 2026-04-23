@@ -7,6 +7,8 @@ set(MODULE_PYTHON_SCRIPTS
   AnimatorLib/__init__.py
   AnimatorLib/TransformAction.py
   AnimatorLib/VolumePropertyKeyframes.py
+  AnimatorLib/SceneSnapshot.py
+  AnimatorLib/SnapshotTimelineWidget.py
   )
 
 set(MODULE_PYTHON_RESOURCES
