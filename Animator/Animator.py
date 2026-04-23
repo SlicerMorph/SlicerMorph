@@ -279,10 +279,27 @@ class ROIAction(AnimatorAction):
     action['animatedROIID'] = self.animatedSelector.currentNodeID
 
 class VolumePropertyAction(AnimatorAction):
-  """Defines an animation of an roi (e.g. for volume cropping)"""
+  """Animate a volume rendering's color/opacity transfer functions
+  through an ordered list of keyframes.
+
+  Each keyframe is ``{'time': float in [0,1], 'volumePropertyID': str}``.
+  ``time`` is the fractional position within the action's
+  [startTime, endTime] window. The first keyframe is always at 0.0 and
+  the last at 1.0; intermediate keyframes are user-added.
+
+  Adjacent keyframe pairs are linearly interpolated. Their VolumeProperty
+  nodes do NOT need to share the same number of control points -- the
+  transfer functions are resampled onto the union of their x positions.
+  """
   def __init__(self):
     super().__init__()
     self.name = "Volume Property"
+
+  def _snapshotVP(self, sourceVP, actionId, fraction, label=None):
+    from AnimatorLib.VolumePropertyKeyframes import (
+      snapshot_volume_property, keyframe_node_name)
+    return snapshot_volume_property(
+      sourceVP, keyframe_node_name(actionId, fraction, label))
 
   def defaultAction(self):
     volumeRenderingNode = slicer.mrmlScene.GetFirstNodeByName('VolumeRendering')
@@ -291,130 +308,65 @@ class VolumePropertyAction(AnimatorAction):
       return None
     animatedVolumeProperty = volumeRenderingNode.GetVolumePropertyNode()
 
-    startVolumePropertyID = None
-    endVolumePropertyID = None
-    if False:
-      # for now we prefer to have the user create the volume properties by hand,
-      # but in the future we may want to go back to making these for them
-      startVolumeProperty = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLVolumePropertyNode')
-      startVolumeProperty.SetName(slicer.mrmlScene.GetUniqueNameByString('Start VolumeProperty'))
-      endVolumeProperty = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLVolumePropertyNode')
-      endVolumeProperty.SetName(slicer.mrmlScene.GetUniqueNameByString('End VolumeProperty'))
-      startVolumeProperty.CopyParameterSet(animatedVolumeProperty)
-      endVolumeProperty.CopyParameterSet(animatedVolumeProperty)
-      startVolumePropertyID = startVolumeProperty.GetID()
-      endVolumePropertyID = endVolumeProperty.GetID()
+    actionId = 'volumeProperty1-' + str(self.uuid)
+    startVP = self._snapshotVP(animatedVolumeProperty, actionId, 0.0, 'start')
+    endVP = self._snapshotVP(animatedVolumeProperty, actionId, 1.0, 'end')
 
     volumePropertyAction = {
       'name': 'Volume Property',
       'class': 'VolumePropertyAction',
-      'id': 'volumeProperty1-'+str(self.uuid),
+      'id': actionId,
       'startTime': 0,
       'endTime': -1,
       'interpolation': 'linear',
-      'startVolumePropertyID': startVolumePropertyID,
-      'endVolumePropertyID': endVolumePropertyID,
       'animatedVolumePropertyID': animatedVolumeProperty.GetID(),
-      'clampAtStart': True,
-      'clampAtEnd': True,
+      'keyframes': [
+        {'time': 0.0, 'volumePropertyID': startVP.GetID()},
+        {'time': 1.0, 'volumePropertyID': endVP.GetID()},
+      ],
     }
     return(volumePropertyAction)
 
   def act(self, action, scriptTime):
+    from AnimatorLib.VolumePropertyKeyframes import (
+      migrate_legacy_action, find_bracket, interpolate_volume_properties)
 
-    if action['startVolumePropertyID'] is None or action['endVolumePropertyID'] is None:
+    migrate_legacy_action(action)
+    keyframes = action.get('keyframes', [])
+    if len(keyframes) < 1:
       return
 
-    startVolumeProperty = slicer.mrmlScene.GetNodeByID(action['startVolumePropertyID'])
-    endVolumeProperty = slicer.mrmlScene.GetNodeByID(action['endVolumePropertyID'])
     animatedVolumeProperty = slicer.mrmlScene.GetNodeByID(action['animatedVolumePropertyID'])
+    if animatedVolumeProperty is None:
+      return
 
-    # TODO: set only volume in the scene to use animatedVolumeProperty
-    # TODO: animated to animated
-
-    if scriptTime <= action['startTime']:
-      if action['clampAtStart']:
-        animatedVolumeProperty.CopyParameterSet(startVolumeProperty)
+    duration = action['endTime'] - action['startTime']
+    if duration <= 0:
+      fraction = 0.0
+    elif scriptTime <= action['startTime']:
+      fraction = 0.0
     elif scriptTime >= action['endTime']:
-      if action['clampAtEnd']:
-        animatedVolumeProperty.CopyParameterSet(endVolumeProperty)
+      fraction = 1.0
     else:
-      actionTime = scriptTime - action['startTime']
-      duration = action['endTime'] - action['startTime']
-      fraction = actionTime / duration
-      disabledModify = animatedVolumeProperty.StartModify()
-      animatedVolumeProperty.CopyParameterSet(startVolumeProperty)
-      # interpolate the scalar opacity
-      startScalarOpacity = startVolumeProperty.GetScalarOpacity()
-      endScalarOpacity = endVolumeProperty.GetScalarOpacity()
-      animatedScalarOpacity = animatedVolumeProperty.GetScalarOpacity()
-      nodeElementCount = 4
-      startValue = [0.,]*nodeElementCount
-      endValue = [0.,]*nodeElementCount
-      animatedValue = [0.,]*nodeElementCount
-      for index in range(startScalarOpacity.GetSize()):
-        startScalarOpacity.GetNodeValue(index, startValue)
-        endScalarOpacity.GetNodeValue(index, endValue)
-        for i in range(nodeElementCount):
-          animatedValue[i] = startValue[i] + fraction * (endValue[i]-startValue[i])
-        animatedScalarOpacity.SetNodeValue(index, animatedValue)
-      # interpolate the color transfer
-      startColor = startVolumeProperty.GetColor()
-      endColor = endVolumeProperty.GetColor()
-      animatedColor = animatedVolumeProperty.GetColor()
-      nodeElementCount = 6
-      startValue = [0.,]*nodeElementCount
-      endValue = [0.,]*nodeElementCount
-      animatedValue = [0.,]*nodeElementCount
-      for index in range(startColor.GetSize()):
-        startColor.GetNodeValue(index, startValue)
-        endColor.GetNodeValue(index, endValue)
-        for i in range(nodeElementCount):
-          animatedValue[i] = startValue[i] + fraction * (endValue[i]-startValue[i])
-        animatedColor.SetNodeValue(index, animatedValue)
-      animatedVolumeProperty.EndModify(disabledModify)
+      fraction = (scriptTime - action['startTime']) / duration
+
+    kf_a, kf_b, local = find_bracket(keyframes, fraction)
+    if kf_a is None:
+      return
+    vp_a = slicer.mrmlScene.GetNodeByID(kf_a['volumePropertyID'])
+    vp_b = slicer.mrmlScene.GetNodeByID(kf_b['volumePropertyID'])
+    if vp_a is None or vp_b is None:
+      return
+    interpolate_volume_properties(vp_a, vp_b, local, animatedVolumeProperty)
 
   def gui(self, action, layout):
+    from AnimatorLib.VolumePropertyKeyframes import migrate_legacy_action
     super().gui(action, layout)
 
-    self.startSelector = slicer.qMRMLNodeComboBox()
-    self.startSelector.nodeTypes = ["vtkMRMLVolumePropertyNode"]
-    self.startSelector.addEnabled = True
-    self.startSelector.renameEnabled = True
-    self.startSelector.editEnabled = True
-    self.startSelector.removeEnabled = True
-    self.startSelector.noneEnabled = False
-    self.startSelector.selectNodeUponCreation = True
-    self.startSelector.showHidden = True
-    self.startSelector.showChildNodeTypes = True
-    self.startSelector.setMRMLScene( slicer.mrmlScene )
-    self.startSelector.setToolTip( "Pick the start volume property" )
-    self.startSelector.currentNodeID = action['startVolumePropertyID']
-    layout.addRow("Start VolumeProperty", self.startSelector)
+    migrate_legacy_action(action)
+    self._editAction = action
 
-    self.startClampCheckbox = qt.QCheckBox()
-    self.startClampCheckbox.checked = action['clampAtStart']
-    layout.addRow("Clamp at start", self.startClampCheckbox)
-
-    self.endSelector = slicer.qMRMLNodeComboBox()
-    self.endSelector.nodeTypes = ["vtkMRMLVolumePropertyNode"]
-    self.endSelector.addEnabled = True
-    self.endSelector.renameEnabled = True
-    self.endSelector.editEnabled = True
-    self.endSelector.removeEnabled = True
-    self.endSelector.noneEnabled = False
-    self.endSelector.selectNodeUponCreation = True
-    self.endSelector.showHidden = True
-    self.endSelector.showChildNodeTypes = True
-    self.endSelector.setMRMLScene( slicer.mrmlScene )
-    self.endSelector.setToolTip( "Pick the end volume property" )
-    self.endSelector.currentNodeID = action['endVolumePropertyID']
-    layout.addRow("End VolumeProperty", self.endSelector)
-
-    self.endClampCheckbox = qt.QCheckBox()
-    self.endClampCheckbox.checked = action['clampAtEnd']
-    layout.addRow("Clamp at end", self.endClampCheckbox)
-
+    # Animated VolumeProperty (advanced, but kept visible)
     self.animatedSelector = slicer.qMRMLNodeComboBox()
     self.animatedSelector.nodeTypes = ["vtkMRMLVolumePropertyNode"]
     self.animatedSelector.addEnabled = True
@@ -425,17 +377,174 @@ class VolumePropertyAction(AnimatorAction):
     self.animatedSelector.selectNodeUponCreation = True
     self.animatedSelector.showHidden = True
     self.animatedSelector.showChildNodeTypes = True
-    self.animatedSelector.setMRMLScene( slicer.mrmlScene )
-    self.animatedSelector.setToolTip( "Pick the animated volume property" )
+    self.animatedSelector.setMRMLScene(slicer.mrmlScene)
+    self.animatedSelector.setToolTip(
+      "Volume Property node that the animation drives. "
+      "Usually the one currently used by Volume Rendering.")
     self.animatedSelector.currentNodeID = action['animatedVolumePropertyID']
     layout.addRow("Animated VolumeProperty", self.animatedSelector)
 
+    # Helper text
+    info = qt.QLabel(
+      "Keyframes define what the volume looks like at moments along "
+      "the action's timeline (0% = start, 100% = end). The animation "
+      "smoothly interpolates between consecutive keyframes. Edit a "
+      "keyframe's transfer functions with the pencil button next to "
+      "its node selector.")
+    info.setWordWrap(True)
+    layout.addRow(info)
+
+    # Keyframe table
+    self.keyframeTable = qt.QTableWidget()
+    self.keyframeTable.setColumnCount(3)
+    self.keyframeTable.setHorizontalHeaderLabels(["Time (%)", "VolumeProperty", ""])
+    self.keyframeTable.horizontalHeader().setStretchLastSection(False)
+    self.keyframeTable.horizontalHeader().setSectionResizeMode(1, qt.QHeaderView.Stretch)
+    self.keyframeTable.verticalHeader().visible = False
+    self.keyframeTable.setSelectionBehavior(qt.QAbstractItemView.SelectRows)
+    self.keyframeTable.setSelectionMode(qt.QAbstractItemView.SingleSelection)
+    self.keyframeTable.minimumHeight = 160
+    self._populateKeyframeTable()
+    layout.addRow(self.keyframeTable)
+
+    # Add / replace controls
+    addRow = qt.QHBoxLayout()
+    self.newKeyframeTimeSpin = ctk.ctkDoubleSpinBox()
+    self.newKeyframeTimeSpin.suffix = " %"
+    self.newKeyframeTimeSpin.minimum = 0.1
+    self.newKeyframeTimeSpin.maximum = 99.9
+    self.newKeyframeTimeSpin.singleStep = 5.0
+    self.newKeyframeTimeSpin.value = 50.0
+    self.newKeyframeTimeSpin.decimals = 1
+    addRow.addWidget(qt.QLabel("at"))
+    addRow.addWidget(self.newKeyframeTimeSpin)
+
+    self.addKeyframeButton = qt.QPushButton("Add keyframe (snapshot of animated VP)")
+    self.addKeyframeButton.setToolTip(
+      "Insert a new keyframe at the chosen time, snapshotting the current "
+      "state of the Animated VolumeProperty.")
+    self.addKeyframeButton.connect('clicked()', self._onAddKeyframeClicked)
+    addRow.addWidget(self.addKeyframeButton)
+    addRow.addStretch(1)
+    layout.addRow(addRow)
+
+    replaceRow = qt.QHBoxLayout()
+    self.replaceKeyframeButton = qt.QPushButton("Replace selected from animated VP")
+    self.replaceKeyframeButton.setToolTip(
+      "Overwrite the selected keyframe's VolumeProperty with the current "
+      "state of the Animated VolumeProperty. Use this after tweaking the "
+      "animated VP in the Volume Rendering module.")
+    self.replaceKeyframeButton.connect('clicked()', self._onReplaceSelectedClicked)
+    replaceRow.addWidget(self.replaceKeyframeButton)
+
+    self.deleteKeyframeButton = qt.QPushButton("Delete selected")
+    self.deleteKeyframeButton.setToolTip(
+      "Delete the selected keyframe (the 0% and 100% endpoints cannot be deleted).")
+    self.deleteKeyframeButton.connect('clicked()', self._onDeleteSelectedClicked)
+    replaceRow.addWidget(self.deleteKeyframeButton)
+    replaceRow.addStretch(1)
+    layout.addRow(replaceRow)
+
+  def _populateKeyframeTable(self):
+    keyframes = sorted(self._editAction.get('keyframes', []), key=lambda k: k['time'])
+    self._editAction['keyframes'] = keyframes
+    self.keyframeTable.setRowCount(len(keyframes))
+    for row, kf in enumerate(keyframes):
+      # Time column
+      timeItem = qt.QTableWidgetItem(f"{kf['time'] * 100:.1f}")
+      timeItem.setFlags(qt.Qt.ItemIsEnabled | qt.Qt.ItemIsSelectable)
+      self.keyframeTable.setItem(row, 0, timeItem)
+      # Volume property selector (lets user pick a different VP node and edit it)
+      vpSelector = slicer.qMRMLNodeComboBox()
+      vpSelector.nodeTypes = ["vtkMRMLVolumePropertyNode"]
+      vpSelector.addEnabled = False
+      vpSelector.renameEnabled = True
+      vpSelector.editEnabled = True
+      vpSelector.removeEnabled = False
+      vpSelector.noneEnabled = False
+      vpSelector.showHidden = True
+      vpSelector.showChildNodeTypes = True
+      vpSelector.setMRMLScene(slicer.mrmlScene)
+      vpSelector.currentNodeID = kf['volumePropertyID']
+      vpSelector.connect(
+        'currentNodeChanged(vtkMRMLNode*)',
+        lambda node, r=row: self._onKeyframeVPChanged(r, node))
+      self.keyframeTable.setCellWidget(row, 1, vpSelector)
+      # Tag column to indicate endpoints
+      tag = ""
+      if abs(kf['time']) < 1e-6:
+        tag = "start"
+      elif abs(kf['time'] - 1.0) < 1e-6:
+        tag = "end"
+      tagItem = qt.QTableWidgetItem(tag)
+      tagItem.setFlags(qt.Qt.ItemIsEnabled | qt.Qt.ItemIsSelectable)
+      self.keyframeTable.setItem(row, 2, tagItem)
+    self.keyframeTable.resizeColumnsToContents()
+    self.keyframeTable.horizontalHeader().setSectionResizeMode(1, qt.QHeaderView.Stretch)
+
+  def _onKeyframeVPChanged(self, row, node):
+    keyframes = self._editAction['keyframes']
+    if 0 <= row < len(keyframes) and node is not None:
+      keyframes[row]['volumePropertyID'] = node.GetID()
+
+  def _onAddKeyframeClicked(self):
+    fraction = self.newKeyframeTimeSpin.value / 100.0
+    keyframes = self._editAction['keyframes']
+    # Collision check
+    for kf in keyframes:
+      if abs(kf['time'] - fraction) < 0.005:
+        slicer.util.messageBox(
+          f"A keyframe already exists at {fraction * 100:.1f}%. "
+          "Pick a different time.")
+        return
+    animatedVPID = (self.animatedSelector.currentNodeID
+                    or self._editAction.get('animatedVolumePropertyID'))
+    animatedVP = slicer.mrmlScene.GetNodeByID(animatedVPID) if animatedVPID else None
+    if animatedVP is None:
+      slicer.util.messageBox("No Animated VolumeProperty selected to snapshot.")
+      return
+    newVP = self._snapshotVP(animatedVP, self._editAction['id'], fraction)
+    keyframes.append({'time': fraction, 'volumePropertyID': newVP.GetID()})
+    self._populateKeyframeTable()
+
+  def _onReplaceSelectedClicked(self):
+    row = self.keyframeTable.currentRow
+    keyframes = self._editAction['keyframes']
+    if not (0 <= row < len(keyframes)):
+      slicer.util.messageBox("Select a keyframe row first.")
+      return
+    animatedVPID = (self.animatedSelector.currentNodeID
+                    or self._editAction.get('animatedVolumePropertyID'))
+    animatedVP = slicer.mrmlScene.GetNodeByID(animatedVPID) if animatedVPID else None
+    if animatedVP is None:
+      slicer.util.messageBox("No Animated VolumeProperty selected to snapshot.")
+      return
+    kfVP = slicer.mrmlScene.GetNodeByID(keyframes[row]['volumePropertyID'])
+    if kfVP is None:
+      slicer.util.messageBox("Keyframe's VolumeProperty node is missing.")
+      return
+    kfVP.CopyParameterSet(animatedVP)
+
+  def _onDeleteSelectedClicked(self):
+    row = self.keyframeTable.currentRow
+    keyframes = self._editAction['keyframes']
+    if not (0 <= row < len(keyframes)):
+      slicer.util.messageBox("Select a keyframe row first.")
+      return
+    t = keyframes[row]['time']
+    if abs(t) < 1e-6 or abs(t - 1.0) < 1e-6:
+      slicer.util.messageBox("The 0% and 100% endpoint keyframes cannot be deleted.")
+      return
+    del keyframes[row]
+    self._populateKeyframeTable()
+
   def updateFromGUI(self, action):
-    action['startVolumePropertyID'] = self.startSelector.currentNodeID
-    action['endVolumePropertyID'] = self.endSelector.currentNodeID
     action['animatedVolumePropertyID'] = self.animatedSelector.currentNodeID
-    action['clampAtStart'] = self.startClampCheckbox.checked
-    action['clampAtEnd'] = self.endClampCheckbox.checked
+    action['keyframes'] = sorted(self._editAction['keyframes'], key=lambda k: k['time'])
+    # Drop the legacy fields if anything still has them.
+    for legacy in ('startVolumePropertyID', 'endVolumePropertyID',
+                   'clampAtStart', 'clampAtEnd'):
+      action.pop(legacy, None)
 
 class ExplodeModelsAction(AnimatorAction):
   """Explodes a model hierarchy in a selected subject hierarchy tree branch"""
