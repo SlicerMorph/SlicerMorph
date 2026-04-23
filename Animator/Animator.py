@@ -1051,21 +1051,6 @@ class AnimatorWidget(ScriptedLoadableModuleWidget):
     from ScreenCapture import ScreenCaptureLogic
     logic = ScreenCaptureLogic()
     if not logic.isFfmpegPathValid():
-      # Try Slicer's built-in search (looks at /usr/local/bin and
-      # /usr/bin) and then fall back to PATH via shutil.which, which
-      # also catches Homebrew on Apple Silicon (/opt/homebrew/bin).
-      found = False
-      try:
-        found = logic.findFfmpeg()
-      except Exception:
-        found = False
-      if not found:
-        import shutil
-        which_path = shutil.which("ffmpeg")
-        if which_path and os.path.isfile(which_path):
-          logic.setFfmpegPath(which_path)
-          found = logic.isFfmpegPathValid()
-    if not logic.isFfmpegPathValid():
       configured_path = logic.getFfmpegPath() or "<not set>"
       slicer.util.errorDisplay(
         "Animator export requires ffmpeg, which is not installed or not "
