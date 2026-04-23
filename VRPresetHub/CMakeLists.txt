@@ -1,4 +1,4 @@
-set(MODULE_NAME VRPresetShare)
+set(MODULE_NAME VRPresetHub)
 
 set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}.py

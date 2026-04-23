@@ -3,6 +3,7 @@ import os
 import re
 import tempfile
 import urllib.parse
+import urllib.request
 
 import qt
 import slicer
@@ -18,17 +19,18 @@ from slicer.ScriptedLoadableModule import (
 # Module registration
 # ---------------------------------------------------------------------------
 
-class VRPresetShare(ScriptedLoadableModule):
+class VRPresetHub(ScriptedLoadableModule):
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
-        self.parent.title = "VR Preset Share"
+        self.parent.title = "VR Preset Hub"
         self.parent.categories = ["SlicerMorph.SlicerMorph Utilities"]
         self.parent.dependencies = []
         self.parent.contributors = ["Murat Maga (UW)"]
         self.parent.helpText = """
 Export the active volume-rendering preset to a <code>.vp.json</code> file,
-capture a 3-D screenshot, and open a pre-filled GitHub issue so you can share
-the preset with the SlicerMorph community with a simple drag-and-drop.
+    capture a 3-D screenshot, browse community presets, and open a pre-filled
+    GitHub issue so you can share the preset with the SlicerMorph community with
+    a simple drag-and-drop.
 """
         self.parent.acknowledgementText = ""
 
@@ -37,14 +39,43 @@ the preset with the SlicerMorph community with a simple drag-and-drop.
 # Widget (UI)
 # ---------------------------------------------------------------------------
 
-class VRPresetShareWidget(ScriptedLoadableModuleWidget):
+class VRPresetHubWidget(ScriptedLoadableModuleWidget):
 
     REPO = "SlicerMorph/VPs"
+    MANIFEST_URL = f"https://raw.githubusercontent.com/{REPO}/main/manifest.json"
+    PREVIEW_SIZE = 240
 
     def setup(self):
         ScriptedLoadableModuleWidget.setup(self)
-        self.logic = VRPresetShareLogic()
+        self.logic = VRPresetHubLogic()
         self.layout.setAlignment(qt.Qt.AlignTop)
+        self.browserEntries = []
+        self.filteredBrowserEntries = []
+        self.previewPixmapCache = {}
+
+        self.tabWidget = qt.QTabWidget()
+        self.layout.addWidget(self.tabWidget)
+
+        self.shareTab = qt.QWidget()
+        self.shareLayout = qt.QVBoxLayout(self.shareTab)
+        self.shareLayout.setAlignment(qt.Qt.AlignTop)
+        self.browserTab = qt.QWidget()
+        self.browserLayout = qt.QVBoxLayout(self.browserTab)
+        self.browserLayout.setAlignment(qt.Qt.AlignTop)
+
+        self.tabWidget.addTab(self.shareTab, "Share")
+        self.tabWidget.addTab(self.browserTab, "Preset Browser")
+
+        self._setupShareTab()
+        self._setupBrowserTab()
+
+        # Initial population
+        self._populateSelectors()
+        self._refreshBrowserPresets()
+
+    def _setupShareTab(self):
+        """Build the preset submission UI."""
+        self.layout = self.shareLayout
 
         # ---- GitHub account notice ----
         noticeLabel = qt.QLabel(
@@ -137,8 +168,79 @@ class VRPresetShareWidget(ScriptedLoadableModuleWidget):
         self.nameEdit.textChanged.connect(self._onNameChanged)
         self.submitButton.clicked.connect(self._onSubmit)
 
-        # Initial population
-        self._populateSelectors()
+        self.shareLayout.addStretch(1)
+
+    def _setupBrowserTab(self):
+        """Build the manifest-driven preset browser UI."""
+        introLabel = qt.QLabel(
+            "Browse community presets from the SlicerMorph VPs catalog and load "
+            "them directly into the current scene using Slicer's native transfer "
+            "function reader."
+        )
+        introLabel.wordWrap = True
+        self.browserLayout.addWidget(introLabel)
+
+        browserControlsLayout = qt.QHBoxLayout()
+        self.browserSearchEdit = qt.QLineEdit()
+        self.browserSearchEdit.placeholderText = "Filter by preset name, author, or description"
+        self.browserRefreshButton = qt.QPushButton("Refresh Catalog")
+        self.browserRefreshButton.toolTip = "Fetch the latest preset catalog from the SlicerMorph VPs repository."
+        browserControlsLayout.addWidget(self.browserSearchEdit)
+        browserControlsLayout.addWidget(self.browserRefreshButton)
+        self.browserLayout.addLayout(browserControlsLayout)
+
+        browserSplitter = qt.QSplitter(qt.Qt.Horizontal)
+
+        self.browserList = qt.QListWidget()
+        self.browserList.setAlternatingRowColors(True)
+        self.browserList.toolTip = "Select a preset to preview it. Double-click to load it into the scene."
+        browserSplitter.addWidget(self.browserList)
+
+        browserDetailsWidget = qt.QWidget()
+        browserDetailsLayout = qt.QVBoxLayout(browserDetailsWidget)
+        browserDetailsLayout.setAlignment(qt.Qt.AlignTop)
+
+        self.browserPreviewLabel = qt.QLabel("Select a preset to preview it.")
+        self.browserPreviewLabel.alignment = qt.Qt.AlignCenter
+        self.browserPreviewLabel.minimumSize = qt.QSize(self.PREVIEW_SIZE, self.PREVIEW_SIZE)
+        self.browserPreviewLabel.setStyleSheet(
+            "border: 1px solid #c8c8c8; border-radius: 4px; padding: 8px; background: white;"
+        )
+        browserDetailsLayout.addWidget(self.browserPreviewLabel)
+
+        self.browserDetailsLabel = qt.QLabel("No preset selected.")
+        self.browserDetailsLabel.wordWrap = True
+        self.browserDetailsLabel.textFormat = qt.Qt.RichText
+        self.browserDetailsLabel.openExternalLinks = True
+        browserDetailsLayout.addWidget(self.browserDetailsLabel)
+
+        browserButtonLayout = qt.QHBoxLayout()
+        self.browserImportButton = qt.QPushButton("Import into Scene")
+        self.browserApplyButton = qt.QPushButton("Apply to Active Volume")
+        self.browserOpenPreviewButton = qt.QPushButton("Open Preview")
+        for button in (self.browserImportButton, self.browserApplyButton, self.browserOpenPreviewButton):
+            button.enabled = False
+            browserButtonLayout.addWidget(button)
+        browserDetailsLayout.addLayout(browserButtonLayout)
+        browserDetailsLayout.addStretch(1)
+
+        browserSplitter.addWidget(browserDetailsWidget)
+        browserSplitter.setStretchFactor(0, 2)
+        browserSplitter.setStretchFactor(1, 3)
+        self.browserLayout.addWidget(browserSplitter)
+
+        self.browserStatusLabel = qt.QLabel("")
+        self.browserStatusLabel.wordWrap = True
+        self.browserLayout.addWidget(self.browserStatusLabel)
+        self.browserLayout.addStretch(1)
+
+        self.browserRefreshButton.clicked.connect(self._refreshBrowserPresets)
+        self.browserSearchEdit.textChanged.connect(self._filterBrowserPresets)
+        self.browserList.currentRowChanged.connect(self._onBrowserSelectionChanged)
+        self.browserList.itemDoubleClicked.connect(self._onImportBrowserPreset)
+        self.browserImportButton.clicked.connect(self._onImportBrowserPreset)
+        self.browserApplyButton.clicked.connect(self._onApplyBrowserPreset)
+        self.browserOpenPreviewButton.clicked.connect(self._onOpenBrowserPreview)
 
     # --- helpers ---------------------------------------------------------
 
@@ -152,6 +254,185 @@ class VRPresetShareWidget(ScriptedLoadableModuleWidget):
     def _setStatus(self, msg, color="black"):
         self.statusLabel.text = msg
         self.statusLabel.setStyleSheet(f"color:{color};")
+
+    def _setBrowserStatus(self, msg, color="black"):
+        self.browserStatusLabel.text = msg
+        self.browserStatusLabel.setStyleSheet(f"color:{color};")
+
+    def _currentBrowserEntry(self):
+        row = self.browserList.currentRow
+        if row < 0 or row >= len(self.filteredBrowserEntries):
+            return None
+        return self.filteredBrowserEntries[row]
+
+    def _clearBrowserSelection(self):
+        self.browserList.clearSelection()
+        self.browserPreviewLabel.clear()
+        self.browserPreviewLabel.text = "Select a preset to preview it."
+        self.browserDetailsLabel.text = "No preset selected."
+        for button in (self.browserImportButton, self.browserApplyButton, self.browserOpenPreviewButton):
+            button.enabled = False
+
+    def _refreshBrowserPresets(self):
+        self._setBrowserStatus("Fetching preset catalog…", "gray")
+        slicer.app.processEvents()
+        try:
+            with urllib.request.urlopen(self.MANIFEST_URL, timeout=15) as resp:
+                manifest = json.loads(resp.read())
+        except Exception as e:
+            self.browserEntries = []
+            self.filteredBrowserEntries = []
+            self.browserList.clear()
+            self._clearBrowserSelection()
+            self._setBrowserStatus(f"Could not fetch preset catalog: {e}", "red")
+            return
+
+        presets = manifest.get("presets", [])
+        if not isinstance(presets, list):
+            self.browserEntries = []
+            self.filteredBrowserEntries = []
+            self.browserList.clear()
+            self._clearBrowserSelection()
+            self._setBrowserStatus("Preset catalog is malformed.", "red")
+            return
+
+        self.browserEntries = sorted(presets, key=lambda preset: preset.get("prefix", "").lower())
+        self._filterBrowserPresets()
+        if self.browserEntries:
+            self._setBrowserStatus(f"Loaded {len(self.browserEntries)} presets.", "darkgreen")
+        else:
+            self._setBrowserStatus("No presets are currently listed in the catalog.", "orange")
+
+    def _filterBrowserPresets(self):
+        searchText = self.browserSearchEdit.text.strip().lower()
+        selectedPrefix = None
+        currentEntry = self._currentBrowserEntry()
+        if currentEntry:
+            selectedPrefix = currentEntry.get("prefix")
+
+        def matches(entry):
+            if not searchText:
+                return True
+            haystack = " ".join(
+                str(entry.get(key) or "")
+                for key in ("prefix", "author", "contributor", "description")
+            ).lower()
+            return searchText in haystack
+
+        self.filteredBrowserEntries = [entry for entry in self.browserEntries if matches(entry)]
+
+        self.browserList.blockSignals(True)
+        self.browserList.clear()
+        restoredRow = -1
+        for index, entry in enumerate(self.filteredBrowserEntries):
+            item = qt.QListWidgetItem(entry.get("prefix") or "(unnamed preset)")
+            description = entry.get("description")
+            if description:
+                item.setToolTip(description)
+            self.browserList.addItem(item)
+            if selectedPrefix and entry.get("prefix") == selectedPrefix:
+                restoredRow = index
+        self.browserList.blockSignals(False)
+
+        if self.filteredBrowserEntries:
+            self.browserList.setCurrentRow(restoredRow if restoredRow >= 0 else 0)
+        else:
+            self._clearBrowserSelection()
+            if self.browserEntries:
+                self._setBrowserStatus("No presets match the current filter.", "orange")
+
+    def _onBrowserSelectionChanged(self, row):
+        if row < 0 or row >= len(self.filteredBrowserEntries):
+            self._clearBrowserSelection()
+            return
+
+        entry = self.filteredBrowserEntries[row]
+        title = entry.get("prefix") or "(unnamed preset)"
+        description = entry.get("description") or "No description provided."
+        author = entry.get("author") or "Unknown"
+        contributor = entry.get("contributor") or "Unknown"
+        jsonUrl = entry.get("json_raw_url") or ""
+
+        self.browserDetailsLabel.text = (
+            f"<b>{title}</b><br/>"
+            f"Author: {author}<br/>"
+            f"Contributor: {contributor}<br/><br/>"
+            f"{description}<br/><br/>"
+            f"<a href='{jsonUrl}'>Raw preset JSON</a>"
+        )
+
+        previewUrl = entry.get("png_raw_url")
+        if previewUrl:
+            try:
+                pixmap = self.previewPixmapCache.get(previewUrl)
+                if pixmap is None:
+                    with urllib.request.urlopen(previewUrl, timeout=15) as resp:
+                        imageData = resp.read()
+                    pixmap = qt.QPixmap()
+                    if not pixmap.loadFromData(imageData):
+                        raise RuntimeError("Could not decode preview image.")
+                    self.previewPixmapCache[previewUrl] = pixmap
+                scaledPixmap = pixmap.scaled(
+                    self.PREVIEW_SIZE,
+                    self.PREVIEW_SIZE,
+                    qt.Qt.KeepAspectRatio,
+                    qt.Qt.SmoothTransformation,
+                )
+                self.browserPreviewLabel.setPixmap(scaledPixmap)
+            except Exception as e:
+                self.browserPreviewLabel.clear()
+                self.browserPreviewLabel.text = f"Could not load preview image.\n{e}"
+        else:
+            self.browserPreviewLabel.clear()
+            self.browserPreviewLabel.text = "No preview image available."
+
+        for button in (self.browserImportButton, self.browserApplyButton, self.browserOpenPreviewButton):
+            button.enabled = True
+
+    def _loadBrowserPreset(self):
+        entry = self._currentBrowserEntry()
+        if entry is None:
+            raise RuntimeError("No preset selected.")
+
+        prefix = entry.get("prefix") or "ImportedPreset"
+        jsonUrl = entry.get("json_raw_url")
+        if not jsonUrl:
+            raise RuntimeError("Selected preset is missing its JSON URL.")
+
+        self._setBrowserStatus(f"Loading preset '{prefix}'…", "gray")
+        slicer.app.processEvents()
+        presetNode = self.logic.loadPresetFromUrl(jsonUrl, prefix)
+        self._setBrowserStatus(f"Loaded preset '{presetNode.GetName()}' into the scene.", "darkgreen")
+        return presetNode
+
+    def _onImportBrowserPreset(self, *_args):
+        try:
+            self._loadBrowserPreset()
+        except Exception as e:
+            self._setBrowserStatus(f"Failed to load preset: {e}", "red")
+
+    def _onApplyBrowserPreset(self):
+        try:
+            presetNode = self._loadBrowserPreset()
+            volumeNode, _displayNode = self.logic.applyPresetToActiveVolume(presetNode)
+        except Exception as e:
+            self._setBrowserStatus(f"Failed to apply preset: {e}", "red")
+            return
+
+        self._setBrowserStatus(
+            f"Loaded and applied preset to active volume '{volumeNode.GetName()}'.",
+            "darkgreen",
+        )
+
+    def _onOpenBrowserPreview(self):
+        entry = self._currentBrowserEntry()
+        if entry is None:
+            return
+        previewUrl = entry.get("png_raw_url")
+        if not previewUrl:
+            self._setBrowserStatus("Selected preset does not have a preview image.", "orange")
+            return
+        qt.QDesktopServices.openUrl(qt.QUrl(previewUrl))
 
     def _populateSelectors(self):
         """Refresh the VolumeProperty combo and the 3-D view combo from the current scene."""
@@ -336,8 +617,44 @@ class VRPresetShareWidget(ScriptedLoadableModuleWidget):
 # Logic
 # ---------------------------------------------------------------------------
 
-class VRPresetShareLogic(ScriptedLoadableModuleLogic):
+class VRPresetHubLogic(ScriptedLoadableModuleLogic):
     """Handles export of .vp.json and .png from the active volume rendering node."""
+
+    def loadPresetFromUrl(self, url, nodeName=None):
+        import SampleData
+
+        parsedUrl = urllib.parse.urlparse(url)
+        fileName = os.path.basename(parsedUrl.path) or "preset.vp.json"
+        localFilePath = SampleData.SampleDataLogic().downloadFileIntoCache(url, fileName)
+        self._normalizePresetJsonFile(localFilePath)
+        presetNode = slicer.util.loadNodeFromFile(localFilePath, "TransferFunctionFile")
+        if presetNode is None:
+            raise RuntimeError("Preset did not load into the scene.")
+        if nodeName:
+            presetNode.SetName(slicer.mrmlScene.GetUniqueNameByString(nodeName))
+        return presetNode
+
+    def applyPresetToActiveVolume(self, presetNode):
+        selectionNode = slicer.app.applicationLogic().GetSelectionNode()
+        activeVolumeId = selectionNode.GetActiveVolumeID() if selectionNode else None
+        if not activeVolumeId:
+            raise RuntimeError("No active volume is selected.")
+
+        volumeNode = slicer.mrmlScene.GetNodeByID(activeVolumeId)
+        if volumeNode is None:
+            raise RuntimeError("Selected active volume is not available.")
+
+        volumeRenderingLogic = slicer.modules.volumerendering.logic()
+        if volumeRenderingLogic is None:
+            raise RuntimeError("Volume Rendering logic is not available.")
+
+        displayNode = volumeRenderingLogic.CreateDefaultVolumeRenderingNodes(volumeNode)
+        if displayNode is None:
+            raise RuntimeError("Could not create volume rendering nodes for the active volume.")
+
+        displayNode.SetAndObserveVolumePropertyNodeID(presetNode.GetID())
+        displayNode.SetVisibility(True)
+        return volumeNode, displayNode
 
     def exportPreset(self, name, outputDir, nodeId=None, viewIndex=0,
                      description="", author=""):
@@ -375,6 +692,30 @@ class VRPresetShareLogic(ScriptedLoadableModuleLogic):
         )
         return selNode
 
+    def _normalizePresetJsonFile(self, filePath):
+        with open(filePath) as fp:
+            data = json.load(fp)
+
+        changed = False
+        for volumeProperty in data.get("volumeProperties", []):
+            for component in volumeProperty.get("components", []):
+                for key in ("scalarOpacity", "gradientOpacity"):
+                    transferFunction = component.get(key)
+                    if not isinstance(transferFunction, dict):
+                        continue
+                    if transferFunction.get("type") == "piecewiseFunction":
+                        transferFunction["type"] = "piecewiseLinearFunction"
+                        changed = True
+                    for point in transferFunction.get("points", []):
+                        if "value" in point and "y" not in point:
+                            point["y"] = point.pop("value")
+                            changed = True
+
+        if changed:
+            with open(filePath, "w") as fp:
+                json.dump(data, fp, indent=4)
+                fp.write("\n")
+
     def _exportVolumePropertyJson(self, vpNode, path, description="", author=""):
         """
         Serialise a vtkMRMLVolumePropertyNode to the SlicerMorph VPs JSON schema.
@@ -405,7 +746,7 @@ class VRPresetShareLogic(ScriptedLoadableModuleLogic):
                 pwf.GetNodeValue(i, val)
                 pts.append({
                     "x": val[0],
-                    "value": val[1],
+                    "y": val[1],
                     "midpoint": val[2],
                     "sharpness": val[3],
                 })
@@ -427,11 +768,11 @@ class VRPresetShareLogic(ScriptedLoadableModuleLogic):
                 "points": _ctf_to_points(vp.GetRGBTransferFunction(0)),
             },
             "scalarOpacity": {
-                "type": "piecewiseFunction",
+                "type": "piecewiseLinearFunction",
                 "points": _pwf_to_points(vp.GetScalarOpacity(0)),
             },
             "gradientOpacity": {
-                "type": "piecewiseFunction",
+                "type": "piecewiseLinearFunction",
                 "points": _pwf_to_points(vp.GetGradientOpacity(0)),
             },
         }
@@ -520,13 +861,13 @@ def ctk_PathLineEdit():
 # Test stub (satisfies WITH_GENERIC_TESTS requirement)
 # ---------------------------------------------------------------------------
 
-class VRPresetShareTest(ScriptedLoadableModuleTest):
+class VRPresetHubTest(ScriptedLoadableModuleTest):
     def setUp(self):
         slicer.mrmlScene.Clear(0)
 
     def runTest(self):
         self.setUp()
-        self.test_VRPresetShare1()
+        self.test_VRPresetHub1()
 
-    def test_VRPresetShare1(self):
+    def test_VRPresetHub1(self):
         self.delayDisplay("Module loaded successfully")
