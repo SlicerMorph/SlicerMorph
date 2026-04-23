@@ -878,12 +878,22 @@ class SceneSnapshotAction(AnimatorAction):
     layout.addRow("Animated VolumeProperty", self.vpSelector)
 
     info = qt.QLabel(
-      "Each tile below is a keyframe (a snapshot of the 3D view). The "
-      "animation tweens smoothly between consecutive tiles. To add a "
-      "new tile: set up the 3D view how you want, then click 'Capture "
-      "current state'. Drag the preview slider to see the tween in real "
-      "time before exporting.")
+      "<b>How to use:</b>"
+      "<ol style='margin-left:-20px;'>"
+      "<li>Adjust the 3D view (rotate / zoom / change colors) until it "
+      "looks like the moment you want.</li>"
+      "<li>Click <i>Capture current state</i> &rarr; a tile is added "
+      "1&nbsp;second after the previous one.</li>"
+      "<li>Repeat for as many key moments as you want.</li>"
+      "<li>Click <i>Play preview</i> below to see the animation, or drag "
+      "the time slider to scrub. Use <i>Restore live</i> to put the 3D "
+      "view back where it was before scrubbing.</li>"
+      "</ol>"
+      "When you close this window, the animation timeline at the top of "
+      "the Animator panel will cover the full snapshot range and you "
+      "can export to video.")
     info.setWordWrap(True)
+    info.setTextFormat(qt.Qt.RichText)
     layout.addRow(info)
 
     # The actual timeline editor
@@ -1497,11 +1507,25 @@ class AnimatorActionsGUI:
     layout.addRow(closeButton)
 
     def onClosed():
-      # Final persist on close, then drop the handle.
+      # Final persist on close, then drop the handle and rebind the
+      # outer UI so the sequence-browser widgets pick up any new
+      # duration/timing.
       try:
+        # If the action's editor exposed a stop hook (e.g. preview
+        # playback timer), trigger it before tearing things down.
+        timeline = getattr(actionInstance, '_timelineWidget', None)
+        if timeline is not None and hasattr(timeline, 'stopPlayback'):
+          try:
+            timeline.stopPlayback()
+          except Exception:
+            pass
         persist()
       finally:
         self._openEditors.pop(action['id'], None)
+        try:
+          self.deleteCallback()
+        except Exception:
+          pass
     dialog.connect('finished(int)', lambda _result: onClosed())
 
     self._openEditors[action['id']] = dialog
@@ -1597,6 +1621,43 @@ class AnimatorLogic(ScriptedLoadableModuleLogic):
   def setAction(self, animationNode, action):
     script = self.getScript(animationNode)
     script['actions'][action['id']] = action
+    self.setScript(animationNode, script)
+    self._refreshSequenceForActions(animationNode)
+
+  def _refreshSequenceForActions(self, animationNode):
+    """If any action's endTime exceeds the script duration, expand the
+    duration and append new frames to the existing playback sequence so
+    the play/seek widgets keep working without needing to rebind."""
+    script = self.getScript(animationNode)
+    actions = script.get('actions', {})
+    if not actions:
+      return
+    needed = max((a.get('endTime', 0) or 0) for a in actions.values())
+    current = script.get('duration', 0) or 0
+    if needed <= current:
+      return
+
+    sequenceNodeID = animationNode.GetAttribute('Animator.sequenceNodeID')
+    sequenceNode = slicer.mrmlScene.GetNodeByID(sequenceNodeID) if sequenceNodeID else None
+    if sequenceNode is None:
+      # No sequence yet, regenerate from scratch.
+      script['duration'] = float(needed)
+      self.setScript(animationNode, script)
+      self.generateSequence(animationNode)
+      return
+
+    fps = script.get('framesPerSecond', 60)
+    secondsPerFrame = 1.0 / fps
+    # Append new frames covering (current, needed].
+    start_frame = math.ceil(current * fps)
+    end_frame = math.ceil(needed * fps)
+    for frame in range(start_frame, end_frame + 1):
+      scriptTime = frame * secondsPerFrame
+      if scriptTime <= current:
+        continue
+      timePointDataNode = slicer.vtkMRMLScriptedModuleNode()
+      sequenceNode.SetDataNodeAtValue(timePointDataNode, str(scriptTime))
+    script['duration'] = float(needed)
     self.setScript(animationNode, script)
 
   def compileScript(self, animationNode):

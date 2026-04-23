@@ -64,7 +64,7 @@ class SnapshotTimelineWidget(qt.QWidget):
 
         # Live preview (scrubber)
         scrubRow = qt.QHBoxLayout()
-        scrubRow.addWidget(qt.QLabel("Preview:"))
+        scrubRow.addWidget(qt.QLabel("Scrub time (s):"))
         self.scrubSlider = ctk.ctkSliderWidget()
         self.scrubSlider.singleStep = 0.01
         self.scrubSlider.decimals = 2
@@ -72,11 +72,19 @@ class SnapshotTimelineWidget(qt.QWidget):
         self.scrubSlider.maximum = 1.0
         self.scrubSlider.value = 0.0
         self.scrubSlider.setToolTip(
-            "Drag to preview the animation in the 3D view. "
-            "Releasing the slider restores the scene to the state captured "
-            "before scrubbing started.")
+            "Drag to preview the animation in the 3D view at any moment. "
+            "Use 'Play preview' for continuous playback. 'Restore live' "
+            "puts the 3D view back to the state it was in before you "
+            "started scrubbing.")
         self.scrubSlider.connect('valueChanged(double)', self._onScrub)
         scrubRow.addWidget(self.scrubSlider, 1)
+        self.playButton = qt.QPushButton("\u25B6 Play preview")
+        self.playButton.setCheckable(True)
+        self.playButton.setToolTip(
+            "Play the animation continuously in the 3D view, looping "
+            "between the first and last keyframes.")
+        self.playButton.connect('toggled(bool)', self._onPlayToggled)
+        scrubRow.addWidget(self.playButton)
         self.restoreButton = qt.QPushButton("Restore live")
         self.restoreButton.setToolTip(
             "Restore the live camera/VP to whatever they were before you started "
@@ -84,6 +92,11 @@ class SnapshotTimelineWidget(qt.QWidget):
         self.restoreButton.connect('clicked()', self._restoreLive)
         scrubRow.addWidget(self.restoreButton)
         outerLayout.addLayout(scrubRow)
+
+        # Playback timer
+        self._playTimer = qt.QTimer(self)
+        self._playTimer.setInterval(33)  # ~30 fps preview
+        self._playTimer.connect('timeout()', self._onPlayTick)
 
         # Selection details
         detailGroup = qt.QGroupBox("Selected keyframe")
@@ -333,3 +346,37 @@ class SnapshotTimelineWidget(qt.QWidget):
             apply_camera_state(cam_node, self._preScrubCamState)
         self._scrubbing = False
         self._preScrubCamState = None
+
+    # ----- preview playback ----------------------------------------------
+
+    def _onPlayToggled(self, checked):
+        if checked:
+            kfs = self._keyframes()
+            if len(kfs) < 2:
+                self.playButton.setChecked(False)
+                slicer.util.messageBox(
+                    "Add at least 2 keyframes before playing the preview.")
+                return
+            self.playButton.setText("\u25A0 Stop preview")
+            # Reset to start of timeline
+            self.scrubSlider.value = self.scrubSlider.minimum
+            self._playTimer.start()
+        else:
+            self.playButton.setText("\u25B6 Play preview")
+            self._playTimer.stop()
+
+    def _onPlayTick(self):
+        # Advance the scrub slider; when we reach the end, loop.
+        step = float(self._playTimer.interval) / 1000.0  # seconds of real time
+        new_t = self.scrubSlider.value + step
+        if new_t > self.scrubSlider.maximum:
+            new_t = self.scrubSlider.minimum
+        # _onScrub will be called via valueChanged signal
+        self.scrubSlider.value = new_t
+
+    def stopPlayback(self):
+        """Public hook so the parent dialog can stop our timer on close."""
+        if self._playTimer.isActive():
+            self._playTimer.stop()
+        if self.playButton.isChecked():
+            self.playButton.setChecked(False)
