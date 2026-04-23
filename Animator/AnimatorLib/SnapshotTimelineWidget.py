@@ -23,32 +23,39 @@ from AnimatorLib.SceneSnapshot import (
 
 
 class _DraggableTimelineTrack(qt.QWidget):
-    """Horizontal time track showing one marker per keyframe.
+    """Horizontal time track showing one mini-thumbnail marker per keyframe.
 
     Drag a marker left/right to change its time. Click a marker to select it.
-    Emits a signal-equivalent via callbacks supplied by the parent widget.
+    Hovering a marker emits onHover(kf_id) so the parent can cross-highlight
+    the matching tile in the thumbnail strip.
     """
 
-    MARKER_RADIUS = 9
-    PAD_LEFT = 30
-    PAD_RIGHT = 30
-    TRACK_Y = 36
+    THUMB_W = 56
+    THUMB_H = 42
+    PAD_LEFT = 36
+    PAD_RIGHT = 36
+    THUMB_TOP = 6           # y of thumbnail top
+    TRACK_Y = 56            # y of horizontal track line (below thumbnail)
+    LABEL_Y = 78            # y of tick text (below track)
 
-    def __init__(self, onTimeChanged, onSelect, onDragLive, parent=None):
+    def __init__(self, onTimeChanged, onSelect, onDragLive, onHover, parent=None):
         super().__init__(parent)
         self._keyframes = []
         self._selectedId = None
+        self._hoveredId = None       # internal hover (mouse over a marker)
+        self._externalHoverId = None # set by parent when tile is hovered
         self._draggingIndex = -1
-        self._onTimeChanged = onTimeChanged   # (kf_id, new_time) -> None, called on release
-        self._onSelect = onSelect             # (kf_id) -> None
-        self._onDragLive = onDragLive         # (new_time) -> None, while dragging (for scrub)
+        self._onTimeChanged = onTimeChanged
+        self._onSelect = onSelect
+        self._onDragLive = onDragLive
+        self._onHover = onHover
         self._tMin = 0.0
         self._tMax = 1.0
-        self.setMinimumHeight(70)
+        self.setMinimumHeight(self.LABEL_Y + 14)
         self.setMouseTracking(True)
         self.setToolTip(
-            "Drag a marker left/right to change its time. "
-            "Click a marker to select it.")
+            "Drag a thumbnail left/right to change its time. "
+            "Click to select.")
 
     def setKeyframes(self, keyframes, selectedId=None):
         self._keyframes = list(keyframes)
@@ -56,11 +63,16 @@ class _DraggableTimelineTrack(qt.QWidget):
         if self._keyframes:
             self._tMin = min(0.0, min(k['time'] for k in self._keyframes))
             self._tMax = max(self._tMin + 1.0, max(k['time'] for k in self._keyframes))
-            # Add 5% padding on the right so the last marker isn't on the edge.
             self._tMax = self._tMin + (self._tMax - self._tMin) * 1.05
         else:
             self._tMin, self._tMax = 0.0, 1.0
         self.update()
+
+    def setExternallyHovered(self, kf_id):
+        """Called by parent when the user hovers a tile in the strip."""
+        if self._externalHoverId != kf_id:
+            self._externalHoverId = kf_id
+            self.update()
 
     # ----- coordinate mapping -----
 
@@ -81,11 +93,16 @@ class _DraggableTimelineTrack(qt.QWidget):
         frac = max(0.0, min(1.0, (x - x0) / float(w)))
         return self._tMin + frac * (self._tMax - self._tMin)
 
+    def _thumbRect(self, t):
+        cx = self._timeToX(t)
+        return qt.QRect(int(cx - self.THUMB_W / 2), self.THUMB_TOP, self.THUMB_W, self.THUMB_H)
+
     def _markerAt(self, pos):
+        # Hit-test against thumbnail rect (allows clicking the image too).
         for i, kf in enumerate(self._keyframes):
-            cx = self._timeToX(kf['time'])
-            cy = self.TRACK_Y + 2
-            if (pos.x() - cx) ** 2 + (pos.y() - cy) ** 2 <= (self.MARKER_RADIUS + 2) ** 2:
+            r = self._thumbRect(kf['time'])
+            r.adjust(-2, -2, 2, 2)
+            if r.contains(pos):
                 return i
         return -1
 
@@ -100,7 +117,7 @@ class _DraggableTimelineTrack(qt.QWidget):
         p.setPen(qt.QPen(qt.QColor(120, 120, 120), 2))
         p.drawLine(x0, y0 + h // 2, x0 + w, y0 + h // 2)
 
-        # Tick marks every ~1s if range small, else nice round step
+        # Tick marks
         span = self._tMax - self._tMin
         step = 1.0
         if span > 30:
@@ -115,23 +132,62 @@ class _DraggableTimelineTrack(qt.QWidget):
             if t >= self._tMin - 1e-6:
                 tx = self._timeToX(t)
                 p.drawLine(int(tx), y0 + h // 2 - 4, int(tx), y0 + h // 2 + 4)
-                p.drawText(int(tx) - 12, y0 + h // 2 + 18, f"{t:g}s")
+                p.drawText(int(tx) - 12, self.LABEL_Y, f"{t:g}s")
             t += step
 
-        # Markers
+        # Mini thumbnails + markers
         for kf in self._keyframes:
             cx = self._timeToX(kf['time'])
-            cy = y0 + 2
+            r = self._thumbRect(kf['time'])
             selected = (kf['id'] == self._selectedId)
-            color = qt.QColor(80, 160, 255) if selected else qt.QColor(220, 170, 60)
-            p.setBrush(qt.QBrush(color))
+            hovered = (kf['id'] == self._hoveredId or kf['id'] == self._externalHoverId)
+
+            # Border color
+            if selected:
+                border_col = qt.QColor(80, 160, 255)
+                border_w = 3
+            elif hovered:
+                border_col = qt.QColor(220, 170, 60)
+                border_w = 3
+            else:
+                border_col = qt.QColor(60, 60, 60)
+                border_w = 1
+
+            # Thumbnail (or fallback)
+            path = kf.get('thumbnailPath')
+            if path:
+                pix = qt.QPixmap(path)
+                if not pix.isNull():
+                    pix = pix.scaled(self.THUMB_W, self.THUMB_H,
+                                     qt.Qt.KeepAspectRatio,
+                                     qt.Qt.SmoothTransformation)
+                    # Center inside r
+                    px = r.x() + (self.THUMB_W - pix.width()) // 2
+                    py = r.y() + (self.THUMB_H - pix.height()) // 2
+                    p.drawPixmap(px, py, pix)
+                else:
+                    p.fillRect(r, qt.QColor(80, 80, 80))
+            else:
+                p.fillRect(r, qt.QColor(80, 80, 80))
+
+            # Border
+            p.setPen(qt.QPen(border_col, border_w))
+            p.setBrush(qt.QBrush(qt.Qt.NoBrush))
+            p.drawRect(r)
+
+            # Stem from thumbnail to track tick
+            p.setPen(qt.QPen(border_col, 2))
+            p.drawLine(int(cx), r.y() + r.height(), int(cx), y0 + h // 2)
+
+            # Time label above thumbnail
             p.setPen(qt.QPen(qt.QColor(40, 40, 40), 1))
-            p.drawEllipse(qt.QPoint(int(cx), int(cy)), self.MARKER_RADIUS, self.MARKER_RADIUS)
-            # Time label above
-            p.setPen(qt.QPen(qt.QColor(40, 40, 40), 1))
-            p.drawText(int(cx) - 18, cy - self.MARKER_RADIUS - 4, f"{kf['time']:.2f}s")
+            p.drawText(int(cx) - 18, r.y() - 2, f"{kf['time']:.2f}s")
 
     # ----- interaction -----
+
+    def _hoverIdAt(self, pos):
+        idx = self._markerAt(pos)
+        return self._keyframes[idx]['id'] if idx >= 0 else None
 
     def mousePressEvent(self, event):
         if event.button() != qt.Qt.LeftButton:
@@ -145,6 +201,12 @@ class _DraggableTimelineTrack(qt.QWidget):
             self.update()
 
     def mouseMoveEvent(self, event):
+        # hover tracking
+        new_hover = self._hoverIdAt(event.pos())
+        if new_hover != self._hoveredId:
+            self._hoveredId = new_hover
+            self._onHover(new_hover)
+            self.update()
         if self._draggingIndex < 0:
             return
         kf = self._keyframes[self._draggingIndex]
@@ -152,6 +214,12 @@ class _DraggableTimelineTrack(qt.QWidget):
         kf['time'] = new_t
         self._onDragLive(new_t)
         self.update()
+
+    def leaveEvent(self, _event):
+        if self._hoveredId is not None:
+            self._hoveredId = None
+            self._onHover(None)
+            self.update()
 
     def mouseReleaseEvent(self, event):
         if self._draggingIndex < 0:
@@ -199,6 +267,11 @@ class SnapshotTimelineWidget(qt.QWidget):
         self.thumbList.setVerticalScrollBarPolicy(qt.Qt.ScrollBarAlwaysOff)
         self.thumbList.minimumHeight = 80
         self.thumbList.connect('currentRowChanged(int)', self._onSelectionChanged)
+        self.thumbList.setMouseTracking(True)
+        self.thumbList.viewport().setMouseTracking(True)
+        self.thumbList.itemEntered.connect(self._onTileHover)
+        # Clear hover when mouse leaves the list viewport
+        self.thumbList.viewport().installEventFilter(self)
         outerLayout.addWidget(self.thumbList)
 
         # Draggable timeline track
@@ -206,6 +279,7 @@ class SnapshotTimelineWidget(qt.QWidget):
             onTimeChanged=self._onMarkerReleased,
             onSelect=self._onMarkerSelected,
             onDragLive=self._onMarkerDragLive,
+            onHover=self._onMarkerHover,
         )
         outerLayout.addWidget(self.timelineTrack)
 
@@ -428,6 +502,31 @@ class SnapshotTimelineWidget(qt.QWidget):
     def _onMarkerReleased(self, kf_id, _new_time):
         # Persist + re-sort + update everything.
         self._refreshTimeline(selectId=kf_id)
+
+    def _onMarkerHover(self, kf_id):
+        # Cross-highlight: outline the matching tile.
+        self._setHoveredTile(kf_id)
+
+    def _onTileHover(self, item):
+        kf_id = item.data(qt.Qt.UserRole) if item else None
+        self.timelineTrack.setExternallyHovered(kf_id)
+        self._setHoveredTile(kf_id)
+
+    def eventFilter(self, obj, event):
+        if obj is self.thumbList.viewport() and event.type() == qt.QEvent.Leave:
+            self.timelineTrack.setExternallyHovered(None)
+            self._setHoveredTile(None)
+        return False
+
+    def _setHoveredTile(self, kf_id):
+        kfs = self._keyframes()
+        for i in range(self.thumbList.count):
+            item = self.thumbList.item(i)
+            this_id = item.data(qt.Qt.UserRole)
+            if kf_id is not None and this_id == kf_id:
+                item.setBackground(qt.QBrush(qt.QColor(255, 235, 170)))
+            else:
+                item.setBackground(qt.QBrush(qt.Qt.transparent))
 
     def _onSegmentModeChanged(self, _idx):
         kf = self._selectedKeyframe()
