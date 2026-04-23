@@ -242,10 +242,48 @@ class ViewerSizeController(qt.QWidget):
         self._timerUpdatingSize = False
         self.resetSizeButton.enabled = True
         if self._viewerIsUndocked and self._threeDWidget:
-            self._threeDWidget.resize(qt.QSize(self._pinnedWidth, self._pinnedHeight))
-            slicer.app.processEvents()
+            self._applyUndockedSize(self._pinnedWidth, self._pinnedHeight)
         self.lockChanged.emit(True, self._pinnedWidth, self._pinnedHeight)
         self.sizeChanged.emit(self._pinnedWidth, self._pinnedHeight)
+
+    def _applyUndockedSize(self, width, height):
+        """Force the undocked top-level 3D widget to the requested size.
+
+        ``QWidget.resize`` alone is unreliable on macOS for top-level
+        windows once they have been shown - the window manager often
+        clamps or ignores the request. We temporarily clear the
+        min/max size constraints, use ``setGeometry`` to set the new
+        size at the current position, restore the constraints, and
+        also explicitly resize the inner ``threeDView`` so VTK rebuilds
+        its render window at the new dimensions.
+        """
+        if not self._threeDWidget:
+            return
+        widget = self._threeDWidget
+        old_min = widget.minimumSize
+        old_max = widget.maximumSize
+        # Allow any size temporarily.
+        widget.setMinimumSize(qt.QSize(0, 0))
+        widget.setMaximumSize(qt.QSize(16777215, 16777215))
+        pos = widget.pos
+        widget.setGeometry(pos.x(), pos.y(), int(width), int(height))
+        widget.resize(qt.QSize(int(width), int(height)))
+        # Resize the inner threeDView too, so VTK's render window picks
+        # up the new dimensions immediately.
+        try:
+            view = widget.threeDView()
+            if view is not None:
+                view.resize(qt.QSize(int(width), int(height)))
+                rw = view.renderWindow()
+                if rw is not None:
+                    rw.SetSize(int(width), int(height))
+                    rw.Render()
+        except Exception:
+            pass
+        slicer.app.processEvents()
+        # Restore constraints.
+        widget.setMinimumSize(old_min)
+        widget.setMaximumSize(old_max)
 
     # -- internal slots -----------------------------------------------------
 
