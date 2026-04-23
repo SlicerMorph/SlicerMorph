@@ -76,11 +76,17 @@ def find_bracket(keyframes, fraction):
 # ---------------------------------------------------------------------------
 
 def _node_positions(piecewise_or_color):
-    """Return sorted list of x positions of the function's control points."""
+    """Return sorted list of x positions of the function's control points.
+
+    VTK is strict about the buffer size for GetNodeValue:
+      - vtkPiecewiseFunction (opacity)    -> 4 floats (x, y, midpoint, sharpness)
+      - vtkColorTransferFunction (color)  -> 6 floats (x, r, g, b, midpoint, sharpness)
+    Detect by class name so we pass the right-sized buffer.
+    """
     n = piecewise_or_color.GetSize()
-    # opacity stores 4 floats per node (x, y, midpoint, sharpness)
-    # color stores 6 floats per node (x, r, g, b, midpoint, sharpness)
-    sample = [0.0] * 6
+    class_name = piecewise_or_color.GetClassName()
+    element_count = 6 if 'Color' in class_name else 4
+    sample = [0.0] * element_count
     positions = []
     for i in range(n):
         piecewise_or_color.GetNodeValue(i, sample)
