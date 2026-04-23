@@ -29,6 +29,14 @@ class AnimatorAction:
   def allowMultiple(self):
     return True
 
+  def wantsNonModalEditor(self):
+    """Return True if the action's editor should open as a non-modal
+    side panel (so the user can keep interacting with the 3D view)
+    instead of a blocking modal dialog. Persistence then happens after
+    every change via the onChanged callback that the editor receives.
+    """
+    return False
+
 class CameraRotationAction(AnimatorAction):
   """Defines an animation of a transform"""
   def __init__(self):
@@ -833,6 +841,11 @@ class SceneSnapshotAction(AnimatorAction):
         if node is not None:
           slicer.mrmlScene.RemoveNode(node)
 
+  def wantsNonModalEditor(self):
+    # Snapshot timeline is built around capturing the current 3D view,
+    # so the editor must not block interaction with the 3D view.
+    return True
+
   def gui(self, action, layout):
     super().gui(action, layout)
 
@@ -877,10 +890,14 @@ class SceneSnapshotAction(AnimatorAction):
     layoutManager = slicer.app.layoutManager()
     threeDView = layoutManager.threeDWidget(0).threeDView() if layoutManager else None
     from AnimatorLib.SnapshotTimelineWidget import SnapshotTimelineWidget
+    # When the editor is opened non-modal, AnimatorActionsGUI will set
+    # self.onChanged to a callback that persists the action to the
+    # animation node after every edit.
+    persistCallback = getattr(self, 'onChanged', lambda: None)
     self._timelineWidget = SnapshotTimelineWidget(
       action=action,
       threeDView=threeDView,
-      onChanged=lambda: None,
+      onChanged=persistCallback,
     )
     layout.addRow(self._timelineWidget)
 
@@ -1412,13 +1429,19 @@ class AnimatorActionsGUI:
     self.scrollArea.takeWidget()
 
   def onEdit(self, action):
+    actionInstance = slicer.modules.animatorActionPlugins[action['class']]()
+
+    if actionInstance.wantsNonModalEditor():
+      self._openNonModalEditor(action, actionInstance)
+      return
+
     dialog = qt.QDialog(slicer.util.mainWindow())
     layout = qt.QFormLayout(dialog)
 
     label = qt.QLabel(action['name'])
     layout.addRow("Edit properties of:",  label )
 
-    self.actionInstance = slicer.modules.animatorActionPlugins[action['class']]()
+    self.actionInstance = actionInstance
     self.actionInstance.gui(action, layout)
 
     buttonBox = qt.QDialogButtonBox()
@@ -1431,6 +1454,59 @@ class AnimatorActionsGUI:
     buttonBox.connect("rejected()", dialog, "reject()")
 
     dialog.exec_()
+
+  def _openNonModalEditor(self, action, actionInstance):
+    """Open a non-modal, always-on-top side editor whose changes are
+    persisted live (no OK/Cancel). If an editor for this action is
+    already open, just raise it."""
+    if not hasattr(self, '_openEditors'):
+      self._openEditors = {}
+    existing = self._openEditors.get(action['id'])
+    if existing is not None:
+      try:
+        existing.raise_()
+        existing.activateWindow()
+        return
+      except Exception:
+        # stale handle
+        self._openEditors.pop(action['id'], None)
+
+    dialog = qt.QDialog(slicer.util.mainWindow())
+    # Qt.Tool keeps it floating above the main window without grabbing
+    # the modal flag, so the 3D view stays fully interactive.
+    dialog.setWindowFlags(qt.Qt.Tool)
+    dialog.setWindowTitle(f"Edit \u2014 {action['name']}")
+    dialog.setModal(False)
+    layout = qt.QFormLayout(dialog)
+
+    layout.addRow("Edit properties of:", qt.QLabel(action['name']))
+
+    # Persistence callback: copy the live edits back to the animation node.
+    def persist():
+      try:
+        actionInstance.updateFromGUI(action)
+        self.logic.setAction(self.animationNode, action)
+      except Exception as exc:
+        logging.warning(f"Animator: failed to persist live edit: {exc}")
+    actionInstance.onChanged = persist
+
+    actionInstance.gui(action, layout)
+
+    closeButton = qt.QPushButton("Close")
+    closeButton.connect('clicked()', dialog.close)
+    layout.addRow(closeButton)
+
+    def onClosed():
+      # Final persist on close, then drop the handle.
+      try:
+        persist()
+      finally:
+        self._openEditors.pop(action['id'], None)
+    dialog.connect('finished(int)', lambda _result: onClosed())
+
+    self._openEditors[action['id']] = dialog
+    dialog.show()
+    dialog.raise_()
 
   def accept(self, dialog, action):
     self.actionInstance.updateFromGUI(action)
