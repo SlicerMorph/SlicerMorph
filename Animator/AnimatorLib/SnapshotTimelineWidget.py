@@ -22,6 +22,145 @@ from AnimatorLib.SceneSnapshot import (
 )
 
 
+class _DraggableTimelineTrack(qt.QWidget):
+    """Horizontal time track showing one marker per keyframe.
+
+    Drag a marker left/right to change its time. Click a marker to select it.
+    Emits a signal-equivalent via callbacks supplied by the parent widget.
+    """
+
+    MARKER_RADIUS = 9
+    PAD_LEFT = 30
+    PAD_RIGHT = 30
+    TRACK_Y = 36
+
+    def __init__(self, onTimeChanged, onSelect, onDragLive, parent=None):
+        super().__init__(parent)
+        self._keyframes = []
+        self._selectedId = None
+        self._draggingIndex = -1
+        self._onTimeChanged = onTimeChanged   # (kf_id, new_time) -> None, called on release
+        self._onSelect = onSelect             # (kf_id) -> None
+        self._onDragLive = onDragLive         # (new_time) -> None, while dragging (for scrub)
+        self._tMin = 0.0
+        self._tMax = 1.0
+        self.setMinimumHeight(70)
+        self.setMouseTracking(True)
+        self.setToolTip(
+            "Drag a marker left/right to change its time. "
+            "Click a marker to select it.")
+
+    def setKeyframes(self, keyframes, selectedId=None):
+        self._keyframes = list(keyframes)
+        self._selectedId = selectedId
+        if self._keyframes:
+            self._tMin = min(0.0, min(k['time'] for k in self._keyframes))
+            self._tMax = max(self._tMin + 1.0, max(k['time'] for k in self._keyframes))
+            # Add 5% padding on the right so the last marker isn't on the edge.
+            self._tMax = self._tMin + (self._tMax - self._tMin) * 1.05
+        else:
+            self._tMin, self._tMax = 0.0, 1.0
+        self.update()
+
+    # ----- coordinate mapping -----
+
+    def _trackRect(self):
+        w = self.width
+        return self.PAD_LEFT, self.TRACK_Y, max(10, w - self.PAD_LEFT - self.PAD_RIGHT), 4
+
+    def _timeToX(self, t):
+        x0, _, w, _ = self._trackRect()
+        if self._tMax <= self._tMin:
+            return x0
+        return x0 + (t - self._tMin) / (self._tMax - self._tMin) * w
+
+    def _xToTime(self, x):
+        x0, _, w, _ = self._trackRect()
+        if w <= 0:
+            return self._tMin
+        frac = max(0.0, min(1.0, (x - x0) / float(w)))
+        return self._tMin + frac * (self._tMax - self._tMin)
+
+    def _markerAt(self, pos):
+        for i, kf in enumerate(self._keyframes):
+            cx = self._timeToX(kf['time'])
+            cy = self.TRACK_Y + 2
+            if (pos.x() - cx) ** 2 + (pos.y() - cy) ** 2 <= (self.MARKER_RADIUS + 2) ** 2:
+                return i
+        return -1
+
+    # ----- painting -----
+
+    def paintEvent(self, _event):
+        p = qt.QPainter(self)
+        p.setRenderHint(qt.QPainter.Antialiasing, True)
+        x0, y0, w, h = self._trackRect()
+
+        # Track line
+        p.setPen(qt.QPen(qt.QColor(120, 120, 120), 2))
+        p.drawLine(x0, y0 + h // 2, x0 + w, y0 + h // 2)
+
+        # Tick marks every ~1s if range small, else nice round step
+        span = self._tMax - self._tMin
+        step = 1.0
+        if span > 30:
+            step = 5.0
+        elif span > 10:
+            step = 2.0
+        elif span < 2:
+            step = 0.5
+        p.setPen(qt.QPen(qt.QColor(140, 140, 140), 1))
+        t = 0.0
+        while t <= self._tMax + 1e-6:
+            if t >= self._tMin - 1e-6:
+                tx = self._timeToX(t)
+                p.drawLine(int(tx), y0 + h // 2 - 4, int(tx), y0 + h // 2 + 4)
+                p.drawText(int(tx) - 12, y0 + h // 2 + 18, f"{t:g}s")
+            t += step
+
+        # Markers
+        for kf in self._keyframes:
+            cx = self._timeToX(kf['time'])
+            cy = y0 + 2
+            selected = (kf['id'] == self._selectedId)
+            color = qt.QColor(80, 160, 255) if selected else qt.QColor(220, 170, 60)
+            p.setBrush(qt.QBrush(color))
+            p.setPen(qt.QPen(qt.QColor(40, 40, 40), 1))
+            p.drawEllipse(qt.QPoint(int(cx), int(cy)), self.MARKER_RADIUS, self.MARKER_RADIUS)
+            # Time label above
+            p.setPen(qt.QPen(qt.QColor(40, 40, 40), 1))
+            p.drawText(int(cx) - 18, cy - self.MARKER_RADIUS - 4, f"{kf['time']:.2f}s")
+
+    # ----- interaction -----
+
+    def mousePressEvent(self, event):
+        if event.button() != qt.Qt.LeftButton:
+            return
+        idx = self._markerAt(event.pos())
+        if idx >= 0:
+            self._draggingIndex = idx
+            kf = self._keyframes[idx]
+            self._selectedId = kf['id']
+            self._onSelect(kf['id'])
+            self.update()
+
+    def mouseMoveEvent(self, event):
+        if self._draggingIndex < 0:
+            return
+        kf = self._keyframes[self._draggingIndex]
+        new_t = max(0.0, self._xToTime(event.pos().x()))
+        kf['time'] = new_t
+        self._onDragLive(new_t)
+        self.update()
+
+    def mouseReleaseEvent(self, event):
+        if self._draggingIndex < 0:
+            return
+        kf = self._keyframes[self._draggingIndex]
+        self._draggingIndex = -1
+        self._onTimeChanged(kf['id'], kf['time'])
+
+
 class SnapshotTimelineWidget(qt.QWidget):
     """Editor for one SceneSnapshotAction.
 
@@ -61,6 +200,14 @@ class SnapshotTimelineWidget(qt.QWidget):
         self.thumbList.minimumHeight = 140
         self.thumbList.connect('currentRowChanged(int)', self._onSelectionChanged)
         outerLayout.addWidget(self.thumbList)
+
+        # Draggable timeline track
+        self.timelineTrack = _DraggableTimelineTrack(
+            onTimeChanged=self._onMarkerReleased,
+            onSelect=self._onMarkerSelected,
+            onDragLive=self._onMarkerDragLive,
+        )
+        outerLayout.addWidget(self.timelineTrack)
 
         # Live preview (scrubber)
         scrubRow = qt.QHBoxLayout()
@@ -204,6 +351,11 @@ class SnapshotTimelineWidget(qt.QWidget):
             target_row = min(target_row, len(kfs) - 1)
         self.thumbList.setCurrentRow(target_row)
         self._loadSelectionIntoDetails()
+        # Push to draggable track too
+        sel_id = None
+        if 0 <= target_row < len(kfs):
+            sel_id = kfs[target_row]['id']
+        self.timelineTrack.setKeyframes(kfs, selectedId=sel_id)
         self._onChanged()
 
     def _selectedKeyframe(self):
@@ -255,6 +407,27 @@ class SnapshotTimelineWidget(qt.QWidget):
             return
         kf['time'] = float(self.timeSpin.value)
         self._refreshTimeline(selectId=kf['id'])
+
+    # ----- draggable timeline callbacks -----
+
+    def _onMarkerSelected(self, kf_id):
+        kfs = self._keyframes()
+        for i, kf in enumerate(kfs):
+            if kf['id'] == kf_id:
+                self.thumbList.setCurrentRow(i)
+                break
+
+    def _onMarkerDragLive(self, _new_t):
+        # Live-update the time spinbox so user sees the value changing.
+        kf = self._selectedKeyframe()
+        if kf is not None:
+            self.timeSpin.blockSignals(True)
+            self.timeSpin.value = kf['time']
+            self.timeSpin.blockSignals(False)
+
+    def _onMarkerReleased(self, kf_id, _new_time):
+        # Persist + re-sort + update everything.
+        self._refreshTimeline(selectId=kf_id)
 
     def _onSegmentModeChanged(self, _idx):
         kf = self._selectedKeyframe()

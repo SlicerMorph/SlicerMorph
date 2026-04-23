@@ -885,6 +885,8 @@ class SceneSnapshotAction(AnimatorAction):
       "<li>Click <i>Capture current state</i> &rarr; a tile is added "
       "1&nbsp;second after the previous one.</li>"
       "<li>Repeat for as many key moments as you want.</li>"
+      "<li>To change when each snapshot occurs, drag its marker on the "
+      "<i>timeline track</i> below the thumbnails (or edit the Time field).</li>"
       "<li>Click <i>Play preview</i> below to see the animation, or drag "
       "the time slider to scrub. Use <i>Restore live</i> to put the 3D "
       "view back where it was before scrubbing.</li>"
