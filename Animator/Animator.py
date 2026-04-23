@@ -697,15 +697,6 @@ class AnimatorWidget(ScriptedLoadableModuleWidget):
 
   def __init__(self, parent):
     super().__init__(parent)
-    self.sizes = {
-            "160x120": {"width": 160, "height": 120},
-            "320x240": {"width": 320, "height": 240},
-            "640x480": {"width": 640, "height": 480},
-            "1920x1024": {"width": 1920, "height": 1024},
-            "1920x1080": {"width": 1920, "height": 1080},
-            "3840x2160": {"width": 3840, "height": 2160}
-            }
-    self.defaultSize = "640x480"
     self.defaultFileFormat = "mp4 (H264)"
 
   def setup(self):
@@ -719,7 +710,63 @@ class AnimatorWidget(ScriptedLoadableModuleWidget):
 
     self.logic = AnimatorLogic()
 
+    # Try to import the shared viewer-size controller from HiResScreenCapture.
+    # Animator's export pipeline depends on this helper to undock the 3D
+    # viewer and snap to a codec-friendly size before recording.
+    try:
+      from SlicerMorphViewerSize import ViewerSizeController, snap_to_codec_size
+      self._ViewerSizeController = ViewerSizeController
+      self._snap_to_codec_size = snap_to_codec_size
+    except ImportError as e:
+      logging.error(
+        "Animator: failed to import SlicerMorphViewerSize from HiResScreenCapture: %s. "
+        "Make sure the HiResScreenCapture module is installed and enabled.", e)
+      self._ViewerSizeController = None
+      self._snap_to_codec_size = None
+
     # Instantiate and connect widgets ...
+
+    #
+    # Output Viewer Setup (must happen BEFORE the user composes the animation
+    # so that the on-screen 3D viewer matches the final MP4 dimensions)
+    #
+    viewerSetupCollapsibleButton = ctk.ctkCollapsibleButton()
+    viewerSetupCollapsibleButton.text = "Output Viewer Setup"
+    self.layout.addWidget(viewerSetupCollapsibleButton)
+    viewerSetupFormLayout = qt.QFormLayout(viewerSetupCollapsibleButton)
+
+    instructionsLabel = qt.QLabel(
+      "<i>Step 1:</i> Undock the 3D viewer and arrange your scene at the desired "
+      "aspect ratio.<br>"
+      "<i>Step 2:</i> Click <b>Snap to codec-safe size</b> to lock the viewer to "
+      "dimensions that H.264 can encode without padding.<br>"
+      "<i>Step 3:</i> Build your animation below; what you see is what gets "
+      "recorded.")
+    instructionsLabel.setWordWrap(True)
+    viewerSetupFormLayout.addRow(instructionsLabel)
+
+    if self._ViewerSizeController is not None:
+      self.viewerSizeController = self._ViewerSizeController()
+      viewerSetupFormLayout.addRow(self.viewerSizeController)
+      self.viewerSizeController.sizeChanged.connect(self._onViewerSizeChanged)
+      self.viewerSizeController.lockChanged.connect(self._onViewerLockChanged)
+      self.viewerSizeController.undockChanged.connect(self._onViewerUndockChanged)
+    else:
+      self.viewerSizeController = None
+      viewerSetupFormLayout.addRow(qt.QLabel(
+        "<b>Error:</b> HiResScreenCapture module is required for viewer size control."))
+
+    self.snapButton = qt.QPushButton("Snap to codec-safe size")
+    self.snapButton.toolTip = (
+      "Round the current viewer width and height to the nearest multiple of 16 "
+      "(preserving aspect ratio) and lock the viewer to that size. H.264 encodes "
+      "best at multiples of 16; otherwise ffmpeg will pad or duplicate columns.")
+    self.snapButton.enabled = False
+    self.snapButton.clicked.connect(self.onSnapToCodecSize)
+    viewerSetupFormLayout.addRow("", self.snapButton)
+
+    self.lockedSizeLabel = qt.QLabel("Output size: <i>not locked</i>")
+    viewerSetupFormLayout.addRow(self.lockedSizeLabel)
 
     #
     # Parameters Area
@@ -794,11 +841,8 @@ class AnimatorWidget(ScriptedLoadableModuleWidget):
     self.exportCollapsibleButton.enabled = False
     self.exportFormLayout = qt.QFormLayout(self.exportCollapsibleButton)
 
-    self.sizeSelector = qt.QComboBox()
-    for size in self.sizes.keys():
-      self.sizeSelector.addItem(size)
-    self.sizeSelector.currentText = self.defaultSize
-    self.exportFormLayout.addRow("Animation size", self.sizeSelector)
+    self.exportSizeLabel = qt.QLabel("Animation size: <i>lock viewer above first</i>")
+    self.exportFormLayout.addRow(self.exportSizeLabel)
 
     from ScreenCapture import ScreenCaptureLogic
     logic = ScreenCaptureLogic()
@@ -831,6 +875,8 @@ class AnimatorWidget(ScriptedLoadableModuleWidget):
 
   def cleanup(self):
     self.removeSequenceBrowserObserver()
+    if getattr(self, "viewerSizeController", None) is not None:
+      self.viewerSizeController.cleanup()
 
   def onSelect(self):
     sequenceBrowserNode = None
@@ -909,53 +955,135 @@ class AnimatorWidget(ScriptedLoadableModuleWidget):
             "Animation file",
             "Animation",
             "")
-    self.exportButton.enabled = self.outputFileButton.text != ""
+    self._refreshExportButtonState()
+
+  def _refreshExportButtonState(self):
+    """Enable Export only when an output file is set AND the viewer is locked."""
+    locked = (self.viewerSizeController is not None
+              and self.viewerSizeController.lockedSize() is not None)
+    has_path = bool(self.outputFileButton.text) and self.outputFileButton.text != "Select a file..."
+    self.exportButton.enabled = locked and has_path
+
+  def _onViewerSizeChanged(self, width, height):
+    """Enable the Snap button whenever we know a valid current size and the
+    viewer is undocked but not yet locked."""
+    if self.viewerSizeController is None:
+      return
+    self.snapButton.enabled = (
+      self.viewerSizeController.isUndocked()
+      and not self.viewerSizeController.isLocked()
+      and width > 0 and height > 0)
+
+  def _onViewerUndockChanged(self, undocked):
+    if self.viewerSizeController is None:
+      return
+    if not undocked:
+      # Re-docking releases the lock and disables export.
+      self.snapButton.enabled = False
+      self.lockedSizeLabel.text = "Output size: <i>not locked</i>"
+      self.exportSizeLabel.text = "Animation size: <i>lock viewer above first</i>"
+      self._refreshExportButtonState()
+    else:
+      w, h = self.viewerSizeController.currentSize()
+      self.snapButton.enabled = (w > 0 and h > 0
+                                 and not self.viewerSizeController.isLocked())
+
+  def _onViewerLockChanged(self, locked, width, height):
+    if locked:
+      self.snapButton.enabled = False
+      self.lockedSizeLabel.text = (
+        f"Output size: <b>{width} \u00d7 {height}</b> (locked)")
+      self.exportSizeLabel.text = (
+        f"Animation size: <b>{width} \u00d7 {height}</b>")
+    else:
+      self.snapButton.enabled = (
+        self.viewerSizeController is not None
+        and self.viewerSizeController.isUndocked())
+      self.lockedSizeLabel.text = "Output size: <i>not locked</i>"
+      self.exportSizeLabel.text = "Animation size: <i>lock viewer above first</i>"
+    self._refreshExportButtonState()
+
+  def onSnapToCodecSize(self):
+    """Compute the codec-friendly size, ask the user to confirm, then lock."""
+    if self.viewerSizeController is None or self._snap_to_codec_size is None:
+      return
+    if not self.viewerSizeController.isUndocked():
+      slicer.util.messageBox("Please undock the 3D viewer first.")
+      return
+    cur_w, cur_h = self.viewerSizeController.currentSize()
+    if not cur_w or not cur_h:
+      slicer.util.messageBox("Could not read the current viewer size.")
+      return
+    snap_w, snap_h, drift = self._snap_to_codec_size(cur_w, cur_h, multiple=16)
+    cur_aspect = cur_w / float(cur_h)
+    snap_aspect = snap_w / float(snap_h)
+    msg = (
+      f"Current viewer:  {cur_w} \u00d7 {cur_h}  (aspect {cur_aspect:.3f})\n"
+      f"Codec-safe size: {snap_w} \u00d7 {snap_h}  (aspect {snap_aspect:.3f})\n"
+      f"Aspect drift:    {drift:.2f}%\n\n"
+      f"Lock the viewer to {snap_w} \u00d7 {snap_h}?")
+    result = qt.QMessageBox.question(
+      slicer.util.mainWindow(),
+      "Snap to codec-safe size",
+      msg,
+      qt.QMessageBox.Yes | qt.QMessageBox.No)
+    if result == qt.QMessageBox.Yes:
+      self.viewerSizeController.pinSize(snap_w, snap_h)
 
   def onExport(self):
+    if self.viewerSizeController is None:
+      slicer.util.errorDisplay(
+        "HiResScreenCapture module is required for Animator export.")
+      return
+    locked = self.viewerSizeController.lockedSize()
+    if not locked:
+      slicer.util.messageBox(
+        "Please lock the 3D viewer to a codec-safe size before exporting.")
+      return
+    threeDWidget = self.viewerSizeController.threeDWidget()
+    if threeDWidget is None:
+      slicer.util.messageBox(
+        "The 3D viewer is no longer undocked. Please undock and lock again.")
+      return
 
-    # set up the threeDWidget at the correct render size
-    layoutManager = slicer.app.layoutManager()
-    oldLayout = layoutManager.layout
-    threeDWidget = layoutManager.threeDWidget(0)
-    threeDWidget.setParent(None)
-    threeDWidget.show()
-    geometry = threeDWidget.geometry
-    size =  self.sizes[self.sizeSelector.currentText]
+    # Hide the 3D controller bar so it doesn't appear in the recording, and
+    # confirm the widget is at the locked dimensions.
+    width, height = locked
     threeDWidget.threeDController().visible = False
-    threeDWidget.setGeometry(geometry.x(), geometry.y(), size["width"], size["height"])
+    threeDWidget.resize(qt.QSize(width, height))
+    slicer.app.processEvents()
 
-    # set up the animation nodes
-    viewNode = threeDWidget.threeDView().mrmlViewNode()
-    animationNode = self.animationSelector.currentNode()
-    sequenceBrowserNode = slicer.util.getNode(animationNode.GetAttribute('Animator.sequenceBrowserNodeID'))
-    sequenceNodes = vtk.vtkCollection()
-    sequenceBrowserNode.GetSynchronizedSequenceNodes(sequenceNodes, True) # include master
-    sequenceNode = sequenceNodes.GetItemAsObject(0)
-    frameCount = sequenceNode.GetNumberOfDataNodes()
-    tempDir = qt.QTemporaryDir()
+    try:
+      # set up the animation nodes
+      viewNode = threeDWidget.threeDView().mrmlViewNode()
+      animationNode = self.animationSelector.currentNode()
+      sequenceBrowserNode = slicer.util.getNode(animationNode.GetAttribute('Animator.sequenceBrowserNodeID'))
+      sequenceNodes = vtk.vtkCollection()
+      sequenceBrowserNode.GetSynchronizedSequenceNodes(sequenceNodes, True) # include master
+      sequenceNode = sequenceNodes.GetItemAsObject(0)
+      frameCount = sequenceNode.GetNumberOfDataNodes()
+      tempDir = qt.QTemporaryDir()
 
-    # perform the screen capture and video creation
-    from ScreenCapture import ScreenCaptureLogic
-    logic = ScreenCaptureLogic()
-    videoFormatIndex = self.videoFormatWidget.currentIndex
-    videoFormat = logic.videoFormatPresets[videoFormatIndex]
-    logic.captureSequence(
-            viewNode,
-            sequenceBrowserNode,
-            0, frameCount-1, frameCount,
-            tempDir.path(),
-            "Slicer-%04d.png")
-    logic.createVideo(
-            60,
-            videoFormat['extraVideoOptions'],
-            tempDir.path(),
-            "Slicer-%04d.png",
-            self.outputFileButton.text+"."+videoFormat['fileExtension'])
-
-    # reset the view
-    threeDWidget.threeDController().visible = True
-    layoutManager.setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutFinalView) ;# force change
-    layoutManager.setLayout(oldLayout)
+      # perform the screen capture and video creation
+      from ScreenCapture import ScreenCaptureLogic
+      logic = ScreenCaptureLogic()
+      videoFormatIndex = self.videoFormatWidget.currentIndex
+      videoFormat = logic.videoFormatPresets[videoFormatIndex]
+      logic.captureSequence(
+              viewNode,
+              sequenceBrowserNode,
+              0, frameCount-1, frameCount,
+              tempDir.path(),
+              "Slicer-%04d.png")
+      logic.createVideo(
+              60,
+              videoFormat['extraVideoOptions'],
+              tempDir.path(),
+              "Slicer-%04d.png",
+              self.outputFileButton.text+"."+videoFormat['fileExtension'])
+    finally:
+      # Always restore the 3D controller bar so the viewer is usable again.
+      threeDWidget.threeDController().visible = True
 
 
 class AnimatorActionsGUI:
