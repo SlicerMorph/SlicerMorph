@@ -18,10 +18,10 @@ from slicer.ScriptedLoadableModule import (
 # Module registration
 # ---------------------------------------------------------------------------
 
-class SubmitVolumeRenderingPreset(ScriptedLoadableModule):
+class VRPresetShare(ScriptedLoadableModule):
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
-        self.parent.title = "Submit Volume Rendering Preset"
+        self.parent.title = "VR Preset Share"
         self.parent.categories = ["SlicerMorph.SlicerMorph Utilities"]
         self.parent.dependencies = []
         self.parent.contributors = ["Murat Maga (UW)"]
@@ -37,13 +37,13 @@ the preset with the SlicerMorph community with a simple drag-and-drop.
 # Widget (UI)
 # ---------------------------------------------------------------------------
 
-class SubmitVolumeRenderingPresetWidget(ScriptedLoadableModuleWidget):
+class VRPresetShareWidget(ScriptedLoadableModuleWidget):
 
     REPO = "SlicerMorph/VPs"
 
     def setup(self):
         ScriptedLoadableModuleWidget.setup(self)
-        self.logic = SubmitVolumeRenderingPresetLogic()
+        self.logic = VRPresetShareLogic()
         self.layout.setAlignment(qt.Qt.AlignTop)
 
         # ---- GitHub account notice ----
@@ -82,7 +82,7 @@ class SubmitVolumeRenderingPresetWidget(ScriptedLoadableModuleWidget):
         vpRow.addWidget(self.refreshButton)
         selLayout.addRow("Preset (Property node):", vpRow)
 
-        # Editable preset name — auto-filled from selected volume, but overrideable
+        # Editable preset name — auto-filled from selected volume, but overridable
         self.nameEdit = qt.QLineEdit()
         self.nameEdit.placeholderText = "Auto-filled from volume name; only A-Z a-z 0-9 _ - allowed"
         self.nameEdit.toolTip = (
@@ -276,8 +276,8 @@ class SubmitVolumeRenderingPresetWidget(ScriptedLoadableModuleWidget):
         remaining = (expires_at - datetime.now(timezone.utc)).total_seconds()
         if remaining < 180:
             self._setStatus(
-                "Upload configuration has just expired. "
-                "Please wait a moment for the hourly refresh and try again.",
+                "Upload configuration on the server is stale or expired. "
+                "Please try again after the staging URLs are refreshed.",
                 "orange",
             )
             return
@@ -336,7 +336,7 @@ class SubmitVolumeRenderingPresetWidget(ScriptedLoadableModuleWidget):
 # Logic
 # ---------------------------------------------------------------------------
 
-class SubmitVolumeRenderingPresetLogic(ScriptedLoadableModuleLogic):
+class VRPresetShareLogic(ScriptedLoadableModuleLogic):
     """Handles export of .vp.json and .png from the active volume rendering node."""
 
     def exportPreset(self, name, outputDir, nodeId=None, viewIndex=0,
@@ -520,13 +520,13 @@ def ctk_PathLineEdit():
 # Test stub (satisfies WITH_GENERIC_TESTS requirement)
 # ---------------------------------------------------------------------------
 
-class SubmitVolumeRenderingPresetTest(ScriptedLoadableModuleTest):
+class VRPresetShareTest(ScriptedLoadableModuleTest):
     def setUp(self):
         slicer.mrmlScene.Clear(0)
 
     def runTest(self):
         self.setUp()
-        self.test_SubmitVolumeRenderingPreset1()
+        self.test_VRPresetShare1()
 
-    def test_SubmitVolumeRenderingPreset1(self):
+    def test_VRPresetShare1(self):
         self.delayDisplay("Module loaded successfully")
