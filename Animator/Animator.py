@@ -1046,6 +1046,29 @@ class AnimatorWidget(ScriptedLoadableModuleWidget):
         "The 3D viewer is no longer undocked. Please undock and lock again.")
       return
 
+    # Pre-flight: ffmpeg must be installed and configured. Otherwise the
+    # whole frame-capture pass runs for nothing and createVideo dies.
+    from ScreenCapture import ScreenCaptureLogic
+    logic = ScreenCaptureLogic()
+    if not logic.isFfmpegPathValid():
+      slicer.util.errorDisplay(
+        "Animator export requires ffmpeg, which is not installed or not "
+        "configured.\n\n"
+        "1. Install ffmpeg:\n"
+        "    macOS:   brew install ffmpeg\n"
+        "    Linux:   use your package manager (apt, dnf, ...)\n"
+        "    Windows: Slicer can download it for you in the next step.\n\n"
+        "2. Open the Screen Capture module (Utilities -> Screen Capture), "
+        "expand 'Advanced' and set 'ffmpeg executable path' to the installed "
+        "ffmpeg binary.\n\n"
+        "3. Re-run Animator export.")
+      # Offer to jump straight to the ScreenCapture module.
+      try:
+        slicer.util.selectModule('ScreenCapture')
+      except Exception:
+        pass
+      return
+
     # Hide the 3D controller bar so it doesn't appear in the recording, and
     # confirm the widget is at the locked dimensions.
     width, height = locked
@@ -1065,8 +1088,6 @@ class AnimatorWidget(ScriptedLoadableModuleWidget):
       tempDir = qt.QTemporaryDir()
 
       # perform the screen capture and video creation
-      from ScreenCapture import ScreenCaptureLogic
-      logic = ScreenCaptureLogic()
       videoFormatIndex = self.videoFormatWidget.currentIndex
       videoFormat = logic.videoFormatPresets[videoFormatIndex]
       logic.captureSequence(
