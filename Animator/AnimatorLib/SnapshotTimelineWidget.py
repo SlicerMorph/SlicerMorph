@@ -191,13 +191,13 @@ class SnapshotTimelineWidget(qt.QWidget):
         self.thumbList.setViewMode(qt.QListWidget.IconMode)
         self.thumbList.setFlow(qt.QListView.LeftToRight)
         self.thumbList.setWrapping(False)
-        self.thumbList.setIconSize(qt.QSize(120, 90))
+        self.thumbList.setIconSize(qt.QSize(60, 45))
         self.thumbList.setSpacing(8)
         self.thumbList.setMovement(qt.QListView.Static)
         self.thumbList.setSelectionMode(qt.QAbstractItemView.SingleSelection)
         self.thumbList.setHorizontalScrollBarPolicy(qt.Qt.ScrollBarAsNeeded)
         self.thumbList.setVerticalScrollBarPolicy(qt.Qt.ScrollBarAlwaysOff)
-        self.thumbList.minimumHeight = 140
+        self.thumbList.minimumHeight = 80
         self.thumbList.connect('currentRowChanged(int)', self._onSelectionChanged)
         outerLayout.addWidget(self.thumbList)
 
@@ -321,7 +321,7 @@ class SnapshotTimelineWidget(qt.QWidget):
                 item.setIcon(qt.QIcon(kf['thumbnailPath']))
             else:
                 # fallback gray icon
-                pix = qt.QPixmap(120, 90)
+                pix = qt.QPixmap(60, 45)
                 pix.fill(qt.QColor(80, 80, 80))
                 item.setIcon(qt.QIcon(pix))
             item.setData(qt.Qt.UserRole, kf['id'])

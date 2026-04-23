@@ -131,7 +131,7 @@ def _thumbnails_dir():
     return base
 
 
-def capture_thumbnail(threeDView, keyframe_id, max_dim=160):
+def capture_thumbnail(threeDView, keyframe_id, max_dim=80):
     """Grab the current 3D view as a small PNG and return its path."""
     try:
         pixmap = threeDView.grab()
