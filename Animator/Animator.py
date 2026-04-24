@@ -788,11 +788,21 @@ class SceneSnapshotAction(AnimatorAction):
 
     # Optional VP target if there's a volume rendering in the scene.
     animatedVolumePropertyID = None
+    animatedROIID = None
     volumeRenderingNode = slicer.mrmlScene.GetFirstNodeByName('VolumeRendering')
     if volumeRenderingNode is not None:
       vp = volumeRenderingNode.GetVolumePropertyNode()
       if vp is not None:
         animatedVolumePropertyID = vp.GetID()
+      # Optional cropping ROI target. If present, enable cropping so the
+      # interpolated ROI changes are actually visible during playback.
+      try:
+        roi = volumeRenderingNode.GetMarkupsROINode()
+      except Exception:
+        roi = None
+      if roi is not None:
+        animatedROIID = roi.GetID()
+        volumeRenderingNode.SetCroppingEnabled(True)
 
     actionId = 'sceneSnapshot-' + str(self.uuid)
 
@@ -804,6 +814,7 @@ class SceneSnapshotAction(AnimatorAction):
       action_id=actionId,
       time_seconds=0.0,
       label="Snapshot 1",
+      animated_roi_id=animatedROIID,
     )
     first_kf['thumbnailPath'] = capture_thumbnail(threeDView, first_kf['id'])
 
@@ -816,6 +827,7 @@ class SceneSnapshotAction(AnimatorAction):
       'interpolation': 'linear',
       'animatedCameraID': cameraNode.GetID(),
       'animatedVolumePropertyID': animatedVolumePropertyID,
+      'animatedROIID': animatedROIID,
       'keyframes': [first_kf],
     }
 
@@ -877,26 +889,20 @@ class SceneSnapshotAction(AnimatorAction):
       "Leave empty for camera-only animation.")
     layout.addRow("Animated VolumeProperty", self.vpSelector)
 
-    info = qt.QLabel(
-      "<b>How to use:</b>"
-      "<ol style='margin-left:-20px;'>"
-      "<li>Adjust the 3D view (rotate / zoom / change colors) until it "
-      "looks like the moment you want.</li>"
-      "<li>Click <i>Capture current state</i> &rarr; a tile is added "
-      "1&nbsp;second after the previous one.</li>"
-      "<li>Repeat for as many key moments as you want.</li>"
-      "<li>To change when each snapshot occurs, drag its marker on the "
-      "<i>timeline track</i> below the thumbnails (or edit the Time field).</li>"
-      "<li>Click <i>Play preview</i> below to see the animation, or drag "
-      "the time slider to scrub. Use <i>Restore live</i> to put the 3D "
-      "view back where it was before scrubbing.</li>"
-      "</ol>"
-      "When you close this window, the animation timeline at the top of "
-      "the Animator panel will cover the full snapshot range and you "
-      "can export to video.")
-    info.setWordWrap(True)
-    info.setTextFormat(qt.Qt.RichText)
-    layout.addRow(info)
+    self.roiSelector = slicer.qMRMLNodeComboBox()
+    self.roiSelector.nodeTypes = ["vtkMRMLMarkupsROINode", "vtkMRMLAnnotationROINode"]
+    self.roiSelector.addEnabled = False
+    self.roiSelector.removeEnabled = False
+    self.roiSelector.noneEnabled = True
+    self.roiSelector.showHidden = True
+    self.roiSelector.showChildNodeTypes = True
+    self.roiSelector.setMRMLScene(slicer.mrmlScene)
+    self.roiSelector.currentNodeID = action.get('animatedROIID') or ''
+    self.roiSelector.setToolTip(
+      "Optional: cropping ROI node that the snapshot also tweens. "
+      "Leave empty if you don't want cropping animated. When set, "
+      "volume rendering cropping is enabled automatically.")
+    layout.addRow("Animated cropping ROI", self.roiSelector)
 
     # The actual timeline editor
     layoutManager = slicer.app.layoutManager()
@@ -906,10 +912,14 @@ class SceneSnapshotAction(AnimatorAction):
     # self.onChanged to a callback that persists the action to the
     # animation node after every edit.
     persistCallback = getattr(self, 'onChanged', lambda: None)
+    masterDuration = getattr(self, 'masterDuration', None)
+    onMasterDurationChanged = getattr(self, 'setMasterDuration', None)
     self._timelineWidget = SnapshotTimelineWidget(
       action=action,
       threeDView=threeDView,
       onChanged=persistCallback,
+      masterDuration=masterDuration,
+      onMasterDurationChanged=onMasterDurationChanged,
     )
     layout.addRow(self._timelineWidget)
 
@@ -918,6 +928,13 @@ class SceneSnapshotAction(AnimatorAction):
       action['animatedCameraID'] = self.cameraSelector.currentNodeID
     if hasattr(self, 'vpSelector'):
       action['animatedVolumePropertyID'] = self.vpSelector.currentNodeID or None
+    if hasattr(self, 'roiSelector'):
+      action['animatedROIID'] = self.roiSelector.currentNodeID or None
+      # If user picked an ROI, make sure cropping is on so changes are visible
+      if action.get('animatedROIID'):
+        vrNode = slicer.mrmlScene.GetFirstNodeByName('VolumeRendering')
+        if vrNode is not None:
+          vrNode.SetCroppingEnabled(True)
     # Sync action time range to keyframe span
     kfs = action.get('keyframes', [])
     if kfs:
@@ -1501,6 +1518,26 @@ class AnimatorActionsGUI:
       except Exception as exc:
         logging.warning(f"Animator: failed to persist live edit: {exc}")
     actionInstance.onChanged = persist
+
+    # Expose the master animation duration to the editor and let it
+    # write changes back. Re-reads the script each time so external
+    # edits stay in sync.
+    actionInstance.masterDuration = float(
+      self.logic.getScript(self.animationNode).get('duration', 0) or 0)
+    def setMasterDuration(new_duration):
+      script = self.logic.getScript(self.animationNode)
+      script['duration'] = float(new_duration)
+      self.logic.setScript(self.animationNode, script)
+      # Rebuild the playback sequence so the master timeline widgets
+      # (play/seek) cover the new range.
+      self.logic.generateSequence(self.animationNode)
+      # Refresh the outer actions panel so its per-action range sliders
+      # pick up the new duration as their max.
+      try:
+        self.deleteCallback()
+      except Exception:
+        pass
+    actionInstance.setMasterDuration = setMasterDuration
 
     actionInstance.gui(action, layout)
 

@@ -57,15 +57,20 @@ class _DraggableTimelineTrack(qt.QWidget):
             "Drag a thumbnail left/right to change its time. "
             "Click to select.")
 
-    def setKeyframes(self, keyframes, selectedId=None):
+    def setKeyframes(self, keyframes, selectedId=None, minSpan=None):
         self._keyframes = list(keyframes)
         self._selectedId = selectedId
         if self._keyframes:
             self._tMin = min(0.0, min(k['time'] for k in self._keyframes))
             self._tMax = max(self._tMin + 1.0, max(k['time'] for k in self._keyframes))
-            self._tMax = self._tMin + (self._tMax - self._tMin) * 1.05
         else:
             self._tMin, self._tMax = 0.0, 1.0
+        # Honor the master timeline span so the track always covers the
+        # full animation duration, not just where existing keyframes sit.
+        if minSpan is not None and minSpan > 0:
+            self._tMax = max(self._tMax, self._tMin + float(minSpan))
+        # Add a small visual margin past the end.
+        self._tMax = self._tMin + (self._tMax - self._tMin) * 1.05
         self.update()
 
     def setExternallyHovered(self, kf_id):
@@ -238,11 +243,15 @@ class SnapshotTimelineWidget(qt.QWidget):
       onChanged: callback invoked after every mutating edit; it receives no args
     """
 
-    def __init__(self, action, threeDView, onChanged=lambda: None, parent=None):
+    def __init__(self, action, threeDView, onChanged=lambda: None,
+                 masterDuration=None, onMasterDurationChanged=None,
+                 parent=None):
         super().__init__(parent)
         self._action = action
         self._threeDView = threeDView
         self._onChanged = onChanged
+        self._masterDuration = float(masterDuration) if masterDuration else None
+        self._onMasterDurationChanged = onMasterDurationChanged
         # remember pre-scrub state so we can restore on widget close
         self._preScrubCamState = None
         self._scrubbing = False
@@ -253,6 +262,34 @@ class SnapshotTimelineWidget(qt.QWidget):
 
     def _buildUI(self):
         outerLayout = qt.QVBoxLayout(self)
+
+        # Timeline span (master animation duration) — shown only when the
+        # owner provided a value. Editing it propagates back to the
+        # animation script when a callback is wired.
+        if self._masterDuration is not None:
+            spanRow = qt.QHBoxLayout()
+            spanRow.addWidget(qt.QLabel("Timeline span:"))
+            self.spanSpin = ctk.ctkDoubleSpinBox()
+            self.spanSpin.suffix = " s"
+            self.spanSpin.minimum = 0.5
+            self.spanSpin.maximum = 9999.0
+            self.spanSpin.singleStep = 1.0
+            self.spanSpin.decimals = 2
+            self.spanSpin.value = self._masterDuration
+            tip = ("Total length of the master animation timeline. The "
+                   "snapshot track and scrub slider span this range.")
+            if self._onMasterDurationChanged is None:
+                tip += (" (Read-only here — change the duration where "
+                        "the animation was created.)")
+                self.spanSpin.enabled = False
+            else:
+                self.spanSpin.connect(
+                    'editingFinished()', self._onSpanChanged)
+            self.spanSpin.setToolTip(tip)
+            spanRow.addWidget(self.spanSpin, 1)
+            outerLayout.addLayout(spanRow)
+        else:
+            self.spanSpin = None
 
         # Thumbnail strip
         self.thumbList = qt.QListWidget()
@@ -402,16 +439,22 @@ class SnapshotTimelineWidget(qt.QWidget):
             self.thumbList.addItem(item)
         self.thumbList.blockSignals(False)
 
-        # Update scrubber bounds
-        if len(kfs) >= 2:
-            self.scrubSlider.minimum = kfs[0]['time']
-            self.scrubSlider.maximum = kfs[-1]['time']
-            self.scrubSlider.singleStep = max(0.01, (kfs[-1]['time'] - kfs[0]['time']) / 200.0)
-            self.scrubSlider.enabled = True
-        else:
-            self.scrubSlider.enabled = False
-            self.scrubSlider.minimum = 0.0
-            self.scrubSlider.maximum = 1.0
+        # Update scrubber bounds. The scrubber always covers the master
+        # timeline (when known), so the user can preview/scrub the full
+        # animation even if keyframes only occupy part of it.
+        first_t = kfs[0]['time'] if kfs else 0.0
+        last_t = kfs[-1]['time'] if kfs else 0.0
+        scrub_min = min(0.0, first_t)
+        scrub_max = last_t
+        if self._masterDuration is not None:
+            scrub_max = max(scrub_max, scrub_min + self._masterDuration)
+        if scrub_max <= scrub_min:
+            scrub_max = scrub_min + 1.0
+        self.scrubSlider.minimum = scrub_min
+        self.scrubSlider.maximum = scrub_max
+        self.scrubSlider.singleStep = max(
+            0.01, (scrub_max - scrub_min) / 200.0)
+        self.scrubSlider.enabled = len(kfs) >= 2
 
         # Restore selection
         target_row = -1
@@ -429,7 +472,8 @@ class SnapshotTimelineWidget(qt.QWidget):
         sel_id = None
         if 0 <= target_row < len(kfs):
             sel_id = kfs[target_row]['id']
-        self.timelineTrack.setKeyframes(kfs, selectedId=sel_id)
+        self.timelineTrack.setKeyframes(
+            kfs, selectedId=sel_id, minSpan=self._masterDuration)
         self._onChanged()
 
     def _selectedKeyframe(self):
@@ -536,12 +580,49 @@ class SnapshotTimelineWidget(qt.QWidget):
             self.segmentModeCombo.currentIndex)
         self._onChanged()
 
+    def _onSpanChanged(self):
+        """User edited the Timeline span spinbox. Push to the master
+        animation duration via the supplied callback and refresh."""
+        if self.spanSpin is None or self._onMasterDurationChanged is None:
+            return
+        new_duration = float(self.spanSpin.value)
+        if new_duration <= 0:
+            return
+        self._masterDuration = new_duration
+        try:
+            self._onMasterDurationChanged(new_duration)
+        except Exception:
+            pass
+        self._refreshTimeline()
+
+    def setMasterDuration(self, duration):
+        """Public hook so the parent can push duration changes in."""
+        if duration is None or duration <= 0:
+            return
+        self._masterDuration = float(duration)
+        if self.spanSpin is not None:
+            self.spanSpin.blockSignals(True)
+            self.spanSpin.value = self._masterDuration
+            self.spanSpin.blockSignals(False)
+        self._refreshTimeline()
+
     def _onCapture(self):
         kfs = self._keyframes()
-        if kfs:
-            new_time = max(kf['time'] for kf in kfs) + 1.0
-        else:
+        if not kfs:
             new_time = 0.0
+        else:
+            last_t = max(kf['time'] for kf in kfs)
+            if len(kfs) == 1 and self._masterDuration:
+                # Second keyframe lands at the end of the master timeline
+                # so the animation immediately spans the whole duration.
+                new_time = max(last_t + 0.5, self._masterDuration)
+            elif self._masterDuration and last_t < self._masterDuration:
+                # Place new keyframe halfway between the last one and the
+                # end of the master timeline.
+                new_time = last_t + max(
+                    0.5, (self._masterDuration - last_t) / 2.0)
+            else:
+                new_time = last_t + 1.0
         new_label = f"Snapshot {len(kfs) + 1}"
         new_kf = capture_current_scene(
             animated_camera_id=self._action.get('animatedCameraID'),
@@ -549,6 +630,7 @@ class SnapshotTimelineWidget(qt.QWidget):
             action_id=self._action.get('id', ''),
             time_seconds=new_time,
             label=new_label,
+            animated_roi_id=self._action.get('animatedROIID'),
         )
         new_kf['thumbnailPath'] = capture_thumbnail(self._threeDView, new_kf['id'])
         kfs.append(new_kf)
@@ -565,6 +647,7 @@ class SnapshotTimelineWidget(qt.QWidget):
             action_id=self._action.get('id', ''),
             time_seconds=kf['time'],
             label=kf['label'],
+            animated_roi_id=self._action.get('animatedROIID'),
         )
         # Drop the old VP snapshot node if any
         old_vp_id = kf.get('volumePropertyID')
@@ -574,6 +657,7 @@ class SnapshotTimelineWidget(qt.QWidget):
                 slicer.mrmlScene.RemoveNode(old_vp)
         kf['cameraState'] = replacement['cameraState']
         kf['volumePropertyID'] = replacement['volumePropertyID']
+        kf['roiState'] = replacement.get('roiState')
         kf['thumbnailPath'] = capture_thumbnail(self._threeDView, kf['id'])
         self._refreshTimeline(selectId=kf['id'])
 

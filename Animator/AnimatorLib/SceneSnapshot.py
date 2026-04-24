@@ -18,6 +18,10 @@ A keyframe is::
           'parallelProjection': int (0/1),
       } or None,
       'volumePropertyID': str or None, # MRML ID of a snapshot VP node
+      'roiState': {                    # cropping ROI snapshot (or None)
+          'xyz': [x, y, z],
+          'radiusXYZ': [rx, ry, rz],
+      } or None,
       'segmentMode': 'interpolate' | 'hold',  # mode of the segment
                                               # starting AT this keyframe
                                               # (ignored on the last keyframe)
@@ -122,6 +126,42 @@ def interpolate_camera_state(state_a, state_b, fraction):
 
 
 # ---------------------------------------------------------------------------
+# Cropping ROI capture / restore / interpolation
+# ---------------------------------------------------------------------------
+
+def capture_roi_state(roi_node):
+    """Return a dict snapshot of a vtkMRMLMarkupsROINode (or annotation ROI)."""
+    if roi_node is None:
+        return None
+    xyz = [0.0, 0.0, 0.0]
+    radius = [0.0, 0.0, 0.0]
+    roi_node.GetXYZ(xyz)
+    roi_node.GetRadiusXYZ(radius)
+    return {
+        'xyz': list(xyz),
+        'radiusXYZ': list(radius),
+    }
+
+
+def apply_roi_state(roi_node, state):
+    """Apply a previously captured ROI state dict to an ROI node."""
+    if state is None or roi_node is None:
+        return
+    roi_node.SetXYZ(*state['xyz'])
+    roi_node.SetRadiusXYZ(*state['radiusXYZ'])
+
+
+def interpolate_roi_state(state_a, state_b, fraction):
+    """Linearly interpolate two ROI states (center + radii)."""
+    if state_a is None or state_b is None:
+        return state_a or state_b
+    return {
+        'xyz': _lerp_vec(state_a['xyz'], state_b['xyz'], fraction),
+        'radiusXYZ': _lerp_vec(state_a['radiusXYZ'], state_b['radiusXYZ'], fraction),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Thumbnails
 # ---------------------------------------------------------------------------
 
@@ -157,13 +197,15 @@ def capture_thumbnail(threeDView, keyframe_id, max_dim=80):
 # ---------------------------------------------------------------------------
 
 def make_keyframe(time_seconds, label, camera_state, volume_property_id=None,
-                  thumbnail_path=None, segment_mode='interpolate'):
+                  thumbnail_path=None, segment_mode='interpolate',
+                  roi_state=None):
     return {
         'id': str(uuid.uuid4()),
         'time': float(time_seconds),
         'label': label,
         'cameraState': camera_state,
         'volumePropertyID': volume_property_id,
+        'roiState': roi_state,
         'segmentMode': segment_mode,
         'thumbnailPath': thumbnail_path,
     }
@@ -240,6 +282,24 @@ def evaluate_at(action, script_time):
                 else:
                     interpolate_volume_properties(vp_a, vp_b, local, animated_vp)
 
+    # Cropping ROI: only act if the action has an animated ROI target
+    animated_roi_id = action.get('animatedROIID')
+    if animated_roi_id:
+        animated_roi = slicer.mrmlScene.GetNodeByID(animated_roi_id)
+        if animated_roi is not None:
+            roi_a = kf_a.get('roiState')
+            roi_b = kf_b.get('roiState')
+            if roi_a is not None and roi_b is not None:
+                if kf_a is kf_b or mode == 'hold':
+                    apply_roi_state(animated_roi, roi_a)
+                else:
+                    apply_roi_state(
+                        animated_roi,
+                        interpolate_roi_state(roi_a, roi_b, local),
+                    )
+            elif roi_a is not None:
+                apply_roi_state(animated_roi, roi_a)
+
     return cam_state
 
 
@@ -248,9 +308,10 @@ def evaluate_at(action, script_time):
 # ---------------------------------------------------------------------------
 
 def capture_current_scene(animated_camera_id, animated_vp_id, action_id,
-                          time_seconds, label):
-    """Snapshot the current camera + (optional) volume property state and
-    return a new keyframe dict (without thumbnail; caller adds it).
+                          time_seconds, label, animated_roi_id=None):
+    """Snapshot the current camera + (optional) volume property + (optional)
+    cropping ROI state and return a new keyframe dict (without thumbnail;
+    caller adds it).
     """
     cam_state = None
     if animated_camera_id:
@@ -267,9 +328,16 @@ def capture_current_scene(animated_camera_id, animated_vp_id, action_id,
             vp_snapshot = snapshot_volume_property(vp_node, name)
             vp_snapshot_id = vp_snapshot.GetID()
 
+    roi_state = None
+    if animated_roi_id:
+        roi_node = slicer.mrmlScene.GetNodeByID(animated_roi_id)
+        if roi_node is not None:
+            roi_state = capture_roi_state(roi_node)
+
     return make_keyframe(
         time_seconds=time_seconds,
         label=label,
         camera_state=cam_state,
         volume_property_id=vp_snapshot_id,
+        roi_state=roi_state,
     )
