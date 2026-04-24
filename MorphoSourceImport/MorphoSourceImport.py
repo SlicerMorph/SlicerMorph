@@ -179,7 +179,7 @@ class MSQuery:
             # Show a dialog indicating that installation is in progress
             dependencyDialog = slicer.util.createProgressDialog(
                 windowTitle="Installing...",
-                labelText="Installing and Loading Required Python packages and Restarting Slicer",
+                labelText="Installing and Loading Required Python packages",
                 maximum=0,
             )
             slicer.app.processEvents()
@@ -194,9 +194,6 @@ class MSQuery:
 
             # Close the installation dialog
             dependencyDialog.close()
-
-            # Restart 3D Slicer
-            slicer.util.restart()
 
         self.MetadataMissingError = MetadataMissingError
         self.pd = pd
@@ -424,6 +421,9 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
         self.total_downloads = None
         self.completed_downloads = None
         self.progressBar = None
+        self.cancelDownloadButton = None
+        self.downloadCancelled = False
+        self.downloadProcess = None
         self.selectDownloadFolderButton = None
         self.downloadFolderPathInput = None
         self.downloadButton = None
@@ -662,11 +662,20 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
         self.downloadButton.setEnabled(False)  # Initially disabled
         self.layout.addWidget(self.downloadButton)
 
-        # Create the progress bar
+        # Create the progress bar with a cancel button alongside it
+        progressLayout = qt.QHBoxLayout()
         self.progressBar = qt.QProgressBar()
         self.progressBar.setRange(0, 100)  # Assuming 0-100% progress
         self.progressBar.setVisible(False)  # Initially hidden
-        self.layout.addWidget(self.progressBar)
+        progressLayout.addWidget(self.progressBar)
+
+        self.cancelDownloadButton = qt.QPushButton("Cancel")
+        self.cancelDownloadButton.setToolTip("Cancel the in-progress download.")
+        self.cancelDownloadButton.setVisible(False)  # Only visible while downloading
+        self.cancelDownloadButton.clicked.connect(self.onCancelDownloadClicked)
+        progressLayout.addWidget(self.cancelDownloadButton)
+
+        self.layout.addLayout(progressLayout)
 
         self.layout.addStretch(1)
         self.onQueryStringChanged()
@@ -1264,11 +1273,14 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
         args = [scriptPath, config_json_dict]
 
         self.startDownload()
+        self.downloadCancelled = False
         # Start the download process
         self.downloadProcess.start(command, args)
 
-        # Show progress bar and update UI
+        # Show progress bar (and cancel button) and update UI
         self.progressBar.setVisible(True)
+        self.cancelDownloadButton.setEnabled(True)
+        self.cancelDownloadButton.setVisible(True)
 
     def disableButtons(self):
         # Disable buttons during download
@@ -1330,18 +1342,46 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
     def onDownloadFinished(self, exitCode):
         # Handle completion of the download process
         self.progressBar.setVisible(False)
+        self.cancelDownloadButton.setVisible(False)
         self.enableButtons()
         self.downloadInProgress = False
-        print(f"Download process finished with exit code {exitCode}")
+        if getattr(self, 'downloadCancelled', False):
+            print(f"Download cancelled by user (exit code {exitCode}).")
+            slicer.util.infoDisplay(
+                "Download cancelled. Any partially downloaded files were left in place "
+                "and can be resumed by re-running the download.",
+                windowTitle="Download cancelled")
+        else:
+            print(f"Download process finished with exit code {exitCode}")
 
     def startDownload(self):
         # Call this method when the download starts
         self.downloadInProgress = True
 
+    def onCancelDownloadClicked(self):
+        if not self.downloadInProgress or self.downloadProcess is None:
+            return
+        if not slicer.util.confirmYesNoDisplay(
+                "Cancel the in-progress download?\n\n"
+                "Files already completed will be kept; partially downloaded "
+                "files can be resumed later by re-running the download.",
+                windowTitle="Cancel download"):
+            return
+        self.cancelDownloadButton.setEnabled(False)
+        self.terminateDownload()
+
     def terminateDownload(self):
         # Implement this method to terminate the download
+        self.downloadCancelled = True
         self.downloadInProgress = False
+        if self.downloadProcess is None:
+            return
+        # Try a graceful terminate first; if the process is still running
+        # after a short grace period, force-kill it.
         self.downloadProcess.terminate()
+        if not self.downloadProcess.waitForFinished(2000):
+            self.downloadProcess.kill()
+            self.downloadProcess.waitForFinished(2000)
 
     def load_dependencies(self):
         # Attempt to import pandas, and install if not present
@@ -1370,9 +1410,17 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
             )
             slicer.app.processEvents()
 
-            # Install the required packages
-            # we install the contourpy to support installation of pygbif package, it is temporary until transition to manylinux 2.27 is completed. 
-            slicer.util.pip_install("contourpy==1.3.2")
+            # Install the required packages.
+            # NOTE: The contourpy pin below is likely no longer necessary.
+            # It was added in Aug 2025 to work around a manylinux 2.27 wheel
+            # incompatibility on older Linux Slicer builds while installing
+            # pygbif (a transitive dependency that pulls in matplotlib, which
+            # in turn requires contourpy). Verified Apr 2026 on a current
+            # Linux Slicer build that morphosource (and its full dependency
+            # chain) installs cleanly without forcing this pin. Leaving it
+            # commented out for now in case the workaround is still needed on
+            # some platform; remove entirely once confirmed unnecessary.
+            # slicer.util.pip_install("contourpy==1.3.2")
             slicer.util.pip_install('morphosource==' + morphosourceVersion)
 
             from morphosource import search_media, get_media, DownloadVisibility
@@ -1380,14 +1428,6 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
 
             # Close the installation dialog
             dependencyDialog.close()
-
-            # Ask user to restart 3D Slicer
-            restart = slicer.util.confirmYesNoDisplay(
-                "MorphoSourceImport has been installed. To apply changes, a restart of 3D Slicer is necessary. "
-                "Would you like to restart now? Click 'YES' to restart immediately or 'NO' if you wish to save your work first and restart manually later.")
-
-            if restart:
-                slicer.util.restart()
 
 
 #
