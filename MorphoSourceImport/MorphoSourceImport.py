@@ -319,7 +319,7 @@ class MSQuery:
         search_results_data = [item.data for item in self.current_results.items]
 
         # Converting the list of dictionaries to a pandas DataFrame
-        search_results_df = self.pd.DataFrame(search_results_data).applymap(unlist_cell)
+        search_results_df = self.pd.DataFrame(search_results_data).map(unlist_cell)
 
         search_results_df = self.revise_df(search_results_df, 1)
 
@@ -360,13 +360,11 @@ class MSQuery:
         if self.current_results is None:
             raise ValueError("No current results to extract. Run a search first.")
 
-        # Calculate the start index for the current page
-        # Assuming page_number is the current page you're interested in
-        # Get all 'num_records' values up to the current page
-        num_records_values = [self.pages[i]['num_records'] for i in range(1, page_number)]
-
-        # Sum up the values and add 1 to get the start_index
-        start_index = sum(num_records_values)
+        # Calculate the start index for the current page.
+        # Use per_page rather than summing num_records of prior pages so that
+        # jumping directly to an arbitrary page (without fetching intermediate
+        # pages first) does not raise a KeyError.
+        start_index = (page_number - 1) * self.per_page
 
         # Extracting the 'data' dictionaries from each item in search_results
         search_results_data = [item.data for item in self.current_results.items]
@@ -378,7 +376,7 @@ class MSQuery:
         search_results_df.index = range(start_index, start_index + len(search_results_df))
 
         # Apply the unlist_cell function to each cell in the DataFrame
-        search_results_df = search_results_df.applymap(unlist_cell)
+        search_results_df = search_results_df.map(unlist_cell)
 
         search_results_df = self.revise_df(search_results_df, page_number)
 
@@ -1040,7 +1038,17 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
 
     def onPageNumberChanged(self):
         if self.logic.msq:
-            current_page = int(self.pageNumberEdit.text.split('/')[0].strip())
+            try:
+                requested_page = int(self.pageNumberEdit.text.split('/')[0].strip())
+            except ValueError:
+                return
+            total_pages = self.logic.msq.total_pages or 1
+            # Clamp to valid range
+            current_page = max(1, min(requested_page, total_pages))
+            if current_page == self.logic.msq.current_page:
+                # Restore the "page / total" display in case the user edited it
+                self.pageNumberEdit.setText(f"{current_page} / {total_pages}")
+                return
             self.updateResultsForPage(current_page)
 
     def checkPageButtonsState(self):
@@ -1217,6 +1225,24 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
             return 'skip'
 
     def downloadCheckedItems(self):
+        # Verify the download folder exists; offer to create it if not.
+        downloadFolder = self.downloadFolderPathInput.text
+        if downloadFolder and not os.path.isdir(downloadFolder):
+            if slicer.util.confirmYesNoDisplay(
+                f"Specified download folder \"{downloadFolder}\" does not exist. "
+                "Do you want to create it?",
+                windowTitle="Download folder does not exist"):
+                try:
+                    os.makedirs(downloadFolder, exist_ok=True)
+                except OSError as e:
+                    slicer.util.errorDisplay(
+                        f"Could not create download folder \"{downloadFolder}\":\n{e}",
+                        windowTitle="Failed to create folder")
+                    return
+            else:
+                # User declined; abort the download without taking any action.
+                return
+
         _config_dict = self.prepareDownloadConfig()
 
         # Disable buttons
