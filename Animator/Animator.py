@@ -788,37 +788,18 @@ class SceneSnapshotAction(AnimatorAction):
 
     # Optional VP target if there's a volume rendering in the scene.
     animatedVolumePropertyID = None
-    animatedROIID = None
     volumeRenderingNode = slicer.mrmlScene.GetFirstNodeByName('VolumeRendering')
     if volumeRenderingNode is not None:
       vp = volumeRenderingNode.GetVolumePropertyNode()
       if vp is not None:
         animatedVolumePropertyID = vp.GetID()
-      # Optional cropping ROI target. If present, enable cropping so the
-      # interpolated ROI changes are actually visible during playback.
-      try:
-        roi = volumeRenderingNode.GetMarkupsROINode()
-      except Exception:
-        roi = None
-      if roi is not None:
-        animatedROIID = roi.GetID()
-        volumeRenderingNode.SetCroppingEnabled(True)
 
     actionId = 'sceneSnapshot-' + str(self.uuid)
 
-    from AnimatorLib.SceneSnapshot import (
-      capture_current_scene, capture_thumbnail)
-    first_kf = capture_current_scene(
-      animated_camera_id=cameraNode.GetID(),
-      animated_vp_id=animatedVolumePropertyID,
-      action_id=actionId,
-      time_seconds=0.0,
-      label="Snapshot 1",
-      animated_roi_id=animatedROIID,
-    )
-    first_kf['thumbnailPath'] = capture_thumbnail(threeDView, first_kf['id'])
-
-    return {
+    # Bootstrap the action shell so ensure_animated_roi can stamp the
+    # ROI ID onto it (and so any auto-created ROI is tagged with this
+    # action's id for later cleanup).
+    action = {
       'name': 'Scene Snapshot',
       'class': 'SceneSnapshotAction',
       'id': actionId,
@@ -827,9 +808,24 @@ class SceneSnapshotAction(AnimatorAction):
       'interpolation': 'linear',
       'animatedCameraID': cameraNode.GetID(),
       'animatedVolumePropertyID': animatedVolumePropertyID,
-      'animatedROIID': animatedROIID,
-      'keyframes': [first_kf],
+      'animatedROIID': None,
+      'keyframes': [],
     }
+    from AnimatorLib.SceneSnapshot import (
+      capture_current_scene, capture_thumbnail, ensure_animated_roi)
+    ensure_animated_roi(action)
+
+    first_kf = capture_current_scene(
+      animated_camera_id=cameraNode.GetID(),
+      animated_vp_id=animatedVolumePropertyID,
+      action_id=actionId,
+      time_seconds=0.0,
+      label="Snapshot 1",
+      animated_roi_id=action.get('animatedROIID'),
+    )
+    first_kf['thumbnailPath'] = capture_thumbnail(threeDView, first_kf['id'])
+    action['keyframes'] = [first_kf]
+    return action
 
   def act(self, action, scriptTime):
     from AnimatorLib.SceneSnapshot import evaluate_at, apply_camera_state
@@ -845,13 +841,16 @@ class SceneSnapshotAction(AnimatorAction):
     apply_camera_state(cam_node, cam_state)
 
   def cleanup(self, action):
-    """Remove the snapshot VP nodes we created so the scene doesn't leak."""
+    """Remove the snapshot VP nodes (and any auto-created ROI) so the
+    scene doesn't leak."""
     for kf in action.get('keyframes', []):
       vp_id = kf.get('volumePropertyID')
       if vp_id:
         node = slicer.mrmlScene.GetNodeByID(vp_id)
         if node is not None:
           slicer.mrmlScene.RemoveNode(node)
+    from AnimatorLib.SceneSnapshot import remove_auto_created_roi
+    remove_auto_created_roi(action)
 
   def wantsNonModalEditor(self):
     # Snapshot timeline is built around capturing the current 3D view,
@@ -860,6 +859,12 @@ class SceneSnapshotAction(AnimatorAction):
 
   def gui(self, action, layout):
     super().gui(action, layout)
+
+    # Upgrade legacy actions (and freshly-created actions whose volume
+    # rendering wasn't set up at creation time): make sure there is
+    # always an animated ROI so cropping interpolation is well-defined.
+    from AnimatorLib.SceneSnapshot import ensure_animated_roi
+    ensure_animated_roi(action)
 
     # Camera + VP selectors (advanced; usually defaults are fine)
     self.cameraSelector = slicer.qMRMLNodeComboBox()
@@ -889,21 +894,6 @@ class SceneSnapshotAction(AnimatorAction):
       "Leave empty for camera-only animation.")
     layout.addRow("Animated VolumeProperty", self.vpSelector)
 
-    self.roiSelector = slicer.qMRMLNodeComboBox()
-    self.roiSelector.nodeTypes = ["vtkMRMLMarkupsROINode", "vtkMRMLAnnotationROINode"]
-    self.roiSelector.addEnabled = False
-    self.roiSelector.removeEnabled = False
-    self.roiSelector.noneEnabled = True
-    self.roiSelector.showHidden = True
-    self.roiSelector.showChildNodeTypes = True
-    self.roiSelector.setMRMLScene(slicer.mrmlScene)
-    self.roiSelector.currentNodeID = action.get('animatedROIID') or ''
-    self.roiSelector.setToolTip(
-      "Optional: cropping ROI node that the snapshot also tweens. "
-      "Leave empty if you don't want cropping animated. When set, "
-      "volume rendering cropping is enabled automatically.")
-    layout.addRow("Animated cropping ROI", self.roiSelector)
-
     # The actual timeline editor
     layoutManager = slicer.app.layoutManager()
     threeDView = layoutManager.threeDWidget(0).threeDView() if layoutManager else None
@@ -928,19 +918,18 @@ class SceneSnapshotAction(AnimatorAction):
       action['animatedCameraID'] = self.cameraSelector.currentNodeID
     if hasattr(self, 'vpSelector'):
       action['animatedVolumePropertyID'] = self.vpSelector.currentNodeID or None
-    if hasattr(self, 'roiSelector'):
-      action['animatedROIID'] = self.roiSelector.currentNodeID or None
-      # If user picked an ROI, make sure cropping is on so changes are visible
-      if action.get('animatedROIID'):
-        vrNode = slicer.mrmlScene.GetFirstNodeByName('VolumeRendering')
-        if vrNode is not None:
-          vrNode.SetCroppingEnabled(True)
     # Sync action time range to keyframe span
     kfs = action.get('keyframes', [])
     if kfs:
       times = [kf['time'] for kf in kfs]
       action['startTime'] = min(times)
       action['endTime'] = max(times)
+
+  def _onROISelectorChanged(self, newROIID):
+    """Legacy stub: the ROI selector has been removed. Kept so older
+    in-memory action editors don't error out if the slot is still wired.
+    """
+    return
 
 # add an module-specific dict for any module other to add animator plugins.
 # these must be subclasses (or duck types) of the

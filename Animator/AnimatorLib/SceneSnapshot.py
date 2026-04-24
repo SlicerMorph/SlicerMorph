@@ -161,6 +161,127 @@ def interpolate_roi_state(state_a, state_b, fraction):
     }
 
 
+_AUTO_ROI_ATTR = 'Animator.autoCreatedFor'
+
+
+def _find_volume_rendering_node():
+    """Best-effort: return the first VolumeRendering display node in the scene."""
+    node = slicer.mrmlScene.GetFirstNodeByName('VolumeRendering')
+    if node is not None:
+        return node
+    # Fallback: any volume rendering display node.
+    nodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLVolumeRenderingDisplayNode')
+    if nodes and nodes.GetNumberOfItems() > 0:
+        return nodes.GetItemAsObject(0)
+    return None
+
+
+def _volume_full_bounds_roi(volume_rendering_node):
+    """Compute (center, radii) covering the rendered volume's RAS bounds.
+    Returns None if no volume is associated."""
+    if volume_rendering_node is None:
+        return None
+    try:
+        volume_node = volume_rendering_node.GetVolumeNode()
+    except Exception:
+        volume_node = None
+    if volume_node is None:
+        return None
+    bounds = [0.0] * 6
+    volume_node.GetRASBounds(bounds)
+    center = [(bounds[0] + bounds[1]) / 2.0,
+              (bounds[2] + bounds[3]) / 2.0,
+              (bounds[4] + bounds[5]) / 2.0]
+    radii = [(bounds[1] - bounds[0]) / 2.0,
+             (bounds[3] - bounds[2]) / 2.0,
+             (bounds[5] - bounds[4]) / 2.0]
+    # Guard against zero-size volumes.
+    radii = [max(r, 0.5) for r in radii]
+    return center, radii
+
+
+def ensure_animated_roi(action):
+    """Guarantee that ``action`` has an animated cropping ROI.
+
+    - If ``action['animatedROIID']`` already resolves, returns that node.
+    - Otherwise, adopt the volume rendering's existing ROI if any.
+    - Otherwise, create a hidden vtkMRMLMarkupsROINode sized to the
+      volume's RAS bounds, assign it as the volume rendering's ROI,
+      enable cropping, and tag it so we can clean it up later.
+    - Backfills any keyframe whose ``roiState`` is None with the current
+      ROI state so playback has a defined baseline.
+
+    Returns the ROI node (or None if no volume rendering / volume found).
+    """
+    existing_id = action.get('animatedROIID')
+    roi_node = slicer.mrmlScene.GetNodeByID(existing_id) if existing_id else None
+
+    if roi_node is None:
+        vr_node = _find_volume_rendering_node()
+        if vr_node is None:
+            return None
+        # Adopt existing ROI on the volume rendering, if any.
+        try:
+            roi_node = vr_node.GetMarkupsROINode()
+        except Exception:
+            roi_node = None
+        if roi_node is None:
+            # Create a new hidden ROI sized to the volume's bounds.
+            bounds = _volume_full_bounds_roi(vr_node)
+            if bounds is None:
+                return None
+            center, radii = bounds
+            roi_node = slicer.mrmlScene.AddNewNodeByClass(
+                'vtkMRMLMarkupsROINode',
+                'AnimatorSnapshotROI')
+            roi_node.SetXYZ(*center)
+            roi_node.SetRadiusXYZ(*radii)
+            # Hide handles by default; do NOT touch visibility for
+            # ROIs the user already had in the scene.
+            for i in range(roi_node.GetNumberOfDisplayNodes()):
+                disp = roi_node.GetNthDisplayNode(i)
+                if disp is not None:
+                    disp.SetVisibility(False)
+            roi_node.SetAttribute(_AUTO_ROI_ATTR, action.get('id', ''))
+            # Wire the new ROI to the volume rendering and turn cropping on.
+            try:
+                vr_node.SetAndObserveROINodeID(roi_node.GetID())
+            except Exception:
+                pass
+        # Either way, make sure cropping is enabled so interpolation is visible.
+        try:
+            vr_node.SetCroppingEnabled(True)
+        except Exception:
+            pass
+        action['animatedROIID'] = roi_node.GetID()
+
+    # Backfill keyframes that have no roiState (e.g. legacy snapshots
+    # captured before this action had an ROI). Using the current live
+    # ROI ensures every keyframe has a baseline.
+    seed = capture_roi_state(roi_node)
+    if seed is not None:
+        for kf in action.get('keyframes', []):
+            if kf.get('roiState') is None:
+                kf['roiState'] = {
+                    'xyz': list(seed['xyz']),
+                    'radiusXYZ': list(seed['radiusXYZ']),
+                }
+    return roi_node
+
+
+def remove_auto_created_roi(action):
+    """Remove the ROI node we auto-created for ``action`` (if any).
+    Leaves user-supplied ROIs alone."""
+    roi_id = action.get('animatedROIID')
+    if not roi_id:
+        return
+    node = slicer.mrmlScene.GetNodeByID(roi_id)
+    if node is None:
+        return
+    if node.GetAttribute(_AUTO_ROI_ATTR) == action.get('id', ''):
+        slicer.mrmlScene.RemoveNode(node)
+
+
 # ---------------------------------------------------------------------------
 # Thumbnails
 # ---------------------------------------------------------------------------

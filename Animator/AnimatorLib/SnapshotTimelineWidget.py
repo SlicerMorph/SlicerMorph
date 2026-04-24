@@ -511,6 +511,23 @@ class SnapshotTimelineWidget(qt.QWidget):
 
     def _onSelectionChanged(self, _row):
         self._loadSelectionIntoDetails()
+        self._jumpToSelected()
+
+    def _jumpToSelected(self):
+        """Move the 3D view to whatever the currently-selected keyframe
+        looks like, by driving the scrub slider to its time."""
+        kf = self._selectedKeyframe()
+        if kf is None:
+            return
+        t = float(kf.get('time', 0.0))
+        # Clamp to slider range so the signal actually fires.
+        t = max(self.scrubSlider.minimum, min(self.scrubSlider.maximum, t))
+        if abs(self.scrubSlider.value - t) < 1e-6:
+            # Value unchanged -> valueChanged won't fire; apply directly.
+            self._onScrub(t)
+        else:
+            # Setting the value triggers _onScrub via valueChanged.
+            self.scrubSlider.value = t
 
     def _onLabelChanged(self):
         kf = self._selectedKeyframe()
@@ -533,6 +550,10 @@ class SnapshotTimelineWidget(qt.QWidget):
         for i, kf in enumerate(kfs):
             if kf['id'] == kf_id:
                 self.thumbList.setCurrentRow(i)
+                # setCurrentRow fires _onSelectionChanged which jumps,
+                # but if the row is already current the signal won't
+                # fire — jump explicitly so a re-click still snaps.
+                self._jumpToSelected()
                 break
 
     def _onMarkerDragLive(self, _new_t):
