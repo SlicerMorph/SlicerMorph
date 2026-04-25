@@ -857,7 +857,14 @@ class SceneSnapshotAction(AnimatorAction):
     from AnimatorLib.SceneSnapshot import ensure_animated_roi
     ensure_animated_roi(action)
 
-    # Camera + VP selectors (advanced; usually defaults are fine)
+    # Camera + VP selectors live under a collapsed Advanced section:
+    # the defaults are auto-detected from the scene and almost never
+    # need to change, so keep them out of the main view.
+    advanced = ctk.ctkCollapsibleButton()
+    advanced.text = "Advanced (camera / volume property)"
+    advanced.collapsed = True
+    advancedForm = qt.QFormLayout(advanced)
+
     self.cameraSelector = slicer.qMRMLNodeComboBox()
     self.cameraSelector.nodeTypes = ["vtkMRMLCameraNode"]
     self.cameraSelector.addEnabled = False
@@ -869,7 +876,7 @@ class SceneSnapshotAction(AnimatorAction):
     self.cameraSelector.currentNodeID = action.get('animatedCameraID', '')
     self.cameraSelector.setToolTip(
       "Camera that the snapshot timeline drives.")
-    layout.addRow("Animated camera", self.cameraSelector)
+    advancedForm.addRow("Animated camera", self.cameraSelector)
 
     self.vpSelector = slicer.qMRMLNodeComboBox()
     self.vpSelector.nodeTypes = ["vtkMRMLVolumePropertyNode"]
@@ -883,7 +890,9 @@ class SceneSnapshotAction(AnimatorAction):
     self.vpSelector.setToolTip(
       "Optional: Volume Property node that the snapshot also tweens. "
       "Leave empty for camera-only animation.")
-    layout.addRow("Animated VolumeProperty", self.vpSelector)
+    advancedForm.addRow("Animated VolumeProperty", self.vpSelector)
+
+    layout.addRow(advanced)
 
     # The actual timeline editor
     layoutManager = slicer.app.layoutManager()
@@ -1394,6 +1403,13 @@ class AnimatorActionsGUI:
      TODO: this is hard coded for now, but can be generalized
      based on experience.
   """
+  # Class-level registry of open non-modal editors keyed by action id.
+  # Lives on the class (not the instance) so it survives the rebuilds
+  # of AnimatorActionsGUI that happen on every persist via
+  # AnimatorWidget.onSelect; otherwise the per-instance dict would be
+  # thrown away and clicking Edit a second time would open a duplicate.
+  _openEditors = {}
+
   def __init__(self, animationNode, deleteCallback=lambda : None):
     self.animationNode = animationNode
     self.logic = AnimatorLogic()
@@ -1468,22 +1484,25 @@ class AnimatorActionsGUI:
     """Open a non-modal, always-on-top side editor whose changes are
     persisted live (no OK/Cancel). If an editor for this action is
     already open, just raise it."""
-    if not hasattr(self, '_openEditors'):
-      self._openEditors = {}
-    existing = self._openEditors.get(action['id'])
+    existing = AnimatorActionsGUI._openEditors.get(action['id'])
     if existing is not None:
       try:
+        if not existing.isVisible():
+          existing.show()
         existing.raise_()
         existing.activateWindow()
         return
       except Exception:
         # stale handle
-        self._openEditors.pop(action['id'], None)
+        AnimatorActionsGUI._openEditors.pop(action['id'], None)
 
     dialog = qt.QDialog(slicer.util.mainWindow())
-    # Qt.Tool keeps it floating above the main window without grabbing
-    # the modal flag, so the 3D view stays fully interactive.
-    dialog.setWindowFlags(qt.Qt.Tool)
+    # Use Qt.Window (not Qt.Tool) so the editor stays visible when
+    # Slicer loses focus. On macOS Qt::Tool windows are treated like
+    # inspector palettes that auto-hide when the owning application is
+    # not active — unwanted here because users frequently switch to
+    # other apps (browser, notes) while editing snapshots.
+    dialog.setWindowFlags(qt.Qt.Window)
     dialog.setWindowTitle(f"Edit \u2014 {action['name']}")
     dialog.setModal(False)
     layout = qt.QFormLayout(dialog)
@@ -1540,14 +1559,14 @@ class AnimatorActionsGUI:
             pass
         persist()
       finally:
-        self._openEditors.pop(action['id'], None)
+        AnimatorActionsGUI._openEditors.pop(action['id'], None)
         try:
           self.deleteCallback()
         except Exception:
           pass
     dialog.connect('finished(int)', lambda _result: onClosed())
 
-    self._openEditors[action['id']] = dialog
+    AnimatorActionsGUI._openEditors[action['id']] = dialog
     dialog.show()
     dialog.raise_()
 
