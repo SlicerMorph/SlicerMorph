@@ -19,6 +19,7 @@ from AnimatorLib.SceneSnapshot import (
     sorted_keyframes,
     apply_camera_state,
     evaluate_at,
+    ensure_animated_roi,
 )
 
 
@@ -637,6 +638,12 @@ class SnapshotTimelineWidget(qt.QWidget):
         self._refreshTimeline()
 
     def _onCapture(self):
+        # Make sure an animated cropping ROI exists *before* we snapshot,
+        # so the very first keyframe records a real roiState. Without this,
+        # if volume rendering wasn't enabled when the action was created,
+        # animatedROIID stays None and every captured kf gets roiState=None
+        # — then a later kf with a real ROI has nothing to interpolate from.
+        ensure_animated_roi(self._action)
         kfs = self._keyframes()
         if not kfs:
             new_time = 0.0
@@ -670,6 +677,9 @@ class SnapshotTimelineWidget(qt.QWidget):
         kf = self._selectedKeyframe()
         if kf is None:
             return
+        # Same rationale as _onCapture: guarantee an ROI exists so the
+        # replacement records a real roiState.
+        ensure_animated_roi(self._action)
         # Capture fresh state but keep same id and time/label/segmentMode.
         replacement = capture_current_scene(
             animated_camera_id=self._action.get('animatedCameraID'),
