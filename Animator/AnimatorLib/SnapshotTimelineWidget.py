@@ -8,6 +8,8 @@ Layout:
   [Selection details: time, label, segment mode]
   [Capture | Replace selected | Delete selected]
 """
+import copy
+import uuid
 
 import qt
 import ctk
@@ -21,6 +23,30 @@ from AnimatorLib.SceneSnapshot import (
     evaluate_at,
     ensure_animated_roi,
 )
+from AnimatorLib.VolumePropertyKeyframes import snapshot_volume_property
+
+
+# Module-level keyframe clipboard. Stores a deep copy of the keyframe
+# data plus a freshly cloned volume-property node (the clone is owned
+# by the clipboard so it survives even if the source keyframe is
+# deleted). Cross-action and cross-editor: copy from one snapshot
+# action's editor, paste into another.
+_KEYFRAME_CLIPBOARD = None
+
+
+def _release_clipboard_vp():
+    """Remove the clipboard-owned VP node, if any."""
+    global _KEYFRAME_CLIPBOARD
+    if _KEYFRAME_CLIPBOARD is None:
+        return
+    vp_id = _KEYFRAME_CLIPBOARD.get('volumePropertyID')
+    if vp_id:
+        node = slicer.mrmlScene.GetNodeByID(vp_id)
+        if node is not None:
+            try:
+                slicer.mrmlScene.RemoveNode(node)
+            except Exception:
+                pass
 
 
 class _DraggableTimelineTrack(qt.QWidget):
@@ -308,6 +334,10 @@ class SnapshotTimelineWidget(qt.QWidget):
         self.thumbList.setMouseTracking(True)
         self.thumbList.viewport().setMouseTracking(True)
         self.thumbList.itemEntered.connect(self._onTileHover)
+        # Right-click context menu for copy/paste of keyframes.
+        self.thumbList.setContextMenuPolicy(qt.Qt.CustomContextMenu)
+        self.thumbList.connect(
+            'customContextMenuRequested(QPoint)', self._onThumbContextMenu)
         # Clear hover when mouse leaves the list viewport
         self.thumbList.viewport().installEventFilter(self)
         outerLayout.addWidget(self.thumbList)
@@ -636,6 +666,103 @@ class SnapshotTimelineWidget(qt.QWidget):
             self.spanSpin.value = self._masterDuration
             self.spanSpin.blockSignals(False)
         self._refreshTimeline()
+
+    # ----- copy / paste ---------------------------------------------------
+
+    def _onThumbContextMenu(self, pos):
+        item = self.thumbList.itemAt(pos)
+        menu = qt.QMenu(self.thumbList)
+        copyAct = menu.addAction("Copy keyframe")
+        pasteAct = menu.addAction("Paste keyframe")
+        copyAct.enabled = item is not None
+        pasteAct.enabled = _KEYFRAME_CLIPBOARD is not None
+        chosen = menu.exec_(self.thumbList.viewport().mapToGlobal(pos))
+        if chosen is copyAct and item is not None:
+            self._copyKeyframe(item.data(qt.Qt.UserRole))
+        elif chosen is pasteAct:
+            after_id = item.data(qt.Qt.UserRole) if item is not None else None
+            self._pasteKeyframe(after_kf_id=after_id)
+
+    def _copyKeyframe(self, kf_id):
+        global _KEYFRAME_CLIPBOARD
+        src = next((k for k in self._keyframes() if k['id'] == kf_id), None)
+        if src is None:
+            return
+        # Drop any previously held clipboard VP node before overwriting.
+        _release_clipboard_vp()
+        # Clone the source VP into a clipboard-owned node so the copy
+        # survives even if the source keyframe (and its VP) get deleted.
+        vp_clone_id = None
+        src_vp_id = src.get('volumePropertyID')
+        if src_vp_id:
+            src_vp = slicer.mrmlScene.GetNodeByID(src_vp_id)
+            if src_vp is not None:
+                vp_clone_id = snapshot_volume_property(
+                    src_vp, "AnimSnapClipboard").GetID()
+        _KEYFRAME_CLIPBOARD = {
+            'cameraState': copy.deepcopy(src.get('cameraState')),
+            'volumePropertyID': vp_clone_id,
+            'roiState': copy.deepcopy(src.get('roiState')),
+            'segmentMode': src.get('segmentMode', 'interpolate'),
+            'label': src.get('label', 'Snapshot'),
+            'thumbnailPath': src.get('thumbnailPath'),
+        }
+
+    def _pasteKeyframe(self, after_kf_id=None):
+        if _KEYFRAME_CLIPBOARD is None:
+            return
+        ensure_animated_roi(self._action)
+        kfs = self._keyframes()
+        # Choose a time for the paste:
+        #  - after a clicked keyframe: halfway to the next one (or after
+        #    the last one with the usual heuristic);
+        #  - on empty space: after the current last keyframe.
+        new_time = self._chooseNewTime(after_kf_id)
+        # Clone the clipboard VP into a fresh node so each paste owns
+        # an independent VP (editing one won't affect the others).
+        vp_id = None
+        src_vp_id = _KEYFRAME_CLIPBOARD.get('volumePropertyID')
+        if src_vp_id:
+            src_vp = slicer.mrmlScene.GetNodeByID(src_vp_id)
+            if src_vp is not None:
+                short = (self._action.get('id', '').split('-')[0] or 'snap')
+                name = f"AnimSnap_{short}_{int(round(new_time*1000))}ms_paste"
+                vp_id = snapshot_volume_property(src_vp, name).GetID()
+        new_kf = {
+            'id': str(uuid.uuid4()),
+            'time': float(new_time),
+            'label': _KEYFRAME_CLIPBOARD.get('label', 'Snapshot') + ' (copy)',
+            'cameraState': copy.deepcopy(_KEYFRAME_CLIPBOARD.get('cameraState')),
+            'volumePropertyID': vp_id,
+            'roiState': copy.deepcopy(_KEYFRAME_CLIPBOARD.get('roiState')),
+            'segmentMode': _KEYFRAME_CLIPBOARD.get('segmentMode', 'interpolate'),
+            'thumbnailPath': _KEYFRAME_CLIPBOARD.get('thumbnailPath'),
+        }
+        kfs.append(new_kf)
+        self._refreshTimeline(selectId=new_kf['id'])
+
+    def _chooseNewTime(self, after_kf_id):
+        kfs = self._keyframes()
+        if not kfs:
+            return 0.0
+        sorted_kfs = sorted_keyframes(kfs)
+        if after_kf_id is not None:
+            idx = next(
+                (i for i, k in enumerate(sorted_kfs) if k['id'] == after_kf_id),
+                -1)
+            if 0 <= idx < len(sorted_kfs) - 1:
+                return (sorted_kfs[idx]['time']
+                        + sorted_kfs[idx + 1]['time']) / 2.0
+            if idx == len(sorted_kfs) - 1:
+                t_after = sorted_kfs[idx]['time']
+                if self._masterDuration and t_after < self._masterDuration:
+                    return t_after + max(
+                        0.5, (self._masterDuration - t_after) / 2.0)
+                return t_after + 1.0
+        last_t = sorted_kfs[-1]['time']
+        if self._masterDuration and last_t < self._masterDuration:
+            return last_t + max(0.5, (self._masterDuration - last_t) / 2.0)
+        return last_t + 1.0
 
     def _onCapture(self):
         # Make sure an animated cropping ROI exists *before* we snapshot,
