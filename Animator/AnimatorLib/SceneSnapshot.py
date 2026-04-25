@@ -112,11 +112,40 @@ def _dot(a, b):
     return sum(a[i] * b[i] for i in range(len(a)))
 
 
-def _slerp_unit(u, v, t):
+def _pick_perpendicular(u, hint=None):
+    """Return a unit vector perpendicular to unit vector ``u``.
+
+    If ``hint`` is provided and not parallel to ``u``, the result lies
+    in the plane spanned by (u, hint) — useful as a tangent direction
+    for great-circle interpolation when slerp endpoints are
+    antiparallel (slerp itself is then undefined).
+    """
+    if hint is not None:
+        h = hint
+        # Project hint onto plane perpendicular to u: h - (h·u) u
+        d = _dot(h, u)
+        perp = [h[i] - d * u[i] for i in range(3)]
+        n = math.sqrt(_dot(perp, perp))
+        if n > 1e-6:
+            return [perp[i] / n for i in range(3)]
+    # Fall back to whichever world axis is least parallel to u.
+    ax = min(range(3), key=lambda i: abs(u[i]))
+    axis = [0.0, 0.0, 0.0]
+    axis[ax] = 1.0
+    d = _dot(axis, u)
+    perp = [axis[i] - d * u[i] for i in range(3)]
+    n = math.sqrt(_dot(perp, perp))
+    return [perp[i] / n for i in range(3)]
+
+
+def _slerp_unit(u, v, t, tangent_hint=None):
     """Spherical linear interpolation between two unit 3-vectors.
 
-    Falls back to a normalized lerp when the vectors are nearly parallel
-    or nearly antiparallel (slerp is undefined / unstable in those cases).
+    For nearly-parallel vectors, falls back to a normalized lerp
+    (slerp degenerates numerically). For nearly-antiparallel vectors
+    slerp has no unique great circle, so a perpendicular tangent is
+    chosen via ``tangent_hint`` (or an arbitrary world axis) and the
+    arc is swept through it as a true 180° rotation.
     """
     if u is None or v is None:
         return u or v
@@ -124,11 +153,15 @@ def _slerp_unit(u, v, t):
     # Nearly parallel: lerp + renormalize is numerically fine.
     if d > 0.9995:
         return _normalize(_lerp_vec(u, v, t))
-    # Nearly antiparallel: slerp degenerates (no unique great circle).
-    # Fall back to lerp + renormalize; the user can split the segment by
-    # adding an intermediate keyframe if they need a specific axis.
+    # Nearly antiparallel: build a great-circle arc using a
+    # perpendicular tangent direction so the swing is a true 180°
+    # rotation rather than a (degenerate) straight line through
+    # the origin.
     if d < -0.9995:
-        return _normalize(_lerp_vec(u, v, t))
+        axis = _pick_perpendicular(u, hint=tangent_hint)
+        ang = math.pi * t
+        c, s = math.cos(ang), math.sin(ang)
+        return [c * u[i] + s * axis[i] for i in range(3)]
     theta = math.acos(d)
     sin_theta = math.sin(theta)
     a = math.sin((1.0 - t) * theta) / sin_theta
@@ -136,13 +169,18 @@ def _slerp_unit(u, v, t):
     return [a * u[i] + b * v[i] for i in range(3)]
 
 
-def _orbit_camera_position(focal, pos_a, pos_b, t):
+def _orbit_camera_position(focal, pos_a, pos_b, t, view_up_hint=None):
     """Slerp the camera position around the focal point on a sphere whose
     radius linearly interpolates between |pos_a-focal| and |pos_b-focal|.
 
     This produces constant-angular-speed rotation with no chord-induced
     dolly toward the focal point (the artifact you get from a plain
     position lerp when two viewpoints sit on a common sphere).
+
+    When the two camera-from-focal directions are nearly antiparallel
+    (e.g. front view -> back view of the same object), ``view_up_hint``
+    is used to pick the great-circle plane so the orbit sweeps through
+    a sensible side view instead of degenerating.
     """
     va = [pos_a[i] - focal[i] for i in range(3)]
     vb = [pos_b[i] - focal[i] for i in range(3)]
@@ -153,7 +191,23 @@ def _orbit_camera_position(focal, pos_a, pos_b, t):
         return _lerp_vec(pos_a, pos_b, t)
     ua = [va[i] / ra for i in range(3)]
     ub = [vb[i] / rb for i in range(3)]
-    u = _slerp_unit(ua, ub, t)
+    # For an antiparallel front->back swing, slerping past viewUp gives
+    # a top-down arc; slerping past (viewUp x ua) gives a side arc.
+    # The side arc is the more visually expected "turntable" behavior,
+    # so prefer the perpendicular-to-viewUp axis as the tangent hint.
+    tangent = None
+    if view_up_hint is not None:
+        # cross(ua, viewUp) lies in the orbit plane perpendicular to
+        # viewUp -- a horizontal swing if viewUp is world up.
+        vx = [
+            ua[1] * view_up_hint[2] - ua[2] * view_up_hint[1],
+            ua[2] * view_up_hint[0] - ua[0] * view_up_hint[2],
+            ua[0] * view_up_hint[1] - ua[1] * view_up_hint[0],
+        ]
+        n = math.sqrt(_dot(vx, vx))
+        if n > 1e-6:
+            tangent = [vx[i] / n for i in range(3)]
+    u = _slerp_unit(ua, ub, t, tangent_hint=tangent)
     r = ra + t * (rb - ra)
     return [focal[i] + r * u[i] for i in range(3)]
 
@@ -180,8 +234,11 @@ def interpolate_camera_state(state_a, state_b, fraction, mode='orbit'):
         # focalPoint is identical in both keyframes (the typical
         # turntable case) this is exactly the shared focal point; when
         # it varies, the orbit gradually shifts with it.
+        # Pass viewUp as the antiparallel-tangent hint so a front<->back
+        # swing orbits horizontally rather than degenerating.
         position = _orbit_camera_position(
-            focal, state_a['position'], state_b['position'], fraction)
+            focal, state_a['position'], state_b['position'], fraction,
+            view_up_hint=_normalize(state_a['viewUp']))
         view_up = _slerp_unit(
             _normalize(state_a['viewUp']),
             _normalize(state_b['viewUp']),
