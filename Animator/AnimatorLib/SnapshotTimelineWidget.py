@@ -475,6 +475,15 @@ class SnapshotTimelineWidget(qt.QWidget):
         self.timelineTrack.setKeyframes(
             kfs, selectedId=sel_id, minSpan=self._masterDuration)
         self._onChanged()
+        # _onChanged ultimately persists via setAction, which can
+        # trigger the AnimatorWidget's sequence-browser observer to call
+        # act(animationNode, currentScriptTime) on every action. For
+        # SceneSnapshotAction that re-applies the keyframe at the
+        # current sequence index (typically t=0), snapping the live
+        # camera back to the FIRST keyframe right after the user just
+        # captured a different state. Re-apply the selected keyframe
+        # here so the live view stays on what the user is looking at.
+        self._jumpToSelected()
 
     def _selectedKeyframe(self):
         row = self.thumbList.currentRow

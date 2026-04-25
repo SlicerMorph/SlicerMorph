@@ -811,20 +811,11 @@ class SceneSnapshotAction(AnimatorAction):
       'animatedROIID': None,
       'keyframes': [],
     }
-    from AnimatorLib.SceneSnapshot import (
-      capture_current_scene, capture_thumbnail, ensure_animated_roi)
+    from AnimatorLib.SceneSnapshot import ensure_animated_roi
     ensure_animated_roi(action)
-
-    first_kf = capture_current_scene(
-      animated_camera_id=cameraNode.GetID(),
-      animated_vp_id=animatedVolumePropertyID,
-      action_id=actionId,
-      time_seconds=0.0,
-      label="Snapshot 1",
-      animated_roi_id=action.get('animatedROIID'),
-    )
-    first_kf['thumbnailPath'] = capture_thumbnail(threeDView, first_kf['id'])
-    action['keyframes'] = [first_kf]
+    # Editor opens empty: the user captures their first snapshot
+    # explicitly so kf1 reflects their intended view, not whatever the
+    # 3D view happened to look like at action-creation time.
     return action
 
   def act(self, action, scriptTime):
