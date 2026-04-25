@@ -108,16 +108,92 @@ def _normalize(v):
     return [c / n for c in v]
 
 
-def interpolate_camera_state(state_a, state_b, fraction):
-    """Linearly interpolate two camera states. View-up is renormalized.
-    Boolean projection mode is held from state_a within the segment.
+def _dot(a, b):
+    return sum(a[i] * b[i] for i in range(len(a)))
+
+
+def _slerp_unit(u, v, t):
+    """Spherical linear interpolation between two unit 3-vectors.
+
+    Falls back to a normalized lerp when the vectors are nearly parallel
+    or nearly antiparallel (slerp is undefined / unstable in those cases).
+    """
+    if u is None or v is None:
+        return u or v
+    d = max(-1.0, min(1.0, _dot(u, v)))
+    # Nearly parallel: lerp + renormalize is numerically fine.
+    if d > 0.9995:
+        return _normalize(_lerp_vec(u, v, t))
+    # Nearly antiparallel: slerp degenerates (no unique great circle).
+    # Fall back to lerp + renormalize; the user can split the segment by
+    # adding an intermediate keyframe if they need a specific axis.
+    if d < -0.9995:
+        return _normalize(_lerp_vec(u, v, t))
+    theta = math.acos(d)
+    sin_theta = math.sin(theta)
+    a = math.sin((1.0 - t) * theta) / sin_theta
+    b = math.sin(t * theta) / sin_theta
+    return [a * u[i] + b * v[i] for i in range(3)]
+
+
+def _orbit_camera_position(focal, pos_a, pos_b, t):
+    """Slerp the camera position around the focal point on a sphere whose
+    radius linearly interpolates between |pos_a-focal| and |pos_b-focal|.
+
+    This produces constant-angular-speed rotation with no chord-induced
+    dolly toward the focal point (the artifact you get from a plain
+    position lerp when two viewpoints sit on a common sphere).
+    """
+    va = [pos_a[i] - focal[i] for i in range(3)]
+    vb = [pos_b[i] - focal[i] for i in range(3)]
+    ra = math.sqrt(_dot(va, va))
+    rb = math.sqrt(_dot(vb, vb))
+    if ra < 1e-9 or rb < 1e-9:
+        # Degenerate: camera at focal point. Fall back to plain lerp.
+        return _lerp_vec(pos_a, pos_b, t)
+    ua = [va[i] / ra for i in range(3)]
+    ub = [vb[i] / rb for i in range(3)]
+    u = _slerp_unit(ua, ub, t)
+    r = ra + t * (rb - ra)
+    return [focal[i] + r * u[i] for i in range(3)]
+
+
+def interpolate_camera_state(state_a, state_b, fraction, mode='orbit'):
+    """Interpolate two camera states.
+
+    ``mode='orbit'`` (default): slerp the camera position around the
+    focal point on a sphere, slerp viewUp on the unit sphere. Constant
+    angular speed, no apparent dolly-in at the segment midpoint. Best
+    for orbiting / turntable-style animations.
+
+    ``mode='linear'``: legacy chord-lerp behavior — straight-line lerp
+    of position and focalPoint in 3D space. Cheaper and gives a
+    smoother fly-through when the viewpoints are *not* on a common
+    sphere around the focal point, but introduces a midpoint dolly
+    when two viewpoints share a focal point.
     """
     if state_a is None or state_b is None:
         return state_a or state_b
+    focal = _lerp_vec(state_a['focalPoint'], state_b['focalPoint'], fraction)
+    if mode == 'orbit':
+        # Use the *interpolated* focal point as the orbit center. When
+        # focalPoint is identical in both keyframes (the typical
+        # turntable case) this is exactly the shared focal point; when
+        # it varies, the orbit gradually shifts with it.
+        position = _orbit_camera_position(
+            focal, state_a['position'], state_b['position'], fraction)
+        view_up = _slerp_unit(
+            _normalize(state_a['viewUp']),
+            _normalize(state_b['viewUp']),
+            fraction)
+    else:  # 'linear'
+        position = _lerp_vec(state_a['position'], state_b['position'], fraction)
+        view_up = _normalize(_lerp_vec(
+            state_a['viewUp'], state_b['viewUp'], fraction))
     return {
-        'position': _lerp_vec(state_a['position'], state_b['position'], fraction),
-        'focalPoint': _lerp_vec(state_a['focalPoint'], state_b['focalPoint'], fraction),
-        'viewUp': _normalize(_lerp_vec(state_a['viewUp'], state_b['viewUp'], fraction)),
+        'position': position,
+        'focalPoint': focal,
+        'viewUp': view_up,
         'viewAngle': state_a['viewAngle'] + fraction * (state_b['viewAngle'] - state_a['viewAngle']),
         'parallelScale': state_a['parallelScale']
             + fraction * (state_b['parallelScale'] - state_a['parallelScale']),
@@ -377,6 +453,10 @@ def evaluate_at(action, script_time):
 
     # Segment mode: 'hold' freezes at kf_a until kf_b is reached.
     mode = kf_a.get('segmentMode', 'interpolate')
+    # Rotation mode: 'orbit' (slerp around focal, default) or 'linear'
+    # (legacy chord-lerp). Stored on kf_a so it describes the segment
+    # that *starts* at kf_a, matching segmentMode semantics.
+    rot_mode = kf_a.get('rotationMode', 'orbit')
     if kf_a is kf_b:
         cam_state = kf_a.get('cameraState')
     elif mode == 'hold':
@@ -386,6 +466,7 @@ def evaluate_at(action, script_time):
             kf_a.get('cameraState'),
             kf_b.get('cameraState'),
             local,
+            mode=rot_mode,
         )
 
     # Volume property: only act if the action has an animated VP target
