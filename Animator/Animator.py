@@ -745,7 +745,14 @@ class ExplodeModelsAction(AnimatorAction):
         modelNode.GetRASBounds(bounds)
         modelPositions.append(np.array([(bounds[0]+bounds[1])/2.0, (bounds[2]+bounds[3])/2.0, (bounds[4]+bounds[5])/2.0]))
 
-    modelsCenterOfGravity = np.mean(np.array(modelPositions), axis=0)
+    if modelPositions:
+        modelsCenterOfGravity = np.mean(np.array(modelPositions), axis=0)
+    else:
+        # No models in the selected folder yet (e.g. action was added
+        # before the user populated the folder). Skip building the
+        # cache; updateCache will be re-run via updateFromGUI once a
+        # folder with models is selected.
+        modelsCenterOfGravity = np.zeros(3)
 
     import easing_functions
     expandScaleFactors = easing_functions.CircularEaseInOut(start=0, end=1, duration=1.0)
