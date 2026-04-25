@@ -65,7 +65,8 @@ class _DraggableTimelineTrack(qt.QWidget):
     TRACK_Y = 56            # y of horizontal track line (below thumbnail)
     LABEL_Y = 78            # y of tick text (below track)
 
-    def __init__(self, onTimeChanged, onSelect, onDragLive, onHover, parent=None):
+    def __init__(self, onTimeChanged, onSelect, onDragLive, onHover,
+                 onContextMenu=lambda kf_id, global_pos: None, parent=None):
         super().__init__(parent)
         self._keyframes = []
         self._selectedId = None
@@ -76,13 +77,20 @@ class _DraggableTimelineTrack(qt.QWidget):
         self._onSelect = onSelect
         self._onDragLive = onDragLive
         self._onHover = onHover
+        self._onContextMenu = onContextMenu
         self._tMin = 0.0
         self._tMax = 1.0
         self.setMinimumHeight(self.LABEL_Y + 14)
         self.setMouseTracking(True)
         self.setToolTip(
             "Drag a thumbnail left/right to change its time. "
-            "Click to select.")
+            "Click to select. Right-click for copy / paste / delete.")
+
+    def keyframeIdAt(self, pos):
+        """Public hit-test: return the id of the keyframe under ``pos``
+        (a QPoint in widget coordinates) or None."""
+        idx = self._markerAt(pos)
+        return self._keyframes[idx]['id'] if idx >= 0 else None
 
     def setKeyframes(self, keyframes, selectedId=None, minSpan=None):
         self._keyframes = list(keyframes)
@@ -211,10 +219,6 @@ class _DraggableTimelineTrack(qt.QWidget):
             p.setPen(qt.QPen(border_col, 2))
             p.drawLine(int(cx), r.y() + r.height(), int(cx), y0 + h // 2)
 
-            # Time label above thumbnail
-            p.setPen(qt.QPen(qt.QColor(40, 40, 40), 1))
-            p.drawText(int(cx) - 18, r.y() - 2, f"{kf['time']:.2f}s")
-
     # ----- interaction -----
 
     def _hoverIdAt(self, pos):
@@ -222,6 +226,10 @@ class _DraggableTimelineTrack(qt.QWidget):
         return self._keyframes[idx]['id'] if idx >= 0 else None
 
     def mousePressEvent(self, event):
+        if event.button() == qt.Qt.RightButton:
+            kf_id = self.keyframeIdAt(event.pos())
+            self._onContextMenu(kf_id, event.globalPos())
+            return
         if event.button() != qt.Qt.LeftButton:
             return
         idx = self._markerAt(event.pos())
@@ -238,6 +246,22 @@ class _DraggableTimelineTrack(qt.QWidget):
         if new_hover != self._hoveredId:
             self._hoveredId = new_hover
             self._onHover(new_hover)
+            # Dynamic tooltip showing label / time / segment + camera mode
+            if new_hover is None:
+                self.setToolTip(
+                    "Drag a thumbnail left/right to change its time. "
+                    "Click to select. Right-click for copy / paste / delete.")
+            else:
+                kf = next(
+                    (k for k in self._keyframes if k['id'] == new_hover), None)
+                if kf is not None:
+                    seg = kf.get('segmentMode', 'interpolate')
+                    rot = kf.get('rotationMode', 'orbit')
+                    self.setToolTip(
+                        f"<b>{kf.get('label', 'Snapshot')}</b><br>"
+                        f"Time: {kf.get('time', 0.0):.2f} s<br>"
+                        f"After this: {seg}<br>"
+                        f"Camera path: {rot}")
             self.update()
         if self._draggingIndex < 0:
             return
@@ -279,9 +303,10 @@ class SnapshotTimelineWidget(qt.QWidget):
         self._onChanged = onChanged
         self._masterDuration = float(masterDuration) if masterDuration else None
         self._onMasterDurationChanged = onMasterDurationChanged
-        # remember pre-scrub state so we can restore on widget close
-        self._preScrubCamState = None
-        self._scrubbing = False
+        # Currently-selected keyframe id (lives on the track widget too,
+        # but kept here so callbacks/details can find it without
+        # poking into the track's internals).
+        self._selectedKfId = None
         self._buildUI()
         self._refreshTimeline()
 
@@ -318,42 +343,19 @@ class SnapshotTimelineWidget(qt.QWidget):
         else:
             self.spanSpin = None
 
-        # Thumbnail strip
-        self.thumbList = qt.QListWidget()
-        self.thumbList.setViewMode(qt.QListWidget.IconMode)
-        self.thumbList.setFlow(qt.QListView.LeftToRight)
-        self.thumbList.setWrapping(False)
-        self.thumbList.setIconSize(qt.QSize(60, 45))
-        self.thumbList.setSpacing(8)
-        self.thumbList.setMovement(qt.QListView.Static)
-        self.thumbList.setSelectionMode(qt.QAbstractItemView.SingleSelection)
-        self.thumbList.setHorizontalScrollBarPolicy(qt.Qt.ScrollBarAsNeeded)
-        self.thumbList.setVerticalScrollBarPolicy(qt.Qt.ScrollBarAlwaysOff)
-        self.thumbList.minimumHeight = 80
-        self.thumbList.connect('currentRowChanged(int)', self._onSelectionChanged)
-        self.thumbList.setMouseTracking(True)
-        self.thumbList.viewport().setMouseTracking(True)
-        self.thumbList.itemEntered.connect(self._onTileHover)
-        # Right-click context menu for copy/paste of keyframes.
-        self.thumbList.setContextMenuPolicy(qt.Qt.CustomContextMenu)
-        self.thumbList.connect(
-            'customContextMenuRequested(QPoint)', self._onThumbContextMenu)
-        # Clear hover when mouse leaves the list viewport
-        self.thumbList.viewport().installEventFilter(self)
-        outerLayout.addWidget(self.thumbList)
-
-        # Draggable timeline track
+        # Draggable timeline track (the only keyframe view)
         self.timelineTrack = _DraggableTimelineTrack(
             onTimeChanged=self._onMarkerReleased,
             onSelect=self._onMarkerSelected,
             onDragLive=self._onMarkerDragLive,
-            onHover=self._onMarkerHover,
+            onHover=lambda _kf_id: None,
+            onContextMenu=self._onTrackContextMenu,
         )
         outerLayout.addWidget(self.timelineTrack)
 
         # Live preview (scrubber)
         scrubRow = qt.QHBoxLayout()
-        scrubRow.addWidget(qt.QLabel("Scrub time (s):"))
+        scrubRow.addWidget(qt.QLabel("Time:"))
         self.scrubSlider = ctk.ctkSliderWidget()
         self.scrubSlider.singleStep = 0.01
         self.scrubSlider.decimals = 2
@@ -362,9 +364,7 @@ class SnapshotTimelineWidget(qt.QWidget):
         self.scrubSlider.value = 0.0
         self.scrubSlider.setToolTip(
             "Drag to preview the animation in the 3D view at any moment. "
-            "Use 'Play preview' for continuous playback. 'Restore live' "
-            "puts the 3D view back to the state it was in before you "
-            "started scrubbing.")
+            "Use 'Play preview' for continuous playback.")
         self.scrubSlider.connect('valueChanged(double)', self._onScrub)
         scrubRow.addWidget(self.scrubSlider, 1)
         self.playButton = qt.QPushButton("\u25B6 Play preview")
@@ -374,12 +374,6 @@ class SnapshotTimelineWidget(qt.QWidget):
             "between the first and last keyframes.")
         self.playButton.connect('toggled(bool)', self._onPlayToggled)
         scrubRow.addWidget(self.playButton)
-        self.restoreButton = qt.QPushButton("Restore live")
-        self.restoreButton.setToolTip(
-            "Restore the live camera/VP to whatever they were before you started "
-            "scrubbing the preview slider above.")
-        self.restoreButton.connect('clicked()', self._restoreLive)
-        scrubRow.addWidget(self.restoreButton)
         outerLayout.addLayout(scrubRow)
 
         # Playback timer
@@ -414,6 +408,24 @@ class SnapshotTimelineWidget(qt.QWidget):
         self.segmentModeCombo.connect(
             'currentIndexChanged(int)', self._onSegmentModeChanged)
         detailForm.addRow("After this", self.segmentModeCombo)
+
+        self.rotationModeCombo = qt.QComboBox()
+        self.rotationModeCombo.addItem(
+            "Orbit (slerp around focal)", "orbit")
+        self.rotationModeCombo.addItem(
+            "Linear (chord lerp)", "linear")
+        self.rotationModeCombo.setToolTip(
+            "How the camera moves between this keyframe and the next.\n"
+            "'Orbit' slerps the camera position around the focal point "
+            "on a sphere (constant angular speed, no apparent zoom-in "
+            "at the segment midpoint). Best for turntable / orbit shots.\n"
+            "'Linear' uses a straight-line lerp in 3D space \u2014 cheaper "
+            "and smoother for fly-throughs that are NOT on a common "
+            "sphere around a fixed focal point, but produces a midpoint "
+            "dolly toward the focal point on shared-focal segments.")
+        self.rotationModeCombo.connect(
+            'currentIndexChanged(int)', self._onRotationModeChanged)
+        detailForm.addRow("Camera path", self.rotationModeCombo)
 
         outerLayout.addWidget(detailGroup)
 
@@ -454,22 +466,6 @@ class SnapshotTimelineWidget(qt.QWidget):
         self._normalizeAndSyncBounds()
         kfs = self._keyframes()
 
-        self.thumbList.blockSignals(True)
-        self.thumbList.clear()
-        for kf in kfs:
-            item = qt.QListWidgetItem(f"{kf['label']}\n{kf['time']:.2f}s")
-            item.setTextAlignment(qt.Qt.AlignHCenter | qt.Qt.AlignBottom)
-            if kf.get('thumbnailPath'):
-                item.setIcon(qt.QIcon(kf['thumbnailPath']))
-            else:
-                # fallback gray icon
-                pix = qt.QPixmap(60, 45)
-                pix.fill(qt.QColor(80, 80, 80))
-                item.setIcon(qt.QIcon(pix))
-            item.setData(qt.Qt.UserRole, kf['id'])
-            self.thumbList.addItem(item)
-        self.thumbList.blockSignals(False)
-
         # Update scrubber bounds. The scrubber always covers the master
         # timeline (when known), so the user can preview/scrub the full
         # animation even if keyframes only occupy part of it.
@@ -487,24 +483,21 @@ class SnapshotTimelineWidget(qt.QWidget):
             0.01, (scrub_max - scrub_min) / 200.0)
         self.scrubSlider.enabled = len(kfs) >= 2
 
-        # Restore selection
-        target_row = -1
-        if selectId is not None:
-            for i, kf in enumerate(kfs):
-                if kf['id'] == selectId:
-                    target_row = i
-                    break
-        if target_row < 0 and kfs:
-            target_row = self.thumbList.currentRow if self.thumbList.currentRow >= 0 else 0
-            target_row = min(target_row, len(kfs) - 1)
-        self.thumbList.setCurrentRow(target_row)
+        # Restore selection: prefer explicit, fall back to current
+        # selection if it still resolves, else first keyframe.
+        if selectId is not None and any(k['id'] == selectId for k in kfs):
+            self._selectedKfId = selectId
+        elif self._selectedKfId is not None and any(
+                k['id'] == self._selectedKfId for k in kfs):
+            pass  # keep
+        elif kfs:
+            self._selectedKfId = kfs[0]['id']
+        else:
+            self._selectedKfId = None
+
         self._loadSelectionIntoDetails()
-        # Push to draggable track too
-        sel_id = None
-        if 0 <= target_row < len(kfs):
-            sel_id = kfs[target_row]['id']
         self.timelineTrack.setKeyframes(
-            kfs, selectedId=sel_id, minSpan=self._masterDuration)
+            kfs, selectedId=self._selectedKfId, minSpan=self._masterDuration)
         self._onChanged()
         # _onChanged ultimately persists via setAction, which can
         # trigger the AnimatorWidget's sequence-browser observer to call
@@ -517,10 +510,11 @@ class SnapshotTimelineWidget(qt.QWidget):
         self._jumpToSelected()
 
     def _selectedKeyframe(self):
-        row = self.thumbList.currentRow
-        kfs = self._keyframes()
-        if 0 <= row < len(kfs):
-            return kfs[row]
+        if self._selectedKfId is None:
+            return None
+        for kf in self._keyframes():
+            if kf['id'] == self._selectedKfId:
+                return kf
         return None
 
     def _loadSelectionIntoDetails(self):
@@ -529,6 +523,7 @@ class SnapshotTimelineWidget(qt.QWidget):
         self.labelEdit.enabled = enabled
         self.timeSpin.enabled = enabled
         self.segmentModeCombo.enabled = enabled
+        self.rotationModeCombo.enabled = enabled
         self.replaceButton.enabled = enabled
         self.deleteButton.enabled = enabled
         if not kf:
@@ -538,20 +533,21 @@ class SnapshotTimelineWidget(qt.QWidget):
         self.labelEdit.blockSignals(True)
         self.timeSpin.blockSignals(True)
         self.segmentModeCombo.blockSignals(True)
+        self.rotationModeCombo.blockSignals(True)
         self.labelEdit.text = kf.get('label', '')
         self.timeSpin.value = kf.get('time', 0.0)
         mode = kf.get('segmentMode', 'interpolate')
         idx = self.segmentModeCombo.findData(mode)
         self.segmentModeCombo.currentIndex = idx if idx >= 0 else 0
+        rot = kf.get('rotationMode', 'orbit')
+        ridx = self.rotationModeCombo.findData(rot)
+        self.rotationModeCombo.currentIndex = ridx if ridx >= 0 else 0
         self.labelEdit.blockSignals(False)
         self.timeSpin.blockSignals(False)
         self.segmentModeCombo.blockSignals(False)
+        self.rotationModeCombo.blockSignals(False)
 
     # ----- callbacks ------------------------------------------------------
-
-    def _onSelectionChanged(self, _row):
-        self._loadSelectionIntoDetails()
-        self._jumpToSelected()
 
     def _jumpToSelected(self):
         """Move the 3D view to whatever the currently-selected keyframe
@@ -586,15 +582,11 @@ class SnapshotTimelineWidget(qt.QWidget):
     # ----- draggable timeline callbacks -----
 
     def _onMarkerSelected(self, kf_id):
-        kfs = self._keyframes()
-        for i, kf in enumerate(kfs):
-            if kf['id'] == kf_id:
-                self.thumbList.setCurrentRow(i)
-                # setCurrentRow fires _onSelectionChanged which jumps,
-                # but if the row is already current the signal won't
-                # fire — jump explicitly so a re-click still snaps.
-                self._jumpToSelected()
-                break
+        self._selectedKfId = kf_id
+        self._loadSelectionIntoDetails()
+        self.timelineTrack.setKeyframes(
+            self._keyframes(), selectedId=kf_id, minSpan=self._masterDuration)
+        self._jumpToSelected()
 
     def _onMarkerDragLive(self, _new_t):
         # Live-update the time spinbox so user sees the value changing.
@@ -608,37 +600,20 @@ class SnapshotTimelineWidget(qt.QWidget):
         # Persist + re-sort + update everything.
         self._refreshTimeline(selectId=kf_id)
 
-    def _onMarkerHover(self, kf_id):
-        # Cross-highlight: outline the matching tile.
-        self._setHoveredTile(kf_id)
-
-    def _onTileHover(self, item):
-        kf_id = item.data(qt.Qt.UserRole) if item else None
-        self.timelineTrack.setExternallyHovered(kf_id)
-        self._setHoveredTile(kf_id)
-
-    def eventFilter(self, obj, event):
-        if obj is self.thumbList.viewport() and event.type() == qt.QEvent.Leave:
-            self.timelineTrack.setExternallyHovered(None)
-            self._setHoveredTile(None)
-        return False
-
-    def _setHoveredTile(self, kf_id):
-        kfs = self._keyframes()
-        for i in range(self.thumbList.count):
-            item = self.thumbList.item(i)
-            this_id = item.data(qt.Qt.UserRole)
-            if kf_id is not None and this_id == kf_id:
-                item.setBackground(qt.QBrush(qt.QColor(255, 235, 170)))
-            else:
-                item.setBackground(qt.QBrush(qt.Qt.transparent))
-
     def _onSegmentModeChanged(self, _idx):
         kf = self._selectedKeyframe()
         if kf is None:
             return
         kf['segmentMode'] = self.segmentModeCombo.itemData(
             self.segmentModeCombo.currentIndex)
+        self._onChanged()
+
+    def _onRotationModeChanged(self, _idx):
+        kf = self._selectedKeyframe()
+        if kf is None:
+            return
+        kf['rotationMode'] = self.rotationModeCombo.itemData(
+            self.rotationModeCombo.currentIndex)
         self._onChanged()
 
     def _onSpanChanged(self):
@@ -669,19 +644,24 @@ class SnapshotTimelineWidget(qt.QWidget):
 
     # ----- copy / paste ---------------------------------------------------
 
-    def _onThumbContextMenu(self, pos):
-        item = self.thumbList.itemAt(pos)
-        menu = qt.QMenu(self.thumbList)
+    def _onTrackContextMenu(self, kf_id, global_pos):
+        menu = qt.QMenu(self.timelineTrack)
         copyAct = menu.addAction("Copy keyframe")
         pasteAct = menu.addAction("Paste keyframe")
-        copyAct.enabled = item is not None
+        menu.addSeparator()
+        deleteAct = menu.addAction("Delete keyframe")
+        copyAct.enabled = kf_id is not None
+        deleteAct.enabled = kf_id is not None
         pasteAct.enabled = _KEYFRAME_CLIPBOARD is not None
-        chosen = menu.exec_(self.thumbList.viewport().mapToGlobal(pos))
-        if chosen is copyAct and item is not None:
-            self._copyKeyframe(item.data(qt.Qt.UserRole))
+        chosen = menu.exec_(global_pos)
+        if chosen is copyAct and kf_id is not None:
+            self._copyKeyframe(kf_id)
         elif chosen is pasteAct:
-            after_id = item.data(qt.Qt.UserRole) if item is not None else None
-            self._pasteKeyframe(after_kf_id=after_id)
+            self._pasteKeyframe(after_kf_id=kf_id)
+        elif chosen is deleteAct and kf_id is not None:
+            # Select the right-clicked keyframe so _onDelete picks it.
+            self._selectedKfId = kf_id
+            self._onDelete()
 
     def _copyKeyframe(self, kf_id):
         global _KEYFRAME_CLIPBOARD
@@ -704,6 +684,7 @@ class SnapshotTimelineWidget(qt.QWidget):
             'volumePropertyID': vp_clone_id,
             'roiState': copy.deepcopy(src.get('roiState')),
             'segmentMode': src.get('segmentMode', 'interpolate'),
+            'rotationMode': src.get('rotationMode', 'orbit'),
             'label': src.get('label', 'Snapshot'),
             'thumbnailPath': src.get('thumbnailPath'),
         }
@@ -736,6 +717,7 @@ class SnapshotTimelineWidget(qt.QWidget):
             'volumePropertyID': vp_id,
             'roiState': copy.deepcopy(_KEYFRAME_CLIPBOARD.get('roiState')),
             'segmentMode': _KEYFRAME_CLIPBOARD.get('segmentMode', 'interpolate'),
+            'rotationMode': _KEYFRAME_CLIPBOARD.get('rotationMode', 'orbit'),
             'thumbnailPath': _KEYFRAME_CLIPBOARD.get('thumbnailPath'),
         }
         kfs.append(new_kf)
@@ -845,30 +827,11 @@ class SnapshotTimelineWidget(qt.QWidget):
     # ----- live scrubbing -------------------------------------------------
 
     def _onScrub(self, t):
-        # Capture pre-scrub state once, on first move.
-        if not self._scrubbing:
-            cam_id = self._action.get('animatedCameraID')
-            cam_node = slicer.mrmlScene.GetNodeByID(cam_id) if cam_id else None
-            if cam_node is not None:
-                from AnimatorLib.SceneSnapshot import capture_camera_state
-                self._preScrubCamState = capture_camera_state(cam_node)
-            self._scrubbing = True
-
         cam_state = evaluate_at(self._action, float(t))
         cam_id = self._action.get('animatedCameraID')
         cam_node = slicer.mrmlScene.GetNodeByID(cam_id) if cam_id else None
         if cam_state is not None and cam_node is not None:
             apply_camera_state(cam_node, cam_state)
-
-    def _restoreLive(self):
-        if not self._scrubbing or self._preScrubCamState is None:
-            return
-        cam_id = self._action.get('animatedCameraID')
-        cam_node = slicer.mrmlScene.GetNodeByID(cam_id) if cam_id else None
-        if cam_node is not None:
-            apply_camera_state(cam_node, self._preScrubCamState)
-        self._scrubbing = False
-        self._preScrubCamState = None
 
     # ----- preview playback ----------------------------------------------
 
