@@ -784,6 +784,11 @@ class SceneSnapshotAction(AnimatorAction):
     super().__init__()
     self.name = "Scene Snapshot"
 
+  def allowMultiple(self):
+    # A single snapshot timeline drives the whole animation; a second
+    # one would just compete with the first.
+    return False
+
   def defaultAction(self):
     layoutManager = slicer.app.layoutManager()
     threeDWidget = layoutManager.threeDWidget(0) if layoutManager else None
@@ -1078,13 +1083,9 @@ class AnimatorWidget(ScriptedLoadableModuleWidget):
     # Layout within the dummy collapsible button
     parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
 
-    self.durationBox = ctk.ctkDoubleSpinBox()
-    self.durationBox.suffix = " seconds"
-    self.durationBox.decimals = 1
-    self.durationBox.minimum = 1
-    self.durationBox.value = 5
-    self.durationBox.toolTip = "Duration cannot be changed after animation created"
-    parametersFormLayout.addRow("New animation duration", self.durationBox)
+    # Initial animation duration when a new Animation node is created.
+    # Edit it later from the snapshot timeline editor's "Timeline span".
+    self._defaultNewAnimationDuration = 5.0
 
     #
     # animation selector
@@ -1104,23 +1105,17 @@ class AnimatorWidget(ScriptedLoadableModuleWidget):
     self.animationSelector.setToolTip( "Pick the animation description." )
     parametersFormLayout.addRow("Animation Node: ", self.animationSelector)
 
-    self.sequencePlay = slicer.qMRMLSequenceBrowserPlayWidget()
-    self.sequencePlay.setMRMLScene(slicer.mrmlScene)
-    self.sequenceSeek = slicer.qMRMLSequenceBrowserSeekWidget()
-    self.sequenceSeek.setMRMLScene(slicer.mrmlScene)
-
-    parametersFormLayout.addRow(self.sequencePlay)
-    parametersFormLayout.addRow(self.sequenceSeek)
-
-    self.actionsMenuButton = qt.QPushButton("Add Action")
-    self.actionsMenuButton.enabled = False
-    self.actionsMenu = qt.QMenu()
-    self.actionsMenuButton.setMenu(self.actionsMenu)
-    for actionName in slicer.modules.animatorActionPlugins.keys():
-      qAction = qt.QAction(actionName, self.actionsMenu)
-      qAction.connect('triggered()', lambda actionName=actionName: self.onAddAction(actionName))
-      self.actionsMenu.addAction(qAction)
-    parametersFormLayout.addWidget(self.actionsMenuButton)
+    # Single entry point: create (or open) the snapshot timeline. Play
+    # preview, scrub, and timeline-span editing all live inside the
+    # snapshot editor itself.
+    self.createSnapshotButton = qt.QPushButton("Create Snapshot Timeline")
+    self.createSnapshotButton.toolTip = (
+      "Add a Scene Snapshot action to this animation and open its "
+      "keyframe editor. Disabled once a snapshot timeline already exists.")
+    self.createSnapshotButton.enabled = False
+    self.createSnapshotButton.clicked.connect(
+      lambda: self.onAddAction('SceneSnapshotAction'))
+    parametersFormLayout.addWidget(self.createSnapshotButton)
 
     #
     # Actions Area
@@ -1192,7 +1187,7 @@ class AnimatorWidget(ScriptedLoadableModuleWidget):
     if animationNode:
       sequenceBrowserNodeID = animationNode.GetAttribute('Animator.sequenceBrowserNodeID')
       if sequenceBrowserNodeID is None:
-        self.logic.initializeAnimationNode(animationNode, self.durationBox.value)
+        self.logic.initializeAnimationNode(animationNode, self._defaultNewAnimationDuration)
         sequenceBrowserNodeID = animationNode.GetAttribute('Animator.sequenceBrowserNodeID')
       sequenceBrowserNode = slicer.mrmlScene.GetNodeByID(sequenceBrowserNodeID)
       sequenceNodeID = animationNode.GetAttribute('Animator.sequenceNodeID')
@@ -1209,10 +1204,16 @@ class AnimatorWidget(ScriptedLoadableModuleWidget):
       self.animatorActionsGUI = AnimatorActionsGUI(animationNode, deleteCallback=self.onSelect)
       self.actionsFormLayout.addRow(self.animatorActionsGUI.buildGUI())
 
-    self.actionsMenuButton.enabled = animationNode != None
+    # Enable the Create button only if no SceneSnapshotAction exists yet.
+    has_snapshot = False
+    if animationNode is not None:
+      script = self.logic.getScript(animationNode)
+      for a in (script.get('actions') or {}).values():
+        if a.get('class') == 'SceneSnapshotAction':
+          has_snapshot = True
+          break
+    self.createSnapshotButton.enabled = (animationNode is not None) and not has_snapshot
     self.exportCollapsibleButton.enabled = animationNode != None
-    self.sequencePlay.setMRMLSequenceBrowserNode(sequenceBrowserNode)
-    self.sequenceSeek.setMRMLSequenceBrowserNode(sequenceBrowserNode)
 
   def onAddAction(self, actionName):
     animationNode = self.animationSelector.currentNode()
@@ -1246,6 +1247,13 @@ class AnimatorWidget(ScriptedLoadableModuleWidget):
           action['endTime'] = script['duration']
         self.logic.addAction(animationNode, action)
         self.onSelect()
+        # Open the action's editor immediately so the user lands in the
+        # snapshot timeline without an extra Edit click.
+        if self.animatorActionsGUI is not None:
+          script_after = self.logic.getScript(animationNode)
+          new_action = (script_after.get('actions') or {}).get(action['id'])
+          if new_action is not None:
+            self.animatorActionsGUI.onEdit(new_action)
       else:
         slicer.util.messageBox("Could not add action. See error log.")
 
@@ -1449,18 +1457,6 @@ class AnimatorActionsGUI:
       deleteButton.connect('clicked()', lambda action=action : self.onDelete(action))
       actionRowLayout.addWidget(deleteButton)
       self.layout.addRow(actionRowLayout)
-      durationSlider = ctk.ctkDoubleRangeSlider()
-      durationSlider.maximum = self.script['duration']
-      durationSlider.minimumValue = action['startTime']
-      durationSlider.maximumValue = action['endTime']
-      durationSlider.singleStep = 0.001
-      durationSlider.orientation = qt.Qt.Horizontal
-      self.layout.addRow(durationSlider)
-      def updateDuration(start, end, action):
-        action['startTime'] = start
-        action['endTime'] = end
-        self.logic.setAction(self.animationNode, action)
-      durationSlider.connect('valuesChanged(double,double)', lambda start, end, action=action: updateDuration(start, end, action))
     return self.scrollArea
 
   def destroyGUI(self):
