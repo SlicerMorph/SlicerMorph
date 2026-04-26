@@ -7,6 +7,8 @@ import vtk
 import ScreenCapture
 from slicer.ScriptedLoadableModule import *
 
+from HiResScreenCaptureLib.SlicerMorphViewerSize import ViewerSizeController
+
 
 def isActorVisible(camera, actor):
     # Create a list to store the frustum planes
@@ -44,8 +46,7 @@ class HiResScreenCapture(ScriptedLoadableModule):
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
         self.parent.title = "HiRes Screen Capture"  # TODO: make this more human readable by adding spaces
-        self.parent.categories = ["SlicerMorph.SlicerMorph Utilities"]  # TODO: set categories (folders where the module
-        # shows up in the module selector)
+        self.parent.categories = ["SlicerMorph.Utilities"]
         self.parent.dependencies = []  # TODO: add here list of module names that this module requires
         self.parent.contributors = ["Murat Maga (UW), Oshane Thomas(SCRI)"]  # TODO: replace with "Firstname Lastname
         # (Organization)"
@@ -82,14 +83,7 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         self.outputFileLineEdit = None
         self.removeBackgroundCheckBox = None
         self.logic = None
-        self.undockViewerButton = None
-        self.redockViewerButton = None
-        self.viewerComboBox = None
-        self.widthSpinBox = None
-        self.heightSpinBox = None
-        self.resetSizeButton = None
-        self.viewerSizeLocked = False
-        self._timerUpdatingSize = False
+        self.viewerSizeController = None
 
     def setup(self) -> None:
         """
@@ -106,34 +100,13 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
 
         parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
 
-        # 3D Viewer Size Section
+        # 3D Viewer Size Section (provided by the shared controller)
         viewerSizeLabel = qt.QLabel("<b>3D Viewer Size Settings</b>")
         parametersFormLayout.addRow(viewerSizeLabel)
 
-        # Viewer selector
-        self.viewerComboBox = qt.QComboBox()
-        self.viewerComboBox.toolTip = "Select which 3D viewer to undock"
-        self.viewerComboBox.setMaximumWidth(200)
-        parametersFormLayout.addRow("3D Viewer:", self.viewerComboBox)
-
-        # Undock/Redock buttons in vertical layout, left-aligned
-        buttonVBox = qt.QVBoxLayout()
-        buttonVBox.setAlignment(qt.Qt.AlignLeft)
-        
-        self.undockViewerButton = qt.QPushButton("Undock 3D Viewer")
-        self.undockViewerButton.toolTip = "Undocks the 3D viewer for the user to adjust correct aspect ratios for their visualization."
-        self.undockViewerButton.clicked.connect(self.onUndockViewer)
-        self.undockViewerButton.setMaximumWidth(150)
-        buttonVBox.addWidget(self.undockViewerButton)
-        
-        self.redockViewerButton = qt.QPushButton("Redock 3D Viewer")
-        self.redockViewerButton.toolTip = "Redock the 3D viewer back to its original layout"
-        self.redockViewerButton.clicked.connect(self.onRedockViewer)
-        self.redockViewerButton.enabled = False
-        self.redockViewerButton.setMaximumWidth(150)
-        buttonVBox.addWidget(self.redockViewerButton)
-        
-        parametersFormLayout.addRow("", buttonVBox)
+        self.viewerSizeController = ViewerSizeController()
+        parametersFormLayout.addRow(self.viewerSizeController)
+        self.viewerSizeController.sizeChanged.connect(self._onTrackedSizeChanged)
 
         # Separator
         separatorLabel = qt.QLabel("")
@@ -152,38 +125,6 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         self.resolutionSpinBox.setMaximumWidth(100)
         self.resolutionSpinBox.valueChanged.connect(self.onResolutionFactorChanged)
         parametersFormLayout.addRow("Scaling Factor:", self.resolutionSpinBox)
-
-        # Viewer size spinboxes — always editable; press Enter to lock, ↺ to resume dynamic tracking
-        self.widthSpinBox = qt.QSpinBox()
-        self.widthSpinBox.setRange(100, 10000)
-        self.widthSpinBox.setValue(800)
-        self.widthSpinBox.setSuffix(" px")
-        self.widthSpinBox.setMaximumWidth(90)
-        self.widthSpinBox.setToolTip("Viewer width — press Enter to lock this value")
-
-        self.heightSpinBox = qt.QSpinBox()
-        self.heightSpinBox.setRange(100, 10000)
-        self.heightSpinBox.setValue(600)
-        self.heightSpinBox.setSuffix(" px")
-        self.heightSpinBox.setMaximumWidth(90)
-        self.heightSpinBox.setToolTip("Viewer height — press Enter to lock this value")
-
-        self.resetSizeButton = qt.QPushButton("\u21ba")
-        self.resetSizeButton.setMaximumWidth(28)
-        self.resetSizeButton.setToolTip("Reset to dynamic (follow window size)")
-        self.resetSizeButton.enabled = False
-        self.resetSizeButton.clicked.connect(self.onViewerSizeReset)
-
-        sizeHBox = qt.QHBoxLayout()
-        sizeHBox.addWidget(self.widthSpinBox)
-        sizeHBox.addWidget(qt.QLabel("\u00d7"))
-        sizeHBox.addWidget(self.heightSpinBox)
-        sizeHBox.addWidget(self.resetSizeButton)
-        sizeHBox.addStretch()
-        parametersFormLayout.addRow("Viewer Size:", sizeHBox)
-
-        self.widthSpinBox.editingFinished.connect(self.onViewerSizePinned)
-        self.heightSpinBox.editingFinished.connect(self.onViewerSizePinned)
 
         self.finalresolutionDisplayLabel = qt.QLabel("Current Resolution: Unknown")
         parametersFormLayout.addRow("Output Size:", self.finalresolutionDisplayLabel)
@@ -222,44 +163,24 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         self.logic = HiResScreenCaptureLogic()
         self.logic.setCurrentScalFactor(self.currentScaleFactor)  # set default scale factor
 
-        # Populate the viewer selector and keep it in sync with layout changes
-        self._populateViewerComboBox()
-        slicer.app.layoutManager().layoutChanged.connect(self._populateViewerComboBox)
-
         # Connect signals
         self.outputFileLineEdit.textChanged.connect(self.updateApplyButtonState)
 
         # Set initial state for the apply button
         self.updateApplyButtonState()
 
-    def updateResolutionDisplay(self):
-        try:
-            width, height = 0, 0
-            if self.viewerSizeLocked:
-                width = self.widthSpinBox.value
-                height = self.heightSpinBox.value
-            else:
-                # Prefer the undocked widget if available
-                if self.logic and self.logic.viewerIsUndocked and self.logic.threeDWidget:
-                    view = self.logic.threeDWidget.threeDView()
-                    width = view.width
-                    height = view.height
-                else:
-                    layoutManager = slicer.app.layoutManager()
-                    if layoutManager:
-                        threeDWidget = layoutManager.threeDWidget(0)
-                        if threeDWidget:
-                            view = threeDWidget.threeDView()
-                            width = view.width
-                            height = view.height
-                if width and height:
-                    self._timerUpdatingSize = True
-                    if not self.widthSpinBox.hasFocus():
-                        self.widthSpinBox.setValue(width)
-                    if not self.heightSpinBox.hasFocus():
-                        self.heightSpinBox.setValue(height)
-                    self._timerUpdatingSize = False
+    def _onTrackedSizeChanged(self, width, height):
+        """Update the output-resolution label when the controller reports a new size."""
+        if width and height:
+            self.finalresolutionDisplayLabel.setText(
+                f"{int(round(width * self.currentScaleFactor))} x "
+                f"{int(round(height * self.currentScaleFactor))}"
+            )
 
+    def updateResolutionDisplay(self):
+        """Refresh the output-resolution label using the controller's current size."""
+        try:
+            width, height = self.viewerSizeController.currentSize()
             if width and height:
                 self.finalresolutionDisplayLabel.setText(
                     f"{int(round(width * self.currentScaleFactor))} x "
@@ -274,10 +195,8 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         """
         if self.updateTimer:
             self.updateTimer.stop()
-        try:
-            slicer.app.layoutManager().layoutChanged.disconnect(self._populateViewerComboBox)
-        except Exception:
-            pass
+        if self.viewerSizeController:
+            self.viewerSizeController.cleanup()
 
         # Properly call super with the current class name and `self`
         super().cleanup()
@@ -291,79 +210,14 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
             self.outputFileLineEdit.setText(selectedFile)
             self.initialDir = os.path.dirname(selectedFile)
 
-    def onUndockViewer(self):
-        """
-        Undock the 3D viewer for user adjustment.
-        """
-        # Refresh combo in case the layout changed since setup
-        self._populateViewerComboBox()
-        viewerIndex = self.viewerComboBox.currentIndex
-        self.logic.undockViewer(viewerIndex)
-        self.undockViewerButton.enabled = False
-        self.redockViewerButton.enabled = True
-        print("3D Viewer undocked")
-
-    def onRedockViewer(self):
-        """
-        Redock the 3D viewer back to its original layout.
-        """
-        self.logic.redockViewer()
-        self.onViewerSizeReset()  # release any pinned size when redocking
-        # Defer button state updates to allow layout changes to complete
-        qt.QTimer.singleShot(100, lambda: self.updateButtonStatesAfterRedock())
-        print("3D Viewer redocked")
-
-    def onViewerSizePinned(self):
-        """
-        Called when the user presses Enter in a size spinbox — locks the displayed value.
-        """
-        if self._timerUpdatingSize:
-            return
-        self.viewerSizeLocked = True
-        self.logic.pinnedViewerWidth = self.widthSpinBox.value
-        self.logic.pinnedViewerHeight = self.heightSpinBox.value
-        self.resetSizeButton.enabled = True
-        # Immediately resize the undocked viewer if one is open
-        if self.logic.viewerIsUndocked and self.logic.threeDWidget:
-            self.logic.threeDWidget.resize(qt.QSize(self.widthSpinBox.value, self.heightSpinBox.value))
-
-    def onViewerSizeReset(self):
-        """
-        Release the pinned size and resume dynamic tracking.
-        """
-        self.viewerSizeLocked = False
-        self.logic.pinnedViewerWidth = None
-        self.logic.pinnedViewerHeight = None
-        self.resetSizeButton.enabled = False
-    
-    def _populateViewerComboBox(self):
-        """
-        Fill the combo box with all available 3D views.
-        """
-        layoutManager = slicer.app.layoutManager()
-        current = self.viewerComboBox.currentIndex
-        self.viewerComboBox.clear()
-        for i in range(layoutManager.threeDViewCount):
-            node = layoutManager.threeDWidget(i).mrmlViewNode()
-            self.viewerComboBox.addItem(node.GetName() if node.GetName() else f"3D View {i+1}")
-        # Restore previous selection if still valid
-        if 0 <= current < self.viewerComboBox.count:
-            self.viewerComboBox.currentIndex = current
-
-    def updateButtonStatesAfterRedock(self):
-        """
-        Update button states after redocking completes.
-        """
-        self.undockViewerButton.enabled = True
-        self.redockViewerButton.enabled = False
-
     def onResolutionFactorChanged(self, value):
         """
         Updates the current resolution scaling factor based on user input from the spin box.
         """
         self.logic.setCurrentScalFactor(value)
         self.currentScaleFactor = value
-        # print("Resolution scaling factor set to:", self.currentScaleFactor)
+        # Refresh the displayed output resolution.
+        self.updateResolutionDisplay()
 
     def updateApplyButtonState(self):
         """
@@ -398,6 +252,15 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         self.logic.setOutputPath(outputPath)
         self.logic.setResolutionFactor(self.currentScaleFactor)
         self.logic.setRemoveBackground(self.removeBackgroundCheckBox.checked)
+        # Push the controller's pinned/undocked state into the logic.
+        self.logic.viewerIsUndocked = self.viewerSizeController.isUndocked()
+        self.logic.threeDWidget = self.viewerSizeController.threeDWidget()
+        locked = self.viewerSizeController.lockedSize()
+        if locked:
+            self.logic.pinnedViewerWidth, self.logic.pinnedViewerHeight = locked
+        else:
+            self.logic.pinnedViewerWidth = None
+            self.logic.pinnedViewerHeight = None
         self.logic.runScreenCapture()
 
 
@@ -517,10 +380,10 @@ class HiResScreenCaptureLogic(ScriptedLoadableModuleLogic):
             viewNode = threeDWidget.mrmlViewNode()
             originalScaleFactor = viewNode.GetScreenScaleFactor()
             print("Original Screen Scale Factor:", originalScaleFactor)
-            
+
             # Scale BOTH the widget size AND the screen scale factor for true high-res rendering
             viewNode.SetScreenScaleFactor(originalScaleFactor * self.currentScaleFactor)
-            
+
             scaledWidth = int(captureWidth * self.currentScaleFactor)
             scaledHeight = int(captureHeight * self.currentScaleFactor)
             threeDWidget.size = qt.QSize(scaledWidth, scaledHeight)

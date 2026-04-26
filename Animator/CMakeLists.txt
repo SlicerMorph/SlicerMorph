@@ -4,7 +4,11 @@ set(MODULE_NAME Animator)
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}.py
+  AnimatorLib/__init__.py
   AnimatorLib/TransformAction.py
+  AnimatorLib/VolumePropertyKeyframes.py
+  AnimatorLib/SceneSnapshot.py
+  AnimatorLib/SnapshotTimelineWidget.py
   )
 
 set(MODULE_PYTHON_RESOURCES

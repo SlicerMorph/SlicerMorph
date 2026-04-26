@@ -4,6 +4,8 @@ set(MODULE_NAME HiResScreenCapture)
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}.py
+  HiResScreenCaptureLib/__init__.py
+  HiResScreenCaptureLib/SlicerMorphViewerSize.py
   )
 
 set(MODULE_PYTHON_RESOURCES

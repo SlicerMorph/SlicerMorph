@@ -23,7 +23,7 @@ class VRPresetHub(ScriptedLoadableModule):
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
         self.parent.title = "VR Preset Hub"
-        self.parent.categories = ["SlicerMorph.SlicerMorph Utilities"]
+        self.parent.categories = ["SlicerMorph.Utilities"]
         self.parent.dependencies = []
         self.parent.contributors = ["Murat Maga (UW)"]
         self.parent.helpText = """
