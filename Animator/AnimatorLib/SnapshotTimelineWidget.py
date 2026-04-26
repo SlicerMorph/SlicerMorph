@@ -401,13 +401,53 @@ class SnapshotTimelineWidget(qt.QWidget):
         self.segmentModeCombo = qt.QComboBox()
         self.segmentModeCombo.addItem("Interpolate to next", "interpolate")
         self.segmentModeCombo.addItem("Hold until next", "hold")
+        self.segmentModeCombo.addItem("Explode models to next", "explode")
+        self.segmentModeCombo.addItem("Implode models to next", "implode")
         self.segmentModeCombo.setToolTip(
-            "Behavior of the segment that STARTS at this keyframe. "
-            "'Interpolate' tweens to the next keyframe; 'Hold' freezes "
-            "this state until the next keyframe is reached.")
+            "Behavior of the segment that STARTS at this keyframe.\n"
+            "  Interpolate \u2014 tween camera/VP/ROI/opacity to the next kf.\n"
+            "  Hold \u2014 freeze this state until the next kf is reached.\n"
+            "  Explode models \u2014 same as Interpolate, plus models in the "
+            "selected folder explode outward over the segment (fully "
+            "exploded at the next kf).\n"
+            "  Implode models \u2014 inverse: start exploded, end at rest.")
         self.segmentModeCombo.connect(
             'currentIndexChanged(int)', self._onSegmentModeChanged)
         detailForm.addRow("After this", self.segmentModeCombo)
+
+        # Folder + magnitude widgets, only shown when segmentMode is
+        # 'explode' or 'implode'. Tucked into their own form rows so we
+        # can hide them in lockstep.
+        self.explodeFolderSelector = slicer.qMRMLSubjectHierarchyComboBox()
+        self.explodeFolderSelector.setMRMLScene(slicer.mrmlScene)
+        try:
+            self.explodeFolderSelector.setLevelFilter(["Folder"])
+        except Exception:
+            pass
+        self.explodeFolderSelector.setToolTip(
+            "Subject Hierarchy folder containing the model nodes that "
+            "should explode (or implode) over this segment.")
+        self.explodeFolderSelector.connect(
+            'currentItemChanged(vtkIdType)', self._onExplodeFolderChanged)
+        self.explodeFolderLabel = qt.QLabel("Models folder")
+        detailForm.addRow(self.explodeFolderLabel, self.explodeFolderSelector)
+
+        self.explodeMagnitudeSpin = ctk.ctkDoubleSpinBox()
+        self.explodeMagnitudeSpin.suffix = "x"
+        self.explodeMagnitudeSpin.decimals = 1
+        self.explodeMagnitudeSpin.singleStep = 0.5
+        self.explodeMagnitudeSpin.minimum = 0.1
+        self.explodeMagnitudeSpin.maximum = 50.0
+        self.explodeMagnitudeSpin.value = 2.0
+        self.explodeMagnitudeSpin.setToolTip(
+            "How far each model travels outward from the folder's "
+            "center of gravity at full explosion (1.0 = no movement, "
+            "2.0 = doubles its distance from center).")
+        self.explodeMagnitudeSpin.connect(
+            'valueChanged(double)', self._onExplodeMagnitudeChanged)
+        self.explodeMagnitudeLabel = qt.QLabel("Explode magnitude")
+        detailForm.addRow(self.explodeMagnitudeLabel,
+                          self.explodeMagnitudeSpin)
 
         self.rotationModeCombo = qt.QComboBox()
         self.rotationModeCombo.addItem(
@@ -529,11 +569,14 @@ class SnapshotTimelineWidget(qt.QWidget):
         if not kf:
             self.labelEdit.text = ""
             self.timeSpin.value = 0.0
+            self._setExplodeRowsVisible(False)
             return
         self.labelEdit.blockSignals(True)
         self.timeSpin.blockSignals(True)
         self.segmentModeCombo.blockSignals(True)
         self.rotationModeCombo.blockSignals(True)
+        self.explodeFolderSelector.blockSignals(True)
+        self.explodeMagnitudeSpin.blockSignals(True)
         self.labelEdit.text = kf.get('label', '')
         self.timeSpin.value = kf.get('time', 0.0)
         mode = kf.get('segmentMode', 'interpolate')
@@ -542,10 +585,22 @@ class SnapshotTimelineWidget(qt.QWidget):
         rot = kf.get('rotationMode', 'orbit')
         ridx = self.rotationModeCombo.findData(rot)
         self.rotationModeCombo.currentIndex = ridx if ridx >= 0 else 0
+        fid = kf.get('explodeFolderID')
+        self.explodeFolderSelector.setCurrentItem(int(fid) if fid else 0)
+        self.explodeMagnitudeSpin.value = float(
+            kf.get('explodeMagnitude', 2.0))
+        self._setExplodeRowsVisible(mode in ('explode', 'implode'))
         self.labelEdit.blockSignals(False)
         self.timeSpin.blockSignals(False)
         self.segmentModeCombo.blockSignals(False)
         self.rotationModeCombo.blockSignals(False)
+        self.explodeFolderSelector.blockSignals(False)
+        self.explodeMagnitudeSpin.blockSignals(False)
+
+    def _setExplodeRowsVisible(self, visible):
+        for w in (self.explodeFolderLabel, self.explodeFolderSelector,
+                  self.explodeMagnitudeLabel, self.explodeMagnitudeSpin):
+            w.visible = visible
 
     # ----- callbacks ------------------------------------------------------
 
@@ -604,8 +659,24 @@ class SnapshotTimelineWidget(qt.QWidget):
         kf = self._selectedKeyframe()
         if kf is None:
             return
-        kf['segmentMode'] = self.segmentModeCombo.itemData(
+        mode = self.segmentModeCombo.itemData(
             self.segmentModeCombo.currentIndex)
+        kf['segmentMode'] = mode
+        self._setExplodeRowsVisible(mode in ('explode', 'implode'))
+        self._onChanged()
+
+    def _onExplodeFolderChanged(self, item_id):
+        kf = self._selectedKeyframe()
+        if kf is None:
+            return
+        kf['explodeFolderID'] = int(item_id) if item_id else None
+        self._onChanged()
+
+    def _onExplodeMagnitudeChanged(self, value):
+        kf = self._selectedKeyframe()
+        if kf is None:
+            return
+        kf['explodeMagnitude'] = float(value)
         self._onChanged()
 
     def _onRotationModeChanged(self, _idx):

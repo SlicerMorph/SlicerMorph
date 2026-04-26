@@ -839,16 +839,18 @@ class SceneSnapshotAction(AnimatorAction):
     apply_camera_state(cam_node, cam_state)
 
   def cleanup(self, action):
-    """Remove the snapshot VP nodes (and any auto-created ROI) so the
-    scene doesn't leak."""
+    """Remove the snapshot VP nodes (and any auto-created ROI / explode
+    transforms) so the scene doesn't leak."""
     for kf in action.get('keyframes', []):
       vp_id = kf.get('volumePropertyID')
       if vp_id:
         node = slicer.mrmlScene.GetNodeByID(vp_id)
         if node is not None:
           slicer.mrmlScene.RemoveNode(node)
-    from AnimatorLib.SceneSnapshot import remove_auto_created_roi
+    from AnimatorLib.SceneSnapshot import (
+      remove_auto_created_roi, remove_auto_explode_transforms)
     remove_auto_created_roi(action)
+    remove_auto_explode_transforms(action)
 
   def wantsNonModalEditor(self):
     # Snapshot timeline is built around capturing the current 3D view,
@@ -949,7 +951,11 @@ except AttributeError:
 slicer.modules.animatorActionPlugins['CameraRotationAction'] = CameraRotationAction
 slicer.modules.animatorActionPlugins['ROIAction'] = ROIAction
 slicer.modules.animatorActionPlugins['VolumePropertyAction'] = VolumePropertyAction
-slicer.modules.animatorActionPlugins['ExplodeModelsAction'] = ExplodeModelsAction
+# ExplodeModelsAction is intentionally NOT registered here: model
+# explosions are now driven by SceneSnapshotAction's per-segment
+# 'explode'/'implode' modes (see AnimatorLib.SceneSnapshot). The class
+# stays defined so older animation scripts that reference it can still
+# load, but it isn't offered in the "Add action" picker.
 slicer.modules.animatorActionPlugins['SceneSnapshotAction'] = SceneSnapshotAction
 
 

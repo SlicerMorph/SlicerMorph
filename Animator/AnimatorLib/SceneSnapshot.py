@@ -22,9 +22,14 @@ A keyframe is::
           'xyz': [x, y, z],
           'radiusXYZ': [rx, ry, rz],
       } or None,
-      'segmentMode': 'interpolate' | 'hold',  # mode of the segment
-                                              # starting AT this keyframe
-                                              # (ignored on the last keyframe)
+      'displayState': {                # per-display-node visibility/opacity
+          '<displayNodeID>': {'visibility': 0/1, 'opacity': float|None},
+          ...
+      } or None,
+      'segmentMode':                   # mode of the segment STARTING at this kf
+          'interpolate' | 'hold' | 'explode' | 'implode',
+      'explodeFolderID': int or None,  # SH folder for explode/implode segments
+      'explodeMagnitude': float,       # outward scale for explode/implode
       'thumbnailPath': str or None,   # path to a PNG on disk
     }
 """
@@ -416,6 +421,321 @@ def remove_auto_created_roi(action):
 
 
 # ---------------------------------------------------------------------------
+# Display-node state (visibility + opacity) capture / apply
+# ---------------------------------------------------------------------------
+
+# Display node classes whose visibility / opacity we round-trip in a
+# snapshot keyframe. Picked to cover the common cases users are likely
+# to fade in or toggle: model surfaces, volume rendering, segmentations,
+# markups, plus the SH folder display nodes (whose opacity acts as a
+# master fader for everything under a folder, overriding per-child
+# opacity at render time -- so capturing only model nodes is not
+# enough when the user controls the folder slider).
+_TRACKED_DISPLAY_NODE_CLASSES = (
+    'vtkMRMLModelDisplayNode',
+    'vtkMRMLVolumeRenderingDisplayNode',
+    'vtkMRMLSegmentationDisplayNode',
+    'vtkMRMLMarkupsDisplayNode',
+    'vtkMRMLFolderDisplayNode',
+)
+
+
+def _iter_tracked_display_nodes():
+    seen = set()
+    for cls in _TRACKED_DISPLAY_NODE_CLASSES:
+        coll = slicer.mrmlScene.GetNodesByClass(cls)
+        if coll is None:
+            continue
+        for i in range(coll.GetNumberOfItems()):
+            n = coll.GetItemAsObject(i)
+            if n is None:
+                continue
+            nid = n.GetID()
+            if nid in seen:
+                continue
+            seen.add(nid)
+            yield n
+
+
+def capture_display_state():
+    """Snapshot visibility + opacity of every tracked display node.
+
+    Returns ``{nodeID: {'visibility': int, 'opacity': float|None}}``.
+    Opacity is ``None`` for display nodes that don't expose ``GetOpacity``.
+    """
+    state = {}
+    for n in _iter_tracked_display_nodes():
+        entry = {'visibility': int(n.GetVisibility())}
+        if hasattr(n, 'GetOpacity'):
+            try:
+                entry['opacity'] = float(n.GetOpacity())
+            except Exception:
+                entry['opacity'] = None
+        else:
+            entry['opacity'] = None
+        state[n.GetID()] = entry
+    return state
+
+
+def apply_display_state(state_a, state_b, fraction, mode):
+    """Apply per-display-node visibility + opacity.
+
+    Visibility is binary so it cannot tween: the segment uses kf_a's
+    visibility while the playhead is inside the segment, and snaps to
+    kf_b's once the playhead reaches the end.
+
+    Opacity is continuous: it lerps from kf_a to kf_b on
+    ``mode='interpolate'``, and holds at kf_a's value otherwise (hold,
+    explode, implode all freeze opacity for the duration of the
+    segment - the user can put two adjacent kfs at almost the same
+    time to get a near-instant fade if they need one inside an
+    explode segment).
+    """
+    if not state_a:
+        return
+    use_b_visibility = (state_b is not None and fraction >= 1.0 - 1e-9)
+    for nid, entry_a in state_a.items():
+        node = slicer.mrmlScene.GetNodeByID(nid)
+        if node is None:
+            continue
+        entry_b = state_b.get(nid) if state_b else None
+        # Visibility
+        vis_a = entry_a.get('visibility')
+        vis_b = entry_b.get('visibility') if entry_b else None
+        if use_b_visibility and vis_b is not None:
+            vis = vis_b
+        else:
+            vis = vis_a
+        if vis is not None:
+            try:
+                node.SetVisibility(int(vis))
+            except Exception:
+                pass
+        # Opacity
+        op_a = entry_a.get('opacity')
+        if op_a is None:
+            continue
+        op_b = entry_b.get('opacity') if entry_b else None
+        if mode == 'interpolate' and op_b is not None:
+            op = op_a + fraction * (op_b - op_a)
+        else:
+            op = op_a
+        try:
+            node.SetOpacity(float(op))
+        except Exception:
+            pass
+
+
+# ---------------------------------------------------------------------------
+# Per-segment model explosion (replaces standalone ExplodeModelsAction)
+# ---------------------------------------------------------------------------
+
+_AUTO_EXPLODE_TFM_ATTR = 'Animator.SceneSnapshot.AutoExplodeTransform'
+
+
+def _ease_in_out(x):
+    """Smoothstep cubic ease-in-out, x in [0,1]."""
+    if x <= 0.0:
+        return 0.0
+    if x >= 1.0:
+        return 1.0
+    return x * x * (3.0 - 2.0 * x)
+
+
+def _explode_segments(action):
+    """Yield (kf_a, kf_b, mode, folder_id, magnitude) for each segment
+    whose starting keyframe has segmentMode in ('explode', 'implode').
+    The last keyframe never starts a segment.
+    """
+    kfs = sorted_keyframes(action.get('keyframes', []))
+    for i in range(len(kfs) - 1):
+        kf_a = kfs[i]
+        mode = kf_a.get('segmentMode')
+        if mode not in ('explode', 'implode'):
+            continue
+        fid = kf_a.get('explodeFolderID')
+        if fid is None:
+            continue
+        yield (kf_a, kfs[i + 1], mode, int(fid),
+               float(kf_a.get('explodeMagnitude', 2.0)))
+
+
+def _explosion_state_for_folder(action, folder_id, t):
+    """Return (scale, magnitude) for ``folder_id`` at master time ``t``.
+
+    Walks every explode/implode segment targeting this folder, in time
+    order. The most recent segment whose start time is at-or-before
+    ``t`` defines the scale:
+      - inside the segment: eased fraction (explode goes 0->1, implode 1->0)
+      - past the segment: stays at 1.0 (explode) or 0.0 (implode)
+    Returns (0.0, default_magnitude) if no segment ever targets this folder
+    by time ``t``.
+    """
+    most_recent = None
+    for seg in _explode_segments(action):
+        kf_a, kf_b, mode, fid, mag = seg
+        if fid != folder_id:
+            continue
+        if kf_a['time'] > t + 1e-9:
+            break
+        most_recent = seg
+    if most_recent is None:
+        return (0.0, 2.0)
+    kf_a, kf_b, mode, fid, mag = most_recent
+    span = kf_b['time'] - kf_a['time']
+    if span <= 0 or t >= kf_b['time']:
+        return ((1.0 if mode == 'explode' else 0.0), mag)
+    local = (t - kf_a['time']) / span
+    eased = _ease_in_out(local)
+    return ((eased if mode == 'explode' else (1.0 - eased)), mag)
+
+
+def _all_explode_folder_ids(action):
+    out = set()
+    for kf in action.get('keyframes', []):
+        if kf.get('segmentMode') in ('explode', 'implode'):
+            fid = kf.get('explodeFolderID')
+            if fid is not None:
+                out.add(int(fid))
+    return out
+
+
+def _ensure_explode_transforms(folder_id):
+    """Ensure each model under ``folder_id`` has an auto-tagged
+    transform node above it (so we can write an offset matrix without
+    disturbing user-placed parent transforms). Returns
+    (modelNodes, transformNodes, restPositions, center) where
+    restPositions are RAS-space center-of-bounds of each model BEFORE
+    any explode offset is applied.
+    """
+    import numpy as np
+    shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(
+        slicer.mrmlScene)
+    coll = vtk.vtkCollection()
+    shNode.GetDataNodesInBranch(int(folder_id), coll, 'vtkMRMLModelNode')
+    models, transforms, positions = [], [], []
+    for i in range(coll.GetNumberOfItems()):
+        m = coll.GetItemAsObject(i)
+        if m is None:
+            continue
+        models.append(m)
+        tf = m.GetParentTransformNode()
+        if (tf is None
+                or tf.GetAttribute(_AUTO_EXPLODE_TFM_ATTR) != "1"):
+            new_tf = slicer.mrmlScene.AddNewNodeByClass(
+                'vtkMRMLTransformNode')
+            new_tf.SetAttribute(_AUTO_EXPLODE_TFM_ATTR, "1")
+            old_parent = tf
+            m.SetAndObserveTransformNodeID(new_tf.GetID())
+            if old_parent is not None:
+                new_tf.SetAndObserveTransformNodeID(old_parent.GetID())
+            tf = new_tf
+        transforms.append(tf)
+        # Compute RAS center BEFORE the explode offset takes effect.
+        # We query bounds *without* the explode transform by reading
+        # the model's local bounds and pushing through any non-explode
+        # parent.
+        bounds = np.zeros(6)
+        m.GetRASBounds(bounds)
+        # Subtract the current explode-transform translation so we
+        # keep a stable "rest" center across subsequent calls.
+        mat = vtk.vtkMatrix4x4()
+        tf.GetMatrixTransformToParent(mat)
+        tx = mat.GetElement(0, 3)
+        ty = mat.GetElement(1, 3)
+        tz = mat.GetElement(2, 3)
+        positions.append(np.array([
+            (bounds[0] + bounds[1]) / 2.0 - tx,
+            (bounds[2] + bounds[3]) / 2.0 - ty,
+            (bounds[4] + bounds[5]) / 2.0 - tz,
+        ]))
+    if positions:
+        center = np.mean(np.array(positions), axis=0)
+    else:
+        center = np.zeros(3)
+    return models, transforms, positions, center
+
+
+def apply_explosion(action, t):
+    """Apply explosion offsets to every folder this action references.
+
+    Idempotent: writes a fresh translation matrix to each tagged
+    transform on every call, so scrubbing back and forth converges.
+    """
+    folders = _all_explode_folder_ids(action)
+    if not folders:
+        return
+    # Cache per-folder (models, transforms, restPositions, center) so
+    # we only mutate the scene once per folder. Without this, every
+    # tick reparents models under a fresh auto-transform and recomputes
+    # 'rest' positions from bounds *that already include the current
+    # offset*, causing drift and triggering scene-modified storms.
+    cache = getattr(slicer.modules, 'animatorExplodeCache', None)
+    if cache is None:
+        cache = {}
+        slicer.modules.animatorExplodeCache = cache
+    action_cache = cache.setdefault(action.get('id', ''), {})
+    for fid in folders:
+        scale, magnitude = _explosion_state_for_folder(action, fid, t)
+        entry = action_cache.get(fid)
+        if entry is None:
+            models, transforms, positions, center = (
+                _ensure_explode_transforms(fid))
+            entry = {
+                'transforms': transforms,
+                'positions': positions,
+                'center': center,
+            }
+            action_cache[fid] = entry
+        for tf, pos in zip(entry['transforms'], entry['positions']):
+            offset = magnitude * scale * (pos - entry['center'])
+            mat = vtk.vtkMatrix4x4()
+            for i in range(3):
+                mat.SetElement(i, 3, float(offset[i]))
+            tf.SetMatrixTransformToParent(mat)
+
+
+def invalidate_explosion_cache(action_id=None):
+    """Clear cached explode transforms/positions. Call after the user
+    edits the folder selection on a keyframe so the next tick rebuilds."""
+    cache = getattr(slicer.modules, 'animatorExplodeCache', None)
+    if not cache:
+        return
+    if action_id is None:
+        cache.clear()
+    else:
+        cache.pop(action_id, None)
+
+
+def remove_auto_explode_transforms(action):
+    """Remove any auto-created explode transform nodes whose models
+    live under folders this action references. Restores each model's
+    parent transform to whatever sat above the auto transform."""
+    folder_ids = _all_explode_folder_ids(action)
+    if not folder_ids:
+        return
+    shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(
+        slicer.mrmlScene)
+    to_remove = set()
+    for fid in folder_ids:
+        coll = vtk.vtkCollection()
+        shNode.GetDataNodesInBranch(int(fid), coll, 'vtkMRMLModelNode')
+        for i in range(coll.GetNumberOfItems()):
+            m = coll.GetItemAsObject(i)
+            if m is None:
+                continue
+            tf = m.GetParentTransformNode()
+            if tf is not None and tf.GetAttribute(_AUTO_EXPLODE_TFM_ATTR) == "1":
+                # Restore model's parent to the tagged transform's parent.
+                m.SetAndObserveTransformNodeID(
+                    tf.GetParentTransformNode().GetID()
+                    if tf.GetParentTransformNode() else None)
+                to_remove.add(tf)
+    for tf in to_remove:
+        slicer.mrmlScene.RemoveNode(tf)
+
+
+# ---------------------------------------------------------------------------
 # Thumbnails
 # ---------------------------------------------------------------------------
 
@@ -452,7 +772,8 @@ def capture_thumbnail(threeDView, keyframe_id, max_dim=80):
 
 def make_keyframe(time_seconds, label, camera_state, volume_property_id=None,
                   thumbnail_path=None, segment_mode='interpolate',
-                  roi_state=None):
+                  roi_state=None, display_state=None,
+                  explode_folder_id=None, explode_magnitude=2.0):
     return {
         'id': str(uuid.uuid4()),
         'time': float(time_seconds),
@@ -460,7 +781,10 @@ def make_keyframe(time_seconds, label, camera_state, volume_property_id=None,
         'cameraState': camera_state,
         'volumePropertyID': volume_property_id,
         'roiState': roi_state,
+        'displayState': display_state,
         'segmentMode': segment_mode,
+        'explodeFolderID': explode_folder_id,
+        'explodeMagnitude': float(explode_magnitude),
         'thumbnailPath': thumbnail_path,
     }
 
@@ -559,6 +883,20 @@ def evaluate_at(action, script_time):
             elif roi_a is not None:
                 apply_roi_state(animated_roi, roi_a)
 
+    # Display nodes (visibility + opacity) for every keyframe that
+    # captured them. kf_a is the source-of-truth during the segment;
+    # opacity tweens on 'interpolate' mode.
+    apply_display_state(
+        kf_a.get('displayState'),
+        kf_b.get('displayState') if kf_a is not kf_b else None,
+        local if kf_a is not kf_b else 0.0,
+        mode,
+    )
+
+    # Per-segment model explosion (segmentMode == 'explode'/'implode'
+    # on some keyframe of this action).
+    apply_explosion(action, float(script_time))
+
     return cam_state
 
 
@@ -593,10 +931,13 @@ def capture_current_scene(animated_camera_id, animated_vp_id, action_id,
         if roi_node is not None:
             roi_state = capture_roi_state(roi_node)
 
+    display_state = capture_display_state()
+
     return make_keyframe(
         time_seconds=time_seconds,
         label=label,
         camera_state=cam_state,
         volume_property_id=vp_snapshot_id,
         roi_state=roi_state,
+        display_state=display_state,
     )
