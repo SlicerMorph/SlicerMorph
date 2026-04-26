@@ -431,6 +431,14 @@ def remove_auto_created_roi(action):
 # master fader for everything under a folder, overriding per-child
 # opacity at render time -- so capturing only model nodes is not
 # enough when the user controls the folder slider).
+#
+# Volume rendering is tracked too, but visibility for VR display nodes
+# must be applied through the parent volume's SetDisplayVisibility()
+# (see apply_display_state), not via SetVisibility() on the VR display
+# node directly: the SH eye toggle on a volume goes through the data
+# node, and writing only the display node's flag desyncs SH's cached
+# visibility from the rendered state -- after which the eye click
+# silently does nothing until the scene is reloaded.
 _TRACKED_DISPLAY_NODE_CLASSES = (
     'vtkMRMLModelDisplayNode',
     'vtkMRMLVolumeRenderingDisplayNode',
@@ -508,7 +516,30 @@ def apply_display_state(state_a, state_b, fraction, mode):
             vis = vis_a
         if vis is not None:
             try:
-                node.SetVisibility(int(vis))
+                # Volume rendering visibility needs special handling so
+                # the Subject Hierarchy eye toggle stays in sync with
+                # the rendered state. Setting only the VR display
+                # node's flag leaves SH's cached visibility stale --
+                # afterwards the SH eye click silently does nothing
+                # until the user round-trips through the Volume
+                # Rendering module. So set the VR flag *and* poke SH.
+                if node.IsA('vtkMRMLVolumeRenderingDisplayNode'):
+                    vis_int = int(vis)
+                    node.SetVisibility(vis_int)
+                    if hasattr(node, 'SetVisibility3D'):
+                        node.SetVisibility3D(vis_int)
+                    vol = node.GetDisplayableNode()
+                    if vol is not None:
+                        try:
+                            shNode = (slicer.vtkMRMLSubjectHierarchyNode
+                                      .GetSubjectHierarchyNode(slicer.mrmlScene))
+                            shItem = shNode.GetItemByDataNode(vol)
+                            if shItem:
+                                shNode.ItemModified(shItem)
+                        except Exception:
+                            pass
+                else:
+                    node.SetVisibility(int(vis))
             except Exception:
                 pass
         # Opacity
