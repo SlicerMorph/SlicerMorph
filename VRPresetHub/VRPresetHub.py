@@ -575,7 +575,10 @@ class VRPresetHubWidget(ScriptedLoadableModuleWidget):
         # 1. Fetch current presigned PUT URLs from the repo
         self._setStatus("Fetching upload configuration…", "gray")
         slicer.app.processEvents()
-        raw_url = f"https://raw.githubusercontent.com/{self.REPO}/main/staging-urls.json"
+        # staging-urls.json lives on a dedicated orphan branch (`staging-urls`),
+        # not on `main`, so the refresh workflow can push it freely without
+        # tripping branch protection on main.
+        raw_url = f"https://raw.githubusercontent.com/{self.REPO}/staging-urls/staging-urls.json"
         try:
             with urllib.request.urlopen(raw_url, timeout=15) as resp:
                 staging = json.loads(resp.read())
