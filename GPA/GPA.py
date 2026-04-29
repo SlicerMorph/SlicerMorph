@@ -519,6 +519,13 @@ class GPAWidget(ScriptedLoadableModuleWidget):
   def onReload(self):
     """Reload Support submodules before reloading the main module so that
     edits in Support/*.py take effect on 'Reload'."""
+    # Tear down session state first so reloads don't accumulate event
+    # filters, observers, or scene nodes (each accumulation has been
+    # observed to cause repaint storms and 3D background hue flicker).
+    try:
+      self._gpaTeardown()
+    except Exception as e:
+      print(f"[GPA] teardown warning: {e}")
     import importlib, sys
     for name in list(sys.modules):
       if name == "Support" or name.startswith("Support."):
@@ -527,6 +534,52 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         except Exception as e:
           print(f"[GPA] Could not reload {name}: {e}")
     ScriptedLoadableModuleWidget.onReload(self)
+
+  def cleanup(self):
+    """Called by Slicer when the module is unloaded (and on Reload)."""
+    try:
+      self._gpaTeardown()
+    except Exception as e:
+      print(f"[GPA] cleanup warning: {e}")
+    try:
+      ScriptedLoadableModuleWidget.cleanup(self)
+    except Exception:
+      pass
+
+  def _gpaTeardown(self):
+    """Idempotent teardown of all session-scoped state that survives Reload
+    if not explicitly torn down (Qt event filters, mouse-tracking flags on
+    plot view children, MRML observers, and engine-owned transform nodes)."""
+    # Plot-drive event filter + mouseTracking on plot view children.
+    try:
+      if getattr(self, "_plotDriveFilteredWidgets", None):
+        self._detachPlotMouseFilter()
+    except Exception as e:
+      print(f"[GPA teardown] plot mouse filter: {e}")
+    # Reset mouseTracking on any plot view child we may have touched, even
+    # if the filter list got out of sync (e.g. from a previous reload).
+    try:
+      pv = self._plotView() if hasattr(self, "_plotView") else None
+      if pv is not None:
+        try: pv.setMouseTracking(False)
+        except Exception: pass
+        for child in pv.findChildren(qt.QWidget):
+          try: child.setMouseTracking(False)
+          except Exception: pass
+    except Exception:
+      pass
+    # LR controller: dispose the warp engine + drop the LR transform node
+    # it owned, so the next instance does not contend with a stale node.
+    try:
+      lr = getattr(self, "lr", None) or getattr(self, "geomorphLR", None)
+      if lr is not None:
+        eng = getattr(lr, "_warp_engine", None)
+        if eng is not None:
+          try: eng.dispose()
+          except Exception as e: print(f"[GPA teardown] engine.dispose: {e}")
+          lr._warp_engine = None
+    except Exception as e:
+      print(f"[GPA teardown] LR engine: {e}")
 
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
