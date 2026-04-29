@@ -609,8 +609,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     tabs = [
       ("Setup Analysis", "UI/GPA_SetupAnalysis.ui"),
-      ("Explore Data/Results", "UI/GPA_ExploreDataResults.ui"),
-      ("Interactive 3D Visualization", "UI/GPA_Interactive3D.ui"),
+      ("Results", "UI/GPA_ExploreDataResults.ui"),
+      ("Interactive 3D", "UI/GPA_Interactive3D.ui"),
       ("Geomorph Linear Regression", "UI/GPA_GeomorphLR.ui"),
     ]
 
@@ -1867,12 +1867,28 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self._detachPlotMouseFilter()
       return
     # Attach + ensure cursor + sanity check.
-    # Auto-create a default PC1-vs-PC2 plot if the user hasn't built one.
-    if self._currentPlotChartNode() is None:
+    # Auto-create a default PC1-vs-PC2 plot if the current plot view does
+    # NOT show a PCA scatter (it may be empty, or showing an unrelated
+    # chart like the Procrustes Distances plot from the Results tab).
+    if not self._isPCAChartActive():
       if not self._autoCreateDefaultPCAPlot():
         # Failure path already set status + unchecked the box.
         return
     self._refreshPlotDriving(forceLog=True)
+
+  def _isPCAChartActive(self):
+    """True iff plot view 0 currently shows a PCA scatter chart created
+    by self.plot() (makeScatterPlot / makeScatterPlotWithFactors). We
+    identify by the chart title which both helpers set to a string
+    starting with 'PCA Scatter Plot'."""
+    chart = self._currentPlotChartNode()
+    if chart is None:
+      return False
+    try:
+      title = chart.GetTitle() or ""
+    except Exception:
+      return False
+    return title.startswith("PCA Scatter Plot")
 
   def _autoCreateDefaultPCAPlot(self):
     """Convenience: when the user toggles 'Drive 3D from PCA scatter plot'
