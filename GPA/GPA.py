@@ -556,6 +556,12 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         self._detachPlotMouseFilter()
     except Exception as e:
       print(f"[GPA teardown] plot mouse filter: {e}")
+    # Remove the persistent status-bar PCA cursor label so reloads do not
+    # leave stale widgets in Slicer's main status bar.
+    try:
+      self._removeStatusBarPCALabel()
+    except Exception as e:
+      print(f"[GPA teardown] status-bar label: {e}")
     # Reset mouseTracking on any plot view child we may have touched, even
     # if the filter list got out of sync (e.g. from a previous reload).
     try:
@@ -720,6 +726,23 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.setupPCTransform()
     self.updatePCScaling()
 
+    # Wrap PC-selection comboboxes with QSpinBox + variance QLabel.
+    # The original combobox is hidden but kept alive so all existing
+    # handlers (currentIndexChanged, currentIndex reads) keep working;
+    # the spinbox writes through to combobox.setCurrentIndex().
+    self._pcVariancePercent = []      # list[float], populated in updateList()
+    self._pcSpinWidgets = {}          # combobox name -> {"spin": QSpinBox, "label": QLabel}
+    self._wrapComboWithSpinBox(self.ui.pcComboBox,    allow_none=True,
+                               prefix_text="Slider warps:")   # Interactive 3D
+    self._wrapComboWithSpinBox(self.ui.XcomboBox,     allow_none=False)  # Results X
+    self._wrapComboWithSpinBox(self.ui.YcomboBox,     allow_none=False)  # Results Y
+    self._wrapComboWithSpinBox(self.ui.vectorOne,     allow_none=True)   # Lollipop 1
+    self._wrapComboWithSpinBox(self.ui.vectorTwo,     allow_none=True)   # Lollipop 2
+    self._wrapComboWithSpinBox(self.ui.vectorThree,   allow_none=True)   # Lollipop 3
+
+    # Inject Drive-3D X/Y PC selector row right under the status label.
+    self._injectDrivePlotPCRow()
+
     # Core state defaults (unchanged)
     self.LM = None
     self.sampleSizeScaleFactor = 1.0
@@ -850,6 +873,359 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     button=qt.QPushButton(buttonText)
     return textInLine, lineLabel, button
 
+  # ------------------------------------------------------------------
+  # PC selection: spinbox + variance-label wrapper around each combobox
+  # ------------------------------------------------------------------
+  def _wrapComboWithSpinBox(self, combo, allow_none: bool, prefix_text: str = ""):
+    """Hide `combo` and inject a QSpinBox + variance QLabel in its place.
+    The spinbox writes through to combo.setCurrentIndex() so all existing
+    handlers and reads continue to work unchanged.
+
+    allow_none=True : spinbox 0..N where 0 maps to combo index 0 ('None')
+                      and label shows '(none)' at 0.
+    allow_none=False: spinbox 1..N where 1 maps to combo index 0
+                      (i.e. PC1 is the first item in the combo).
+    """
+    parent = combo.parentWidget() if hasattr(combo, "parentWidget") else combo.parent()
+    layout = parent.layout() if parent is not None else None
+    if layout is None:
+      return  # Cannot wrap — leave combo visible as-is.
+
+    # The combobox may live inside a nested sub-layout (e.g. a QHBoxLayout
+    # placed directly into a grid cell with no intermediate QWidget). Find
+    # the actual layout that contains the combobox.
+    def _find_owning_layout(root_layout, target):
+      try:
+        if root_layout.indexOf(target) >= 0:
+          return root_layout
+      except Exception:
+        pass
+      try:
+        n = root_layout.count()
+      except Exception:
+        n = 0
+      for i in range(n):
+        try:
+          item = root_layout.itemAt(i)
+          if item is None:
+            continue
+          sub = item.layout()
+          if sub is not None:
+            found = _find_owning_layout(sub, target)
+            if found is not None:
+              return found
+        except Exception:
+          continue
+      return None
+
+    owning = _find_owning_layout(layout, combo)
+    if owning is not None:
+      layout = owning
+
+    # Build the replacement: [QSpinBox][QLabel] inside a container widget.
+    container = qt.QWidget(parent)
+    h = qt.QHBoxLayout(container)
+    h.setContentsMargins(0, 0, 0, 0)
+    h.setSpacing(4)
+    spin = qt.QSpinBox(container)
+    spin.setMinimum(0 if allow_none else 1)
+    spin.setMaximum(1)  # placeholder; updated by _refreshPCSpinBoxes()
+    if allow_none:
+      spin.setSpecialValueText("None")
+    spin.setFixedWidth(70)
+    label = qt.QLabel("(no analysis)", container)
+    label.setStyleSheet("color: gray;")
+    if prefix_text:
+      prefix = qt.QLabel(prefix_text, container)
+      h.addWidget(prefix)
+    h.addWidget(spin)
+    h.addWidget(label, 1)
+
+    # Insert container into the same slot the combobox occupies.
+    # PythonQt's `isinstance(layout, qt.QGridLayout)` and `getItemPosition`
+    # are unreliable. Use itemAtPosition() iteration for grids, which works.
+    inserted = False
+
+    # Try QGridLayout via row/col iteration
+    if not inserted and hasattr(layout, "itemAtPosition") and hasattr(layout, "rowCount"):
+      try:
+        rc = int(layout.rowCount())
+        cc = int(layout.columnCount())
+        target_rc = None
+        for r in range(rc):
+          for c in range(cc):
+            it = layout.itemAtPosition(r, c)
+            if it is not None and it.widget() is combo:
+              target_rc = (r, c)
+              break
+          if target_rc:
+            break
+        if target_rc is not None:
+          r, c = target_rc
+          # Span enough columns to consume the wasted space to the right.
+          # Original combos use colspan=3 so we mirror that.
+          try:
+            layout.removeWidget(combo)
+          except Exception:
+            pass
+          combo.setParent(parent)
+          layout.addWidget(container, r, c, 1, 3)
+          inserted = True
+      except Exception:
+        pass
+
+    # Try QFormLayout
+    if not inserted and hasattr(layout, "getWidgetPosition"):
+      try:
+        row, role = layout.getWidgetPosition(combo)
+        if row >= 0:
+          layout.setWidget(row, role, container)
+          inserted = True
+      except Exception:
+        pass
+
+    # Try QBoxLayout
+    if not inserted and hasattr(layout, "insertWidget"):
+      try:
+        idx = layout.indexOf(combo)
+        if idx >= 0:
+          layout.removeWidget(combo)
+          layout.insertWidget(idx, container)
+          combo.setParent(parent)
+          inserted = True
+      except Exception:
+        pass
+
+    if not inserted:
+      try:
+        layout.addWidget(container)
+      except Exception:
+        pass
+    combo.setVisible(False)
+
+    # Wire spinbox -> combobox (mapped). When None is selected (allow_none
+    # only), set combo index 0; else set combo index = spin.value - 1.
+    offset = 0 if allow_none else 1
+    def _on_spin_changed(v, _combo=combo, _label=label, _allow=allow_none, _off=offset):
+      try:
+        target_idx = (int(v) - _off) if not _allow else (0 if int(v) == 0 else int(v))
+      except Exception:
+        return
+      try:
+        if int(_combo.currentIndex) != target_idx:
+          _combo.setCurrentIndex(target_idx)
+      except Exception:
+        try:
+          _combo.setCurrentIndex(target_idx)
+        except Exception:
+          pass
+      self._updatePCVarianceLabel(_label, int(v), _allow)
+    spin.valueChanged.connect(_on_spin_changed)
+
+    self._pcSpinWidgets[combo.objectName] = {
+      "spin": spin, "label": label, "combo": combo, "allow_none": allow_none,
+    }
+
+  def _updatePCVarianceLabel(self, label, spin_value: int, allow_none: bool):
+    pcs = getattr(self, "_pcVariancePercent", []) or []
+    if not pcs:
+      label.setText("(no analysis)")
+      label.setStyleSheet("color: gray;")
+      return
+    if allow_none and spin_value == 0:
+      label.setText("(none)")
+      label.setStyleSheet("color: gray;")
+      return
+    pc_index_1based = spin_value if allow_none else spin_value
+    if pc_index_1based < 1 or pc_index_1based > len(pcs):
+      label.setText("")
+      return
+    pct = pcs[pc_index_1based - 1]
+    label.setText(f"PC {pc_index_1based} \u2014 {pct:.2f}% var")
+    label.setStyleSheet("")
+
+  def _refreshPCSpinBoxes(self):
+    """Update spinbox max + label after a new analysis populates _pcVariancePercent."""
+    n = len(getattr(self, "_pcVariancePercent", []) or [])
+    if n <= 0:
+      return
+    for name, w in (getattr(self, "_pcSpinWidgets", {}) or {}).items():
+      spin = w["spin"]; label = w["label"]; allow = w["allow_none"]
+      spin.blockSignals(True)
+      try:
+        spin.setMaximum(n if allow else n)
+        # Ensure value is in range; preserve current value if possible.
+        v = int(spin.value)
+        if allow:
+          if v < 0: v = 0
+          if v > n: v = n
+        else:
+          if v < 1: v = 1
+          if v > n: v = n
+        spin.setValue(v)
+      finally:
+        spin.blockSignals(False)
+      self._updatePCVarianceLabel(label, int(spin.value), allow)
+    # Also update Drive-3D X/Y spinbox ranges + labels.
+    if hasattr(self, "_driveSpinX") and self._driveSpinX is not None:
+      for spin, lbl, default_v in (
+        (self._driveSpinX, self._driveLabelX, 1),
+        (self._driveSpinY, self._driveLabelY, 2),
+      ):
+        spin.blockSignals(True)
+        try:
+          spin.setMaximum(n)
+          v = int(spin.value)
+          if v < 1: v = default_v
+          if v > n: v = n
+          spin.setValue(v)
+        finally:
+          spin.blockSignals(False)
+        pcs = getattr(self, "_pcVariancePercent", []) or []
+        if pcs and 1 <= int(spin.value) <= len(pcs):
+          lbl.setText(f"PC {int(spin.value)} \u2014 {pcs[int(spin.value)-1]:.2f}% var")
+          lbl.setStyleSheet("")
+
+  # ------------------------------------------------------------------
+  # Drive 3D: X/Y PC selector row injected on Interactive 3D tab
+  # ------------------------------------------------------------------
+  def _injectDrivePlotPCRow(self):
+    """Add 'X: [..] PC.. var   Y: [..] PC.. var' under the Status label so
+    the user can change Drive-3D PC pair without leaving the tab."""
+    status = getattr(self.ui, "drivePCAPlotStatus", None)
+    if status is None:
+      return
+    parent = status.parentWidget()
+    if parent is None:
+      return
+    layout = parent.layout()
+    if layout is None or not hasattr(layout, "itemAtPosition"):
+      return
+    # Find row of status label.
+    target_row = None
+    try:
+      rc = int(layout.rowCount()); cc = int(layout.columnCount())
+      for r in range(rc):
+        for c in range(cc):
+          it = layout.itemAtPosition(r, c)
+          if it is not None and it.widget() is status:
+            target_row = r; break
+        if target_row is not None: break
+    except Exception:
+      return
+    if target_row is None:
+      return
+
+    # Build container row.
+    container = qt.QWidget(parent)
+    h = qt.QHBoxLayout(container)
+    h.setContentsMargins(0, 4, 0, 0)
+    h.setSpacing(6)
+
+    self._driveSpinX = qt.QSpinBox(container)
+    self._driveSpinX.setMinimum(1); self._driveSpinX.setMaximum(1); self._driveSpinX.setFixedWidth(70)
+    self._driveLabelX = qt.QLabel("(no analysis)", container)
+    self._driveLabelX.setStyleSheet("color: gray;")
+    h.addWidget(qt.QLabel("X:", container))
+    h.addWidget(self._driveSpinX)
+    h.addWidget(self._driveLabelX, 1)
+
+    self._driveSpinY = qt.QSpinBox(container)
+    self._driveSpinY.setMinimum(1); self._driveSpinY.setMaximum(1); self._driveSpinY.setFixedWidth(70)
+    self._driveLabelY = qt.QLabel("(no analysis)", container)
+    self._driveLabelY.setStyleSheet("color: gray;")
+    h.addWidget(qt.QLabel("Y:", container))
+    h.addWidget(self._driveSpinY)
+    h.addWidget(self._driveLabelY, 1)
+
+    # Insert below the status label.
+    new_row = target_row + 1
+    # Push subsequent rows down by re-adding (Qt grids can have empty rows).
+    layout.addWidget(container, new_row, 0, 1, 3)
+
+    # Wire: spinbox change -> update Results combo (single source of truth) +
+    # reset to mean shape + (only if toggle is ON) replot + rebind.
+    self._driveSpinX.valueChanged.connect(lambda v: self._onDrivePCChanged("X", int(v)))
+    self._driveSpinY.valueChanged.connect(lambda v: self._onDrivePCChanged("Y", int(v)))
+
+    # Mirror the other direction: when the user changes XcomboBox/YcomboBox
+    # on the Results tab, sync these spinboxes back.
+    try:
+      self.ui.XcomboBox.currentIndexChanged.connect(lambda _i: self._syncDriveSpinsFromCombos())
+      self.ui.YcomboBox.currentIndexChanged.connect(lambda _i: self._syncDriveSpinsFromCombos())
+    except Exception:
+      pass
+
+  def _onDrivePCChanged(self, axis: str, value: int):
+    """Spinbox changed: write through to Results combobox, reset to mean,
+    and (if Drive-3D is currently ON) trigger a replot + rebind."""
+    combo = self.ui.XcomboBox if axis == "X" else self.ui.YcomboBox
+    target_idx = max(0, value - 1)
+    try:
+      if int(combo.currentIndex) != target_idx:
+        combo.setCurrentIndex(target_idx)  # also updates the Results spinbox via its own wiring
+    except Exception:
+      try: combo.setCurrentIndex(target_idx)
+      except Exception: pass
+    # Update variance label for this drive spinbox.
+    pcs = getattr(self, "_pcVariancePercent", []) or []
+    if pcs and 1 <= value <= len(pcs):
+      lbl = self._driveLabelX if axis == "X" else self._driveLabelY
+      lbl.setText(f"PC {value} \u2014 {pcs[value-1]:.2f}% var")
+      lbl.setStyleSheet("")
+    # Always reset visualization to mean shape so user starts clean.
+    self._resetDrivePlotToMean()
+    # Only rebuild the chart + rebind if the toggle is ON. Otherwise the
+    # change is just a future-intent setting.
+    if getattr(self, "_plotDriveActive", False):
+      try:
+        self.plot()  # rebuilds chart from XcomboBox/YcomboBox + factor
+      except Exception:
+        pass
+      try:
+        self._refreshPlotDriving(forceLog=True)
+      except Exception:
+        pass
+
+  def _syncDriveSpinsFromCombos(self):
+    """Mirror XcomboBox/YcomboBox -> drive spinboxes (no recursion: spinbox
+    setValue is signal-blocked)."""
+    if not hasattr(self, "_driveSpinX") or self._driveSpinX is None:
+      return
+    try:
+      x_val = int(self.ui.XcomboBox.currentIndex) + 1
+      y_val = int(self.ui.YcomboBox.currentIndex) + 1
+    except Exception:
+      return
+    for spin, val, lbl in (
+      (self._driveSpinX, x_val, self._driveLabelX),
+      (self._driveSpinY, y_val, self._driveLabelY),
+    ):
+      if val < spin.minimum or val > spin.maximum:
+        continue
+      if int(spin.value) == val:
+        continue
+      spin.blockSignals(True)
+      try: spin.setValue(val)
+      finally: spin.blockSignals(False)
+      pcs = getattr(self, "_pcVariancePercent", []) or []
+      if pcs and 1 <= val <= len(pcs):
+        lbl.setText(f"PC {val} \u2014 {pcs[val-1]:.2f}% var")
+        lbl.setStyleSheet("")
+
+  def _resetDrivePlotToMean(self):
+    """Reset Drive-3D visualization to the mean shape (zero displacement)."""
+    # Engine path / fused-array path:
+    if getattr(self, "_plotDriveFusedArray", None) is not None:
+      try:
+        self._applyPlotScores(0.0, 0.0)
+      except Exception:
+        pass
+    try:
+      self._updatePCACursor(0.0, 0.0)
+    except Exception:
+      pass
+
   def updateList(self):
     i,j,k=self.LM.lm.shape
     self.PCList=[]
@@ -866,8 +1242,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.ui.vectorOne.addItem('None')
     self.ui.vectorTwo.addItem('None')
     self.ui.vectorThree.addItem('None')
-    if len(percentVar)<self.pcNumber:
-      self.pcNumber=len(percentVar)
+    # Populate with ALL PCs (combos are hidden; spinboxes drive selection).
+    self.pcNumber = int(len(percentVar))
+    self._pcVariancePercent = [float(v) * 100.0 for v in percentVar]
     for x in range(self.pcNumber):
       tmp=f"{percentVar[x]*100:.1f}"
       string='PC '+str(x+1)+': '+str(tmp)+"%" +" var"
@@ -877,6 +1254,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.ui.vectorOne.addItem(string)
       self.ui.vectorTwo.addItem(string)
       self.ui.vectorThree.addItem(string)
+    # Refresh spinbox ranges and variance labels.
+    self._refreshPCSpinBoxes()
 
   def factorStringChanged(self):
     if self.ui.factorNames.text != "" and getattr(self, 'inputFilePaths', None) and self.inputFilePaths is not []:
@@ -1864,6 +2243,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         self.ui.drivePCAPlotStatus.setText("Status: off")
       except Exception:
         pass
+      self._setStatusBarPCACursor(None)
       self._detachPlotMouseFilter()
       return
     # Attach + ensure cursor + sanity check.
@@ -2331,6 +2711,71 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       tbl.SetValue(1, 0, float(scoreX))
       tbl.SetValue(1, 1, float(scoreY))
     self._plotDriveCursorTable.Modified()
+    # Mirror to Slicer's main status bar (bottom-right) so the user can read
+    # the cursor coordinate without squinting at the plot symbol.
+    if getattr(self, "_plotDriveActive", False):
+      self._setStatusBarPCACursor((float(scoreX), float(scoreY)))
+
+  def _ensureStatusBarPCALabel(self):
+    """Create (once) and return the persistent QLabel docked bottom-right of
+    Slicer's main status bar, or None if no main window/status bar exists."""
+    lbl = getattr(self, "_plotDriveStatusBarLabel", None)
+    if lbl is not None:
+      return lbl
+    try:
+      mw = slicer.util.mainWindow()
+      sb = mw.statusBar() if mw is not None else None
+    except Exception:
+      sb = None
+    if sb is None:
+      return None
+    lbl = qt.QLabel("")
+    lbl.setObjectName("GPA_PCA_Cursor_StatusLabel")
+    lbl.setStyleSheet("QLabel { padding: 0 8px; font-family: monospace; }")
+    try:
+      sb.addPermanentWidget(lbl)
+    except Exception:
+      return None
+    self._plotDriveStatusBarLabel = lbl
+    return lbl
+
+  def _setStatusBarPCACursor(self, scores):
+    """scores=None hides the label; (x, y) updates the text using current
+    Drive-3D X/Y PC indices."""
+    lbl = self._ensureStatusBarPCALabel()
+    if lbl is None:
+      return
+    if scores is None:
+      lbl.setText("")
+      lbl.setVisible(False)
+      return
+    try:
+      pcX = int(self.ui.XcomboBox.currentIndex) + 1
+      pcY = int(self.ui.YcomboBox.currentIndex) + 1
+    except Exception:
+      pcX, pcY = 1, 2
+    sx, sy = scores
+    lbl.setText(f"X(PC{pcX})={sx:+.4f}  Y(PC{pcY})={sy:+.4f}")
+    lbl.setVisible(True)
+
+  def _removeStatusBarPCALabel(self):
+    """Remove the status-bar label from Slicer's main window. Called from
+    _gpaTeardown so reloads do not leave stale labels behind."""
+    lbl = getattr(self, "_plotDriveStatusBarLabel", None)
+    if lbl is None:
+      return
+    try:
+      mw = slicer.util.mainWindow()
+      sb = mw.statusBar() if mw is not None else None
+      if sb is not None:
+        sb.removeWidget(lbl)
+    except Exception:
+      pass
+    try:
+      lbl.deleteLater()
+    except Exception:
+      pass
+    self._plotDriveStatusBarLabel = None
 
   # ---- Mouse → data coordinate conversion + dispatch ----
   def _handleVTKMouseEvent(self, interactor):
@@ -2698,6 +3143,23 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.pcController.populateComboBox(self.PCList)
     self.applyEnabled = True
     self.ui.startRecordButton.enabled = True
+
+    # Bind the existing PC grid transform (if any) to the newly created
+    # cloneModelNode so the slider warps the model in addition to landmarks.
+    # populateComboBox above resets the combobox to 'None', which would make
+    # setupPCTransform() return early. Instead, attach the model directly to
+    # whatever gridTransformNode is currently active. If no grid exists yet,
+    # the user's first PC selection runs setupPCTransform() which already
+    # handles the model attach.
+    grid_node = getattr(self, "gridTransformNode", None)
+    if (grid_node is not None
+        and slicer.mrmlScene.IsNodePresent(grid_node)
+        and getattr(self, "cloneModelNode", None) is not None
+        and bool(self.ui.modelVisualizationType.isChecked())):
+      try:
+        self.cloneModelNode.SetAndObserveTransformNodeID(grid_node.GetID())
+      except Exception:
+        pass
 
   def onStartRecording(self):
     #set up sequences for template model and PC TPS transform
