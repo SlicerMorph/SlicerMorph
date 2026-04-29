@@ -1957,7 +1957,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.cloneModelNode = shNode.GetItemDataNode(clonedItemID)
       self.cloneModelNode.SetName('PC Warped Model')
       self.cloneModelDisplayNode =  self.cloneModelNode.GetDisplayNode()
-      self.cloneModelDisplayNode.SetColor([0,0,1])
+      # Light cyan (#7ff4fd) reads better than pure blue against the dark 3D background
+      self.cloneModelDisplayNode.SetColor(0x7f/255.0, 0xf4/255.0, 0xfd/255.0)
       GPANodeCollection.AddItem(self.cloneModelNode)
       visibility = self.meanLandmarkNode.GetDisplayVisibility()
       self.cloneLandmarkNode.SetDisplayVisibility(visibility)
@@ -2598,11 +2599,14 @@ class GPATest(ScriptedLoadableModuleTest):
   Self-test for the GPA module.
 
   Click "Reload and Test" in the Reload & Test section of the GPA module to:
-  1) Download a known-good landmark dataset (494 specimens, 55 landmarks) from
+  1) Download a known-good landmark dataset (494 specimens, 55 landmarks) and
+     a reference 3D model (the specimen closest to the mean) from
      SlicerMorph/SampleData into Slicer's cache directory if not present.
-  2) Run the full Load workflow (GPA + PCA + scene setup) on it.
+  2) Run the full Load workflow (GPA + PCA + scene setup) on the landmarks.
   3) Sanity-check the results (file count, landmark shape, eigenvalue ordering).
-  4) Print per-step timings to the Python console and write a timing JSON into
+  4) Print per-step timings plus the absolute paths of the extracted landmark
+     folder and reference model so they can be plugged into the GPA UI for
+     interactive 3D visualization. A timing JSON is also written into
      Slicer's cache under "GPA_selftest/results/".
 
   Override paths via env vars (optional):
@@ -2612,6 +2616,8 @@ class GPATest(ScriptedLoadableModuleTest):
 
   DATASET_URL = "https://github.com/SlicerMorph/SampleData/raw/master/converted_LMs.zip"
   DATASET_DIRNAME = "converted_LMs"
+  MODEL_URL = "https://github.com/SlicerMorph/SampleData/raw/master/809-3.obj.zip"
+  MODEL_FILENAME = "809-3.obj"
   EXPECTED_NUM_FILES = 494
   EXPECTED_NUM_LANDMARKS = 55
 
@@ -2648,6 +2654,32 @@ class GPATest(ScriptedLoadableModuleTest):
       raise RuntimeError(f"Extracted dataset folder not found under {os.path.dirname(target_dir)}")
     return target_dir
 
+  def _ensureModel(self):
+    """Download + unzip the reference 3D model into Slicer's cache.
+    Returns the absolute path to the .obj file (or None if it cannot be located).
+    """
+    import os, zipfile
+    cache_root = slicer.app.cachePath
+    model_dir = os.path.join(cache_root, "GPA_selftest")
+    model_path = os.path.join(model_dir, self.MODEL_FILENAME)
+    if os.path.isfile(model_path):
+      return model_path
+    os.makedirs(model_dir, exist_ok=True)
+    zip_path = os.path.join(model_dir, os.path.basename(self.MODEL_URL))
+    if not os.path.exists(zip_path):
+      print(f"[GPA selftest] downloading {self.MODEL_URL}", flush=True)
+      slicer.util.downloadFile(self.MODEL_URL, zip_path)
+    print(f"[GPA selftest] extracting -> {model_dir}", flush=True)
+    with zipfile.ZipFile(zip_path) as zf:
+      zf.extractall(model_dir)
+    if os.path.isfile(model_path):
+      return model_path
+    # Fallback: pick the first .obj that appeared.
+    for name in os.listdir(model_dir):
+      if name.lower().endswith(".obj"):
+        return os.path.join(model_dir, name)
+    return None
+
   def test_GPAWorkflow(self):
     import os, glob, time, json
     from datetime import datetime
@@ -2658,6 +2690,7 @@ class GPATest(ScriptedLoadableModuleTest):
     lm_dir = os.environ.get("GPA_SELFTEST_LM_DIR")
     if not lm_dir:
       lm_dir = self._ensureDataset()
+    model_path = self._ensureModel()
     out_dir = os.environ.get("GPA_SELFTEST_OUT_DIR", default_out_dir)
 
     self.assertTrue(os.path.isdir(lm_dir), f"Landmark dir not found: {lm_dir}")
@@ -2762,6 +2795,7 @@ class GPATest(ScriptedLoadableModuleTest):
     out_json = os.path.join(out_dir, f"selftest_{stamp}.json")
     payload = {
       "lm_dir": lm_dir,
+      "model_path": model_path,
       "n_files": len(files),
       "n_landmarks": int(widget.LM.lmOrig.shape[0]),
       "extension": extension,
@@ -2772,5 +2806,28 @@ class GPATest(ScriptedLoadableModuleTest):
     with open(out_json, "w") as f:
       json.dump(payload, f, indent=2)
     print(f"[GPA selftest] wrote {out_json}", flush=True)
+
+    # ---- User-visible summary: paths to plug into the GPA module UI ----
+    summary_lines = [
+      "=" * 72,
+      "[GPA selftest] PASSED -- to try interactive 3D visualization, set:",
+      f"[GPA selftest]   Landmark folder : {lm_dir}",
+      f"[GPA selftest]   Output folder   : {out_dir}",
+    ]
+    if model_path and os.path.isfile(model_path):
+      summary_lines.append(f"[GPA selftest]   Reference model : {model_path}")
+      summary_lines.append(f"[GPA selftest]   Mean specimen LM: {os.path.join(lm_dir, '809-3.fcsv')}")
+    else:
+      summary_lines.append("[GPA selftest]   Reference model : <download failed>")
+    summary_lines.append("=" * 72)
+    summary = "\n".join(summary_lines)
+    print("\n" + summary + "\n", flush=True)
+    # Also surface in the GPA module's own log textbox so the user sees it
+    try:
+      widget.ui.GPALogTextbox.insertPlainText("\n" + summary + "\n")
+      widget.ui.GPALogTextbox.ensureCursorVisible()
+    except Exception:
+      pass
+
     self.delayDisplay(f"GPA self-test PASSED: {total:.2f}s ({len(files)} files)")
 
