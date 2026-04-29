@@ -517,6 +517,18 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       ScriptedLoadableModuleWidget.__init__(self, parent)
       self.ui = None
 
+  def onReload(self):
+    """Reload Support submodules before reloading the main module so that
+    edits in Support/*.py take effect on 'Reload'."""
+    import importlib, sys
+    for name in list(sys.modules):
+      if name == "Support" or name.startswith("Support."):
+        try:
+          importlib.reload(sys.modules[name])
+        except Exception as e:
+          print(f"[GPA] Could not reload {name}: {e}")
+    ScriptedLoadableModuleWidget.onReload(self)
+
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
     # Initialize zoom factor for widget

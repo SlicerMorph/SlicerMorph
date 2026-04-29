@@ -1001,10 +1001,11 @@ class GeomorphLR:
         if cov_df.shape[1] < 2:
           raise ValueError("Covariate CSV needs ID col + covariate columns.")
         cov_df = cov_df.set_index(cov_df.columns[0])
-        missing = [f for f in files if f not in cov_df.index]
+        ids = [os.path.splitext(os.path.basename(f))[0] for f in files]
+        missing = [i for i in ids if i not in cov_df.index]
         if missing:
           raise ValueError(f"IDs missing in covariate table (first 10): {missing[:10]}")
-        cov_df = cov_df.loc[files]
+        cov_df = cov_df.loc[ids]
       except Exception as e:
         _set_label(self._lr_fitStatus, "Covariate load error")
         self._log(f"[LR] Failed to read/align covariates: {e}")
@@ -1103,15 +1104,50 @@ class GeomorphLR:
       self._log(f"[LR] pull coef: {repr(e)}");
       return
 
+    # Pull factor levels (so we can label categorical sliders by group name).
+    # R returns a named list; ask for names + JSON-ish flat encoding to keep pyRserve happy.
+    factor_levels = {}
+    try:
+      conn.eval('factor_levels <- lapply(Filter(is.factor, as.list(gdf)), levels)')
+      fl_names = self._py_to_str_list(conn.eval('as.character(names(factor_levels))'))
+      for nm in fl_names:
+        nm = str(nm)
+        if not nm:
+          continue
+        try:
+          lv = conn.eval(f'as.character(factor_levels[["{nm}"]])')
+          factor_levels[nm] = self._py_to_str_list(lv)
+        except Exception:
+          pass
+      self._log(f"[LR] factor levels: {factor_levels}")
+    except Exception as e:
+      self._log(f"[LR] could not pull factor levels: {e}")
+
     # ---- NEW: cache covariate ranges for numeric sliders ----
     cov_stats = {}
-    try:
-      cov_stats["Size"] = {
+    def _add_numeric_stats(name, vals):
+      vals = _np.asarray(vals, dtype=float)
+      finite = vals[_np.isfinite(vals)]
+      if finite.size == 0:
+        return
+      entry = {
         "is_numeric": True,
-        "min": float(_np.nanmin(size_vec)),
-        "max": float(_np.nanmax(size_vec)),
-        "mean": float(_np.nanmean(size_vec)),
+        "min": float(finite.min()),
+        "max": float(finite.max()),
+        "mean": float(finite.mean()),
       }
+      # Geometric-mean center for log(x): only defined when x > 0 everywhere.
+      pos = finite[finite > 0]
+      if pos.size == finite.size and pos.size > 0:
+        entry["log_mean"] = float(_np.mean(_np.log(pos)))
+      # Quadratic-mean center for sqrt(x): need x >= 0 everywhere.
+      nonneg = finite[finite >= 0]
+      if nonneg.size == finite.size:
+        entry["sqrt_mean"] = float(_np.mean(_np.sqrt(nonneg)))
+      cov_stats[str(name)] = entry
+
+    try:
+      _add_numeric_stats("Size", size_vec)
       if cov_df is not None:
         import pandas as pd
         for col in cov_df.columns:
@@ -1126,13 +1162,7 @@ class GeomorphLR:
             except Exception:
               is_num = False
           if is_num:
-            vals = _np.asarray(series, dtype=float)
-            cov_stats[str(col)] = {
-              "is_numeric": True,
-              "min": float(_np.nanmin(vals)),
-              "max": float(_np.nanmax(vals)),
-              "mean": float(_np.nanmean(vals)),
-            }
+            _add_numeric_stats(col, _np.asarray(series, dtype=float))
     except Exception:
       pass
     # ----------------------------------------------
@@ -1147,7 +1177,7 @@ class GeomorphLR:
         summary_text = f"Could not read summary from R: {repr(e)}"
       self._lr_setSummaryText(summary_text)
 
-    # cache for coefficient viz (+ covariate stats)
+    # cache for coefficient viz (+ covariate stats + factor levels)
     self._lr_last_fit = {
       "formula": fml,
       "coef_mat": coef_mat,
@@ -1156,7 +1186,8 @@ class GeomorphLR:
       "p_landmarks": p,
       "covariate_path": cov_path,
       "summary_text": summary_text,
-      "covariate_stats": cov_stats,  # <--- NEW
+      "covariate_stats": cov_stats,
+      "factor_levels": factor_levels,
     }
 
     self._log(f"[LR] geomorph::procD.lm OK: coef_mat {coef_mat.shape}, terms={len(coef_names)}")
@@ -1271,18 +1302,42 @@ class GeomorphLR:
     self._coef_vectors = [_np.asarray(coef_mat[i, :]).reshape(-1).copy() for i in range(coef_mat.shape[0])]
     self._coef_names = [str(n) for n in coef_names]
 
-    # default to first non-intercept
-    first_term = 0
-    for i, nm in enumerate(self._coef_names):
-      if nm.strip() != "(Intercept)":
-        first_term = i
-        break
+    # Cache the intercept's predicted shape (p,3) as the WARP BASE.
+    # All coefficient contributions are predicted shape DEVIATIONS from this point;
+    # the intercept is the model's prediction at all-zero / reference predictors.
+    self._coef_intercept_shape = None
+    try:
+      p = int(self.w.rawMeanLandmarks.shape[0]) if getattr(self.w, "rawMeanLandmarks", None) is not None else 0
+      for i, nm in enumerate(self._coef_names):
+        if nm.strip() == "(Intercept)" and p > 0 and self._coef_vectors[i].size == 3 * p:
+          row = self._coef_vectors[i]
+          base = _np.zeros((p, 3), dtype=float)
+          base[:, 0] = row[0:p]
+          base[:, 1] = row[p:2 * p]
+          base[:, 2] = row[2 * p:3 * p]
+          self._coef_intercept_shape = base
+          break
+    except Exception as e:
+      self._log(f"[LR/COEF] intercept-shape capture failed: {e}")
+
+    # Build the visible (combobox) index -> underlying coef index mapping.
+    # The intercept is hidden from the slider UI: it is not a 'direction' you can
+    # slide along, it is the absolute base shape.
+    self._coef_visible_indices = [
+      i for i, nm in enumerate(self._coef_names) if nm.strip() != "(Intercept)"
+    ]
+
+    # default to first visible coef (first non-intercept term)
+    first_term = self._coef_visible_indices[0] if self._coef_visible_indices else 0
     self._coef_current = int(first_term)
 
     if self.coefController:
-      self.coefController.populateComboBox(self._coef_names)
+      visible_names = [self._coef_names[i] for i in self._coef_visible_indices]
+      self.coefController.populateComboBox(visible_names)
       try:
-        self.ui.coefComboBox.setCurrentIndex(self._coef_current)
+        # combobox index 0 corresponds to the first visible coef (which is
+        # self._coef_visible_indices[0] in the underlying arrays)
+        self.ui.coefComboBox.setCurrentIndex(0)
       except Exception:
         pass
 
@@ -1315,11 +1370,12 @@ class GeomorphLR:
   def _coef_onSelectCoefficient(self):
     if not self._coef_enabled: return
     try:
-      idx = int(self.coefController.comboBoxIndex())
+      vis_idx = int(self.coefController.comboBoxIndex())
     except Exception:
-      idx = -1
-    if idx < 0 or idx >= len(self._coef_vectors): return
-    self._coef_current = idx
+      vis_idx = -1
+    visible = getattr(self, "_coef_visible_indices", []) or []
+    if vis_idx < 0 or vis_idx >= len(visible): return
+    self._coef_current = int(visible[vis_idx])
 
     # Set slider range & neutral for this coefficient
     try:
@@ -1580,8 +1636,51 @@ class GeomorphLR:
       value = float(scale)
 
     if dom.get("mode") == "real":
-      # Real units: slider shows the actual covariate value; neutral at mean
-      delta = value - float(dom.get("ref", 0.0))
+      # Real units: slider shows the actual covariate value. The contribution to
+      # shape is value * beta. The intercept (warp base) already represents the
+      # predicted shape at value=0, so no subtraction is needed.
+      delta = value
+    elif dom.get("mode") == "log":
+      # Slider shows raw covariate; the regressor is log(value).
+      # Center on the geometric mean so doubling/halving are mirror-image shifts.
+      import math as _math
+      ref = float(dom.get("ref", 1.0))
+      v = float(value)
+      if v <= 0.0 or ref <= 0.0:
+        delta = 0.0
+      else:
+        delta = _math.log(v) - _math.log(ref)
+    elif dom.get("mode") == "sqrt":
+      import math as _math
+      ref = float(dom.get("ref", 0.0))
+      v = float(value)
+      if v < 0.0 or ref < 0.0:
+        delta = 0.0
+      else:
+        delta = _math.sqrt(v) - _math.sqrt(ref)
+    elif dom.get("mode") == "cat":
+      # Categorical: snap to nearest integer level index.
+      # The coef row encodes (active_level - ref_level); contribute it only when
+      # the slider lands on this coef's active_level.
+      idx = int(round(value))
+      idx = max(0, min(int(dom.get("max", 1)), idx))
+      active_index = int(dom.get("active_index", 1))
+      delta = 1.0 if (idx == active_index) else 0.0
+      # Update spinbox suffix to reflect the currently-selected level name
+      try:
+        levels = list(dom.get("levels", []))
+        if 0 <= idx < len(levels):
+          spin = getattr(self.coefController, "spinBox", None)
+          if spin is not None:
+            spin.setSuffix(f"  ({levels[idx]})")
+          # also snap the spinbox value to the integer
+          if abs(value - idx) > 1e-9:
+            try:
+              self.coefController.setValue(float(idx))
+            except Exception:
+              pass
+      except Exception:
+        pass
     else:
       # Unit domain: keep legacy behavior in [-1, 1]
       if value > 1.0: value = 1.0
@@ -1591,10 +1690,17 @@ class GeomorphLR:
     row = np.asarray(self._coef_vectors[self._coef_current]).reshape(-1)
     base_shift = self._coef_row_to_shift(row)  # includes magnification & sample-size scaling
     shift = float(delta) * base_shift
-    target = self.w.rawMeanLandmarks + shift
+    # Use intercept-predicted shape as the visualization base when available,
+    # so that at slider==reference the picture is the model's prediction at
+    # the reference predictors (Size=0, Sex=ref, ...). Falls back to the
+    # Procrustes mean if the intercept could not be captured.
+    base_shape = getattr(self, "_coef_intercept_shape", None)
+    if base_shape is None or base_shape.shape != self.w.rawMeanLandmarks.shape:
+      base_shape = self.w.rawMeanLandmarks
+    target = base_shape + shift
 
     tps = vtk.vtkThinPlateSplineTransform()
-    tps.SetSourceLandmarks(_convert_numpy_to_vtk_points(self.w.rawMeanLandmarks))
+    tps.SetSourceLandmarks(_convert_numpy_to_vtk_points(base_shape))
     tps.SetTargetLandmarks(_convert_numpy_to_vtk_points(target))
     tps.SetBasisToR()
 
@@ -1655,13 +1761,19 @@ class GeomorphLR:
   def _coef_build_domains(self):
     """
     Build per-coefficient slider domains:
-      - For numeric covariates (e.g., Size, Age): mode='real', range=[min,max], ref=mean
+      - Numeric (e.g., Size, Age): mode='real', range=[min,max], ref=mean
+      - Categorical (e.g., SexM with levels=[F,M]): mode='cat',
+          range=[0, k-1], levels=['F','M',...], ref_level, active_level, active_index
       - Otherwise: mode='unit', range=[-1,1], ref=0
-    Saves into self._coef_domains: {coef_name: {mode,min,max,ref}}
+    Saves into self._coef_domains: {coef_name: dict}
     """
     self._coef_domains = {}
     last = getattr(self, "_lr_last_fit", {}) or {}
     stats = last.get("covariate_stats", {}) or {}
+    factor_levels = last.get("factor_levels", {}) or {}
+
+    import math, re
+    _TRANSFORM_RE = re.compile(r"^\s*(log|sqrt)\s*\(\s*([A-Za-z_][\w.]*)\s*\)\s*$")
 
     def numeric_domain_for(var_name: str):
       s = stats.get(var_name)
@@ -1669,25 +1781,101 @@ class GeomorphLR:
         return {"mode": "real", "min": float(s["min"]), "max": float(s["max"]), "ref": float(s["mean"])}
       return None
 
+    def transformed_domain_for(token: str):
+      """Detect tokens like 'log(Size)' or 'sqrt(Age)'. Slider stays in raw
+      units; the apply step takes log/sqrt of the slider value, so the user
+      thinks in mm even though the regression is on log(mm)."""
+      m = _TRANSFORM_RE.match(token)
+      if not m:
+        return None
+      fn, var = m.group(1), m.group(2)
+      s = stats.get(var)
+      if not s or not s.get("is_numeric"):
+        return None
+      if fn == "log":
+        if "log_mean" not in s or s["min"] <= 0:
+          return None  # log undefined on this column
+        return {
+          "mode": "log", "var": var,
+          "min": float(s["min"]), "max": float(s["max"]),
+          "ref": float(math.exp(s["log_mean"])),  # geometric mean
+        }
+      if fn == "sqrt":
+        if "sqrt_mean" not in s or s["min"] < 0:
+          return None
+        return {
+          "mode": "sqrt", "var": var,
+          "min": float(s["min"]), "max": float(s["max"]),
+          "ref": float(s["sqrt_mean"] ** 2),  # quadratic-mean center
+        }
+      return None
+
+    def categorical_domain_for(coef_token: str):
+      # coef_token looks like "SexM", "CrossDirectionFB", "GenotypeAA" etc.
+      # Match the longest factor name that is a prefix of coef_token,
+      # such that the remaining suffix is one of that factor's levels.
+      best = None
+      for fname, levels in factor_levels.items():
+        if not fname or not levels:
+          continue
+        if coef_token.startswith(fname):
+          suffix = coef_token[len(fname):]
+          if suffix in levels:
+            if (best is None) or (len(fname) > len(best[0])):
+              best = (fname, suffix, list(levels))
+      if best is None:
+        return None
+      fname, level, levels = best
+      try:
+        ref_level = levels[0]
+        active_index = int(levels.index(level))
+      except Exception:
+        return None
+      return {
+        "mode": "cat",
+        "min": 0.0,
+        "max": float(max(1, len(levels) - 1)),
+        "ref": 0.0,
+        "factor": fname,
+        "levels": levels,
+        "ref_level": ref_level,
+        "active_level": level,
+        "active_index": active_index,
+      }
+
     for nm in (self._coef_names or []):
       nm_str = str(nm).strip()
       dom = None
 
-      # Exact match first (e.g., "Size")
-      dom = numeric_domain_for(nm_str)
+      # 1) Transformed numeric (e.g., "log(Size)", "sqrt(Age)")
+      dom = transformed_domain_for(nm_str)
 
-      # If interaction (e.g., "Size:SexFemale" or "Age:TreatmentB"), try each side
+      # 2) Plain numeric (e.g., "Size")
+      if dom is None:
+        dom = numeric_domain_for(nm_str)
+
+      # 3) Categorical (e.g., "SexM")
+      if dom is None:
+        dom = categorical_domain_for(nm_str)
+
+      # 4) Interaction term: prefer numeric/transformed side; otherwise pick first categorical side
       if dom is None and ":" in nm_str:
         parts = [p.strip() for p in nm_str.split(":") if p.strip()]
         for p in parts:
-          cand = numeric_domain_for(p)
+          cand = transformed_domain_for(p) or numeric_domain_for(p)
           if cand is not None:
             dom = cand
-            # annotate which side is numeric if useful later
             dom["interaction_numeric"] = p
             break
+        if dom is None:
+          for p in parts:
+            cand = categorical_domain_for(p)
+            if cand is not None:
+              dom = cand
+              dom["interaction_categorical"] = p
+              break
 
-      # Default unit domain
+      # 4) Default unit domain
       if dom is None:
         dom = {"mode": "unit", "min": -1.0, "max": 1.0, "ref": 0.0}
 
@@ -1709,17 +1897,44 @@ class GeomorphLR:
   def _coef_set_slider_domain_for_current(self):
     """
     Apply domain to the slider/spinbox:
-      - Numeric: range=[min,max], set value=mean (neutral)
-      - Unit:    range=[-1,1],   set value=0.0  (neutral)
+      - Numeric:     range=[min,max], set value=mean (neutral), free movement
+      - Categorical: range=[0,k-1],   set value=0 (reference level), integer snap,
+                     spinbox suffix shows current level name (e.g. " (F)")
+      - Unit:        range=[-1,1],    set value=0.0 (neutral)
     """
     if not self.coefController:
       return
     dom = self._coef_current_domain()
     self.coefController.setRange(float(dom["min"]), float(dom["max"]))
-    neutral = float(dom.get("ref", 0.0)) if dom.get("mode") == "real" else 0.0
+
+    mode = dom.get("mode")
+    # configure spinbox precision/step + suffix per mode
+    spin = getattr(self.coefController, "spinBox", None)
+    if spin is not None:
+      try:
+        if mode == "cat":
+          spin.setDecimals(0)
+          spin.setSingleStep(1.0)
+          spin.setSuffix(f"  ({dom['levels'][0]})")
+        elif mode in ("log", "sqrt"):
+          spin.setDecimals(3)
+          spin.setSingleStep(0.01)
+          spin.setSuffix(f"  ({mode})")
+        else:
+          spin.setDecimals(3)
+          spin.setSingleStep(0.01)
+          spin.setSuffix("")
+      except Exception:
+        pass
+
+    if mode in ("real", "log", "sqrt"):
+      neutral = float(dom.get("ref", 0.0))
+    else:
+      # cat and unit both start at 0 (reference / neutral)
+      neutral = 0.0
     self.coefController.setValue(neutral)
 
-    if dom.get("mode") == "real":
+    if mode in ("real", "log", "sqrt"):
       try:
         self.ui.coefMagnificationSpin.setValue(1.0)
       except Exception:
@@ -1743,4 +1958,5 @@ class GeomorphLR:
       except Exception:
         return [str(obj)]
     # scalar (incl. Python str) -> wrap
+    return [str(obj)]
     return [str(obj)]

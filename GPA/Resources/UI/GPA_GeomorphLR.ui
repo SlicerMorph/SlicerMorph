@@ -333,15 +333,6 @@
               </widget>
             </item>
 
-            <item row="3" column="0" colspan="3">
-              <widget class="QLabel" name="coefHelpLabel">
-                <property name="text">
-                  <string>Warp along regression coefficients (Size and numeric interactions). Categorical contrasts have been removed from this UI.</string>
-                </property>
-                <property name="wordWrap"><bool>true</bool></property>
-              </widget>
-            </item>
-
           </layout>
         </widget>
       </item>
