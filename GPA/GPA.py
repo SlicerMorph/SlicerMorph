@@ -409,7 +409,6 @@ class LMData:
     self.vec=np.real(self.vec)
     # scale eigenvector
     pcComponent = pcNumber - 1
-    print("scaling factor: ", pcRange)
     shift[:,0]=shift[:,0]+float(pcRange)*self.vec[0:i,pcComponent]*SampleScaleFactor/3
     shift[:,1]=shift[:,1]+float(pcRange)*self.vec[i:2*i,pcComponent]*SampleScaleFactor/3
     shift[:,2]=shift[:,2]+float(pcRange)*self.vec[2*i:3*i,pcComponent]*SampleScaleFactor/3
@@ -1935,9 +1934,21 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     if abs(bx_p2[0] - bx_p1[0]) < 1e-6 or abs(ly_p2[1] - ly_p1[1]) < 1e-6:
       return
     # Qt y is top-down, VTK chart axis points are bottom-up.
-    h = float(widget.height)
-    px = float(event.x())
-    py = h - float(event.y())
+    # On HiDPI displays (Retina) Qt reports widget coordinates in logical
+    # pixels but VTK's chart scene works in physical (render-window) pixels —
+    # without scaling, the cursor lands at half the offset on macOS.
+    try:
+      dpr = float(widget.devicePixelRatioF())
+    except Exception:
+      try:
+        dpr = float(widget.devicePixelRatio())
+      except Exception:
+        dpr = 1.0
+    if dpr <= 0:
+      dpr = 1.0
+    h = float(widget.height) * dpr
+    px = float(event.x()) * dpr
+    py = h - float(event.y()) * dpr
     fx = (px - bx_p1[0]) / (bx_p2[0] - bx_p1[0])
     fy = (py - ly_p1[1]) / (ly_p2[1] - ly_p1[1])
     fx = max(0.0, min(1.0, fx))
@@ -2133,9 +2144,15 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       colX = vtk.vtkFloatArray(); colX.SetName("X")
       colY = vtk.vtkFloatArray(); colY.SetName("Y")
       tbl.AddColumn(colX); tbl.AddColumn(colY)
-      tbl.SetNumberOfRows(1)
+      # VTK's chart scene logs 'Attempted to paint a line with <2 points'
+      # for any series that has fewer than 2 rows, even when LineStyleNone is
+      # set. Stamp two identical rows so VTK draws a zero-length line and
+      # stays quiet; both rows render as the same crosshair marker.
+      tbl.SetNumberOfRows(2)
       tbl.SetValue(0, 0, 0.0)
       tbl.SetValue(0, 1, 0.0)
+      tbl.SetValue(1, 0, 0.0)
+      tbl.SetValue(1, 1, 0.0)
       self._plotDriveCursorTable = tableNode
     if self._plotDriveCursorSeries is None:
       seriesNode = slicer.mrmlScene.GetFirstNodeByName('PCA Cursor')
@@ -2163,6 +2180,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     tbl = self._plotDriveCursorTable.GetTable()
     tbl.SetValue(0, 0, float(scoreX))
     tbl.SetValue(0, 1, float(scoreY))
+    # Mirror to the second row so the renderer has ≥2 points and stays quiet.
+    if tbl.GetNumberOfRows() >= 2:
+      tbl.SetValue(1, 0, float(scoreX))
+      tbl.SetValue(1, 1, float(scoreY))
     self._plotDriveCursorTable.Modified()
 
   # ---- Mouse → data coordinate conversion + dispatch ----
@@ -2961,7 +2982,10 @@ class GPALogic(ScriptedLoadableModuleLogic):
     plotSeriesNode1.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeScatter)
     plotSeriesNode1.SetLineStyle(slicer.vtkMRMLPlotSeriesNode.LineStyleNone)
     plotSeriesNode1.SetMarkerStyle(slicer.vtkMRMLPlotSeriesNode.MarkerStyleSquare)
-    plotSeriesNode1.SetUniqueColor()
+    # Predictable, distinct color (deep blue) instead of SetUniqueColor()'s
+    # randomly-picked palette entry — picks a color that contrasts with the
+    # cursor crosshair (which is black).
+    plotSeriesNode1.SetColor(0.12, 0.47, 0.71)
 
     plotChartNode=slicer.mrmlScene.GetFirstNodeByName("Chart_PCA" + xAxis + "v" +yAxis)
     if plotChartNode is None:
