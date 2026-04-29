@@ -703,6 +703,17 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.ui.grayscaleSelector.connect('validInputChanged(bool)', self.onModelSelected)
     self.ui.FudSelect.connect('validInputChanged(bool)', self.onModelSelected)
     self.ui.selectorButton.connect('clicked(bool)', self.onSelect)
+    # Warp-source toggle (PCA vs Geomorph LR). The two radio buttons have
+    # `autoExclusive=false` (set in the .ui) so they don't get pulled into
+    # the same exclusive group as the mean-vs-model radios above. We manage
+    # mutual exclusivity manually here.
+    try:
+      self.ui.warpModePCA.toggled.connect(
+        lambda checked: self._setWarpMode("pca") if checked else None)
+      self.ui.warpModeLR.toggled.connect(
+        lambda checked: self._setWarpMode("lr") if checked else None)
+    except Exception:
+      pass
     self.ui.startRecordButton.connect('clicked(bool)', self.onStartRecording)
     self.ui.stopRecordButton.connect('clicked(bool)', self.onStopRecording)
     self.ui.resetButton.connect('clicked(bool)', self.reset)
@@ -754,6 +765,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.cloneModelDisplayNode = None
     self.factorTableNode = None
     self.gridTransformNode = None
+    # Active warp source for the shared Interactive-Visualization clones
+    # (cloneLandmarkNode + cloneModelNode). "pca" parents them under
+    # gridTransformNode; "lr" parents them under LRTPS_Transform.
+    self.activeWarpMode = "pca"
     self._gridCache = {}
     self.files = []
     self.inputFilePaths = []
@@ -1721,7 +1736,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(shNode, itemIDToClone)
     self.copyLandmarkNode = shNode.GetItemDataNode(clonedItemID)
     GPANodeCollection.AddItem(self.copyLandmarkNode)
-    self.copyLandmarkNode.SetName('PC Warped Landmarks')
+    self.copyLandmarkNode.SetName('Warped Landmarks')
     self.copyLandmarkNode.SetDisplayVisibility(0)
 
     #set up procrustes distance plot
@@ -1849,7 +1864,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(shNode, itemIDToClone)
     self.copyLandmarkNode = shNode.GetItemDataNode(clonedItemID)
     GPANodeCollection.AddItem(self.copyLandmarkNode)
-    self.copyLandmarkNode.SetName('PC Warped Landmarks')
+    self.copyLandmarkNode.SetName('Warped Landmarks')
     self.copyLandmarkNode.SetDisplayVisibility(0)
 
     # Set up output
@@ -1993,6 +2008,105 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     if getattr(self, "_plotDriveActive", False):
       self._refreshPlotDriving()
 
+  def _setWarpMode(self, mode):
+    """Switch the active warp source for the shared Interactive-Visualization
+    clones (cloneLandmarkNode + cloneModelNode). Reparents them under either
+    `self.gridTransformNode` (PCA) or the LR module's `LRTPS_Transform`
+    (Geomorph LR). Updates the radio-button UI signal-blocked."""
+    mode = "lr" if str(mode).lower() == "lr" else "pca"
+    self.activeWarpMode = mode
+
+    # Pick parent transform.
+    if mode == "pca":
+      tnode = getattr(self, "gridTransformNode", None)
+    else:
+      lr = getattr(self, "lr", None)
+      tnode = getattr(lr, "lrTPSTransformNode", None) if lr else None
+      # Fall back to scene lookup by name (LR module instance may not be cached on widget).
+      if tnode is None or not slicer.mrmlScene.IsNodePresent(tnode):
+        tnode = slicer.mrmlScene.GetFirstNodeByName("LRTPS_Transform")
+
+    tid = tnode.GetID() if (tnode is not None and slicer.mrmlScene.IsNodePresent(tnode)) else None
+
+    lm = getattr(self, "cloneLandmarkNode", None) or getattr(self, "copyLandmarkNode", None)
+    if lm is not None and slicer.mrmlScene.IsNodePresent(lm):
+      try: lm.SetAndObserveTransformNodeID(tid)
+      except Exception: pass
+
+    try: modelChecked = bool(self.ui.modelVisualizationType.isChecked())
+    except Exception: modelChecked = False
+    cm = getattr(self, "cloneModelNode", None)
+    if modelChecked and cm is not None and slicer.mrmlScene.IsNodePresent(cm):
+      try: cm.SetAndObserveTransformNodeID(tid)
+      except Exception: pass
+
+    # Recolor the warped landmark glyphs to make the active source obvious.
+    #   PCA  -> dark red    (rgb 0.55, 0.05, 0.05)
+    #   LR   -> light pink  (rgb 1.00, 0.71, 0.76)
+    if mode == "pca":
+      glyph_rgb = (0.55, 0.05, 0.05)
+    else:
+      glyph_rgb = (1.00, 0.71, 0.76)
+    if lm is not None and slicer.mrmlScene.IsNodePresent(lm):
+      try:
+        d = lm.GetDisplayNode()
+        if d is not None:
+          try: d.SetSelectedColor(glyph_rgb)
+          except Exception: pass
+          try: d.SetColor(glyph_rgb)
+          except Exception: pass
+      except Exception:
+        pass
+
+    # Reflect in the radio buttons without re-emitting toggled signals.
+    try:
+      pca_btn = self.ui.warpModePCA
+      lr_btn = self.ui.warpModeLR
+      pca_was = pca_btn.blockSignals(True)
+      lr_was = lr_btn.blockSignals(True)
+      try:
+        pca_btn.setChecked(mode == "pca")
+        lr_btn.setChecked(mode == "lr")
+      finally:
+        pca_btn.blockSignals(pca_was)
+        lr_btn.blockSignals(lr_was)
+    except Exception:
+      pass
+
+    # Reset viewer 2 to the mean shape on every mode switch so the user
+    # always starts from a known reference. For PCA: snap the PC slider to 0
+    # (zero displacement scale). For LR: snap the coefficient slider back to
+    # its neutral value (mean of numeric domain, ref level for categorical),
+    # which produces an identity TPS at the next apply.
+    try:
+      if mode == "pca":
+        if getattr(self, "pcController", None) is not None:
+          self.pcController.setValue(0)
+        # Force scale -> 0 even if the slider was already at 0 (no signal fires).
+        gtn = getattr(self, "gridTransformNode", None)
+        if gtn is not None:
+          try:
+            gtn.GetTransformFromParent().SetDisplacementScale(0.0)
+            gtn.Modified()
+          except Exception:
+            pass
+      else:
+        lr = getattr(self, "lr", None)
+        if lr is not None and getattr(lr, "coefController", None) is not None:
+          # Re-apply the per-coefficient domain default (sets slider to neutral
+          # AND triggers _coef_updateScaling -> _coef_applyTPS for the reset).
+          try:
+            lr._coef_set_slider_domain_for_current()
+          except Exception:
+            try: lr.coefController.setValue(0.0)
+            except Exception: pass
+          # Also force a TPS rebuild at neutral in case setValue was a no-op
+          # (slider already at neutral -> no signal).
+          try: lr._coef_applyTPS()
+          except Exception: pass
+    except Exception:
+      pass
+
   def setupPCTransform(self):
     # Determine currently selected PC (combo index > 0 means a PC is selected)
     pc_index = self.pcController.comboBoxIndex()
@@ -2029,22 +2143,22 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     # Assign the displacement grid
     self.gridTransformNode.GetTransformFromParent().SetDisplacementGridData(self.displacementGridData)
 
-    # Attach transform to the warped landmark/model nodes if present
-    targetModelChecked = False
+    # Claim the shared Interactive-Visualization clones for PCA. This both
+    # parents them under `gridTransformNode` and updates the warp-mode toggle.
+    # Replaces an earlier unconditional `SetAndObserveTransformNodeID` block;
+    # routing through `_setWarpMode` keeps the toggle UI in sync.
     try:
-      targetModelChecked = bool(self.ui.modelVisualizationType.isChecked())
+      self._setWarpMode("pca")
     except Exception:
-      # Fall back to attribute access pattern used elsewhere
-      targetModelChecked = bool(getattr(self.ui.modelVisualizationType, "checked", False))
-
-    # Landmarks: prefer cloneLandmarkNode, fall back to copyLandmarkNode if used in older code
-    lm_node = getattr(self, "cloneLandmarkNode", None) or getattr(self, "copyLandmarkNode", None)
-    if lm_node is not None:
-      lm_node.SetAndObserveTransformNodeID(self.gridTransformNode.GetID())
-
-    # Model (if present and selected)
-    if targetModelChecked and getattr(self, "cloneModelNode", None) and self.cloneModelNode is not None:
-      self.cloneModelNode.SetAndObserveTransformNodeID(self.gridTransformNode.GetID())
+      # Safety net: if `_setWarpMode` is unavailable (e.g. legacy path),
+      # fall back to the original direct attachment.
+      lm_node = getattr(self, "cloneLandmarkNode", None) or getattr(self, "copyLandmarkNode", None)
+      if lm_node is not None:
+        lm_node.SetAndObserveTransformNodeID(self.gridTransformNode.GetID())
+      try: targetModelChecked = bool(self.ui.modelVisualizationType.isChecked())
+      except Exception: targetModelChecked = False
+      if targetModelChecked and getattr(self, "cloneModelNode", None) and self.cloneModelNode is not None:
+        self.cloneModelNode.SetAndObserveTransformNodeID(self.gridTransformNode.GetID())
 
     # Update the UI-driven range for live scaling
     self.pcController.setRange(self.pcMin, self.pcMax)
@@ -2117,6 +2231,12 @@ class GPAWidget(ScriptedLoadableModuleWidget):
   def updatePCScaling(self):
     if not getattr(self, 'gridTransformNode', None):
       return
+    # User is interacting with a PC control → claim ownership of the shared
+    # warped-landmark/model clones for the PCA pipeline. Auto-switches the
+    # warp-mode toggle if the LR tab had previously claimed them.
+    if getattr(self, "activeWarpMode", "pca") != "pca":
+      try: self._setWarpMode("pca")
+      except Exception: pass
     # Use the controller's current value mapped to the PC score range
     try:
       dynamic_value = float(self.pcController.getValue())
@@ -3104,7 +3224,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       itemIDToClone = shNode.GetItemByDataNode(self.modelNode)
       clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(shNode, itemIDToClone)
       self.cloneModelNode = shNode.GetItemDataNode(clonedItemID)
-      self.cloneModelNode.SetName('PC Warped Model')
+      self.cloneModelNode.SetName('Warped Model')
       self.cloneModelDisplayNode =  self.cloneModelNode.GetDisplayNode()
       # Light cyan (#7ff4fd) reads better than pure blue against the dark 3D background
       self.cloneModelDisplayNode.SetColor(0x7f/255.0, 0xf4/255.0, 0xfd/255.0)
@@ -3160,6 +3280,14 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         self.cloneModelNode.SetAndObserveTransformNodeID(grid_node.GetID())
       except Exception:
         pass
+
+    # Apply the active warp-mode color scheme to the freshly-created clones
+    # so the user gets visual confirmation (dark red = PCA, light pink = LR)
+    # immediately after Apply, not only after picking a PC / LR coefficient.
+    try:
+      self._setWarpMode(getattr(self, "activeWarpMode", "pca"))
+    except Exception:
+      pass
 
   def onStartRecording(self):
     #set up sequences for template model and PC TPS transform
