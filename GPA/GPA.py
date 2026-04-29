@@ -649,6 +649,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       # PyQt4-style fallback
       tab.connect('currentChanged(int)', self._onTabChanged)
 
+    # Gate non-Setup tabs until a GPA analysis is run / loaded. Setup
+    # Analysis (index 0) is always enabled; Explore, Interactive 3D, and
+    # LR depend on having self.LM and self.scatterDataAll populated.
+    self._setAnalysisTabsEnabled(False)
+
     # If LR tab is already selected (unlikely), initialize immediately
     try:
       if self._lr_tab_index is not None and int(tab.currentIndex) == int(self._lr_tab_index):
@@ -1381,6 +1386,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.lr.refreshFromCovariates()
       self.lr.refreshFitButton()
 
+    self._setAnalysisTabsEnabled(True)
+
   def onLoad(self):
     self.initializeOnLoad() #clean up module from previous runs
     logic = GPALogic()
@@ -1527,8 +1534,12 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.lr.refreshFromCovariates()
       self.lr.refreshFitButton()
 
+    self._setAnalysisTabsEnabled(True)
+
   def initializeOnLoad(self):
     # clear rest of module when starting GPA analysis
+
+    self._setAnalysisTabsEnabled(False)
 
     self.ui.grayscaleSelector.setCurrentPath("")
     self.ui.FudSelect.setCurrentPath("")
@@ -2728,6 +2739,26 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     if(temporaryNode):
       GPANodeCollection.RemoveItem(temporaryNode)
       slicer.mrmlScene.RemoveNode(temporaryNode)
+
+  def _setAnalysisTabsEnabled(self, enabled: bool):
+    """Enable/disable the post-GPA tabs (everything except Setup Analysis).
+    Setup Analysis (index 0) is always enabled. Called with False from
+    setup() and True from the success path of onLoad / onLoadFromFile."""
+    tab = getattr(self, "_tabWidget", None)
+    if tab is None:
+      return
+    try:
+      total = int(tab.count)
+    except Exception:
+      try:
+        total = int(tab.count())
+      except Exception:
+        return
+    for i in range(1, total):
+      try:
+        tab.setTabEnabled(i, bool(enabled))
+      except Exception:
+        pass
 
   def _onTabChanged(self, index: int):
     """Initialize the LR tab on first entry."""
