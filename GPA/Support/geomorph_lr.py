@@ -26,6 +26,7 @@ except Exception:
   pd = None
 
 import vtk, qt, slicer
+from .warp_engine import WarpEngine
 
 
 # ----------------------------- Small helpers ---------------------------------
@@ -216,6 +217,9 @@ class GeomorphLR:
     self._coef_vectors = []
     self._coef_names = []
     self._coef_current = -1
+
+    # Warp engine (grid-backed shape deformation). Created lazily.
+    self._warp_engine = None
 
   def attach(self):
     """
@@ -1240,6 +1244,13 @@ class GeomorphLR:
     self._coef_names = []
     self._coef_current = -1
 
+    # Instantiate the shared warp engine for this controller.
+    try:
+      self._warp_engine = WarpEngine(name="LR", log_fn=self._log)
+    except Exception as e:
+      self._log(f"[LR/COEF] WarpEngine init failed: {e}")
+      self._warp_engine = None
+
     # Slider controller for NUMERIC coefficient warps (existing behavior)
     try:
       self.coefController = _PCSliderController(
@@ -1347,9 +1358,35 @@ class GeomorphLR:
     except Exception as e:
       self._log(f"[LR/COEF] domain build warning: {e}")
 
-    # Ensure infra + identity warp at neutral
+    # Ensure infra (creates lrWarpNode + attaches engine transform).
     self._lr_prepareWarpInfra()
-    self._ensureLRTPSNode()
+
+    # ---- Warp engine: configure baseline + register directions --------------
+    if self._warp_engine is not None:
+      # Baseline: model intercept-predicted shape if captured, else Procrustes mean.
+      base = getattr(self, "_coef_intercept_shape", None)
+      if base is None or (
+        getattr(self.w, "rawMeanLandmarks", None) is not None
+        and base.shape != self.w.rawMeanLandmarks.shape
+      ):
+        base = self.w.rawMeanLandmarks
+        baseline_label = "Procrustes mean (no intercept captured)"
+      else:
+        baseline_label = "Intercept (model fit)"
+      try:
+        self._warp_engine.set_baseline(np.asarray(base, dtype=float), label=baseline_label)
+        self._coef_setBaselineLabel(baseline_label)
+        # Snap glyphs to the new baseline so that scale==0 shows the rest pose.
+        self._coef_snapGlyphsToBaseline()
+        # Register every visible coef as a named direction.
+        self._coef_registerAllDirectionsInEngine()
+        # Bind the first visible coef as active so the slider has something to drive.
+        if self._coef_current >= 0:
+          first_name = str(self._coef_names[self._coef_current])
+          if self._warp_engine.has_direction(first_name):
+            self._warp_engine.set_active_direction(first_name)
+      except Exception as e:
+        self._log(f"[LR/COEF] engine configure failed: {e}")
 
     try:
       self._coef_set_slider_domain_for_current()
@@ -1359,11 +1396,11 @@ class GeomorphLR:
         self.coefController.setRange(-1.0, 1.0)
         self.coefController.setValue(0.0)
 
-    # Build initial numeric TPS
+    # Apply at neutral
     try:
       self._coef_applyTPS()
     except Exception as e:
-      self._log(f"[LR/COEF] initial TPS build failed: {e}")
+      self._log(f"[LR/COEF] initial warp apply failed: {e}")
 
     self._coef_attachTargets(enabled=True)
 
@@ -1386,18 +1423,38 @@ class GeomorphLR:
         self.coefController.setRange(-1.0, 1.0)
         self.coefController.setValue(0.0)
 
+    # Bind the new direction in the engine before applying.
+    if self._warp_engine is not None:
+      try:
+        name = str(self._coef_names[self._coef_current])
+        if self._warp_engine.has_direction(name):
+          self._warp_engine.set_active_direction(name)
+      except Exception as e:
+        self._log(f"[LR/COEF] activate direction failed: {e}")
+
     try:
       self._coef_applyTPS()
     except Exception as e:
-      self._log(f"[LR/COEF] TPS build (new coef) failed: {e}")
+      self._log(f"[LR/COEF] warp apply (new coef) failed: {e}")
     self._coef_attachTargets(enabled=True)
 
   def _coef_setMagnification(self):
     if not self._coef_enabled: return
+    # Magnification is baked into each direction's vector at registration time,
+    # so changing it requires re-registering all directions and rebuilding grids.
+    if self._warp_engine is not None:
+      try:
+        self._coef_registerAllDirectionsInEngine()
+        if self._coef_current >= 0:
+          name = str(self._coef_names[self._coef_current])
+          if self._warp_engine.has_direction(name):
+            self._warp_engine.set_active_direction(name)
+      except Exception as e:
+        self._log(f"[LR/COEF] re-register on mag change failed: {e}")
     try:
       self._coef_applyTPS()
     except Exception as e:
-      self._log(f"[LR/COEF] TPS rebuild (magnification) failed: {e}")
+      self._log(f"[LR/COEF] warp rebuild (magnification) failed: {e}")
 
   def _coef_updateScaling(self):
     if not self._coef_enabled:
@@ -1417,7 +1474,14 @@ class GeomorphLR:
       neutral = float(dom.get("ref", 0.0)) if dom.get("mode") == "real" else 0.0
       self.coefController.setValue(neutral)
 
-    # Identity TPS
+    # Engine: zero the active scale (rest pose = baseline). Fallback to identity TPS.
+    if self._warp_engine is not None:
+      try:
+        self._warp_engine.reset_scale()
+        self._coef_debugPipeline(tag="reset", sample_scale=0.0)
+        return
+      except Exception as e:
+        self._log(f"[LR/COEF] engine reset failed: {e}")
     node = self._ensureLRTPSNode()
     try:
       id_tps = vtk.vtkThinPlateSplineTransform();
@@ -1456,18 +1520,36 @@ class GeomorphLR:
     self._coef_debugPipeline(tag="init/reset", sample_scale=0.0)
 
   def _coef_attachTargets(self, enabled: bool):
-    node = getattr(self, "lrTPSTransformNode", None)
-    if not node:
-      self._log("[LR/COEF] lrTPSTransformNode missing in _coef_attachTargets"); return
+    """Bind/unbind the warp engine's grid transform to the LR glyph node and
+    (optionally) the cloned model. The engine owns the transform node."""
+    eng = getattr(self, "_warp_engine", None)
+    if eng is None:
+      return
     lm = getattr(self, "lrWarpNode", None)
-    if lm is not None and slicer.mrmlScene.IsNodePresent(lm):
-      try: lm.SetAndObserveTransformNodeID(node.GetID() if enabled else None)
-      except Exception: pass
+    lm = lm if (lm is not None and slicer.mrmlScene.IsNodePresent(lm)) else None
     try: modelChecked = bool(self.w.ui.modelVisualizationType.isChecked())
     except Exception: modelChecked = False
-    if modelChecked and getattr(self.w, "cloneModelNode", None):
-      try: self.w.cloneModelNode.SetAndObserveTransformNodeID(node.GetID() if enabled else None)
-      except Exception: pass
+    model = self.w.cloneModelNode if (modelChecked and getattr(self.w, "cloneModelNode", None)) else None
+
+    if enabled:
+      new_bounds = model or lm
+      old_bounds = getattr(eng, "bounds_node", None)
+      bounds_changed = (old_bounds is not new_bounds)
+      if bounds_changed:
+        try: eng.invalidate_grids()
+        except Exception: pass
+      eng.attach_targets(landmark_node=lm, model_node=model, bounds_node=new_bounds)
+      # If grids were invalidated, rebuild + rebind the active direction.
+      if bounds_changed and eng.active is not None:
+        try: eng.set_active_direction(eng.active)
+        except Exception as e: self._log(f"[LR/COEF] rebind after bounds change: {e}")
+      # Track the engine's transform node in our cleanup collection (idempotent).
+      tn = getattr(eng, "transform_node", None)
+      if tn is not None:
+        try: self.nodes.AddItem(tn)
+        except Exception: pass
+    else:
+      eng.detach_targets()
     self._coef_debugPipeline(tag=f"attachTargets(enabled={enabled})", sample_scale=None)
 
   def _coef_clearChoices(self):
@@ -1477,6 +1559,13 @@ class GeomorphLR:
       except Exception: pass
     if self.coefController:
       self.coefController.setRange(-1.0, 1.0); self.coefController.setValue(0.0)
+    if self._warp_engine is not None:
+      try:
+        self._warp_engine.clear_directions()
+        self._warp_engine.reset_scale()
+      except Exception:
+        pass
+    self._coef_setBaselineLabel("(none — fit a model)")
     self._coef_attachTargets(enabled=False)
 
   def _coef_debugPipeline(self, tag="debug", sample_scale=None):
@@ -1558,43 +1647,33 @@ class GeomorphLR:
         self._log(f"[LR] Warp node setup failed: {e}")
         return
 
-    # Ensure the LR TPS transform exists and attach it to the warp node (and model, if selected)
-    node = self._ensureLRTPSNode()
-    try:
-        self.lrWarpNode.SetAndObserveTransformNodeID(node.GetID())
-    except Exception:
-        pass
+    # Attach the warp engine's grid transform to the LR glyph node and
+    # (optionally) the cloned model. Engine owns and recycles the transform.
+    self._coef_attachTargets(enabled=True)
 
     try:
-        modelChecked = bool(self.w.ui.modelVisualizationType.isChecked())
+      eng_tn = getattr(self._warp_engine, "transform_node", None)
+      tid = eng_tn.GetID() if eng_tn else "(none)"
+      lid = self.lrWarpNode.GetID() if getattr(self, "lrWarpNode", None) else "(none)"
+      self._log(f"[LR] Infra ready (engine). transform={tid}, lrWarpNode={lid}")
     except Exception:
-        modelChecked = False
-    if modelChecked and getattr(self.w, "cloneModelNode", None):
-        try:
-            self.w.cloneModelNode.SetAndObserveTransformNodeID(node.GetID())
-        except Exception:
-            pass
+      pass
 
-    try:
-        tid = node.GetID() if node else "(none)"
-        lid = self.lrWarpNode.GetID() if getattr(self, "lrWarpNode", None) else "(none)"
-        self._log(f"[LR] Infra ready (TPS). transform={tid}, lrWarpNode={lid}")
-    except Exception:
-        pass
-
-  def _coef_row_to_shift(self, row_3p):
+  def _coef_row_to_p3(self, row_3p):
+    """Reshape a flat 3p coefficient row into a (p,3) array. No scaling."""
     if getattr(self.w, "rawMeanLandmarks", None) is None:
       raise RuntimeError("No mean landmarks available yet")
     p = int(self.w.rawMeanLandmarks.shape[0])
     a = np.asarray(row_3p, dtype=float).reshape(-1)
     if a.size != 3 * p:
       raise RuntimeError(f"Coefficient row length {a.size} != 3*p ({3 * p})")
-
     v = np.zeros((p, 3), dtype=float)
     v[:, 0] = a[0:p]
     v[:, 1] = a[p:2 * p]
     v[:, 2] = a[2 * p:3 * p]
+    return v
 
+  def _coef_mag_ssf(self):
     try:
       mag = float(self.ui.coefMagnificationSpin.value)
     except Exception:
@@ -1603,9 +1682,56 @@ class GeomorphLR:
       ssf = float(getattr(self.w, "sampleSizeScaleFactor", 1.0))
     except Exception:
       ssf = 1.0
+    return mag, ssf
 
-    shift = (mag * ssf / 3.0) * v
-    return shift
+  def _coef_row_to_shift(self, row_3p):
+    v = self._coef_row_to_p3(row_3p)
+    mag, ssf = self._coef_mag_ssf()
+    return (mag * ssf / 3.0) * v
+
+  def _coef_snapGlyphsToBaseline(self):
+    """Reposition the LR glyph control points to match the engine baseline."""
+    base = getattr(self._warp_engine, "baseline", None) if self._warp_engine else None
+    node = getattr(self, "lrWarpNode", None)
+    if base is None or node is None or not slicer.mrmlScene.IsNodePresent(node):
+      return
+    p = int(base.shape[0])
+    try:
+      if int(node.GetNumberOfControlPoints()) == p:
+        for i in range(p):
+          node.SetNthControlPointPosition(i, float(base[i, 0]), float(base[i, 1]), float(base[i, 2]))
+      else:
+        node.RemoveAllControlPoints()
+        for i in range(p):
+          node.AddControlPoint(base[i, :], str(i + 1))
+    except Exception as e:
+      self._log(f"[LR/COEF] glyph snap to baseline failed: {e}")
+
+  def _coef_registerAllDirectionsInEngine(self):
+    """Re-register every visible coefficient as a direction in the warp engine.
+    The (p,3) vector includes magnification + sample-size scaling so that
+    set_scale(delta) applies the same displacement the legacy TPS path did."""
+    eng = self._warp_engine
+    if eng is None:
+      return
+    eng.clear_directions()
+    visible = getattr(self, "_coef_visible_indices", None) or []
+    for i in visible:
+      try:
+        name = str(self._coef_names[i])
+        vec = self._coef_row_to_shift(self._coef_vectors[i])  # (p,3) scaled
+        eng.register_direction(name, vec, max_magnitude=1.0)
+      except Exception as e:
+        self._log(f"[LR/COEF] register direction {i} failed: {e}")
+
+  def _coef_setBaselineLabel(self, text):
+    lbl = getattr(self.ui, "coefBaselineLabel", None)
+    if lbl is None:
+      return
+    try:
+      lbl.setText(f"Reference shape: {text}")
+    except Exception:
+      pass
 
   def _ensureLRTPSNode(self):
     try:
@@ -1688,30 +1814,44 @@ class GeomorphLR:
       delta = value
 
     row = np.asarray(self._coef_vectors[self._coef_current]).reshape(-1)
-    base_shift = self._coef_row_to_shift(row)  # includes magnification & sample-size scaling
-    shift = float(delta) * base_shift
-    # Use intercept-predicted shape as the visualization base when available,
-    # so that at slider==reference the picture is the model's prediction at
-    # the reference predictors (Size=0, Sex=ref, ...). Falls back to the
-    # Procrustes mean if the intercept could not be captured.
-    base_shape = getattr(self, "_coef_intercept_shape", None)
-    if base_shape is None or base_shape.shape != self.w.rawMeanLandmarks.shape:
-      base_shape = self.w.rawMeanLandmarks
-    target = base_shape + shift
+    name = str(self._coef_names[self._coef_current])
+    eng = self._warp_engine
 
-    tps = vtk.vtkThinPlateSplineTransform()
-    tps.SetSourceLandmarks(_convert_numpy_to_vtk_points(base_shape))
-    tps.SetTargetLandmarks(_convert_numpy_to_vtk_points(target))
-    tps.SetBasisToR()
+    if eng is None:
+      # Fallback: legacy per-tick TPS rebuild (kept for safety if engine is unavailable).
+      base_shift = self._coef_row_to_shift(row)
+      shift = float(delta) * base_shift
+      base_shape = getattr(self, "_coef_intercept_shape", None)
+      if base_shape is None or base_shape.shape != self.w.rawMeanLandmarks.shape:
+        base_shape = self.w.rawMeanLandmarks
+      target = base_shape + shift
+      tps = vtk.vtkThinPlateSplineTransform()
+      tps.SetSourceLandmarks(_convert_numpy_to_vtk_points(base_shape))
+      tps.SetTargetLandmarks(_convert_numpy_to_vtk_points(target))
+      tps.SetBasisToR()
+      node = self._ensureLRTPSNode()
+      node.SetAndObserveTransformToParent(tps)
+      try: node.Modified()
+      except Exception: pass
+      self._coef_debugPipeline(tag=f"TPS-fallback val={value} (delta={delta})", sample_scale=None)
+      return
 
-    node = self._ensureLRTPSNode()
-    node.SetAndObserveTransformToParent(tps)
-    try:
-      node.Modified()
-    except Exception:
-      pass
-
-    self._coef_debugPipeline(tag=f"TPS val={value} (delta={delta})", sample_scale=None)
+    # Engine path: ensure the active direction is bound, then scale.
+    if not eng.has_direction(name):
+      try:
+        vec = self._coef_row_to_shift(row)
+        eng.register_direction(name, vec, max_magnitude=1.0)
+      except Exception as e:
+        self._log(f"[LR/COEF] late register failed: {e}")
+        return
+    if eng.active != name:
+      try:
+        eng.set_active_direction(name)
+      except Exception as e:
+        self._log(f"[LR/COEF] set_active_direction failed: {e}")
+        return
+    eng.set_scale(float(delta))
+    self._coef_debugPipeline(tag=f"engine val={value} (delta={delta})", sample_scale=None)
 
   # ------------------------------ Misc UI helpers -----------------------------
 
