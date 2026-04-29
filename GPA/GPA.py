@@ -2045,8 +2045,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     #   LR   -> light pink  (rgb 1.00, 0.71, 0.76)
     if mode == "pca":
       glyph_rgb = (0.55, 0.05, 0.05)
+      model_rgb = (0x7f / 255.0, 0xf4 / 255.0, 0xfd / 255.0)  # light blue (default)
     else:
       glyph_rgb = (1.00, 0.71, 0.76)
+      model_rgb = (0.78, 0.65, 0.95)                          # light purple / lavender
     if lm is not None and slicer.mrmlScene.IsNodePresent(lm):
       try:
         d = lm.GetDisplayNode()
@@ -2057,6 +2059,15 @@ class GPAWidget(ScriptedLoadableModuleWidget):
           except Exception: pass
       except Exception:
         pass
+
+    # Recolor the warped model surface so it pairs visually with the glyphs.
+    cmd = getattr(self, "cloneModelDisplayNode", None)
+    if cmd is None and cm is not None and slicer.mrmlScene.IsNodePresent(cm):
+      try: cmd = cm.GetDisplayNode()
+      except Exception: cmd = None
+    if cmd is not None:
+      try: cmd.SetColor(*model_rgb)
+      except Exception: pass
 
     # Reflect in the radio buttons without re-emitting toggled signals.
     try:
