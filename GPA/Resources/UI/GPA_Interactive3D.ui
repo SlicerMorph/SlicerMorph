@@ -36,6 +36,23 @@
                 <item><widget class="QDoubleSpinBox" name="pcSpinBox"/></item>
               </layout>
             </item>
+            <item row="2" column="0" colspan="3">
+              <widget class="Line" name="plotDriveSeparator">
+                <property name="orientation"><enum>Qt::Horizontal</enum></property>
+              </widget>
+            </item>
+            <item row="3" column="0" colspan="3">
+              <widget class="QCheckBox" name="drivePCAPlotCheckBox">
+                <property name="text"><string>Drive 3D model from PCA scatter plot</string></property>
+                <property name="toolTip"><string>When enabled, click+drag on the PCA Scatter Plot in the plot view to drive the 3D model warp using the X- and Y-axis PCs from the Explore Data tab. Hold Shift to lock the Y component (horizontal sweep), or Ctrl/Cmd to lock the X component (vertical sweep). Click "Plot" on the Explore Data tab first.</string></property>
+              </widget>
+            </item>
+            <item row="4" column="0" colspan="3">
+              <widget class="QLabel" name="drivePCAPlotStatus">
+                <property name="text"><string>Status: off</string></property>
+                <property name="wordWrap"><bool>true</bool></property>
+              </widget>
+            </item>
           </layout>
         </widget>
       </item>

@@ -19,6 +19,36 @@ from datetime import datetime
 import scipy.linalg as sp
 from vtk.util import numpy_support
 
+
+class _PCAPlotMouseFilter(qt.QObject):
+  """Qt event filter installed on every child widget of the qMRMLPlotView.
+  We install on children because the qMRMLPlotView itself does not receive
+  mouse events directly — they reach the inner QVTKOpenGLNativeWidget.
+  """
+
+  def __init__(self, owner):
+    qt.QObject.__init__(self)
+    self._owner = owner
+
+  def eventFilter(self, obj, event):
+    owner = self._owner
+    if owner is None or not getattr(owner, "_plotDriveActive", False):
+      return False
+    et = event.type()
+    if et == qt.QEvent.MouseButtonPress and event.button() == qt.Qt.LeftButton:
+      owner._plotDriveDragging = True
+      owner._handleQtMouseEvent(event, obj)
+      return True
+    if et == qt.QEvent.MouseMove and owner._plotDriveDragging:
+      owner._handleQtMouseEvent(event, obj)
+      return True
+    if et == qt.QEvent.MouseButtonRelease and event.button() == qt.Qt.LeftButton:
+      if owner._plotDriveDragging:
+        owner._handleQtMouseEvent(event, obj)
+        owner._plotDriveDragging = False
+        return True
+    return False
+
 def _ensure_pyRserve_early() -> bool:
   """
   Ensure pyRserve is importable at module load time.
@@ -602,6 +632,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.ui.stopRecordButton.connect('clicked(bool)', self.onStopRecording)
     self.ui.resetButton.connect('clicked(bool)', self.reset)
     self.ui.updateMagnificationButton.connect("clicked()", self.onUpdateMagnificationClicked)
+    # Plot-driven model warping (2D): toggled by user, takes X/Y PC from Explore tab.
+    self.ui.drivePCAPlotCheckBox.connect('toggled(bool)', self.onTogglePlotDriving)
     self.PCList = []
 
     # PCA slider controller (unchanged)
@@ -642,6 +674,17 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.pcScoreAbsMax = 0.0
     self._resetting = False
     self.ui.spinMagnification.setValue(1.0)
+    # ---- Plot-driving (2-PC drag) state ----
+    self._plotDriveActive = False
+    self._plotDriveDragging = False
+    self._plotDriveFilter = None
+    self._plotDriveFilteredWidgets = []   # list of QWidget we installed on
+    self._plotDrivePCs = (None, None)  # (xPC, yPC) currently bound to gridX, gridY
+    self._plotDriveCursorSeries = None
+    self._plotDriveCursorTable = None
+    self._plotDriveDispCache = {}      # {(pc_index, magnification): np.ndarray (D,D,D,3)}
+    self._plotDriveFusedImage = None   # vtkImageData reused across updates
+    self._plotDriveFusedArray = None   # numpy view (flat) into the displacement scalars
 
   # ---- Safe node helpers ----
   def _node(self, attr_name):
@@ -860,6 +903,21 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     #delete data from previous runs
     self._gridCache = {}
     self.gridTransformNode = None
+    # Plot-drive cleanup
+    try:
+      if getattr(self, "ui", None) and hasattr(self.ui, "drivePCAPlotCheckBox"):
+        self.ui.drivePCAPlotCheckBox.setChecked(False)
+    except Exception:
+      pass
+    self._detachPlotMouseFilter()
+    self._plotDriveActive = False
+    self._plotDriveDragging = False
+    self._plotDriveDispCache = {}
+    self._plotDriveFusedImage = None
+    self._plotDriveFusedArray = None
+    self._plotDriveCursorSeries = None
+    self._plotDriveCursorTable = None
+    self._plotDrivePCs = (None, None)
     self.nodeCleanUp()
 
   def nodeCleanUp(self):
@@ -1474,7 +1532,12 @@ class GPAWidget(ScriptedLoadableModuleWidget):
   def onUpdateMagnificationClicked(self):
     # Magnification changed: invalidate cached grids since they were built at the previous magnification.
     self._gridCache = {}
+    self._plotDriveDispCache = {}
+    self._plotDriveFusedImage = None
+    self._plotDriveFusedArray = None
     self.setupPCTransform()
+    if getattr(self, "_plotDriveActive", False):
+      self._refreshPlotDriving()
 
   def setupPCTransform(self):
     # Determine currently selected PC (combo index > 0 means a PC is selected)
@@ -1643,6 +1706,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     else:
       logic.makeScatterPlot(self.scatterDataAll,self.files,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1),self.pcNumber)
 
+    # If the user has the plot-drive mode enabled, (re)attach event filter and
+    # rebuild the crosshair cursor series on the new chart.
+    self._refreshPlotDriving()
+
   def lolliPlot(self):
     pb1=self.ui.vectorOne.currentIndex
     pb2=self.ui.vectorTwo.currentIndex
@@ -1657,6 +1724,441 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     for pc in pcList:
       logic.lollipopGraph(self.LM, self.rawMeanLandmarks, pc, self.sampleSizeScaleFactor, componentNumber, self.ui.TwoDType.isChecked())
       componentNumber+=1
+
+  # --------------------------------------------------------------------------
+  # Plot-driven 2-PC model warping
+  # --------------------------------------------------------------------------
+
+  def _plotWidget(self):
+    """Return the qMRMLPlotWidget for plot view 0, or None."""
+    try:
+      lm = slicer.app.layoutManager()
+      return lm.plotWidget(0) if lm else None
+    except Exception:
+      return None
+
+  def _plotView(self):
+    """Return the qMRMLPlotView showing the PCA scatter chart, or None."""
+    pw = self._plotWidget()
+    try:
+      return pw.plotView() if pw else None
+    except Exception:
+      return None
+
+  def _currentPlotChartNode(self):
+    """Return the chart node currently attached to plot view 0, or None."""
+    pw = self._plotWidget()
+    if pw is None:
+      return None
+    try:
+      pvn = pw.mrmlPlotViewNode()
+    except Exception:
+      pvn = None
+    if pvn is None:
+      return None
+    chart_id = pvn.GetPlotChartNodeID() or ""
+    return slicer.mrmlScene.GetNodeByID(chart_id) if chart_id else None
+
+  def _currentChartXY(self):
+    """Return the underlying vtkChartXY in the plot view's scene, or None."""
+    pv = self._plotView()
+    if pv is None:
+      return None
+    # qMRMLPlotView exposes chart() and scene() directly in Slicer 5.x.
+    try:
+      ch = pv.chart()
+      if ch is not None:
+        return ch
+    except Exception:
+      pass
+    try:
+      scene = pv.scene()
+      if scene is not None:
+        for i in range(scene.GetNumberOfItems()):
+          item = scene.GetItem(i)
+          if item and item.IsA("vtkChartXY"):
+            return item
+    except Exception:
+      pass
+    return None
+
+  def onTogglePlotDriving(self, checked):
+    self._plotDriveActive = bool(checked)
+    if not self._plotDriveActive:
+      try:
+        self.ui.drivePCAPlotStatus.setText("Status: off")
+      except Exception:
+        pass
+      self._detachPlotMouseFilter()
+      return
+    # Attach + ensure cursor + sanity check
+    self._refreshPlotDriving(forceLog=True)
+
+  def _refreshPlotDriving(self, forceLog=False):
+    """Wire the event filter and ensure a crosshair series exists.
+    Safe to call multiple times (idempotent)."""
+    if not getattr(self, "_plotDriveActive", False):
+      return
+    chart = self._currentPlotChartNode()
+    if chart is None:
+      msg = "Status: click 'Plot' on Explore Data tab first"
+      self._setPlotDriveStatus(msg)
+      return
+    if not self._ensureTwoPCDisplacement():
+      return
+    self._attachPlotMouseFilter()
+    self._ensurePCACursorSeries(chart)
+    self._claimChartLeftButton()
+    pcX, pcY = self._plotDrivePCs
+    self._setPlotDriveStatus(f"Status: ON  (X=PC{pcX}, Y=PC{pcY}) — drag on plot; Shift=H-lock, Ctrl/Cmd=V-lock")
+    if forceLog:
+      print(f"[GPA] Plot-drive ON: X=PC{pcX}, Y=PC{pcY}", flush=True)
+
+  def _claimChartLeftButton(self):
+    """Disable the chart's built-in pan/zoom on left-mouse-button so our
+    scene observers receive press/move/release events."""
+    chart = self._currentChartXY()
+    if chart is None:
+      return
+    try:
+      # vtkChart action constants: PAN=0, ZOOM=1, SELECT=2, ZOOM_AXIS=3,
+      # SELECT_POLYGON=4, CLICK_AND_DRAG=5, NOTIFY=6
+      # Button constants (from vtkContextMouseEvent): NO_BUTTON=0,
+      # LEFT_BUTTON=1, MIDDLE_BUTTON=2, RIGHT_BUTTON=4.
+      LEFT_BUTTON = 1
+      NO_BUTTON = 0
+      # Move all left-button actions off so our observers see the events.
+      for action in (vtk.vtkChart.PAN, vtk.vtkChart.ZOOM,
+                     vtk.vtkChart.SELECT, vtk.vtkChart.CLICK_AND_DRAG):
+        try:
+          chart.SetActionToButton(action, NO_BUTTON)
+        except Exception:
+          pass
+      # Re-bind pan to middle-button so users still have a pan affordance.
+      try:
+        chart.SetActionToButton(vtk.vtkChart.PAN, 2)
+      except Exception:
+        pass
+    except Exception as e:
+      print(f"[GPA plot-drive] could not reassign chart actions: {e}",
+            flush=True)
+
+  def _setPlotDriveStatus(self, text):
+    try:
+      self.ui.drivePCAPlotStatus.setText(text)
+    except Exception:
+      pass
+
+  def _attachPlotMouseFilter(self):
+    pv = self._plotView()
+    if pv is None:
+      return
+    if self._plotDriveFilteredWidgets:
+      return  # already installed
+    if self._plotDriveFilter is None:
+      self._plotDriveFilter = _PCAPlotMouseFilter(self)
+    # qMRMLPlotView is a container; the child QVTKOpenGLNativeWidget is what
+    # receives mouse events. Install on it (and on the view itself, harmless).
+    targets = [pv]
+    try:
+      for child in pv.findChildren(qt.QWidget):
+        targets.append(child)
+    except Exception:
+      pass
+    for w in targets:
+      try:
+        w.installEventFilter(self._plotDriveFilter)
+        w.setMouseTracking(True)
+        self._plotDriveFilteredWidgets.append(w)
+      except Exception:
+        pass
+    print(f"[GPA plot-drive] installed event filter on {len(self._plotDriveFilteredWidgets)} widgets",
+          flush=True)
+    # Force the plot view interaction mode to something that does NOT consume
+    # left-click for pan/zoom: 'select points' (= 1).
+    self._setPlotInteractionMode(1)
+
+  def _detachPlotMouseFilter(self):
+    if not getattr(self, "_plotDriveFilteredWidgets", None):
+      return
+    for w in self._plotDriveFilteredWidgets:
+      try:
+        w.removeEventFilter(self._plotDriveFilter)
+      except Exception:
+        pass
+    self._plotDriveFilteredWidgets = []
+    self._plotDriveDragging = False
+    # Restore default 'pan view' (= 0) interaction.
+    self._setPlotInteractionMode(0)
+
+  def _setPlotInteractionMode(self, mode):
+    """Set the qMRMLPlotView interaction mode by stamping the underlying
+    vtkMRMLPlotViewNode. 0=pan, 1=select points, 2=freehand select, 3=move.
+    """
+    pw = self._plotWidget()
+    if pw is None:
+      return
+    try:
+      pvn = pw.mrmlPlotViewNode()
+      if pvn is not None:
+        pvn.SetInteractionMode(int(mode))
+    except Exception as e:
+      print(f"[GPA plot-drive] could not set interaction mode: {e}",
+            flush=True)
+
+  def _handleQtMouseEvent(self, event, widget):
+    """Convert a Qt mouse event on `widget` to PC scores via current chart axes.
+    """
+    chart = self._currentChartXY()
+    if chart is None or widget is None:
+      print(f"[GPA plot-drive] no chart or widget (chart={chart})",
+            flush=True)
+      return
+    bx = chart.GetAxis(vtk.vtkAxis.BOTTOM)
+    ly = chart.GetAxis(vtk.vtkAxis.LEFT)
+    if bx is None or ly is None:
+      return
+    bx_p1 = bx.GetPoint1(); bx_p2 = bx.GetPoint2()
+    ly_p1 = ly.GetPoint1(); ly_p2 = ly.GetPoint2()
+    if abs(bx_p2[0] - bx_p1[0]) < 1e-6 or abs(ly_p2[1] - ly_p1[1]) < 1e-6:
+      return
+    # Qt y is top-down, VTK chart axis points are bottom-up.
+    h = float(widget.height)
+    px = float(event.x())
+    py = h - float(event.y())
+    fx = (px - bx_p1[0]) / (bx_p2[0] - bx_p1[0])
+    fy = (py - ly_p1[1]) / (ly_p2[1] - ly_p1[1])
+    fx = max(0.0, min(1.0, fx))
+    fy = max(0.0, min(1.0, fy))
+    dx = bx.GetMinimum() + fx * (bx.GetMaximum() - bx.GetMinimum())
+    dy = ly.GetMinimum() + fy * (ly.GetMaximum() - ly.GetMinimum())
+    mods = event.modifiers()
+    if (mods & qt.Qt.ShiftModifier) and self._plotDriveCursorTable is not None:
+      dy = self._plotDriveCursorTable.GetTable().GetValue(0, 1).ToFloat()
+    if (mods & qt.Qt.ControlModifier) and self._plotDriveCursorTable is not None:
+      dx = self._plotDriveCursorTable.GetTable().GetValue(0, 0).ToFloat()
+    self._applyPlotScores(dx, dy)
+    self._updatePCACursor(dx, dy)
+
+  def _detachPlotMouseFilter(self):
+    for interactor, tag in getattr(self, "_plotDriveObserverIDs", []):
+      try:
+        interactor.RemoveObserver(tag)
+      except Exception:
+        pass
+    self._plotDriveObserverIDs = []
+    self._plotDriveDragging = False
+
+  def _onVTKMousePress(self, caller, eventName):
+    pass  # legacy no-op
+  def _onVTKMouseMove(self, caller, eventName):
+    pass
+  def _onVTKMouseRelease(self, caller, eventName):
+    pass
+  def _onSceneMousePress(self, caller, eventName):
+    pass
+  def _onSceneMouseMove(self, caller, eventName):
+    pass
+  def _onSceneMouseRelease(self, caller, eventName):
+    pass
+  def _sceneMousePos(self, scene):
+    return (0.0, 0.0)
+
+  # ---- Geometry: build per-PC displacement arrays sharing one grid ----
+  def _ensureTwoPCDisplacement(self):
+    """Make sure both XcomboBox and YcomboBox PCs have cached displacement
+    arrays sampled on a shared grid, and that a fused vtkImageData target
+    exists for live updates. Returns True on success.
+    """
+    if self.LM is None or self.scatterDataAll is None or self.scatterDataAll.size == 0:
+      self._setPlotDriveStatus("Status: load + run GPA first")
+      return False
+    try:
+      pcX = int(self.ui.XcomboBox.currentIndex) + 1
+      pcY = int(self.ui.YcomboBox.currentIndex) + 1
+    except Exception:
+      self._setPlotDriveStatus("Status: select X/Y PCs on Explore tab")
+      return False
+    # Need a model OR landmark target to compute grid bounds. Reuse setupPCTransform
+    # path via a single getGridTransform call: pick X first to seed the geometry,
+    # then convert any cached vtkImageData -> numpy displacement, and likewise for Y.
+    try:
+      magnification = float(self.ui.spinMagnification.value)
+    except Exception:
+      magnification = 1.0
+    try:
+      self._plotDrivePCmaxX = float(np.max(np.abs(self.scatterDataAll[:, pcX - 1])))
+      self._plotDrivePCmaxY = float(np.max(np.abs(self.scatterDataAll[:, pcY - 1])))
+    except Exception:
+      self._plotDrivePCmaxX = 0.0
+      self._plotDrivePCmaxY = 0.0
+    if self._plotDrivePCmaxX < 1e-12 or self._plotDrivePCmaxY < 1e-12:
+      self._setPlotDriveStatus("Status: PC range is degenerate")
+      return False
+
+    def _disp_for(pc_index):
+      key = (pc_index, magnification)
+      arr = self._plotDriveDispCache.get(key)
+      if arr is not None:
+        return arr
+      try:
+        # getGridTransform reads self.pcScoreAbsMax to size the warp; set it
+        # to the per-PC absolute score range so each PC's grid is built at
+        # its own max-score deformation.
+        prev_abs_max = getattr(self, "pcScoreAbsMax", None)
+        prev_pc = getattr(self, "currentPC", None)
+        self.pcScoreAbsMax = float(np.max(np.abs(self.scatterDataAll[:, pc_index - 1])))
+        self.currentPC = pc_index
+        try:
+          img = self.getGridTransform(pc_index)
+        finally:
+          if prev_abs_max is not None:
+            self.pcScoreAbsMax = prev_abs_max
+          if prev_pc is not None:
+            self.currentPC = prev_pc
+      except Exception as e:
+        print(f"[GPA] plot-drive: getGridTransform failed for PC{pc_index}: {e}", flush=True)
+        return None
+      dims = img.GetDimensions()
+      vec = numpy_support.vtk_to_numpy(img.GetPointData().GetScalars()).copy()
+      vec = vec.reshape((dims[2], dims[1], dims[0], 3))
+      self._plotDriveDispCache[key] = vec
+      # Capture geometry once so we can build a fused image with same lattice
+      self._plotDriveGridDims = dims
+      self._plotDriveGridOrigin = img.GetOrigin()
+      self._plotDriveGridSpacing = img.GetSpacing()
+      return vec
+
+    dispX = _disp_for(pcX)
+    dispY = _disp_for(pcY)
+    if dispX is None or dispY is None:
+      self._setPlotDriveStatus("Status: failed to build displacement grids")
+      return False
+
+    # Build (or reuse) a single fused vtkImageData attached to a single grid node.
+    rebuilt = False
+    if (self._plotDriveFusedImage is None
+        or self._plotDriveFusedImage.GetDimensions() != self._plotDriveGridDims):
+      img = vtk.vtkImageData()
+      img.SetDimensions(self._plotDriveGridDims)
+      img.SetOrigin(self._plotDriveGridOrigin)
+      img.SetSpacing(self._plotDriveGridSpacing)
+      n = (self._plotDriveGridDims[0]
+           * self._plotDriveGridDims[1]
+           * self._plotDriveGridDims[2])
+      flat = np.zeros((n, 3), dtype=np.float64)
+      vtk_arr = numpy_support.numpy_to_vtk(flat, deep=True, array_type=vtk.VTK_DOUBLE)
+      vtk_arr.SetNumberOfComponents(3)
+      vtk_arr.SetName("Displacement")
+      img.GetPointData().SetScalars(vtk_arr)
+      self._plotDriveFusedImage = img
+      # Keep a numpy reshape view for fast in-place fills
+      self._plotDriveFusedArray = numpy_support.vtk_to_numpy(vtk_arr).reshape(
+        (self._plotDriveGridDims[2], self._plotDriveGridDims[1],
+         self._plotDriveGridDims[0], 3))
+      rebuilt = True
+    # ALWAYS (re-)attach the fused image to the grid transform and wire
+    # model + landmarks to it. Toggling off + using the regular visualization
+    # path swaps the model's transform out from under us; re-bind on every
+    # ON-toggle so the warp resumes.
+    if self._node('gridTransformNode') is None:
+      self.gridTransformNode = slicer.mrmlScene.AddNewNodeByClass(
+        "vtkMRMLGridTransformNode", "GridTransform")
+      GPANodeCollection.AddItem(self.gridTransformNode)
+    self.gridTransformNode.GetTransformFromParent().SetDisplacementGridData(
+      self._plotDriveFusedImage)
+    self.gridTransformNode.GetTransformFromParent().SetDisplacementScale(1.0)
+    lm_node = getattr(self, "cloneLandmarkNode", None) or getattr(self, "copyLandmarkNode", None)
+    if lm_node is not None:
+      lm_node.SetAndObserveTransformNodeID(self.gridTransformNode.GetID())
+    try:
+      modelChecked = bool(self.ui.modelVisualizationType.isChecked())
+    except Exception:
+      modelChecked = False
+    if modelChecked and getattr(self, "cloneModelNode", None):
+      self.cloneModelNode.SetAndObserveTransformNodeID(self.gridTransformNode.GetID())
+
+    self._plotDrivePCs = (pcX, pcY)
+    self._plotDriveDispX = dispX
+    self._plotDriveDispY = dispY
+    # Reset to origin (mean shape) on every toggle ON so the cursor and the
+    # 3D model start in sync.
+    self._applyPlotScores(0.0, 0.0)
+    self._updatePCACursor(0.0, 0.0)
+    return True
+
+  def _applyPlotScores(self, scoreX, scoreY):
+    """Set the fused displacement field to scoreX*dX_unit + scoreY*dY_unit
+    where dX_unit / dY_unit are the per-PC max-score displacements scaled
+    so that score == pcScoreAbsMax produces the maximum-shape grid we cached.
+    """
+    if self._plotDriveFusedArray is None:
+      return
+    if self._plotDrivePCmaxX < 1e-12 or self._plotDrivePCmaxY < 1e-12:
+      return
+    sx = float(scoreX) / self._plotDrivePCmaxX
+    sy = float(scoreY) / self._plotDrivePCmaxY
+    np.multiply(self._plotDriveDispX, sx, out=self._plotDriveFusedArray)
+    self._plotDriveFusedArray += sy * self._plotDriveDispY
+    self._plotDriveFusedImage.GetPointData().GetScalars().Modified()
+    self._plotDriveFusedImage.Modified()
+    if self._node('gridTransformNode') is not None:
+      self.gridTransformNode.GetTransformFromParent().Modified()
+      self.gridTransformNode.Modified()
+
+  # ---- Crosshair series on the chart ----
+  def _ensurePCACursorSeries(self, chartNode):
+    """Add (once) a single '+' marker series tracking (scoreX, scoreY)."""
+    if chartNode is None:
+      return
+    if self._plotDriveCursorTable is None:
+      tableNode = slicer.mrmlScene.GetFirstNodeByName('PCA Cursor Table')
+      if tableNode is None:
+        tableNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", 'PCA Cursor Table')
+        GPANodeCollection.AddItem(tableNode)
+      tbl = tableNode.GetTable()
+      tbl.RemoveAllColumns()
+      colX = vtk.vtkFloatArray(); colX.SetName("X")
+      colY = vtk.vtkFloatArray(); colY.SetName("Y")
+      tbl.AddColumn(colX); tbl.AddColumn(colY)
+      tbl.SetNumberOfRows(1)
+      tbl.SetValue(0, 0, 0.0)
+      tbl.SetValue(0, 1, 0.0)
+      self._plotDriveCursorTable = tableNode
+    if self._plotDriveCursorSeries is None:
+      seriesNode = slicer.mrmlScene.GetFirstNodeByName('PCA Cursor')
+      if seriesNode is None:
+        seriesNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", 'PCA Cursor')
+        GPANodeCollection.AddItem(seriesNode)
+      seriesNode.SetAndObserveTableNodeID(self._plotDriveCursorTable.GetID())
+      seriesNode.SetXColumnName("X")
+      seriesNode.SetYColumnName("Y")
+      seriesNode.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeScatter)
+      seriesNode.SetLineStyle(slicer.vtkMRMLPlotSeriesNode.LineStyleNone)
+      try:
+        seriesNode.SetMarkerStyle(slicer.vtkMRMLPlotSeriesNode.MarkerStylePlus)
+      except Exception:
+        seriesNode.SetMarkerStyle(slicer.vtkMRMLPlotSeriesNode.MarkerStyleCross)
+      seriesNode.SetMarkerSize(28)
+      seriesNode.SetColor(0.0, 0.0, 0.0)
+      self._plotDriveCursorSeries = seriesNode
+    if not chartNode.HasPlotSeriesNodeID(self._plotDriveCursorSeries.GetID()):
+      chartNode.AddAndObservePlotSeriesNodeID(self._plotDriveCursorSeries.GetID())
+
+  def _updatePCACursor(self, scoreX, scoreY):
+    if self._plotDriveCursorTable is None:
+      return
+    tbl = self._plotDriveCursorTable.GetTable()
+    tbl.SetValue(0, 0, float(scoreX))
+    tbl.SetValue(0, 1, float(scoreY))
+    self._plotDriveCursorTable.Modified()
+
+  # ---- Mouse → data coordinate conversion + dispatch ----
+  def _handleVTKMouseEvent(self, interactor):
+    pass  # legacy no-op
+
+  def _handleScenePos(self, pos, shift=False, ctrl=False):
+    pass  # legacy no-op
 
   def toggleMeanPlot(self):
     node = self._node('meanLandmarkNode')
