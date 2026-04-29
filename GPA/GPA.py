@@ -1855,8 +1855,74 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         pass
       self._detachPlotMouseFilter()
       return
-    # Attach + ensure cursor + sanity check
+    # Attach + ensure cursor + sanity check.
+    # Auto-create a default PC1-vs-PC2 plot if the user hasn't built one.
+    if self._currentPlotChartNode() is None:
+      if not self._autoCreateDefaultPCAPlot():
+        # Failure path already set status + unchecked the box.
+        return
     self._refreshPlotDriving(forceLog=True)
+
+  def _autoCreateDefaultPCAPlot(self):
+    """Convenience: when the user toggles 'Drive 3D from PCA scatter plot'
+    without having clicked the Explore tab's 'Plot' button, build a default
+    PC1-vs-PC2 scatter and bind it to plot view 0. Returns True on success."""
+    # Prerequisite: GPA results must exist.
+    if (getattr(self, "LM", None) is None
+        or getattr(self, "scatterDataAll", None) is None
+        or self.scatterDataAll.size == 0):
+      self._setPlotDriveStatus("Status: load data and run GPA first")
+      try: self.ui.drivePCAPlotCheckBox.setChecked(False)
+      except Exception: pass
+      self._plotDriveActive = False
+      return False
+
+    # If the current layout has no plot view, switch to the GPA custom
+    # layout (id 500) which contains one. Avoids the surprise of clicking
+    # 'on' and seeing nothing happen because plot view 0 doesn't exist.
+    if self._plotWidget() is None:
+      try:
+        slicer.app.layoutManager().setLayout(500)
+      except Exception as e:
+        print(f"[GPA plot-drive] could not switch to layout 500: {e}",
+              flush=True)
+    if self._plotWidget() is None:
+      self._setPlotDriveStatus("Status: no plot view available in current layout")
+      try: self.ui.drivePCAPlotCheckBox.setChecked(False)
+      except Exception: pass
+      self._plotDriveActive = False
+      return False
+
+    # Force PC1 vs PC2 on the Explore-tab combos so that what the user sees
+    # in the plot matches what drives the warp. Suppress signals to avoid
+    # firing whatever index-changed handlers Explore may have wired up.
+    try:
+      for combo, idx in ((self.ui.XcomboBox, 0), (self.ui.YcomboBox, 1)):
+        if combo.count > idx:
+          blocked = combo.blockSignals(True)
+          try: combo.setCurrentIndex(idx)
+          finally: combo.blockSignals(blocked)
+    except Exception as e:
+      print(f"[GPA plot-drive] could not set PC1/PC2 combos: {e}",
+            flush=True)
+
+    # Build the chart via the same code path the 'Plot' button uses.
+    try:
+      self.plot()
+    except Exception as e:
+      self._setPlotDriveStatus(f"Status: auto-plot failed ({e})")
+      try: self.ui.drivePCAPlotCheckBox.setChecked(False)
+      except Exception: pass
+      self._plotDriveActive = False
+      return False
+
+    if self._currentPlotChartNode() is None:
+      self._setPlotDriveStatus("Status: plot creation failed")
+      try: self.ui.drivePCAPlotCheckBox.setChecked(False)
+      except Exception: pass
+      self._plotDriveActive = False
+      return False
+    return True
 
   def _refreshPlotDriving(self, forceLog=False):
     """Wire the event filter and ensure a crosshair series exists.
