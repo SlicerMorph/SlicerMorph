@@ -2592,98 +2592,185 @@ class GPALogic(ScriptedLoadableModuleLogic):
     except (ValueError, TypeError):
       return False
 
-  def process(self, inputVolume, outputVolume, imageThreshold, invert=False, showResult=True):
-    """
-    Run the processing algorithm.
-    Can be used without GUI widget.
-    :param inputVolume: volume to be thresholded
-    :param outputVolume: thresholding result
-    :param imageThreshold: values above/below this threshold will be set to 0
-    :param invert: if True then values above the threshold will be set to 0, otherwise values below are set to 0
-    :param showResult: show output volume in slice viewers
-    """
-
-    if not inputVolume or not outputVolume:
-      raise ValueError("Input or output volume is invalid")
-
-    import time
-    startTime = time.time()
-    logging.info('Processing started')
-
-    # Compute the thresholded output volume using the "Threshold Scalar Volume" CLI module
-    cliParams = {
-      'InputVolume': inputVolume.GetID(),
-      'OutputVolume': outputVolume.GetID(),
-      'ThresholdValue' : imageThreshold,
-      'ThresholdType' : 'Above' if invert else 'Below'
-      }
-    cliNode = slicer.cli.run(slicer.modules.thresholdscalarvolume, None, cliParams, wait_for_completion=True, update_display=showResult)
-    # We don't need the CLI module node anymore, remove it to not clutter the scene with it
-    slicer.mrmlScene.RemoveNode(cliNode)
-
-    stopTime = time.time()
-    logging.info(f'Processing completed in {stopTime-startTime:.2f} seconds')
-
 
 class GPATest(ScriptedLoadableModuleTest):
   """
-  This is the test case for your scripted module.
-  Uses ScriptedLoadableModuleTest base class, available at:
-  https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
+  Self-test for the GPA module.
+
+  Click "Reload and Test" in the Reload & Test section of the GPA module to:
+  1) Download a known-good landmark dataset (494 specimens, 55 landmarks) from
+     SlicerMorph/SampleData into Slicer's cache directory if not present.
+  2) Run the full Load workflow (GPA + PCA + scene setup) on it.
+  3) Sanity-check the results (file count, landmark shape, eigenvalue ordering).
+  4) Print per-step timings to the Python console and write a timing JSON into
+     Slicer's cache under "GPA_selftest/results/".
+
+  Override paths via env vars (optional):
+    GPA_SELFTEST_LM_DIR   override input landmark folder
+    GPA_SELFTEST_OUT_DIR  override timing JSON output folder
   """
 
+  DATASET_URL = "https://github.com/SlicerMorph/SampleData/raw/master/converted_LMs.zip"
+  DATASET_DIRNAME = "converted_LMs"
+  EXPECTED_NUM_FILES = 494
+  EXPECTED_NUM_LANDMARKS = 55
+
   def setUp(self):
-    """ Do whatever is needed to reset the state - typically a scene clear will be enough.
-    """
     slicer.mrmlScene.Clear(0)
 
   def runTest(self):
-    """Run as few or as many tests as needed here.
-    """
     self.setUp()
-    self.test_GPA1()
+    self.test_GPAWorkflow()
 
-  def test_GPA1(self):
-    """ Ideally you should have several levels of tests.  At the lowest level
-    tests should exercise the functionality of the logic with different inputs
-    (both valid and invalid).  At higher levels your tests should emulate the
-    way the user would interact with your code and confirm that it still works
-    the way you intended.
-    One of the most important features of the tests is that it should alert other
-    developers when their changes will have an impact on the behavior of your
-    module.  For example, if a developer removes a feature that you depend on,
-    your test should break so they know that the feature is needed.
+  def _ensureDataset(self):
+    """Download + unzip the test dataset into Slicer's cache.
+    Returns the absolute path to the folder containing *.fcsv files.
     """
+    import os, zipfile
+    cache_root = slicer.app.cachePath
+    target_dir = os.path.join(cache_root, "GPA_selftest", self.DATASET_DIRNAME)
+    if os.path.isdir(target_dir) and any(f.endswith(".fcsv") for f in os.listdir(target_dir)):
+      return target_dir
+    os.makedirs(os.path.dirname(target_dir), exist_ok=True)
+    zip_path = os.path.join(cache_root, "GPA_selftest", "converted_LMs.zip")
+    if not os.path.exists(zip_path):
+      print(f"[GPA selftest] downloading {self.DATASET_URL}", flush=True)
+      slicer.util.downloadFile(self.DATASET_URL, zip_path)
+    print(f"[GPA selftest] extracting -> {os.path.dirname(target_dir)}", flush=True)
+    with zipfile.ZipFile(zip_path) as zf:
+      zf.extractall(os.path.dirname(target_dir))
+    if not os.path.isdir(target_dir):
+      # The zip may extract to a slightly different folder name; try to find it.
+      for name in os.listdir(os.path.dirname(target_dir)):
+        cand = os.path.join(os.path.dirname(target_dir), name)
+        if os.path.isdir(cand) and any(f.endswith(".fcsv") for f in os.listdir(cand)):
+          return cand
+      raise RuntimeError(f"Extracted dataset folder not found under {os.path.dirname(target_dir)}")
+    return target_dir
 
-    self.delayDisplay("Starting the test")
+  def test_GPAWorkflow(self):
+    import os, glob, time, json
+    from datetime import datetime
 
-    # Get/create input data
-    import SampleData
-    registerSampleData()
-    inputVolume = SampleData.downloadSample('TemplateKey1')
-    self.delayDisplay('Loaded test data set')
+    cache_root = slicer.app.cachePath
+    default_out_dir = os.path.join(cache_root, "GPA_selftest", "results")
 
-    inputScalarRange = inputVolume.GetImageData().GetScalarRange()
-    self.assertEqual(inputScalarRange[0], 0)
-    self.assertEqual(inputScalarRange[1], 695)
+    lm_dir = os.environ.get("GPA_SELFTEST_LM_DIR")
+    if not lm_dir:
+      lm_dir = self._ensureDataset()
+    out_dir = os.environ.get("GPA_SELFTEST_OUT_DIR", default_out_dir)
 
-    outputVolume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode")
-    threshold = 100
+    self.assertTrue(os.path.isdir(lm_dir), f"Landmark dir not found: {lm_dir}")
+    files = sorted(glob.glob(os.path.join(lm_dir, "*.fcsv")))
+    if not files:
+      files = sorted(glob.glob(os.path.join(lm_dir, "*.mrk.json")))
+    self.assertTrue(files, f"No landmark files in {lm_dir}")
+    extension = "fcsv" if files[0].endswith(".fcsv") else "json"
+    os.makedirs(out_dir, exist_ok=True)
+    print(f"[GPA selftest] LM dir : {lm_dir}", flush=True)
+    print(f"[GPA selftest] results: {out_dir}", flush=True)
 
-    # Test the module logic
+    # Switch to GPA module and grab the widget
+    slicer.util.selectModule("GPA")
+    widget = slicer.modules.GPAWidget
+    widget.reset()
+    slicer.app.processEvents()
 
-    logic = GPALogic()
+    # Wire inputs as if the user had selected them
+    widget.inputFilePaths = files
+    widget.files = [os.path.basename(p) for p in files]
+    widget.LM_dir_name = lm_dir
+    widget.outputDirectory = out_dir
+    widget.extension = extension
+    try:
+      widget.ui.outText.setText(out_dir)
+    except Exception:
+      pass
 
-    # Test algorithm with non-inverted threshold
-    logic.process(inputVolume, outputVolume, threshold, True)
-    outputScalarRange = outputVolume.GetImageData().GetScalarRange()
-    self.assertEqual(outputScalarRange[0], inputScalarRange[0])
-    self.assertEqual(outputScalarRange[1], threshold)
+    # --- Instrument the slow steps with thin wrappers ---
+    timings = {}
 
-    # Test algorithm with inverted threshold
-    logic.process(inputVolume, outputVolume, threshold, False)
-    outputScalarRange = outputVolume.GetImageData().GetScalarRange()
-    self.assertEqual(outputScalarRange[0], inputScalarRange[0])
-    self.assertEqual(outputScalarRange[1], inputScalarRange[1])
+    def _make_wrap(orig, name):
+      def wrapped(*a, **kw):
+        t0 = time.perf_counter()
+        try:
+          return orig(*a, **kw)
+        finally:
+          dt = time.perf_counter() - t0
+          timings[name] = timings.get(name, 0.0) + dt
+          print(f"[GPA selftest] {name:<32} {dt*1000:9.1f} ms", flush=True)
+      wrapped._gpa_orig = orig
+      return wrapped
 
-    self.delayDisplay('Test passed')
+    def _patch_class(cls, names):
+      saved = {}
+      for n in names:
+        saved[n] = getattr(cls, n)
+        setattr(cls, n, _make_wrap(saved[n], n))
+      return saved
+
+    def _patch_instance(obj, names):
+      saved = {}
+      for n in names:
+        saved[n] = getattr(obj, n)
+        setattr(obj, n, _make_wrap(saved[n], n))
+      return saved
+
+    # Patch classes (so freshly constructed instances inside onLoad are timed)
+    saved_logic = _patch_class(GPALogic, ["loadLandmarks"])
+    saved_lm = _patch_class(LMData, ["doGpa", "calcEigen", "writeOutData", "closestSample"])
+    # Patch widget instance methods
+    saved_widget = _patch_instance(widget, [
+      "updateList",
+      "setupPCTransform",
+      "populateDistanceTable",
+      "assignLayoutDescription",
+      "scaleMeanGlyph",
+      "toggleMeanColor",
+      "writeAnalysisLogFile",
+    ])
+
+    print(f"\n[GPA selftest] running onLoad on {len(files)} files...\n", flush=True)
+    t_total0 = time.perf_counter()
+    try:
+      widget.onLoad()
+    finally:
+      total = time.perf_counter() - t_total0
+      for n, fn in saved_logic.items():
+        setattr(GPALogic, n, fn)
+      for n, fn in saved_lm.items():
+        setattr(LMData, n, fn)
+      for n, fn in saved_widget.items():
+        setattr(widget, n, fn)
+
+    print(f"\n[GPA selftest] TOTAL onLoad: {total*1000:.1f} ms\n", flush=True)
+
+    # ---- Sanity checks on the output ----
+    self.assertEqual(len(files), self.EXPECTED_NUM_FILES,
+                     f"Expected {self.EXPECTED_NUM_FILES} landmark files, found {len(files)}")
+    self.assertIsNotNone(getattr(widget, "LM", None), "widget.LM was not created")
+    self.assertEqual(widget.LM.lmOrig.shape[0], self.EXPECTED_NUM_LANDMARKS,
+                     f"Expected {self.EXPECTED_NUM_LANDMARKS} landmarks per specimen, got {widget.LM.lmOrig.shape[0]}")
+    self.assertEqual(widget.LM.lmOrig.shape[2], self.EXPECTED_NUM_FILES,
+                     f"Expected {self.EXPECTED_NUM_FILES} specimens in array, got {widget.LM.lmOrig.shape[2]}")
+    eigvals = widget.LM.val
+    self.assertTrue(eigvals[0] > 0, "Top eigenvalue is not positive")
+    self.assertTrue((eigvals[:-1] >= eigvals[1:] - 1e-12).all(), "Eigenvalues are not sorted descending")
+
+    # Write timing JSON
+    stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    out_json = os.path.join(out_dir, f"selftest_{stamp}.json")
+    payload = {
+      "lm_dir": lm_dir,
+      "n_files": len(files),
+      "n_landmarks": int(widget.LM.lmOrig.shape[0]),
+      "extension": extension,
+      "total_onLoad_seconds": total,
+      "step_seconds": timings,
+      "top10_eigenvalues": [float(v) for v in eigvals[:10]],
+    }
+    with open(out_json, "w") as f:
+      json.dump(payload, f, indent=2)
+    print(f"[GPA selftest] wrote {out_json}", flush=True)
+    self.delayDisplay(f"GPA self-test PASSED: {total:.2f}s ({len(files)} files)")
+
