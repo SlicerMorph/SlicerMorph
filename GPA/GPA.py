@@ -2922,9 +2922,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     vis = node.GetDisplayVisibility()
     if vis:
       node.SetDisplayVisibility(False)
-      clone = self._node('cloneLandmarkNode')
-      if clone:
-        clone.SetDisplayVisibility(False)
     else:
       node.SetDisplayVisibility(True)
       disp = self._display(node)
@@ -2932,13 +2929,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         disp.SetGlyphScale(self.ui.scaleMeanShapeSlider.value)
         color = self.ui.meanShapeColor.color
         disp.SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
-      clone = self._node('cloneLandmarkNode')
-      if clone:
-        clone.SetDisplayVisibility(True)
-        cdisp = self._display(clone)
-        if cdisp:
-          cdisp.SetGlyphScale(self.ui.scaleMeanShapeSlider.value)
-          cdisp.SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
+    # Note: do NOT propagate visibility to cloneLandmarkNode. The viewer-2
+    # clone is owned by the active warp source (PCA/LR) and should remain
+    # visible while the user toggles the viewer-1 mean shape independently.
 
   def toggleMeanLabels(self):
     node = self._node('meanLandmarkNode')
@@ -2974,11 +2967,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       return
     color = self.ui.meanShapeColor.color
     disp.SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
-    clone = self._node('cloneLandmarkNode')
-    if clone:
-      cdisp = self._display(clone)
-      if cdisp:
-        cdisp.SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
+    # Note: do NOT propagate to cloneLandmarkNode. The viewer-2 clone color is
+    # owned by the active warp source (PCA = dark red, LR = light pink) via
+    # _setWarpMode and overriding it here would break that visual convention.
 
   def scaleMeanGlyph(self):
     node = self._node('meanLandmarkNode')
