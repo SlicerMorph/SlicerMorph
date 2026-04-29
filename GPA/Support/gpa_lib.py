@@ -5,30 +5,22 @@ import scipy.linalg as sp
 
 # PCA
 def makeTwoDim(monsters):
-    i,j,k=monsters.shape
-    tmp=np.zeros((i*j,k))
-    for x in range(k):
-      vec=np.reshape(monsters[:,:,x],(i*j),order='F')
-      tmp[:,x]=vec
+    # Reshape (n_landmarks, 3, n_subjects) to (3*n_landmarks, n_subjects) in Fortran order,
+    # then center each row across subjects.
+    i, j, k = monsters.shape
+    tmp = monsters.reshape(i * j, k, order='F').astype(np.float64, copy=True)
     tmp -= np.mean(tmp, axis=1, keepdims=True)
     return tmp
 
 def calcMean(vec):
-    i,j=vec.shape
-    meanVec=np.zeros(i)
-    for x in range(j):
-        meanVec+=vec[:,x]/float(j)
-    return meanVec
+    return vec.mean(axis=1)
 
 def calcCov(vec):
-    i,j=vec.shape
-    meanVec=calcMean(vec)
-    covMatrix=np.zeros((i,i))
-    for x in range(j):
-      t1=((vec[:,x]-meanVec).T).reshape(i,1)
-      t2=(vec[:,x]-meanVec).reshape(1,i)
-      covMatrix+=np.dot(t1,t2)/float(j)
-    return covMatrix
+    # Vectorized covariance: (X - mean) @ (X - mean).T / N
+    # Matches the original convention of dividing by N (not N-1).
+    i, j = vec.shape
+    centered = vec - vec.mean(axis=1, keepdims=True)
+    return (centered @ centered.T) / float(j)
 
 def sortEig(eVal, eVec):
     i,j=eVec.shape

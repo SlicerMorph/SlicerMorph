@@ -322,14 +322,13 @@ class LMData:
       return 0
 
   def calcLMVariation(self, SampleScaleFactor, BoasOption):
-    i,j,k=self.lmOrig.shape
-    varianceMat=np.zeros((i,j))
-    for subject in range(k):
-      tmp=pow((self.lmOrig[:,:,subject]-self.mShape),2)
-      varianceMat=varianceMat+tmp
+    i, j, k = self.lmOrig.shape
+    # Vectorized: sum of squared per-axis deviations across subjects
+    diff = self.lmOrig - self.mShape[:, :, None]
+    varianceMat = np.sum(diff * diff, axis=2)
     # if GPA scaling has been skipped, don't apply image size scaling factor
     if(BoasOption):
-      varianceMat =np.sqrt(varianceMat/(k-1))
+      varianceMat = np.sqrt(varianceMat/(k-1))
     else:
       varianceMat = SampleScaleFactor*np.sqrt(varianceMat/(k-1))
     return varianceMat
@@ -346,15 +345,15 @@ class LMData:
     self.procdist = gpa_lib.procDist(self.lm, self.mShape)
 
   def calcEigen(self):
+    # SVD-based PCA on the centered (D x N) data matrix.
+    # Avoids forming the D x D covariance entirely.
+    # Eigenvectors of cov(X) == left singular vectors U;
+    # eigenvalues of cov(X) == S**2 / N (matches original calcCov / N convention).
     i, j, k = self.lmOrig.shape
-    twoDim=gpa_lib.makeTwoDim(self.lm)
-    covMatrix=gpa_lib.calcCov(twoDim)
-    if k>i*j: # limit results returned if sample number is less than observations
-      self.val, self.vec = sp.eigh(covMatrix)
-    else:
-      self.val, self.vec=sp.eigh(covMatrix, subset_by_index=(i * j - k, i * j - 1))
-    self.val=self.val[::-1]
-    self.vec=self.vec[:, ::-1]
+    twoDim = gpa_lib.makeTwoDim(self.lm)  # shape (D, N), already centered across subjects
+    U, S, _ = np.linalg.svd(twoDim, full_matrices=False)
+    self.val = (S * S) / float(k)
+    self.vec = U
     self.sortedEig = gpa_lib.pairEig(self.val, self.vec)
 
   def ExpandAlongPCs(self, numVec,scaleFactor,SampleScaleFactor):
@@ -631,6 +630,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.cloneModelDisplayNode = None
     self.factorTableNode = None
     self.gridTransformNode = None
+    self._gridCache = {}
     self.files = []
     self.inputFilePaths = []
     self.outputDirectory = None
@@ -858,6 +858,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.ui.startRecordButton.enabled = False
 
     #delete data from previous runs
+    self._gridCache = {}
+    self.gridTransformNode = None
     self.nodeCleanUp()
 
   def nodeCleanUp(self):
@@ -1470,6 +1472,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
   # ---- PC magnification helpers (class-level) ----
   def onUpdateMagnificationClicked(self):
+    # Magnification changed: invalidate cached grids since they were built at the previous magnification.
+    self._gridCache = {}
     self.setupPCTransform()
 
   def setupPCTransform(self):
@@ -1483,8 +1487,22 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.pcMin = float(np.min(self.scatterDataAll, axis=0)[self.currentPC - 1])
     self.pcScoreAbsMax = max(abs(self.pcMin), abs(self.pcMax))
 
-    # Build displacement grid for current PC
-    self.displacementGridData = self.getGridTransform(self.currentPC)
+    # Build (or reuse cached) displacement grid for current PC.
+    # Cache is keyed by (pc_index, current magnification). It is invalidated
+    # whenever magnification changes (see onUpdateMagnificationClicked) or a new
+    # analysis is loaded (initializeOnLoad / initializeOnSelect / reset).
+    try:
+      magnification = float(self.ui.spinMagnification.value)
+    except Exception:
+      magnification = 1.0
+    if not hasattr(self, "_gridCache") or self._gridCache is None:
+      self._gridCache = {}
+    cache_key = (self.currentPC, magnification)
+    cached = self._gridCache.get(cache_key)
+    if cached is None:
+      cached = self.getGridTransform(self.currentPC)
+      self._gridCache[cache_key] = cached
+    self.displacementGridData = cached
 
     needNewNode = (self._node('gridTransformNode') is None)
     if needNewNode:
@@ -1755,20 +1773,21 @@ class GPAWidget(ScriptedLoadableModuleWidget):
   def plotDistributionCloud(self, sliderScale):
     self.unplotDistributions()
     i,j,k=self.LM.lmOrig.shape
-    pt=[0,0,0]
-    #set up vtk point array for each landmark point
-    points = vtk.vtkPoints()
-    points.SetNumberOfPoints(i*k)
-    indexes = vtk.vtkDoubleArray()
-    indexes.SetName('LM Index')
-    pointCounter = 0
 
-    for subject in range(0,k):
-      for landmark in range(0,i):
-        pt=self.LM.lmOrig[landmark,:,subject]
-        points.SetPoint(pointCounter,pt)
-        indexes.InsertNextValue(landmark+1)
-        pointCounter+=1
+    # Vectorized construction: flatten landmarks across all subjects to (i*k, 3).
+    # Original ordering iterated subject-major, landmark-minor, so use transpose(2,0,1).
+    flat = np.ascontiguousarray(
+      self.LM.lmOrig.transpose(2, 0, 1).reshape(i * k, 3),
+      dtype=np.float64,
+    )
+    vtkPointData = numpy_support.numpy_to_vtk(flat, deep=True, array_type=vtk.VTK_DOUBLE)
+    points = vtk.vtkPoints()
+    points.SetData(vtkPointData)
+
+    # Per-point landmark index (1..i, repeated for each subject) for color mapping.
+    indexArr = np.tile(np.arange(1, i + 1, dtype=np.float64), k)
+    indexes = numpy_support.numpy_to_vtk(indexArr, deep=True, array_type=vtk.VTK_DOUBLE)
+    indexes.SetName('LM Index')
 
     #add points to polydata
     polydata=vtk.vtkPolyData()
