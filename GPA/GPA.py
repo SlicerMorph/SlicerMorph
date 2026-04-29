@@ -1015,6 +1015,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         logging.debug("Covariate table import failed, covariate filenames do not match input files")
         runAnalysis = slicer.util.confirmYesNoDisplay(f"Error: Covariate import failed. The row names in the table are required to match the selected input filenames. \n\nYou can continue analysis without covariates or stop and edit your covariate table. \n\nWould you like to proceed with the analysis?")
         return runAnalysis
+    # Reserve index 0 of the factor selector for "no factor" so that the
+    # first real covariate is at index 1 (the plot path checks currentIndex > 0).
+    self.ui.selectFactor.clear()
+    self.ui.selectFactor.addItem("")
     for i in range(1,numberOfColumns):
       if self.factorTableNode.GetTable().GetColumnName(i) == "":
         self.ui.GPALogTextbox.insertPlainText(f"Covariate import failed, covariate {i} is not labeled\n")
@@ -2618,7 +2622,9 @@ class GPATest(ScriptedLoadableModuleTest):
   DATASET_DIRNAME = "converted_LMs"
   MODEL_URL = "https://github.com/SlicerMorph/SampleData/raw/master/809-3.obj.zip"
   MODEL_FILENAME = "809-3.obj"
-  EXPECTED_NUM_FILES = 494
+  METADATA_URL = "https://github.com/SlicerMorph/SampleData/raw/master/matched_metadata.csv"
+  METADATA_FILENAME = "matched_metadata.csv"
+  EXPECTED_NUM_FILES = 431
   EXPECTED_NUM_LANDMARKS = 55
 
   def setUp(self):
@@ -2631,14 +2637,29 @@ class GPATest(ScriptedLoadableModuleTest):
   def _ensureDataset(self):
     """Download + unzip the test dataset into Slicer's cache.
     Returns the absolute path to the folder containing *.fcsv files.
+
+    If a previously cached dataset has a file count different from
+    EXPECTED_NUM_FILES, the stale folder and zip are removed so the new
+    dataset is re-downloaded.
     """
-    import os, zipfile
+    import os, zipfile, shutil
     cache_root = slicer.app.cachePath
     target_dir = os.path.join(cache_root, "GPA_selftest", self.DATASET_DIRNAME)
-    if os.path.isdir(target_dir) and any(f.endswith(".fcsv") for f in os.listdir(target_dir)):
-      return target_dir
-    os.makedirs(os.path.dirname(target_dir), exist_ok=True)
     zip_path = os.path.join(cache_root, "GPA_selftest", "converted_LMs.zip")
+
+    def _fcsv_count(d):
+      return sum(1 for f in os.listdir(d) if f.endswith(".fcsv")) if os.path.isdir(d) else 0
+
+    cached = _fcsv_count(target_dir)
+    if cached and cached != self.EXPECTED_NUM_FILES:
+      print(f"[GPA selftest] stale cache ({cached} files, expected {self.EXPECTED_NUM_FILES}); refreshing", flush=True)
+      shutil.rmtree(target_dir, ignore_errors=True)
+      if os.path.exists(zip_path):
+        os.remove(zip_path)
+    elif cached == self.EXPECTED_NUM_FILES:
+      return target_dir
+
+    os.makedirs(os.path.dirname(target_dir), exist_ok=True)
     if not os.path.exists(zip_path):
       print(f"[GPA selftest] downloading {self.DATASET_URL}", flush=True)
       slicer.util.downloadFile(self.DATASET_URL, zip_path)
@@ -2680,6 +2701,52 @@ class GPATest(ScriptedLoadableModuleTest):
         return os.path.join(model_dir, name)
     return None
 
+  def _ensureMetadata(self):
+    """Download the matched-metadata covariate CSV into Slicer's cache.
+    Returns the absolute path to the CSV (or None on failure).
+
+    The downloaded CSV is always re-sorted by the first column (ID) using
+    the same lexicographic order that ``sorted(glob('*.fcsv'))`` produces,
+    so the row order matches the landmark file order GPA expects.
+    """
+    import os, csv as _csv
+    cache_root = slicer.app.cachePath
+    meta_dir = os.path.join(cache_root, "GPA_selftest")
+    raw_path = os.path.join(meta_dir, "_raw_" + self.METADATA_FILENAME)
+    meta_path = os.path.join(meta_dir, self.METADATA_FILENAME)
+    os.makedirs(meta_dir, exist_ok=True)
+
+    # Always re-download the raw CSV (small file) so we pick up upstream edits
+    if os.path.isfile(raw_path):
+      try:
+        os.remove(raw_path)
+      except OSError:
+        pass
+    print(f"[GPA selftest] downloading {self.METADATA_URL}", flush=True)
+    try:
+      slicer.util.downloadFile(self.METADATA_URL, raw_path)
+    except Exception as e:
+      print(f"[GPA selftest] metadata download failed: {e}", flush=True)
+      return None
+    if not os.path.isfile(raw_path):
+      return None
+
+    # Sort rows by first column (ID) to match sorted(glob('*.fcsv'))
+    try:
+      with open(raw_path, newline='') as f:
+        reader = _csv.reader(f)
+        header = next(reader)
+        rows = sorted((r for r in reader if r), key=lambda r: r[0])
+      with open(meta_path, 'w', newline='') as f:
+        writer = _csv.writer(f)
+        writer.writerow(header)
+        writer.writerows(rows)
+      print(f"[GPA selftest] metadata sorted by ID -> {meta_path} ({len(rows)} rows)", flush=True)
+    except Exception as e:
+      print(f"[GPA selftest] metadata sort failed: {e}; using raw file", flush=True)
+      meta_path = raw_path
+    return meta_path
+
   def test_GPAWorkflow(self):
     import os, glob, time, json
     from datetime import datetime
@@ -2691,6 +2758,7 @@ class GPATest(ScriptedLoadableModuleTest):
     if not lm_dir:
       lm_dir = self._ensureDataset()
     model_path = self._ensureModel()
+    metadata_path = self._ensureMetadata()
     out_dir = os.environ.get("GPA_SELFTEST_OUT_DIR", default_out_dir)
 
     self.assertTrue(os.path.isdir(lm_dir), f"Landmark dir not found: {lm_dir}")
@@ -2719,6 +2787,17 @@ class GPATest(ScriptedLoadableModuleTest):
       widget.ui.outText.setText(out_dir)
     except Exception:
       pass
+
+    # Wire covariate metadata (matched IDs in CSV must align with landmark filenames)
+    if metadata_path and os.path.isfile(metadata_path):
+      widget.covariateTableFile = metadata_path
+      try:
+        widget.ui.selectCovariatesText.setText(metadata_path)
+      except Exception:
+        pass
+      print(f"[GPA selftest] covariates : {metadata_path}", flush=True)
+    else:
+      print("[GPA selftest] covariates : <not available>", flush=True)
 
     # --- Instrument the slow steps with thin wrappers ---
     timings = {}
@@ -2796,6 +2875,7 @@ class GPATest(ScriptedLoadableModuleTest):
     payload = {
       "lm_dir": lm_dir,
       "model_path": model_path,
+      "metadata_path": metadata_path,
       "n_files": len(files),
       "n_landmarks": int(widget.LM.lmOrig.shape[0]),
       "extension": extension,
@@ -2819,6 +2899,8 @@ class GPATest(ScriptedLoadableModuleTest):
       summary_lines.append(f"[GPA selftest]   Mean specimen LM: {os.path.join(lm_dir, '809-3.fcsv')}")
     else:
       summary_lines.append("[GPA selftest]   Reference model : <download failed>")
+    if metadata_path and os.path.isfile(metadata_path):
+      summary_lines.append(f"[GPA selftest]   Covariate CSV   : {metadata_path}")
     summary_lines.append("=" * 72)
     summary = "\n".join(summary_lines)
     print("\n" + summary + "\n", flush=True)
