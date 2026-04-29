@@ -158,20 +158,20 @@ This module performs standard Generalized Procrustes Analysis (GPA) based on Dry
          </layout>
        </item>
        <item splitSize=\"500\">
-        <layout type=\"horizontal\">
-         <item>
+        <layout type=\"horizontal\" split=\"true\">
+         <item splitSize=\"400\">
           <view class=\"vtkMRMLSliceNode\" singletontag=\"Red\">
            <property name=\"orientation\" action=\"default\">Axial</property>
            <property name=\"viewlabel\" action=\"default\">R</property>
            <property name=\"viewcolor\" action=\"default\">#F34A33</property>
           </view>
          </item>
-           <item>
+           <item splitSize=\"600\">
             <view class=\"vtkMRMLPlotViewNode\" singletontag=\"PlotViewerWindow_1\">
              <property name=\"viewlabel\" action=\"default\">1</property>
             </view>
            </item>
-         <item>
+         <item splitSize=\"400\">
           <view class=\"vtkMRMLTableViewNode\" singletontag=\"TableViewerWindow_1\">"
            <property name=\"viewlabel\" action=\"default\">T</property>"
           </view>"
