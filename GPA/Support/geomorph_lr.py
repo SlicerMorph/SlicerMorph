@@ -1198,7 +1198,15 @@ class GeomorphLR:
         if cov_df.shape[1] < 2:
           raise ValueError("Covariate CSV needs ID col + covariate columns.")
         cov_df = cov_df.set_index(cov_df.columns[0])
-        ids = [os.path.splitext(os.path.basename(f))[0] for f in files]
+        # Strip extension(s). Slicer markup files use the double extension
+        # ".mrk.json"; splitext only removes one, so strip a trailing
+        # ".mrk" too. Covariate CSVs typically key on the bare specimen ID.
+        def _stem(f):
+          s = os.path.splitext(os.path.basename(f))[0]
+          if s.endswith(".mrk"):
+            s = s[:-4]
+          return s
+        ids = [_stem(f) for f in files]
         missing = [i for i in ids if i not in cov_df.index]
         if missing:
           raise ValueError(f"IDs missing in covariate table (first 10): {missing[:10]}")
