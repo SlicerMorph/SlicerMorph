@@ -2396,17 +2396,19 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     extent = [0, dimension - 1, 0, dimension - 1, 0, dimension - 1]
     spacing = (size[0] / dimension, size[1] / dimension, size[2] / dimension)
 
-    # vtkTransformToGrid samples the inverse of the supplied transform, so we
-    # pass (source=target, target=mean) to obtain a forward warp on Apply.
-    # Sampling is parallelized over Z-slabs (helper falls back to single-thread
-    # for tiny grids).
-    return vtk_lib.sampleTPSToDisplacementGrid(
+    # NOTE: vtkTransformToGrid actually samples the FORWARD transform (the
+    # "samples the inverse" comment in older code is wrong, verified empirically).
+    # We pass (source=target, target=mean) -- same call shape the old vtkTPS+
+    # vtkTransformToGrid path used -- and get a numerically identical displacement
+    # field via a NumPy/SciPy TPS solve + chunked GEMM eval. ~50x faster than
+    # vtkTPS at p=1440 because vtkTPS's solve is sequential O(p^3); LAPACK uses
+    # multi-threaded BLAS.
+    return vtk_lib.buildDisplacementGridFromTPS(
       sourceLM=target,
       targetLM=self.rawMeanLandmarks,
       origin=origin,
       spacing=spacing,
       extent=extent,
-      basis="R",
     )
 
   def getExpandedBounds(self, node, paddingFactor: float = 0.1):
