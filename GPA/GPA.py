@@ -1363,6 +1363,18 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.LM_dir_name=None
     self.ui.openResultsButton.enabled = False
 
+    # Clear covariate table selection so the next run starts without inheriting
+    # the previous CSV path (the LR pipeline reads selectCovariatesText.text
+    # to decide whether covariates are available).
+    self.covariateTableFile = None
+    try:
+      self.ui.selectCovariatesText.setText("")
+    except Exception:
+      pass
+    try:
+      self.factorTableNode = None
+    except Exception:
+      pass
     self.ui.grayscaleSelector.setCurrentPath("")
     self.ui.FudSelect.setCurrentPath("")
     self.ui.grayscaleSelector.enabled = False
