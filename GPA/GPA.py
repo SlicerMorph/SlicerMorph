@@ -2254,8 +2254,35 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     cache_key = (self.currentPC, magnification)
     cached = self._gridCache.get(cache_key)
     if cached is None:
-      cached = self.getGridTransform(self.currentPC)
-      self._gridCache[cache_key] = cached
+      # Building the 50x50x50 displacement grid evaluates a TPS over all N
+      # control points at every grid sample (~125k * N kernel evals). On
+      # dense LM datasets this can take many seconds and runs synchronously
+      # on the UI thread; show a progress dialog so the user knows the app
+      # is working rather than hung. Cached after the first build per
+      # (PC, magnification).
+      progressDialog = None
+      restoreCursor = False
+      try:
+        progressDialog = slicer.util.createProgressDialog(
+          windowTitle="Caching deformation grid",
+          labelText=f"Caching deformation grid for PC{self.currentPC} "
+                    f"(magnification {magnification:g})...\n"
+                    f"This is a one-time cost per PC; subsequent selections "
+                    f"of this PC will be instant.",
+          maximum=0,
+        )
+        slicer.app.setOverrideCursor(qt.Qt.WaitCursor)
+        restoreCursor = True
+        slicer.app.processEvents()
+        cached = self.getGridTransform(self.currentPC)
+        self._gridCache[cache_key] = cached
+      finally:
+        if progressDialog is not None:
+          try: progressDialog.close()
+          except Exception: pass
+        if restoreCursor:
+          try: slicer.app.restoreOverrideCursor()
+          except Exception: pass
     self.displacementGridData = cached
 
     needNewNode = (self._node('gridTransformNode') is None)
