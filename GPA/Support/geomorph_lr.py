@@ -1753,12 +1753,15 @@ class GeomorphLR:
     node = getattr(self, "lrTPSTransformNode", None)
     if not node:
       self._log("[LR/COEF] lrTPSTransformNode missing in _coef_attachTargets"); return
+    import time as _time
     # Route attachment through the widget's warp-mode toggle so PCA/LR
     # ownership of the shared clones stays consistent and the radio buttons
     # in Setup Interactive Visualization reflect reality.
     try:
       if enabled:
+        _t = _time.perf_counter()
         self.w._setWarpMode("lr")
+        self._log(f"[LR/COEF/timing]   _setWarpMode('lr'): {_time.perf_counter() - _t:.2f}s")
       else:
         # Detach by switching back to PCA (or, if no PCA grid yet, clear).
         if getattr(self.w, "gridTransformNode", None) is not None:
@@ -1979,17 +1982,22 @@ class GeomorphLR:
       base_shape = self.w.rawMeanLandmarks
     target = base_shape + shift
 
+    import time as _time
+    _t = _time.perf_counter()
     tps = vtk.vtkThinPlateSplineTransform()
     tps.SetSourceLandmarks(_convert_numpy_to_vtk_points(base_shape))
     tps.SetTargetLandmarks(_convert_numpy_to_vtk_points(target))
     tps.SetBasisToR()
+    self._log(f"[LR/COEF/timing]   build vtkTPS (p={base_shape.shape[0]}): {_time.perf_counter() - _t:.2f}s")
 
+    _t = _time.perf_counter()
     node = self._ensureLRTPSNode()
     node.SetAndObserveTransformToParent(tps)
     try:
       node.Modified()
     except Exception:
       pass
+    self._log(f"[LR/COEF/timing]   attach tps to node + Modified: {_time.perf_counter() - _t:.2f}s")
 
     self._coef_debugPipeline(tag=f"TPS val={value} (delta={delta})", sample_scale=None)
 
