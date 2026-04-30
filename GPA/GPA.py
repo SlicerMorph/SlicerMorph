@@ -2281,9 +2281,24 @@ class GPAWidget(ScriptedLoadableModuleWidget):
                     f"of this PC will be instant.",
           maximum=0,
         )
+        # A freshly-created modal dialog needs the Qt event loop to spin
+        # several times before it is actually painted to the screen.
+        # Without forcing show + raise + repaint + a few processEvents()
+        # ticks here, the long synchronous getGridTransform() call below
+        # would start before the dialog is visible and the user would see
+        # nothing during the wait. This pattern is portable across
+        # platforms; macOS just happens to expose the bug most reliably.
+        try:
+          progressDialog.setModal(True)
+          progressDialog.show()
+          progressDialog.raise_()
+          progressDialog.repaint()
+        except Exception:
+          pass
         slicer.app.setOverrideCursor(qt.Qt.WaitCursor)
         restoreCursor = True
-        slicer.app.processEvents()
+        for _ in range(5):
+          slicer.app.processEvents()
         cached = self.getGridTransform(self.currentPC)
         self._gridCache[cache_key] = cached
       finally:
@@ -2856,9 +2871,17 @@ class GPAWidget(ScriptedLoadableModuleWidget):
                         f"of this PC will be instant.",
               maximum=0,
             )
+            try:
+              progressDialog.setModal(True)
+              progressDialog.show()
+              progressDialog.raise_()
+              progressDialog.repaint()
+            except Exception:
+              pass
             slicer.app.setOverrideCursor(qt.Qt.WaitCursor)
             restoreCursor = True
-            slicer.app.processEvents()
+            for _ in range(5):
+              slicer.app.processEvents()
           except Exception:
             pass
           try:
