@@ -1766,6 +1766,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     _showLabelsByDefault = (shape[0] <= 200)
     self.meanLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(1 if _showLabelsByDefault else 0)
     self.meanLandmarkNode.GetDisplayNode().SetTextScale(3)
+    # On dense LM datasets the default glyph size of 3 is visually noisy and
+    # eats fill rate. Drop to 1 when N>200; user can re-scale via the slider.
+    if shape[0] > 200:
+      try: self.ui.scaleMeanShapeSlider.value = 1
+      except Exception: pass
     #initialize mean LM display
     self.scaleMeanGlyph()
     self.toggleMeanColor()
@@ -1909,6 +1914,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     _showLabelsByDefault = (shape[0] <= 200)
     self.meanLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(1 if _showLabelsByDefault else 0)
     self.meanLandmarkNode.GetDisplayNode().SetTextScale(3)
+    # On dense LM datasets the default glyph size of 3 is visually noisy and
+    # eats fill rate. Drop to 1 when N>200; user can re-scale via the slider.
+    if shape[0] > 200:
+      try: self.ui.scaleMeanShapeSlider.value = 1
+      except Exception: pass
     if not _showLabelsByDefault:
       msg = (f"Note: point labels are off by default for {shape[0]} landmarks "
              f"(>200) to keep the 3D viewer responsive. Use the 'Show mean "
