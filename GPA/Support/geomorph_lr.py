@@ -2170,27 +2170,30 @@ class GeomorphLR:
     if not hasattr(self, "_coef_grid_cache") or self._coef_grid_cache is None:
       self._coef_grid_cache = {}
 
-    # PERF: at neutral (delta == 0) the warp is identity. Set a cheap
-    # vtkTransform identity on the node and skip the grid build entirely.
-    # This is the post-fit / slider-reset path; the grid is built lazily
-    # the first time the user actually pushes the slider away from neutral.
+    # PERF + CORRECTNESS: at neutral (delta ~ 0) the warp is identity.
+    # Always attach a vtkTransform identity here, even if a grid is already
+    # cached for this (coef, mag). Two reasons:
+    #   * If no cache yet, this skips a ~14s grid build for a slider that
+    #     settled at the reference value.
+    #   * If a cache exists, falling through to SetDisplacementScale(delta /
+    #     max_delta) gives a TINY non-zero scale due to spinbox-precision
+    #     noise around `ref`. That tiny scale is invisible at mag=1 but
+    #     visible at high magnification (the cached grid amplitude scales
+    #     with mag, so visible_warp = delta * mag * row). The user expects
+    #     "neutral cs" to look identical regardless of magnification.
     #
-    # Use a relative threshold against max_delta: e.g. for a Csize covariate
-    # whose ref is ~123.456 and slider precision quantizes to ~0.01, the
-    # initial value can land 1e-3..1e-2 off ref. That's invisible at the
-    # warp scale but would otherwise cost ~14s for the grid build.
+    # Threshold: relative to max_delta. For a Csize covariate whose ref is
+    # ~123.456 and slider precision quantizes to ~0.01, the slider can
+    # settle 1e-3..1e-2 of max_delta off ref. Treat all of that as neutral.
     max_delta_for_zero = self._coef_max_abs_delta_for_domain(dom)
     rel = abs(float(delta)) / max(float(max_delta_for_zero), 1e-12)
-    if rel < 1e-3 and self._coef_grid_cache.get(
-        (int(self._coef_current), float(mag), float(getattr(self.w, "sampleSizeScaleFactor", 1.0)),
-         float(max_delta_for_zero))
-    ) is None:
+    if rel < 1e-3:
       _t = _time.perf_counter()
       ident = vtk.vtkTransform()
       node.SetAndObserveTransformToParent(ident)
       try: node.Modified()
       except Exception: pass
-      self._log(f"[LR/COEF/timing]   identity transform (rel={rel:.1e}, no cached grid): {_time.perf_counter() - _t:.2f}s")
+      self._log(f"[LR/COEF/timing]   identity transform (rel={rel:.1e}, neutral): {_time.perf_counter() - _t:.2f}s")
       self._coef_debugPipeline(tag=f"GRID val={value} (delta~0, identity)", sample_scale=None)
       return
 
