@@ -1526,10 +1526,22 @@ class GeomorphLR:
     # _coef_attachTargets several times for the same fit. We do all those
     # ourselves at the end of this function, exactly once.
     self._coef_in_refresh = True
+    # Pause the 3D renderer for the entire post-fit setup so the 1000-fid
+    # markup display only re-evaluates the TPS once at the end, instead of
+    # re-rendering after every TPS / transform-parent change.
+    _paused = False
+    try:
+      slicer.app.pauseRender()
+      _paused = True
+    except Exception:
+      _paused = False
     try:
       self._coef_refreshFromFit_body(last)
     finally:
       self._coef_in_refresh = False
+      if _paused:
+        try: slicer.app.resumeRender()
+        except Exception: pass
 
   def _coef_refreshFromFit_body(self, last):
     import numpy as _np
