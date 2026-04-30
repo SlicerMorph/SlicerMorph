@@ -2010,6 +2010,23 @@ class GeomorphLR:
     target = base_shape + shift
 
     import time as _time
+    node = self._ensureLRTPSNode()
+
+    # PERF: at neutral (delta == 0), target == base_shape and the TPS is the
+    # identity. The vtkTPS LU weight solve is O(p^3) and dominates the
+    # post-fit cost (~13s at p=1000, ~80s at p=1440). Use a cheap identity
+    # transform instead and only build a real TPS when the user actually
+    # moves the slider.
+    if abs(float(delta)) < 1e-12:
+      _t = _time.perf_counter()
+      ident = vtk.vtkTransform()  # identity
+      node.SetAndObserveTransformToParent(ident)
+      try: node.Modified()
+      except Exception: pass
+      self._log(f"[LR/COEF/timing]   identity transform (delta=0): {_time.perf_counter() - _t:.2f}s")
+      self._coef_debugPipeline(tag=f"TPS val={value} (delta=0, identity)", sample_scale=None)
+      return
+
     _t = _time.perf_counter()
     tps = vtk.vtkThinPlateSplineTransform()
     tps.SetSourceLandmarks(_convert_numpy_to_vtk_points(base_shape))
@@ -2017,10 +2034,8 @@ class GeomorphLR:
     tps.SetBasisToR()
     self._log(f"[LR/COEF/timing]   build vtkTPS (p={base_shape.shape[0]}): {_time.perf_counter() - _t:.2f}s")
 
-    # Force the TPS weight solve here (instead of paying for it inside
-    # SetAndObserveTransformToParent further down). This makes the cost
-    # visible and lets us know whether it's the solve itself or the
-    # downstream observers that are slow.
+    # Force the TPS weight solve here so the cost is visible (it would
+    # otherwise be paid lazily by the first downstream consumer).
     _t = _time.perf_counter()
     try:
       tps.TransformPoint([0.0, 0.0, 0.0])
@@ -2029,7 +2044,6 @@ class GeomorphLR:
     self._log(f"[LR/COEF/timing]   tps.TransformPoint (forces solve): {_time.perf_counter() - _t:.2f}s")
 
     _t = _time.perf_counter()
-    node = self._ensureLRTPSNode()
     node.SetAndObserveTransformToParent(tps)
     self._log(f"[LR/COEF/timing]   SetAndObserveTransformToParent: {_time.perf_counter() - _t:.2f}s")
     _t = _time.perf_counter()
