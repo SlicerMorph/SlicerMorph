@@ -230,7 +230,22 @@ class _PCSliderController:
       self.slider.blockSignals(False); self.spinBox.blockSignals(False)
 
   def setValue(self, dynamic_value):
-    self.slider.setValue(self._map_dynamic_to_slider(float(dynamic_value)))
+    # The slider is a 200-tick integer; mapping a continuous dynamic value
+    # (e.g. ref=123.456) to the nearest tick loses sub-quantum precision,
+    # which shows up as tiny non-zero delta from "neutral" -- invisible at
+    # mag=1 but visible after a magnification bump. Override the spinbox
+    # value exactly *after* the slider has propagated, so sliderValue()
+    # returns the caller's exact request. spinbox signals are blocked so
+    # this doesn't bounce back to the slider.
+    dv = float(dynamic_value)
+    self.slider.setValue(self._map_dynamic_to_slider(dv))
+    self.spinBox.blockSignals(True)
+    try:
+      self.spinBox.setValue(dv)
+    except Exception:
+      pass
+    finally:
+      self.spinBox.blockSignals(False)
 
   def sliderValue(self):
     try: return float(self.spinBox.value())
@@ -1743,6 +1758,26 @@ class GeomorphLR:
     if self.coefController:
       neutral = float(dom.get("ref", 0.0)) if dom.get("mode") == "real" else 0.0
       self.coefController.setValue(neutral)
+
+    # Reset magnification to 1.0. This is the *explicit* user-driven reset
+    # path (Init / Reset Coefficient View button); coef switches deliberately
+    # preserve the user's magnification (see _coef_set_slider_domain_for_current).
+    try:
+      mag_spin = getattr(self.ui, "coefMagnificationSpin", None)
+      if mag_spin is not None:
+        mag_spin.blockSignals(True)
+        try:
+          mag_spin.setValue(1.0)
+        finally:
+          mag_spin.blockSignals(False)
+    except Exception:
+      pass
+    # Cached grids were sized for the previous magnification; drop them.
+    try:
+      if hasattr(self, "_coef_grid_cache") and self._coef_grid_cache:
+        self._coef_grid_cache.clear()
+    except Exception:
+      pass
 
     # Identity transform on the grid node (no displacement).
     node = self._ensureLRGridNode()
