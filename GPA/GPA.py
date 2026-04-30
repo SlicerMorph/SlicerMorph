@@ -4169,120 +4169,211 @@ class GPATest(ScriptedLoadableModuleTest):
     GPA_SELFTEST_OUT_DIR  override timing JSON output folder
   """
 
-  DATASET_URL = "https://github.com/SlicerMorph/SampleData/raw/master/converted_LMs.zip"
-  DATASET_DIRNAME = "converted_LMs"
-  MODEL_URL = "https://github.com/SlicerMorph/SampleData/raw/master/809-3.obj.zip"
-  MODEL_FILENAME = "809-3.obj"
-  METADATA_URL = "https://github.com/SlicerMorph/SampleData/raw/master/matched_metadata.csv"
-  METADATA_FILENAME = "matched_metadata.csv"
-  EXPECTED_NUM_FILES = 431
-  EXPECTED_NUM_LANDMARKS = 55
+  # Available test datasets. Each entry is a self-contained spec for the
+  # workflow runner: where to download the zip, what to find inside, the
+  # expected file/landmark counts for the sanity checks, and which file
+  # inside the dataset corresponds to the mean-specimen landmark + 3D model
+  # used for the optional Interactive Visualization step.
+  #
+  # Layout types:
+  #   "flat": zip extracts directly to a folder of landmark files plus the
+  #           covariate CSV (no parent dir inside the zip). The companion
+  #           reference model is downloaded separately.
+  #   "bundle": zip extracts to a single top-level folder containing the
+  #           landmarks, the covariate CSV, and an `atlas/` subfolder with
+  #           the reference model + mean landmark.
+  DATASETS = {
+    "small": {
+      "label": "Small set (431 specimens, 55 LM, fcsv)",
+      "layout": "flat",
+      "dataset_url": "https://github.com/SlicerMorph/SampleData/raw/master/converted_LMs.zip",
+      "dataset_dirname": "converted_LMs",
+      "landmark_glob": "*.fcsv",
+      "extension": "fcsv",
+      "expected_num_files": 431,
+      "expected_num_landmarks": 55,
+      "model_url": "https://github.com/SlicerMorph/SampleData/raw/master/809-3.obj.zip",
+      "model_filename": "809-3.obj",
+      "metadata_url": "https://github.com/SlicerMorph/SampleData/raw/master/matched_metadata.csv",
+      "metadata_filename": "matched_metadata.csv",
+      "mean_lm_basename": "809-3.fcsv",
+    },
+    "big": {
+      "label": "Big set (62 specimens, 1440 LM, mrk.json + atlas)",
+      "layout": "bundle",
+      "dataset_url": "https://github.com/SlicerMorph/SampleData/raw/master/big_sample.zip",
+      "dataset_dirname": "big_sample",
+      "landmark_glob": "*.mrk.json",
+      "extension": "json",
+      "expected_num_files": 62,
+      "expected_num_landmarks": 1440,
+      # Bundle ships its own reference model + mean LM under atlas/.
+      "atlas_subdir": "atlas",
+      "atlas_model": "atlasModel.ply",
+      "atlas_mean_lm": "atlas.mrk.json",
+      "metadata_filename": "matched_metadata.csv",
+    },
+  }
 
   def setUp(self):
     slicer.mrmlScene.Clear(0)
 
   def runTest(self):
     self.setUp()
-    self.test_GPAWorkflow()
+    spec_key = self._pickDataset()
+    if spec_key is None:
+      print("[GPA selftest] cancelled", flush=True)
+      return
+    self.test_GPAWorkflow(spec_key)
 
-  def _ensureDataset(self):
-    """Download + unzip the test dataset into Slicer's cache.
-    Returns the absolute path to the folder containing *.fcsv files.
+  def _pickDataset(self):
+    """Modal picker. Returns a key into DATASETS, or None if cancelled."""
+    import qt
+    keys = list(self.DATASETS.keys())
+    labels = [self.DATASETS[k]["label"] for k in keys]
+    label, ok = qt.QInputDialog.getItem(
+      slicer.util.mainWindow(),
+      "GPA selftest",
+      "Select a sample dataset to run the test on:",
+      labels,
+      0,
+      False,
+    )
+    if not ok:
+      return None
+    try:
+      return keys[labels.index(label)]
+    except ValueError:
+      return None
 
-    If a previously cached dataset has a file count different from
-    EXPECTED_NUM_FILES, the stale folder and zip are removed so the new
-    dataset is re-downloaded.
+  def _ensureDataset(self, spec):
+    """Download + unzip the test dataset for the given spec into Slicer's cache.
+    Returns the absolute path to the folder containing landmark files.
+
+    For "flat" specs the cache layout is:
+        <cache>/GPA_selftest/<dataset_dirname>/*.fcsv
+    For "bundle" specs the zip already wraps a single top-level folder:
+        <cache>/GPA_selftest/<dataset_dirname>/{*.mrk.json, atlas/, ...}
+
+    A previously cached folder whose landmark count differs from
+    spec["expected_num_files"] is wiped and re-downloaded.
     """
     import os, zipfile, shutil
     cache_root = slicer.app.cachePath
-    target_dir = os.path.join(cache_root, "GPA_selftest", self.DATASET_DIRNAME)
-    zip_path = os.path.join(cache_root, "GPA_selftest", "converted_LMs.zip")
+    selftest_root = os.path.join(cache_root, "GPA_selftest")
+    target_dir = os.path.join(selftest_root, spec["dataset_dirname"])
+    zip_path = os.path.join(selftest_root, os.path.basename(spec["dataset_url"]))
+    glob_suffix = spec["landmark_glob"].replace("*", "")
 
-    def _fcsv_count(d):
-      return sum(1 for f in os.listdir(d) if f.endswith(".fcsv")) if os.path.isdir(d) else 0
+    def _lm_count(d):
+      return sum(1 for f in os.listdir(d) if f.endswith(glob_suffix)) if os.path.isdir(d) else 0
 
-    cached = _fcsv_count(target_dir)
-    if cached and cached != self.EXPECTED_NUM_FILES:
-      print(f"[GPA selftest] stale cache ({cached} files, expected {self.EXPECTED_NUM_FILES}); refreshing", flush=True)
+    cached = _lm_count(target_dir)
+    if cached and cached != spec["expected_num_files"]:
+      print(f"[GPA selftest] stale cache ({cached} files, expected {spec['expected_num_files']}); refreshing", flush=True)
       shutil.rmtree(target_dir, ignore_errors=True)
       if os.path.exists(zip_path):
         os.remove(zip_path)
-    elif cached == self.EXPECTED_NUM_FILES:
+    elif cached == spec["expected_num_files"]:
       return target_dir
 
-    os.makedirs(os.path.dirname(target_dir), exist_ok=True)
+    os.makedirs(selftest_root, exist_ok=True)
     if not os.path.exists(zip_path):
-      print(f"[GPA selftest] downloading {self.DATASET_URL}", flush=True)
-      slicer.util.downloadFile(self.DATASET_URL, zip_path)
-    print(f"[GPA selftest] extracting -> {os.path.dirname(target_dir)}", flush=True)
+      print(f"[GPA selftest] downloading {spec['dataset_url']}", flush=True)
+      slicer.util.downloadFile(spec["dataset_url"], zip_path)
+    print(f"[GPA selftest] extracting -> {selftest_root}", flush=True)
     with zipfile.ZipFile(zip_path) as zf:
-      zf.extractall(os.path.dirname(target_dir))
+      zf.extractall(selftest_root)
     if not os.path.isdir(target_dir):
       # The zip may extract to a slightly different folder name; try to find it.
-      for name in os.listdir(os.path.dirname(target_dir)):
-        cand = os.path.join(os.path.dirname(target_dir), name)
-        if os.path.isdir(cand) and any(f.endswith(".fcsv") for f in os.listdir(cand)):
+      for name in os.listdir(selftest_root):
+        cand = os.path.join(selftest_root, name)
+        if os.path.isdir(cand) and any(f.endswith(glob_suffix) for f in os.listdir(cand)):
           return cand
-      raise RuntimeError(f"Extracted dataset folder not found under {os.path.dirname(target_dir)}")
+      raise RuntimeError(f"Extracted dataset folder not found under {selftest_root}")
     return target_dir
 
-  def _ensureModel(self):
-    """Download + unzip the reference 3D model into Slicer's cache.
-    Returns the absolute path to the .obj file (or None if it cannot be located).
+  def _ensureModel(self, spec, dataset_dir):
+    """Return the absolute path to the reference 3D model for this dataset,
+    or None if it could not be located.
+
+    For "flat" specs the model is downloaded from spec["model_url"] (a zip
+    containing a single .obj). For "bundle" specs the model already lives
+    inside the dataset under spec["atlas_subdir"]/spec["atlas_model"].
     """
     import os, zipfile
+    if spec["layout"] == "bundle":
+      cand = os.path.join(dataset_dir, spec.get("atlas_subdir", "atlas"),
+                          spec["atlas_model"])
+      return cand if os.path.isfile(cand) else None
+
     cache_root = slicer.app.cachePath
     model_dir = os.path.join(cache_root, "GPA_selftest")
-    model_path = os.path.join(model_dir, self.MODEL_FILENAME)
+    model_path = os.path.join(model_dir, spec["model_filename"])
     if os.path.isfile(model_path):
       return model_path
     os.makedirs(model_dir, exist_ok=True)
-    zip_path = os.path.join(model_dir, os.path.basename(self.MODEL_URL))
+    zip_path = os.path.join(model_dir, os.path.basename(spec["model_url"]))
     if not os.path.exists(zip_path):
-      print(f"[GPA selftest] downloading {self.MODEL_URL}", flush=True)
-      slicer.util.downloadFile(self.MODEL_URL, zip_path)
+      print(f"[GPA selftest] downloading {spec['model_url']}", flush=True)
+      slicer.util.downloadFile(spec["model_url"], zip_path)
     print(f"[GPA selftest] extracting -> {model_dir}", flush=True)
     with zipfile.ZipFile(zip_path) as zf:
       zf.extractall(model_dir)
     if os.path.isfile(model_path):
       return model_path
-    # Fallback: pick the first .obj that appeared.
+    # Fallback: pick the first model-shaped file that appeared.
     for name in os.listdir(model_dir):
-      if name.lower().endswith(".obj"):
+      if name.lower().endswith((".obj", ".ply", ".stl", ".vtk", ".vtp")):
         return os.path.join(model_dir, name)
     return None
 
-  def _ensureMetadata(self):
-    """Download the matched-metadata covariate CSV into Slicer's cache.
-    Returns the absolute path to the CSV (or None on failure).
+  def _ensureMetadata(self, spec, dataset_dir):
+    """Return the absolute path to the matched-metadata covariate CSV for
+    this dataset, or None on failure.
 
-    The downloaded CSV is always re-sorted by the first column (ID) using
-    the same lexicographic order that ``sorted(glob('*.fcsv'))`` produces,
-    so the row order matches the landmark file order GPA expects.
+    For "flat" specs the CSV is downloaded from spec["metadata_url"] and
+    sorted by first column to match sorted(glob('*.fcsv')) ordering. For
+    "bundle" specs the CSV ships inside the dataset (at the root of the
+    dataset folder) and is used in place; we still re-sort it so row order
+    matches the landmark file order GPA expects.
     """
     import os, csv as _csv
     cache_root = slicer.app.cachePath
     meta_dir = os.path.join(cache_root, "GPA_selftest")
-    raw_path = os.path.join(meta_dir, "_raw_" + self.METADATA_FILENAME)
-    meta_path = os.path.join(meta_dir, self.METADATA_FILENAME)
     os.makedirs(meta_dir, exist_ok=True)
+    meta_filename = spec["metadata_filename"]
+    raw_path = os.path.join(meta_dir, "_raw_" + meta_filename)
+    meta_path = os.path.join(meta_dir, meta_filename)
 
-    # Always re-download the raw CSV (small file) so we pick up upstream edits
-    if os.path.isfile(raw_path):
+    if spec["layout"] == "bundle":
+      bundled = os.path.join(dataset_dir, meta_filename)
+      if not os.path.isfile(bundled):
+        print(f"[GPA selftest] bundled metadata not found at {bundled}", flush=True)
+        return None
       try:
-        os.remove(raw_path)
-      except OSError:
-        pass
-    print(f"[GPA selftest] downloading {self.METADATA_URL}", flush=True)
-    try:
-      slicer.util.downloadFile(self.METADATA_URL, raw_path)
-    except Exception as e:
-      print(f"[GPA selftest] metadata download failed: {e}", flush=True)
-      return None
-    if not os.path.isfile(raw_path):
-      return None
+        import shutil as _shutil
+        _shutil.copyfile(bundled, raw_path)
+      except Exception as e:
+        print(f"[GPA selftest] metadata copy failed: {e}", flush=True)
+        return bundled
+    else:
+      # Always re-download the raw CSV (small file) so we pick up upstream edits
+      if os.path.isfile(raw_path):
+        try:
+          os.remove(raw_path)
+        except OSError:
+          pass
+      print(f"[GPA selftest] downloading {spec['metadata_url']}", flush=True)
+      try:
+        slicer.util.downloadFile(spec["metadata_url"], raw_path)
+      except Exception as e:
+        print(f"[GPA selftest] metadata download failed: {e}", flush=True)
+        return None
+      if not os.path.isfile(raw_path):
+        return None
 
-    # Sort rows by first column (ID) to match sorted(glob('*.fcsv'))
+    # Sort rows by first column (ID) to match sorted(glob('*.<ext>'))
     try:
       with open(raw_path, newline='') as f:
         reader = _csv.reader(f)
@@ -4298,26 +4389,27 @@ class GPATest(ScriptedLoadableModuleTest):
       meta_path = raw_path
     return meta_path
 
-  def test_GPAWorkflow(self):
+  def test_GPAWorkflow(self, spec_key="small"):
     import os, glob, time, json
     from datetime import datetime
+
+    spec = self.DATASETS[spec_key]
+    print(f"[GPA selftest] dataset: {spec['label']}", flush=True)
 
     cache_root = slicer.app.cachePath
     default_out_dir = os.path.join(cache_root, "GPA_selftest", "results")
 
     lm_dir = os.environ.get("GPA_SELFTEST_LM_DIR")
     if not lm_dir:
-      lm_dir = self._ensureDataset()
-    model_path = self._ensureModel()
-    metadata_path = self._ensureMetadata()
+      lm_dir = self._ensureDataset(spec)
+    model_path = self._ensureModel(spec, lm_dir)
+    metadata_path = self._ensureMetadata(spec, lm_dir)
     out_dir = os.environ.get("GPA_SELFTEST_OUT_DIR", default_out_dir)
 
     self.assertTrue(os.path.isdir(lm_dir), f"Landmark dir not found: {lm_dir}")
-    files = sorted(glob.glob(os.path.join(lm_dir, "*.fcsv")))
-    if not files:
-      files = sorted(glob.glob(os.path.join(lm_dir, "*.mrk.json")))
+    files = sorted(glob.glob(os.path.join(lm_dir, spec["landmark_glob"])))
     self.assertTrue(files, f"No landmark files in {lm_dir}")
-    extension = "fcsv" if files[0].endswith(".fcsv") else "json"
+    extension = spec["extension"]
     os.makedirs(out_dir, exist_ok=True)
     print(f"[GPA selftest] LM dir : {lm_dir}", flush=True)
     print(f"[GPA selftest] results: {out_dir}", flush=True)
@@ -4409,13 +4501,13 @@ class GPATest(ScriptedLoadableModuleTest):
     print(f"\n[GPA selftest] TOTAL onLoad: {total*1000:.1f} ms\n", flush=True)
 
     # ---- Sanity checks on the output ----
-    self.assertEqual(len(files), self.EXPECTED_NUM_FILES,
-                     f"Expected {self.EXPECTED_NUM_FILES} landmark files, found {len(files)}")
+    self.assertEqual(len(files), spec["expected_num_files"],
+                     f"Expected {spec['expected_num_files']} landmark files, found {len(files)}")
     self.assertIsNotNone(getattr(widget, "LM", None), "widget.LM was not created")
-    self.assertEqual(widget.LM.lmOrig.shape[0], self.EXPECTED_NUM_LANDMARKS,
-                     f"Expected {self.EXPECTED_NUM_LANDMARKS} landmarks per specimen, got {widget.LM.lmOrig.shape[0]}")
-    self.assertEqual(widget.LM.lmOrig.shape[2], self.EXPECTED_NUM_FILES,
-                     f"Expected {self.EXPECTED_NUM_FILES} specimens in array, got {widget.LM.lmOrig.shape[2]}")
+    self.assertEqual(widget.LM.lmOrig.shape[0], spec["expected_num_landmarks"],
+                     f"Expected {spec['expected_num_landmarks']} landmarks per specimen, got {widget.LM.lmOrig.shape[0]}")
+    self.assertEqual(widget.LM.lmOrig.shape[2], spec["expected_num_files"],
+                     f"Expected {spec['expected_num_files']} specimens in array, got {widget.LM.lmOrig.shape[2]}")
     eigvals = widget.LM.val
     self.assertTrue(eigvals[0] > 0, "Top eigenvalue is not positive")
     self.assertTrue((eigvals[:-1] >= eigvals[1:] - 1e-12).all(), "Eigenvalues are not sorted descending")
@@ -4445,12 +4537,19 @@ class GPATest(ScriptedLoadableModuleTest):
       "[GPA selftest] PASSED -- to try interactive 3D visualization, set:",
     ]
     if model_path and os.path.isfile(model_path):
+      # Compute the mean-specimen LM path for the chosen dataset.
+      if spec["layout"] == "bundle":
+        mean_lm_path = os.path.join(lm_dir, spec.get("atlas_subdir", "atlas"),
+                                    spec["atlas_mean_lm"])
+      else:
+        mean_lm_path = os.path.join(lm_dir, spec["mean_lm_basename"])
       summary_lines.append(
         f"[GPA selftest] Reference model (paste into 3D Visualization): {model_path}")
       summary_lines.append(
         f"[GPA selftest] Mean specimen LM (paste into 3D Visualization): "
-        f"{os.path.join(lm_dir, '809-3.fcsv')}")
+        f"{mean_lm_path}")
     else:
+      mean_lm_path = None
       summary_lines.append("[GPA selftest] Reference model : <download failed>")
     summary_lines.append(
       f"[GPA selftest] All other inputs (landmark folder, output folder, "
@@ -4467,9 +4566,8 @@ class GPATest(ScriptedLoadableModuleTest):
 
     # ---- Auto-populate 3D Visualization selectors and offer to launch ----
     try:
-      mean_lm_path = os.path.join(lm_dir, "809-3.fcsv")
       have_inputs = bool(model_path and os.path.isfile(model_path)
-                         and os.path.isfile(mean_lm_path))
+                         and mean_lm_path and os.path.isfile(mean_lm_path))
       if have_inputs:
         try:
           widget.ui.modelVisualizationType.setChecked(True)
