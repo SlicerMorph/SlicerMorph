@@ -137,6 +137,30 @@ def _pids_listening_on_port(port):
   return list(pids)
 
 
+def _terminate_pid(pid, force=False):
+  """Cross-platform process termination by PID.
+
+  Windows:  taskkill (graceful when force=False uses no /F; force=True adds /F).
+            os.kill on Windows would map SIGTERM -> TerminateProcess unconditionally
+            and SIGKILL is not defined at all, so we shell out to taskkill instead.
+  POSIX:    SIGTERM, then SIGKILL when force=True.
+  Returns True if the OS accepted the request (does not guarantee the process is gone).
+  """
+  pid = int(pid)
+  try:
+    if platform.system() == "Windows":
+      args = ["taskkill", "/PID", str(pid)]
+      if force: args.insert(1, "/F")
+      subprocess.run(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                     check=False, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+      return True
+    sig = signal.SIGKILL if force else signal.SIGTERM
+    os.kill(pid, sig)
+    return True
+  except Exception:
+    return False
+
+
 def _convert_numpy_to_vtk_points(A):
   """A: (p,3) float -> vtkPoints."""
   p, c = A.shape
@@ -790,19 +814,15 @@ class GeomorphLR:
     #    immediately after Rserve daemonized — terminating it is a no-op.
     pids = _pids_listening_on_port(port)
     for pid in pids:
-      try:
-        os.kill(pid, signal.SIGTERM)
-      except Exception:
-        pass
+      _terminate_pid(pid, force=False)
 
-    # 3. Wait briefly for the port to actually free; SIGKILL stragglers.
+    # 3. Wait briefly for the port to actually free; force-kill stragglers.
     deadline = time.time() + 3.0
     while time.time() < deadline and _is_port_open("127.0.0.1", port):
       time.sleep(0.1)
     if _is_port_open("127.0.0.1", port):
       for pid in _pids_listening_on_port(port):
-        try: os.kill(pid, signal.SIGKILL)
-        except Exception: pass
+        _terminate_pid(pid, force=True)
       time.sleep(0.3)
 
     # Reap our launcher Popen if it's still around (it usually isn't).
