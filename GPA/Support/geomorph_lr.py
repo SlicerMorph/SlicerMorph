@@ -2473,11 +2473,12 @@ class GeomorphLR:
       neutral = 0.0
     self.coefController.setValue(neutral)
 
-    if mode in ("real", "log", "sqrt"):
-      try:
-        self.ui.coefMagnificationSpin.setValue(1.0)
-      except Exception:
-        pass
+    # Intentionally DO NOT reset coefMagnificationSpin here. Switching
+    # coefficients used to snap magnification back to 1.0, which (a)
+    # silently overwrote a user-set value and (b) invalidated the grid
+    # cache for the coefficient they just left, forcing another ~14s
+    # rebuild on return. The user owns the magnification value; we keep
+    # whatever they last set across coef switches.
 
   def _py_to_str_list(self, obj):
     """
