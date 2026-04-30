@@ -2223,6 +2223,14 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     # (zero displacement scale). For LR: snap the coefficient slider back to
     # its neutral value (mean of numeric domain, ref level for categorical),
     # which produces an identity TPS at the next apply.
+    #
+    # Skip this entire block if the LR module is currently rebuilding its
+    # post-fit state (_coef_in_refresh is True): _coef_refreshFromFit already
+    # performs the slider-reset and TPS apply exactly once, and re-running
+    # them here doubles a multi-second op at high p (e.g. ~13s at p=1000).
+    _lr_obj = getattr(self, "lr", None)
+    if _lr_obj is not None and getattr(_lr_obj, "_coef_in_refresh", False):
+      return
     try:
       if mode == "pca":
         if getattr(self, "pcController", None) is not None:

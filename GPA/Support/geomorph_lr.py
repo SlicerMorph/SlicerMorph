@@ -1852,6 +1852,21 @@ class GeomorphLR:
     # transform. If the user has not yet clicked Apply in Setup Interactive
     # Visualization, no clone exists; the slider will still update the
     # transform but viewer 2 will appear empty until Apply is clicked.
+    #
+    # PERF: SKIP the attach if we're inside _coef_refreshFromFit. In that
+    # context _coef_attachTargets / _setWarpMode will perform the attach
+    # AFTER the TPS has been set on the (still-unparented) transform node,
+    # so the markups display does the expensive TPS evaluation exactly once
+    # at attach time instead of twice (once now while the transform is
+    # identity, then again after _coef_applyTPS swaps the TPS in).
+    if getattr(self, "_coef_in_refresh", False):
+        try:
+            tid = node.GetID() if node else "(none)"
+            self._log(f"[LR] Infra ready (TPS, deferred attach). transform={tid}")
+        except Exception:
+            pass
+        return
+
     lm = getattr(self.w, "cloneLandmarkNode", None) or getattr(self.w, "copyLandmarkNode", None)
     if lm is not None and slicer.mrmlScene.IsNodePresent(lm):
         try:
