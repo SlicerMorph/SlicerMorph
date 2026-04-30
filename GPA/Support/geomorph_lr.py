@@ -2017,14 +2017,27 @@ class GeomorphLR:
     tps.SetBasisToR()
     self._log(f"[LR/COEF/timing]   build vtkTPS (p={base_shape.shape[0]}): {_time.perf_counter() - _t:.2f}s")
 
+    # Force the TPS weight solve here (instead of paying for it inside
+    # SetAndObserveTransformToParent further down). This makes the cost
+    # visible and lets us know whether it's the solve itself or the
+    # downstream observers that are slow.
+    _t = _time.perf_counter()
+    try:
+      tps.TransformPoint([0.0, 0.0, 0.0])
+    except Exception:
+      pass
+    self._log(f"[LR/COEF/timing]   tps.TransformPoint (forces solve): {_time.perf_counter() - _t:.2f}s")
+
     _t = _time.perf_counter()
     node = self._ensureLRTPSNode()
     node.SetAndObserveTransformToParent(tps)
+    self._log(f"[LR/COEF/timing]   SetAndObserveTransformToParent: {_time.perf_counter() - _t:.2f}s")
+    _t = _time.perf_counter()
     try:
       node.Modified()
     except Exception:
       pass
-    self._log(f"[LR/COEF/timing]   attach tps to node + Modified: {_time.perf_counter() - _t:.2f}s")
+    self._log(f"[LR/COEF/timing]   node.Modified(): {_time.perf_counter() - _t:.2f}s")
 
     self._coef_debugPipeline(tag=f"TPS val={value} (delta={delta})", sample_scale=None)
 
