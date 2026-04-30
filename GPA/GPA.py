@@ -751,6 +751,34 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self._wrapComboWithSpinBox(self.ui.vectorTwo,     allow_none=True)   # Lollipop 2
     self._wrapComboWithSpinBox(self.ui.vectorThree,   allow_none=True)   # Lollipop 3
 
+    # Force tight vertical spacing on the Results-tab grids. The .ui file
+    # sets verticalSpacing=2 but PythonQt's QUiLoader does not always honor
+    # the property tag for QGridLayout, so we apply it explicitly here.
+    # Layouts aren't exposed via childWidgetVariables, so we walk the widget
+    # tree from the parent frame and pull the layout off each frame widget.
+    for frame_name in ("plotFrame", "lolliFrame", "meanShapeFrame", "distributionFrame"):
+      try:
+        frame = getattr(self.ui, frame_name, None)
+        if frame is None:
+          continue
+        grid = frame.layout()
+        if grid is None:
+          continue
+        try: grid.setVerticalSpacing(2)
+        except Exception: pass
+        try: grid.setHorizontalSpacing(6)
+        except Exception: pass
+        try: grid.setContentsMargins(4, 2, 4, 2)
+        except Exception: pass
+        try:
+          for r in range(int(grid.rowCount())):
+            grid.setRowMinimumHeight(r, 0)
+            grid.setRowStretch(r, 0)
+        except Exception:
+          pass
+      except Exception:
+        pass
+
     # Inject Drive-3D X/Y PC selector row right under the status label.
     self._injectDrivePlotPCRow()
 
@@ -942,6 +970,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     h = qt.QHBoxLayout(container)
     h.setContentsMargins(0, 0, 0, 0)
     h.setSpacing(4)
+    try:
+      container.setSizePolicy(qt.QSizePolicy.Preferred, qt.QSizePolicy.Fixed)
+    except Exception:
+      pass
     spin = qt.QSpinBox(container)
     spin.setMinimum(0 if allow_none else 1)
     spin.setMaximum(1)  # placeholder; updated by _refreshPCSpinBoxes()
@@ -4203,19 +4235,22 @@ class GPATest(ScriptedLoadableModuleTest):
     print(f"[GPA selftest] wrote {out_json}", flush=True)
 
     # ---- User-visible summary: paths to plug into the GPA module UI ----
+    selftest_root = os.path.join(cache_root, "GPA_selftest")
     summary_lines = [
       "=" * 72,
       "[GPA selftest] PASSED -- to try interactive 3D visualization, set:",
-      f"[GPA selftest]   Landmark folder : {lm_dir}",
-      f"[GPA selftest]   Output folder   : {out_dir}",
     ]
     if model_path and os.path.isfile(model_path):
-      summary_lines.append(f"[GPA selftest]   Reference model : {model_path}")
-      summary_lines.append(f"[GPA selftest]   Mean specimen LM: {os.path.join(lm_dir, '809-3.fcsv')}")
+      summary_lines.append(
+        f"[GPA selftest] Reference model (paste into 3D Visualization): {model_path}")
+      summary_lines.append(
+        f"[GPA selftest] Mean specimen LM (paste into 3D Visualization): "
+        f"{os.path.join(lm_dir, '809-3.fcsv')}")
     else:
-      summary_lines.append("[GPA selftest]   Reference model : <download failed>")
-    if metadata_path and os.path.isfile(metadata_path):
-      summary_lines.append(f"[GPA selftest]   Covariate CSV   : {metadata_path}")
+      summary_lines.append("[GPA selftest] Reference model : <download failed>")
+    summary_lines.append(
+      f"[GPA selftest] All other inputs (landmark folder, output folder, "
+      f"covariate CSV) are under {selftest_root}/")
     summary_lines.append("=" * 72)
     summary = "\n".join(summary_lines)
     print("\n" + summary + "\n", flush=True)
@@ -4223,6 +4258,34 @@ class GPATest(ScriptedLoadableModuleTest):
     try:
       widget.ui.GPALogTextbox.insertPlainText("\n" + summary + "\n")
       widget.ui.GPALogTextbox.ensureCursorVisible()
+    except Exception:
+      pass
+
+    # ---- Auto-populate 3D Visualization selectors and offer to launch ----
+    try:
+      mean_lm_path = os.path.join(lm_dir, "809-3.fcsv")
+      have_inputs = bool(model_path and os.path.isfile(model_path)
+                         and os.path.isfile(mean_lm_path))
+      if have_inputs:
+        try:
+          widget.ui.modelVisualizationType.setChecked(True)
+          widget.onToggleVisualization()
+        except Exception:
+          pass
+        try: widget.ui.grayscaleSelector.setCurrentPath(model_path)
+        except Exception: pass
+        try: widget.ui.FudSelect.setCurrentPath(mean_lm_path)
+        except Exception: pass
+        try: widget.onModelSelected()
+        except Exception: pass
+        try:
+          if slicer.util.confirmYesNoDisplay(
+              "Selftest passed and 3D Visualization inputs are pre-filled.\n\n"
+              "Click 'Apply' now to build the warped landmark + model display?",
+              windowTitle="GPA selftest"):
+            widget.onSelect()
+        except Exception:
+          pass
     except Exception:
       pass
 
