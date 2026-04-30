@@ -129,16 +129,20 @@ def convertNumpyToVTK(A):
 # Parallel TPS -> displacement grid sampler.
 #
 # vtkTransformToGrid is single-threaded inside VTK, so for a 50^3 grid driven
-# by a vtkThinPlateSplineTransform with p landmarks the wall time scales as
-# O(50^3 * p) on one core. With p = 1440 this becomes the dominant cost in
-# the PCA / LR coefficient warp pipelines.
+# by a vtkThinPlateSplineTransform with p landmarks the wall time is split
+# between:
+#   (a) one-time TPS solve   -- O(p^3) (matrix factorisation + weights)
+#   (b) per-voxel sampling   -- O(50^3 * p) (kernel sum at each voxel)
+# At p = 1440 both are heavy; (a) is fully sequential inside VTK and (b) is
+# what we can parallelise.
 #
-# Strategy: split the Z extent of the output grid into N axis-aligned slabs,
-# build an independent vtkTransformToGrid + vtkThinPlateSplineTransform per
-# slab, and run their Update() calls concurrently in a thread pool. Each
-# C++ Update() releases the GIL, so threads execute in parallel on real
-# cores. Each thread owns its own TPS instance to avoid any concern about
-# concurrent reads from a single solved transform.
+# Strategy: solve the TPS ONCE on the main thread (force the lazy internal
+# update by transforming a probe point), then share that single solved
+# transform across all worker vtkTransformToGrid instances. Each worker
+# samples its own Z-slab. After the solve, vtkTPS state is read-only and
+# vtkTransformToGrid::Update() only invokes TransformPoint -> safe to share.
+# vtkTransformToGrid::Update() releases the GIL during sampling, so workers
+# execute on real cores.
 # ---------------------------------------------------------------------------
 
 def sampleTPSToDisplacementGrid(
@@ -184,24 +188,30 @@ def sampleTPSToDisplacementGrid(
             pts.SetPoint(i, float(p[0]), float(p[1]), float(p[2]))
         return pts
 
+    # Build + solve the TPS once. Forcing TransformPoint triggers vtkTPS's
+    # lazy internal update (matrix solve + weight computation) so that
+    # subsequent TransformPoint calls from worker threads only read.
+    tps = vtk.vtkThinPlateSplineTransform()
+    tps.SetSourceLandmarks(_make_points(src_arr))
+    tps.SetTargetLandmarks(_make_points(tgt_arr))
+    if basis == "R":
+        tps.SetBasisToR()
+    elif basis == "R2LogR":
+        tps.SetBasisToR2LogR()
+    tps.Update()
+    _ = tps.TransformPoint(float(origin[0]), float(origin[1]), float(origin[2]))
+
     def _build_ttg(z_lo, z_hi):
-        tps = vtk.vtkThinPlateSplineTransform()
-        tps.SetSourceLandmarks(_make_points(src_arr))
-        tps.SetTargetLandmarks(_make_points(tgt_arr))
-        if basis == "R":
-            tps.SetBasisToR()
-        elif basis == "R2LogR":
-            tps.SetBasisToR2LogR()
         ttg = vtk.vtkTransformToGrid()
-        ttg.SetInput(tps)
+        ttg.SetInput(tps)  # shared, already solved
         ttg.SetGridOrigin(origin)
         ttg.SetGridSpacing(spacing)
         ttg.SetGridExtent([extent[0], extent[1], extent[2], extent[3], z_lo, z_hi])
-        return tps, ttg
+        return ttg
 
-    # Single-threaded fast path: avoid executor / concat overhead.
+    # Single-threaded fast path.
     if numThreads == 1 or nz < 2:
-        _tps, ttg = _build_ttg(z0, z1)
+        ttg = _build_ttg(z0, z1)
         ttg.Update()
         return ttg.GetOutput()
 
@@ -210,9 +220,7 @@ def sampleTPSToDisplacementGrid(
 
     def _sample_slab(slab):
         z_lo, z_hi = slab
-        _tps, ttg = _build_ttg(z_lo, z_hi)
-        # vtkTransformToGrid::Update() releases the GIL during sampling, so
-        # multiple workers actually run in parallel on multiple cores.
+        ttg = _build_ttg(z_lo, z_hi)
         ttg.Update()
         slab_img = ttg.GetOutput()
         scalars = slab_img.GetPointData().GetScalars()
