@@ -1125,15 +1125,32 @@ class GeomorphLR:
     except Exception:
       pd = None
 
+    # Stash the dialog so _lr_doFitInR / sub-steps can update its label without
+    # plumbing it through every signature.
+    self._lr_progress = pd
+
     import time as _time
     t_start = _time.perf_counter()
     try:
       self._lr_doFitInR(fml_raw)
     finally:
       self._log(f"[LR] total fit + post-fit: {_time.perf_counter() - t_start:.2f}s")
+      self._lr_progress = None
       if pd is not None:
         try: pd.close(); pd.deleteLater()
         except Exception: pass
+
+  def _lr_progressLabel(self, text):
+    """Update the fit progress dialog's label, if visible. Safe to call any time."""
+    pd = getattr(self, "_lr_progress", None)
+    if pd is None:
+      return
+    try:
+      pd.labelText = str(text)
+      pd.repaint()
+      slicer.app.processEvents()
+    except Exception:
+      pass
 
   def _lr_doFitInR(self, fml_raw):
     import numpy as _np
@@ -1193,6 +1210,10 @@ class GeomorphLR:
 
     step = self._r_step
 
+    # --- PHASE: ship landmarks + size to R ---
+    self._lr_progressLabel(f"Sending {n} specimens × {p} landmarks to R…")
+    _tphase = _time.perf_counter()
+
     # Headless rgl
     if not step(conn, "Headless rgl",
                 'options(rgl.useNULL=TRUE); Sys.setenv(RGL_USE_NULL="TRUE"); Sys.setenv(RGL_ALWAYS_SOFTWARE="TRUE")'):
@@ -1222,6 +1243,10 @@ class GeomorphLR:
     if not step(conn, "arrayspecs", f'arr <- geomorph::arrayspecs(coords, p={p}, k=3)'):
       _set_label(self._lr_fitStatus, "R data error (arrayspecs)");
       return
+    self._log(f"[LR/timing] ship + arrayspecs: {_time.perf_counter() - _tphase:.2f}s")
+
+    # --- PHASE: predictors / covariates ---
+    _tphase = _time.perf_counter()
 
     # predictors in .GlobalEnv
     added_vars = []
@@ -1254,6 +1279,7 @@ class GeomorphLR:
     if not step(conn, "Build gdf", gdf_call):
       _set_label(self._lr_fitStatus, "R data error (gdf)");
       return
+    self._log(f"[LR/timing] covariates + gdf: {_time.perf_counter() - _tphase:.2f}s")
 
     import re as _re
     fml = _re.sub(r'^\s*(Y|Coords|Shape|SHAPE|shape)\s*~', 'Coords ~', fml_raw.strip())
@@ -1267,11 +1293,18 @@ class GeomorphLR:
       _set_label(self._lr_fitStatus, "Bad formula");
       return
 
+    # --- PHASE: actual procD.lm fit ---
+    self._lr_progressLabel(f"Running procD.lm:  {fml}")
+    _tphase = _time.perf_counter()
     if not step(conn, "Fit procD.lm",
                 'outlm <- geomorph::procD.lm(mod, data=gdf, SS.type="II")'):
       _set_label(self._lr_fitStatus, "Fit failed");
       return
+    self._log(f"[LR/timing] procD.lm fit: {_time.perf_counter() - _tphase:.2f}s")
 
+    # --- PHASE: pull coefficients back to Python ---
+    self._lr_progressLabel(f"Pulling coefficients back from R…")
+    _tphase = _time.perf_counter()
     if not step(conn, "Extract coefficients", 'coef_mat <- outlm$coefficients; coef_names <- base::rownames(coef_mat)'):
       _set_label(self._lr_fitStatus, "Extract error");
       return
@@ -1283,9 +1316,23 @@ class GeomorphLR:
       _set_label(self._lr_fitStatus, "Pull-back error")
       self._log(f"[LR] pull coef: {repr(e)}");
       return
+    self._log(f"[LR/timing] pull coef_mat ({coef_mat.shape}): {_time.perf_counter() - _tphase:.2f}s")
 
     # Pull factor levels (so we can label categorical sliders by group name).
     # R returns a named list; ask for names + JSON-ish flat encoding to keep pyRserve happy.
+    if not step(conn, "Summarize model", 'sumtxt <- paste(utils::capture.output(summary(outlm)), collapse="\\n")'):
+      self._lr_setSummaryText("Failed to build summary(outlm).")
+      summary_text = ""
+    else:
+      try:
+        summary_text = str(conn.eval('sumtxt'))
+      except Exception as e:
+        summary_text = f"Could not read summary from R: {repr(e)}"
+      self._lr_setSummaryText(summary_text)
+
+    # --- PHASE: factor levels + covariate stats (categorical slider labels etc.) ---
+    self._lr_progressLabel("Pulling factor levels & covariate stats…")
+    _tphase = _time.perf_counter()
     factor_levels = {}
     try:
       conn.eval('factor_levels <- lapply(Filter(is.factor, as.list(gdf)), levels)')
@@ -1302,6 +1349,7 @@ class GeomorphLR:
       self._log(f"[LR] factor levels: {factor_levels}")
     except Exception as e:
       self._log(f"[LR] could not pull factor levels: {e}")
+    self._log(f"[LR/timing] factor levels: {_time.perf_counter() - _tphase:.2f}s")
 
     # ---- NEW: cache covariate ranges for numeric sliders ----
     cov_stats = {}
@@ -1347,16 +1395,6 @@ class GeomorphLR:
       pass
     # ----------------------------------------------
 
-    if not step(conn, "Summarize model", 'sumtxt <- paste(utils::capture.output(summary(outlm)), collapse="\\n")'):
-      self._lr_setSummaryText("Failed to build summary(outlm).")
-      summary_text = ""
-    else:
-      try:
-        summary_text = str(conn.eval('sumtxt'))
-      except Exception as e:
-        summary_text = f"Could not read summary from R: {repr(e)}"
-      self._lr_setSummaryText(summary_text)
-
     # cache for coefficient viz (+ covariate stats + factor levels)
     self._lr_last_fit = {
       "formula": fml,
@@ -1373,12 +1411,14 @@ class GeomorphLR:
     self._log(f"[LR] geomorph::procD.lm OK: coef_mat {coef_mat.shape}, terms={len(coef_names)}")
     _set_label(self._lr_fitStatus, "Fit complete")
 
+    # --- PHASE: build coefficient warp infra (TPS source landmarks etc.) ---
+    self._lr_progressLabel(f"Setting up coefficient warps for {p} landmarks…")
     try:
       _t0 = _time.perf_counter()
       self._coef_refreshFromFit()
-      self._log(f"[LR] _coef_refreshFromFit: {_time.perf_counter() - _t0:.2f}s")
-    except Exception:
-      pass
+      self._log(f"[LR/timing] _coef_refreshFromFit: {_time.perf_counter() - _t0:.2f}s")
+    except Exception as e:
+      self._log(f"[LR] _coef_refreshFromFit error: {repr(e)}")
     # Now that this formula has been fit, disable the Fit button until the
     # user edits the formula (refreshFitButton checks _lr_last_fit.formula).
     try:
@@ -1530,14 +1570,21 @@ class GeomorphLR:
         pass
 
     # Domains for numeric mode
+    import time as _time
+    _t0 = _time.perf_counter()
     try:
       self._coef_build_domains()
     except Exception as e:
       self._log(f"[LR/COEF] domain build warning: {e}")
+    self._log(f"[LR/COEF/timing] _coef_build_domains: {_time.perf_counter() - _t0:.2f}s")
 
     # Ensure infra + identity warp at neutral
+    _t0 = _time.perf_counter()
     self._lr_prepareWarpInfra()
+    self._log(f"[LR/COEF/timing] _lr_prepareWarpInfra: {_time.perf_counter() - _t0:.2f}s")
+    _t0 = _time.perf_counter()
     self._ensureLRTPSNode()
+    self._log(f"[LR/COEF/timing] _ensureLRTPSNode: {_time.perf_counter() - _t0:.2f}s")
 
     try:
       self._coef_set_slider_domain_for_current()
@@ -1548,12 +1595,16 @@ class GeomorphLR:
         self.coefController.setValue(0.0)
 
     # Build initial numeric TPS
+    _t0 = _time.perf_counter()
     try:
       self._coef_applyTPS()
     except Exception as e:
       self._log(f"[LR/COEF] initial TPS build failed: {e}")
+    self._log(f"[LR/COEF/timing] _coef_applyTPS (initial): {_time.perf_counter() - _t0:.2f}s")
 
+    _t0 = _time.perf_counter()
     self._coef_attachTargets(enabled=True)
+    self._log(f"[LR/COEF/timing] _coef_attachTargets: {_time.perf_counter() - _t0:.2f}s")
 
     # If the user jumped straight to the LR tab without first hitting Apply
     # on the 3D Visualization tab, the shared clone landmark/model nodes
