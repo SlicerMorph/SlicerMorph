@@ -2375,13 +2375,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     # Shift mean landmarks along selected PC at the maximum score
     shiftMax = self.LM.ExpandAlongSinglePC(pcValue, self.pcScoreAbsMax * magnification, self.sampleSizeScaleFactor)
     target = self.rawMeanLandmarks + shiftMax
-    targetLMVTK = logic.convertNumpyToVTK(target)
-    sourceLMVTK = logic.convertNumpyToVTK(self.rawMeanLandmarks)
-
-    VTKTPS = vtk.vtkThinPlateSplineTransform()
-    VTKTPS.SetSourceLandmarks(targetLMVTK)
-    VTKTPS.SetTargetLandmarks(sourceLMVTK)
-    VTKTPS.SetBasisToR()
 
     # Choose bounds from model if in model mode; otherwise from the landmark clone/copy
     try:
@@ -2403,14 +2396,18 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     extent = [0, dimension - 1, 0, dimension - 1, 0, dimension - 1]
     spacing = (size[0] / dimension, size[1] / dimension, size[2] / dimension)
 
-    transformToGrid = vtk.vtkTransformToGrid()
-    transformToGrid.SetInput(VTKTPS)
-    transformToGrid.SetGridOrigin(origin)
-    transformToGrid.SetGridSpacing(spacing)
-    transformToGrid.SetGridExtent(extent)
-    transformToGrid.Update()
-
-    return transformToGrid.GetOutput()
+    # vtkTransformToGrid samples the inverse of the supplied transform, so we
+    # pass (source=target, target=mean) to obtain a forward warp on Apply.
+    # Sampling is parallelized over Z-slabs (helper falls back to single-thread
+    # for tiny grids).
+    return vtk_lib.sampleTPSToDisplacementGrid(
+      sourceLM=target,
+      targetLM=self.rawMeanLandmarks,
+      origin=origin,
+      spacing=spacing,
+      extent=extent,
+      basis="R",
+    )
 
   def getExpandedBounds(self, node, paddingFactor: float = 0.1):
     bounds = [0.0] * 6

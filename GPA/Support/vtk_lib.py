@@ -124,3 +124,115 @@ def convertNumpyToVTK(A):
 # >>> tps3.SetTargetLandmarks(mLM)
 # >>> tps3.SetTargetLandmarks(fLM)
 # >>>
+
+# ---------------------------------------------------------------------------
+# Parallel TPS -> displacement grid sampler.
+#
+# vtkTransformToGrid is single-threaded inside VTK, so for a 50^3 grid driven
+# by a vtkThinPlateSplineTransform with p landmarks the wall time scales as
+# O(50^3 * p) on one core. With p = 1440 this becomes the dominant cost in
+# the PCA / LR coefficient warp pipelines.
+#
+# Strategy: split the Z extent of the output grid into N axis-aligned slabs,
+# build an independent vtkTransformToGrid + vtkThinPlateSplineTransform per
+# slab, and run their Update() calls concurrently in a thread pool. Each
+# C++ Update() releases the GIL, so threads execute in parallel on real
+# cores. Each thread owns its own TPS instance to avoid any concern about
+# concurrent reads from a single solved transform.
+# ---------------------------------------------------------------------------
+
+def sampleTPSToDisplacementGrid(
+    sourceLM,
+    targetLM,
+    origin,
+    spacing,
+    extent,
+    basis="R",
+    numThreads=None,
+):
+    """Sample a thin-plate spline displacement field onto a regular grid in
+    parallel. Returns a vtkImageData whose scalars are per-voxel displacement
+    vectors (matches the layout produced by vtkTransformToGrid).
+
+    sourceLM, targetLM : numpy.ndarray (p, 3) -- TPS source/target landmarks.
+        Convention matches the existing callers (callers pre-swap if they
+        want the inverse, as vtkTransformToGrid samples the inverse).
+    origin, spacing : 3-tuples for the output grid.
+    extent : VTK extent [xmin, xmax, ymin, ymax, zmin, zmax].
+    basis : "R" (default, matches PCA / LR coef paths) or "R2LogR".
+    numThreads : defaults to min(cpu_count, z-slabs, 8). Pass 1 to force the
+        legacy single-threaded path.
+    """
+    import os
+    import numpy as np
+    from concurrent.futures import ThreadPoolExecutor
+    from vtk.util import numpy_support
+
+    z0, z1 = int(extent[4]), int(extent[5])
+    nz = z1 - z0 + 1
+    if numThreads is None:
+        numThreads = max(1, min(os.cpu_count() or 1, nz, 8))
+    numThreads = max(1, int(numThreads))
+
+    src_arr = np.ascontiguousarray(sourceLM, dtype=float)
+    tgt_arr = np.ascontiguousarray(targetLM, dtype=float)
+
+    def _make_points(arr):
+        pts = vtk.vtkPoints()
+        pts.SetNumberOfPoints(arr.shape[0])
+        for i, p in enumerate(arr):
+            pts.SetPoint(i, float(p[0]), float(p[1]), float(p[2]))
+        return pts
+
+    def _build_ttg(z_lo, z_hi):
+        tps = vtk.vtkThinPlateSplineTransform()
+        tps.SetSourceLandmarks(_make_points(src_arr))
+        tps.SetTargetLandmarks(_make_points(tgt_arr))
+        if basis == "R":
+            tps.SetBasisToR()
+        elif basis == "R2LogR":
+            tps.SetBasisToR2LogR()
+        ttg = vtk.vtkTransformToGrid()
+        ttg.SetInput(tps)
+        ttg.SetGridOrigin(origin)
+        ttg.SetGridSpacing(spacing)
+        ttg.SetGridExtent([extent[0], extent[1], extent[2], extent[3], z_lo, z_hi])
+        return tps, ttg
+
+    # Single-threaded fast path: avoid executor / concat overhead.
+    if numThreads == 1 or nz < 2:
+        _tps, ttg = _build_ttg(z0, z1)
+        ttg.Update()
+        return ttg.GetOutput()
+
+    edges = [z0 + (i * nz) // numThreads for i in range(numThreads + 1)]
+    slabs = [(edges[i], edges[i + 1] - 1) for i in range(numThreads) if edges[i + 1] - 1 >= edges[i]]
+
+    def _sample_slab(slab):
+        z_lo, z_hi = slab
+        _tps, ttg = _build_ttg(z_lo, z_hi)
+        # vtkTransformToGrid::Update() releases the GIL during sampling, so
+        # multiple workers actually run in parallel on multiple cores.
+        ttg.Update()
+        slab_img = ttg.GetOutput()
+        scalars = slab_img.GetPointData().GetScalars()
+        n_comp = scalars.GetNumberOfComponents()
+        arr = numpy_support.vtk_to_numpy(scalars).reshape(-1, n_comp).copy()
+        return arr, scalars.GetDataType()
+
+    with ThreadPoolExecutor(max_workers=len(slabs)) as ex:
+        results = list(ex.map(_sample_slab, slabs))
+
+    dtype_id = results[0][1]
+    # VTK image points order: x fastest, then y, then z. Slabs split by z so a
+    # plain concatenate along axis 0 in slab order is the correct layout.
+    full = np.concatenate([r[0] for r in results], axis=0)
+
+    img = vtk.vtkImageData()
+    img.SetOrigin(*origin)
+    img.SetSpacing(*spacing)
+    img.SetExtent(*extent)
+    vtk_arr = numpy_support.numpy_to_vtk(full, deep=True, array_type=dtype_id)
+    vtk_arr.SetName("displacement")
+    img.GetPointData().SetScalars(vtk_arr)
+    return img

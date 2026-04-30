@@ -274,13 +274,6 @@ class WarpEngine:
     # source/target are swapped because vtkTransformToGrid samples the inverse
     # of the supplied transform; the net effect of a forward warp.
     target = self.baseline + d["vec"] * d["max"]
-    source_vtk = _np_to_vtk_points(self.baseline)
-    target_vtk = _np_to_vtk_points(target)
-
-    tps = vtk.vtkThinPlateSplineTransform()
-    tps.SetSourceLandmarks(target_vtk)   # swap (intentional)
-    tps.SetTargetLandmarks(source_vtk)
-    tps.SetBasisToR()
 
     bounds = _expanded_bounds(self.bounds_node, self.padding_factor)
     origin = (bounds[0], bounds[2], bounds[4])
@@ -289,10 +282,13 @@ class WarpEngine:
     extent = [0, N - 1, 0, N - 1, 0, N - 1]
     spacing = (size[0] / N, size[1] / N, size[2] / N)
 
-    ttg = vtk.vtkTransformToGrid()
-    ttg.SetInput(tps)
-    ttg.SetGridOrigin(origin)
-    ttg.SetGridSpacing(spacing)
-    ttg.SetGridExtent(extent)
-    ttg.Update()
-    d["grid"] = ttg.GetOutput()
+    # Parallel TPS->grid sampler (Z-slab thread pool, releases the GIL).
+    from Support import vtk_lib as _vtk_lib
+    d["grid"] = _vtk_lib.sampleTPSToDisplacementGrid(
+      sourceLM=target,
+      targetLM=self.baseline,
+      origin=origin,
+      spacing=spacing,
+      extent=extent,
+      basis="R",
+    )

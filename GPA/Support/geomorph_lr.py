@@ -1993,12 +1993,6 @@ class GeomorphLR:
     # vtkGridTransform.SetDisplacementScale(s) then yields:
     #     warped(x) = x + s * (TPS(x) - x)
     # so s in [-1, 1] interpolates between identity and full warp.
-    _t = _time.perf_counter()
-    tps = vtk.vtkThinPlateSplineTransform()
-    tps.SetSourceLandmarks(_convert_numpy_to_vtk_points(base_shape))
-    tps.SetTargetLandmarks(_convert_numpy_to_vtk_points(target_max))
-    tps.SetBasisToR()
-    self._log(f"[LR/COEF/timing]   build vtkTPS (p={base_shape.shape[0]}): {_time.perf_counter() - _t:.2f}s")
 
     # Bounds for the displacement grid: cover where the unwarped clones
     # live (cloneLandmarkNode / cloneModelNode if present) plus padding so
@@ -2015,14 +2009,19 @@ class GeomorphLR:
     spacing = (size[0] / dimension, size[1] / dimension, size[2] / dimension)
 
     _t = _time.perf_counter()
-    t2g = vtk.vtkTransformToGrid()
-    t2g.SetInput(tps)
-    t2g.SetGridOrigin(origin)
-    t2g.SetGridSpacing(spacing)
-    t2g.SetGridExtent(extent)
-    t2g.Update()
-    grid_image = t2g.GetOutput()
-    self._log(f"[LR/COEF/timing]   sample TPS to {dimension}^3 grid: {_time.perf_counter() - _t:.2f}s")
+    # Parallel TPS->grid sampler: splits Z extent over a thread pool. Each
+    # worker constructs its own vtkTPS to avoid concurrent-read concerns;
+    # vtkTransformToGrid::Update() releases the GIL for true multi-core use.
+    from Support import vtk_lib as _vtk_lib
+    grid_image = _vtk_lib.sampleTPSToDisplacementGrid(
+      sourceLM=base_shape,
+      targetLM=target_max,
+      origin=origin,
+      spacing=spacing,
+      extent=extent,
+      basis="R",
+    )
+    self._log(f"[LR/COEF/timing]   sample TPS to {dimension}^3 grid (parallel): {_time.perf_counter() - _t:.2f}s")
 
     grid_xform = vtk.vtkGridTransform()
     grid_xform.SetDisplacementGridData(grid_image)
