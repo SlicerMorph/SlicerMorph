@@ -1752,12 +1752,19 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.sampleSizeScaleFactor = logic.dist2(self.rawMeanLandmarks).max()
     print("Scale Factor: " + str(self.sampleSizeScaleFactor))
     self.ui.GPALogTextbox.insertPlainText(f"Scale Factor: {self.sampleSizeScaleFactor}\n")
-    for landmarkNumber in range (shape[0]):
-      name = str(landmarkNumber+1) #start numbering at 1
-      self.meanLandmarkNode.AddControlPoint(self.rawMeanLandmarks[landmarkNumber,:], name)
+    # Perf: see onLoad() for rationale. Wrap in StartModify/EndModify so we
+    # don't trigger N synchronous renders during point creation.
+    _wasMod = self.meanLandmarkNode.StartModify()
+    try:
+      for landmarkNumber in range (shape[0]):
+        name = str(landmarkNumber+1) #start numbering at 1
+        self.meanLandmarkNode.AddControlPoint(self.rawMeanLandmarks[landmarkNumber,:], name)
+    finally:
+      self.meanLandmarkNode.EndModify(_wasMod)
     self.meanLandmarkNode.SetDisplayVisibility(1)
     self.meanLandmarkNode.LockedOn() #lock position so when displayed they cannot be moved
-    self.meanLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(1)
+    _showLabelsByDefault = (shape[0] <= 200)
+    self.meanLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(1 if _showLabelsByDefault else 0)
     self.meanLandmarkNode.GetDisplayNode().SetTextScale(3)
     #initialize mean LM display
     self.scaleMeanGlyph()
@@ -1882,12 +1889,33 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       GPANodeCollection.AddItem(modelDisplayNode)
     self.meanLandmarkNode.GetDisplayNode().SetSliceProjection(True)
     self.meanLandmarkNode.GetDisplayNode().SetSliceProjectionOpacity(1)
-    for landmarkNumber in range(shape[0]):
-      name = str(landmarkNumber+1) #start numbering at 1
-      self.meanLandmarkNode.AddControlPoint(vtk.vtkVector3d(self.rawMeanLandmarks[landmarkNumber,:]), name)
+    # Perf: at high N, per-control-point Modified events trigger N renders
+    # which can take seconds per render once labels are enabled. Wrap the
+    # population loop in a single Modify block so the scene is rendered
+    # exactly once after all points are added.
+    _wasMod = self.meanLandmarkNode.StartModify()
+    try:
+      for landmarkNumber in range(shape[0]):
+        name = str(landmarkNumber+1) #start numbering at 1
+        self.meanLandmarkNode.AddControlPoint(vtk.vtkVector3d(self.rawMeanLandmarks[landmarkNumber,:]), name)
+    finally:
+      self.meanLandmarkNode.EndModify(_wasMod)
     self.meanLandmarkNode.SetDisplayVisibility(1)
-    self.meanLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(1)
+    # Perf: per-point label rendering scales linearly with N (each text
+    # actor re-rasterizes on every render). At N=1440 this drops the 3D
+    # interactive frame rate from ~380fps to ~14fps. Default labels OFF
+    # for high-N datasets; the user can re-enable via the "Show mean
+    # landmark labels" button.
+    _showLabelsByDefault = (shape[0] <= 200)
+    self.meanLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(1 if _showLabelsByDefault else 0)
     self.meanLandmarkNode.GetDisplayNode().SetTextScale(3)
+    if not _showLabelsByDefault:
+      msg = (f"Note: point labels are off by default for {shape[0]} landmarks "
+             f"(>200) to keep the 3D viewer responsive. Use the 'Show mean "
+             f"landmark labels' button to toggle.\n")
+      try: self.ui.GPALogTextbox.insertPlainText(msg)
+      except Exception: pass
+      print(msg, end="")
     self.meanLandmarkNode.LockedOn() #lock position so when displayed they cannot be moved
 
     # Set up cloned mean landmark node for pc warping
