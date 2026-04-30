@@ -2103,8 +2103,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       tnode = getattr(self, "gridTransformNode", None)
     else:
       lr = getattr(self, "lr", None)
-      tnode = getattr(lr, "lrTPSTransformNode", None) if lr else None
+      tnode = getattr(lr, "lrGridTransformNode", None) if lr else None
       # Fall back to scene lookup by name (LR module instance may not be cached on widget).
+      if tnode is None or not slicer.mrmlScene.IsNodePresent(tnode):
+        tnode = slicer.mrmlScene.GetFirstNodeByName("LRGridTransform")
+      # Legacy fallback for scenes built before the grid-cache refactor.
       if tnode is None or not slicer.mrmlScene.IsNodePresent(tnode):
         tnode = slicer.mrmlScene.GetFirstNodeByName("LRTPS_Transform")
 

@@ -1551,6 +1551,13 @@ class GeomorphLR:
       self._coef_clearChoices()
       return
 
+    # New fit -> drop any cached per-coefficient displacement grids.
+    try:
+      if hasattr(self, "_coef_grid_cache"):
+        self._coef_grid_cache.clear()
+    except Exception:
+      pass
+
     self._coef_vectors = [_np.asarray(coef_mat[i, :]).reshape(-1).copy() for i in range(coef_mat.shape[0])]
     self._coef_names = [str(n) for n in coef_names]
 
@@ -1612,8 +1619,8 @@ class GeomorphLR:
     self._lr_prepareWarpInfra()
     self._log(f"[LR/COEF/timing] _lr_prepareWarpInfra: {_time.perf_counter() - _t0:.2f}s")
     _t0 = _time.perf_counter()
-    self._ensureLRTPSNode()
-    self._log(f"[LR/COEF/timing] _ensureLRTPSNode: {_time.perf_counter() - _t0:.2f}s")
+    self._ensureLRGridNode()
+    self._log(f"[LR/COEF/timing] _ensureLRGridNode: {_time.perf_counter() - _t0:.2f}s")
 
     _t0 = _time.perf_counter()
     try:
@@ -1690,6 +1697,12 @@ class GeomorphLR:
 
   def _coef_setMagnification(self):
     if not self._coef_enabled: return
+    # Magnification rescales the per-coef shift, invalidating every cached grid.
+    try:
+      if hasattr(self, "_coef_grid_cache"):
+        self._coef_grid_cache.clear()
+    except Exception:
+      pass
     try:
       self._coef_applyTPS()
     except Exception as e:
@@ -1723,12 +1736,11 @@ class GeomorphLR:
       neutral = float(dom.get("ref", 0.0)) if dom.get("mode") == "real" else 0.0
       self.coefController.setValue(neutral)
 
-    # Identity TPS
-    node = self._ensureLRTPSNode()
+    # Identity transform on the grid node (no displacement).
+    node = self._ensureLRGridNode()
     try:
-      id_tps = vtk.vtkThinPlateSplineTransform();
-      id_tps.SetBasisToR()
-      node.SetAndObserveTransformToParent(id_tps);
+      ident = vtk.vtkTransform()
+      node.SetAndObserveTransformToParent(ident)
       node.Modified()
     except Exception:
       pass
@@ -1762,9 +1774,9 @@ class GeomorphLR:
     self._coef_debugPipeline(tag="init/reset", sample_scale=0.0)
 
   def _coef_attachTargets(self, enabled: bool):
-    node = getattr(self, "lrTPSTransformNode", None)
+    node = getattr(self, "lrGridTransformNode", None)
     if not node:
-      self._log("[LR/COEF] lrTPSTransformNode missing in _coef_attachTargets"); return
+      self._log("[LR/COEF] lrGridTransformNode missing in _coef_attachTargets"); return
     import time as _time
     # Route attachment through the widget's warp-mode toggle so PCA/LR
     # ownership of the shared clones stays consistent and the radio buttons
@@ -1845,8 +1857,8 @@ class GeomorphLR:
         self._log("[LR] Cannot initialize: no mean landmarks available yet.")
         return
 
-    # Ensure the LR TPS transform exists.
-    node = self._ensureLRTPSNode()
+    # Ensure the LR grid transform node exists.
+    node = self._ensureLRGridNode()
 
     # Attach the shared Interactive-Visualization clones under the LR
     # transform. If the user has not yet clicked Apply in Setup Interactive
@@ -1862,7 +1874,7 @@ class GeomorphLR:
     if getattr(self, "_coef_in_refresh", False):
         try:
             tid = node.GetID() if node else "(none)"
-            self._log(f"[LR] Infra ready (TPS, deferred attach). transform={tid}")
+            self._log(f"[LR] Infra ready (grid, deferred attach). transform={tid}")
         except Exception:
             pass
         return
@@ -1917,14 +1929,149 @@ class GeomorphLR:
     return shift
 
   def _ensureLRTPSNode(self):
+    # Back-compat shim: older code paths called this; the warp pipeline now
+    # uses a vtkMRMLGridTransformNode (see _ensureLRGridNode) so this just
+    # returns the grid node.
+    return self._ensureLRGridNode()
+
+  def _coef_max_abs_delta_for_domain(self, dom):
+    """Return the maximum |delta| reachable by the slider for the current
+    domain. Used to pre-build the displacement grid at full deflection so
+    SetDisplacementScale can interpolate linearly between identity and the
+    full warp."""
+    import math as _math
+    mode = dom.get("mode")
     try:
-      if getattr(self, 'lrTPSTransformNode', None) and slicer.mrmlScene.IsNodePresent(self.lrTPSTransformNode):
-        return self.lrTPSTransformNode
-    except Exception: pass
-    self.lrTPSTransformNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', 'LRTPS_Transform')
-    self.nodes.AddItem(self.lrTPSTransformNode)
-    self._log(f"[LR] Created LRTPS_Transform: {self.lrTPSTransformNode.GetID()}")
-    return self.lrTPSTransformNode
+      lo = float(dom.get("min", 0.0))
+      hi = float(dom.get("max", 0.0))
+      ref = float(dom.get("ref", 0.0))
+    except Exception:
+      return 1.0
+    if mode == "real":
+      return max(abs(lo - ref), abs(hi - ref), 1e-12)
+    if mode == "log":
+      if ref <= 0.0:
+        return 1.0
+      a = abs(_math.log(lo / ref)) if lo > 0.0 else 0.0
+      b = abs(_math.log(hi / ref)) if hi > 0.0 else 0.0
+      return max(a, b, 1e-12)
+    if mode == "sqrt":
+      if ref < 0.0:
+        return 1.0
+      a = abs(_math.sqrt(lo) - _math.sqrt(ref)) if lo >= 0.0 else 0.0
+      b = abs(_math.sqrt(hi) - _math.sqrt(ref)) if hi >= 0.0 else 0.0
+      return max(a, b, 1e-12)
+    if mode == "cat":
+      return 1.0
+    # unit
+    return 1.0
+
+  def _coef_buildGridForCurrent(self, max_delta: float):
+    """Build a vtkGridTransform that represents the per-coefficient TPS at
+    full slider deflection (delta == max_delta). At runtime we just call
+    SetDisplacementScale(delta / max_delta) -- O(1) -- to get any other
+    deflection. The expensive O(p^3) TPS solve is paid exactly once per
+    (coefficient, magnification) pair instead of on every slider tick.
+    """
+    import time as _time
+    if self._coef_current is None or self._coef_current < 0:
+      return None
+    if not (self._coef_vectors and len(self._coef_vectors) > self._coef_current):
+      return None
+    if getattr(self.w, "rawMeanLandmarks", None) is None:
+      return None
+
+    base_shape = getattr(self, "_coef_intercept_shape", None)
+    if base_shape is None or base_shape.shape != self.w.rawMeanLandmarks.shape:
+      base_shape = self.w.rawMeanLandmarks
+
+    row = np.asarray(self._coef_vectors[self._coef_current]).reshape(-1)
+    base_shift = self._coef_row_to_shift(row)
+    target_max = base_shape + float(max_delta) * base_shift
+
+    # Source = mean shape (where the unwarped clones live), Target = warped.
+    # vtkGridTransform.SetDisplacementScale(s) then yields:
+    #     warped(x) = x + s * (TPS(x) - x)
+    # so s in [-1, 1] interpolates between identity and full warp.
+    _t = _time.perf_counter()
+    tps = vtk.vtkThinPlateSplineTransform()
+    tps.SetSourceLandmarks(_convert_numpy_to_vtk_points(base_shape))
+    tps.SetTargetLandmarks(_convert_numpy_to_vtk_points(target_max))
+    tps.SetBasisToR()
+    self._log(f"[LR/COEF/timing]   build vtkTPS (p={base_shape.shape[0]}): {_time.perf_counter() - _t:.2f}s")
+
+    # Bounds for the displacement grid: cover where the unwarped clones
+    # live (cloneLandmarkNode / cloneModelNode if present) plus padding so
+    # the displacement field extrapolates safely at the slider extremes.
+    bounds = self._coef_gridBounds()
+    if bounds is None:
+      self._log("[LR/COEF] cannot build grid: no bounds available")
+      return None
+
+    origin = (bounds[0], bounds[2], bounds[4])
+    size = (bounds[1] - bounds[0], bounds[3] - bounds[2], bounds[5] - bounds[4])
+    dimension = 50
+    extent = [0, dimension - 1, 0, dimension - 1, 0, dimension - 1]
+    spacing = (size[0] / dimension, size[1] / dimension, size[2] / dimension)
+
+    _t = _time.perf_counter()
+    t2g = vtk.vtkTransformToGrid()
+    t2g.SetInput(tps)
+    t2g.SetGridOrigin(origin)
+    t2g.SetGridSpacing(spacing)
+    t2g.SetGridExtent(extent)
+    t2g.Update()
+    grid_image = t2g.GetOutput()
+    self._log(f"[LR/COEF/timing]   sample TPS to {dimension}^3 grid: {_time.perf_counter() - _t:.2f}s")
+
+    grid_xform = vtk.vtkGridTransform()
+    grid_xform.SetDisplacementGridData(grid_image)
+    grid_xform.SetInterpolationModeToCubic()
+    return grid_xform
+
+  def _coef_gridBounds(self, paddingFactor: float = 0.30):
+    """Bounds covering the warped clones (landmarks +/- model) with padding."""
+    nodes = []
+    lm = getattr(self.w, "cloneLandmarkNode", None) or getattr(self.w, "copyLandmarkNode", None)
+    if lm is not None and slicer.mrmlScene.IsNodePresent(lm):
+      nodes.append(lm)
+    cm = getattr(self.w, "cloneModelNode", None)
+    if cm is not None and slicer.mrmlScene.IsNodePresent(cm):
+      try:
+        if bool(self.w.ui.modelVisualizationType.isChecked()):
+          nodes.append(cm)
+      except Exception:
+        pass
+    if not nodes:
+      # Fall back to mean-landmark bounding box if clones aren't built yet.
+      try:
+        ml = np.asarray(self.w.rawMeanLandmarks)
+        b = [float(ml[:, 0].min()), float(ml[:, 0].max()),
+             float(ml[:, 1].min()), float(ml[:, 1].max()),
+             float(ml[:, 2].min()), float(ml[:, 2].max())]
+      except Exception:
+        return None
+    else:
+      b = [+1e30, -1e30, +1e30, -1e30, +1e30, -1e30]
+      tmp = [0.0] * 6
+      for n in nodes:
+        try:
+          n.GetRASBounds(tmp)
+          if tmp[0] < b[0]: b[0] = tmp[0]
+          if tmp[1] > b[1]: b[1] = tmp[1]
+          if tmp[2] < b[2]: b[2] = tmp[2]
+          if tmp[3] > b[3]: b[3] = tmp[3]
+          if tmp[4] < b[4]: b[4] = tmp[4]
+          if tmp[5] > b[5]: b[5] = tmp[5]
+        except Exception:
+          continue
+      if b[0] > b[1]:
+        return None
+    xr = b[1] - b[0]; yr = b[3] - b[2]; zr = b[5] - b[4]
+    b[0] -= xr * paddingFactor; b[1] += xr * paddingFactor
+    b[2] -= yr * paddingFactor; b[3] += yr * paddingFactor
+    b[4] -= zr * paddingFactor; b[5] += zr * paddingFactor
+    return b
 
   def _coef_applyTPS(self, scale: float | None = None):
     if self._coef_current is None or self._coef_current < 0:
@@ -1999,61 +2146,77 @@ class GeomorphLR:
 
     row = np.asarray(self._coef_vectors[self._coef_current]).reshape(-1)
     base_shift = self._coef_row_to_shift(row)  # includes magnification & sample-size scaling
-    shift = float(delta) * base_shift
-    # Use intercept-predicted shape as the visualization base when available,
-    # so that at slider==reference the picture is the model's prediction at
-    # the reference predictors (Size=0, Sex=ref, ...). Falls back to the
-    # Procrustes mean if the intercept could not be captured.
-    base_shape = getattr(self, "_coef_intercept_shape", None)
-    if base_shape is None or base_shape.shape != self.w.rawMeanLandmarks.shape:
-      base_shape = self.w.rawMeanLandmarks
-    target = base_shape + shift
+    # base_shift / target only used directly here for the delta=0 fast path.
 
     import time as _time
-    node = self._ensureLRTPSNode()
+    node = self._ensureLRGridNode()
 
-    # PERF: at neutral (delta == 0), target == base_shape and the TPS is the
-    # identity. The vtkTPS LU weight solve is O(p^3) and dominates the
-    # post-fit cost (~13s at p=1000, ~80s at p=1440). Use a cheap identity
-    # transform instead and only build a real TPS when the user actually
-    # moves the slider.
+    # Magnification factors into the cached grid (because base_shift scales
+    # with it). Bake it into the cache key so a magnification change forces
+    # a rebuild on the next non-zero deflection.
+    try:
+      mag = float(self.ui.coefMagnificationSpin.value)
+    except Exception:
+      mag = 1.0
+
+    # Lazy init the per-fit grid cache.
+    if not hasattr(self, "_coef_grid_cache") or self._coef_grid_cache is None:
+      self._coef_grid_cache = {}
+
+    # PERF: at neutral (delta == 0) the warp is identity. Set a cheap
+    # vtkTransform identity on the node and skip the grid build entirely.
+    # This is the post-fit / slider-reset path; the grid is built lazily
+    # the first time the user actually pushes the slider away from neutral.
     if abs(float(delta)) < 1e-12:
       _t = _time.perf_counter()
-      ident = vtk.vtkTransform()  # identity
+      ident = vtk.vtkTransform()
       node.SetAndObserveTransformToParent(ident)
       try: node.Modified()
       except Exception: pass
       self._log(f"[LR/COEF/timing]   identity transform (delta=0): {_time.perf_counter() - _t:.2f}s")
-      self._coef_debugPipeline(tag=f"TPS val={value} (delta=0, identity)", sample_scale=None)
+      self._coef_debugPipeline(tag=f"GRID val={value} (delta=0, identity)", sample_scale=None)
       return
 
-    _t = _time.perf_counter()
-    tps = vtk.vtkThinPlateSplineTransform()
-    tps.SetSourceLandmarks(_convert_numpy_to_vtk_points(base_shape))
-    tps.SetTargetLandmarks(_convert_numpy_to_vtk_points(target))
-    tps.SetBasisToR()
-    self._log(f"[LR/COEF/timing]   build vtkTPS (p={base_shape.shape[0]}): {_time.perf_counter() - _t:.2f}s")
-
-    # Force the TPS weight solve here so the cost is visible (it would
-    # otherwise be paid lazily by the first downstream consumer).
-    _t = _time.perf_counter()
+    # Cache key per (coefficient, magnification, sample-size scale).
     try:
-      tps.TransformPoint([0.0, 0.0, 0.0])
+      ssf = float(getattr(self.w, "sampleSizeScaleFactor", 1.0))
     except Exception:
-      pass
-    self._log(f"[LR/COEF/timing]   tps.TransformPoint (forces solve): {_time.perf_counter() - _t:.2f}s")
+      ssf = 1.0
+    max_delta = self._coef_max_abs_delta_for_domain(dom)
+    cache_key = (int(self._coef_current), float(mag), float(ssf), float(max_delta))
 
+    grid_xform = self._coef_grid_cache.get(cache_key)
+    if grid_xform is None:
+      _t = _time.perf_counter()
+      grid_xform = self._coef_buildGridForCurrent(max_delta)
+      if grid_xform is None:
+        self._log("[LR/COEF] grid build returned None; aborting apply")
+        return
+      self._coef_grid_cache[cache_key] = grid_xform
+      self._log(f"[LR/COEF/timing]   build+cache grid: {_time.perf_counter() - _t:.2f}s")
+    else:
+      self._log("[LR/COEF/timing]   grid cache hit")
+
+    # Attach grid to node (cheap; just swaps the transform pointer if it
+    # changed) and set the displacement scale for the current delta. This
+    # is O(1); per-tick slider drags pay essentially nothing.
     _t = _time.perf_counter()
-    node.SetAndObserveTransformToParent(tps)
-    self._log(f"[LR/COEF/timing]   SetAndObserveTransformToParent: {_time.perf_counter() - _t:.2f}s")
-    _t = _time.perf_counter()
+    if node.GetTransformToParent() is not grid_xform:
+      node.SetAndObserveTransformToParent(grid_xform)
+    sf = float(delta) / float(max_delta)
+    if sf > 1.0: sf = 1.0
+    if sf < -1.0: sf = -1.0
+    try:
+      grid_xform.SetDisplacementScale(sf)
+    except Exception as e:
+      self._log(f"[LR/COEF] SetDisplacementScale failed: {e}")
     try:
       node.Modified()
     except Exception:
       pass
-    self._log(f"[LR/COEF/timing]   node.Modified(): {_time.perf_counter() - _t:.2f}s")
+    self._log(f"[LR/COEF/timing]   attach+scale (sf={sf:.3f}): {_time.perf_counter() - _t:.2f}s")
 
-    self._coef_debugPipeline(tag=f"TPS val={value} (delta={delta})", sample_scale=None)
+    self._coef_debugPipeline(tag=f"GRID val={value} (delta={delta}, sf={sf:.3f})", sample_scale=None)
 
   # ------------------------------ Misc UI helpers -----------------------------
 
