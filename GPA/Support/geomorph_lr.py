@@ -663,13 +663,29 @@ class GeomorphLR:
 
     cmd = [rscript, "-e", code]
 
+    # Pin BLAS / OpenMP thread counts to 1 for the Rserve child.
+    # Rationale: macOS Accelerate/vecLib (and several OpenBLAS builds on Linux)
+    # crash the R process with a segfault / "EndOfData" when an Rserve worker
+    # session calls into multi-threaded BLAS routines from packages like
+    # RRPP::lm.rrpp / geomorph::procD.lm with response widths >~ 600 columns.
+    # These env vars must be set BEFORE R loads its BLAS, hence Popen(env=...).
+    # Cost is negligible: GPA's R workload is dominated by R-level loops, not
+    # large dense matmul, and this trade is universally safer than the crash.
+    rserve_env = os.environ.copy()
+    rserve_env.setdefault("VECLIB_MAXIMUM_THREADS", "1")
+    rserve_env.setdefault("OPENBLAS_NUM_THREADS", "1")
+    rserve_env.setdefault("OMP_NUM_THREADS", "1")
+    rserve_env.setdefault("MKL_NUM_THREADS", "1")
+    rserve_env.setdefault("BLIS_NUM_THREADS", "1")
+
     try:
         flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if platform.system() == "Windows" else 0
         self._rserve_proc = subprocess.Popen(
             cmd,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            creationflags=flags
+            creationflags=flags,
+            env=rserve_env,
         )
         self._rserve_started_by_us = True
 
