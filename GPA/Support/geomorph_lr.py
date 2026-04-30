@@ -1109,6 +1109,36 @@ class GeomorphLR:
       self._log(f"[LR] Invalid formula: {msg}")
       return
 
+    # Show a progress dialog so the UI doesn't appear frozen during the fit
+    # (procD.lm itself is fast; the post-fit TPS warp setup with many landmarks
+    # is what tends to dominate wall-clock).
+    pd = None
+    try:
+      pd = slicer.util.createProgressDialog(
+        windowTitle="Fitting linear model",
+        labelText=f"Fitting:  {fml_raw}\n(this may take a moment for high-density landmarks)",
+        maximum=0,
+      )
+      pd.setCancelButton(None)
+      pd.setModal(True); pd.show(); pd.raise_(); pd.repaint()
+      for _ in range(5): slicer.app.processEvents()
+    except Exception:
+      pd = None
+
+    import time as _time
+    t_start = _time.perf_counter()
+    try:
+      self._lr_doFitInR(fml_raw)
+    finally:
+      self._log(f"[LR] total fit + post-fit: {_time.perf_counter() - t_start:.2f}s")
+      if pd is not None:
+        try: pd.close(); pd.deleteLater()
+        except Exception: pass
+
+  def _lr_doFitInR(self, fml_raw):
+    import numpy as _np
+    import time as _time
+
     conn = self._r_conn
     if not conn:
       _set_label(self._lr_fitStatus, "Rserve not connected");
@@ -1344,7 +1374,9 @@ class GeomorphLR:
     _set_label(self._lr_fitStatus, "Fit complete")
 
     try:
+      _t0 = _time.perf_counter()
       self._coef_refreshFromFit()
+      self._log(f"[LR] _coef_refreshFromFit: {_time.perf_counter() - _t0:.2f}s")
     except Exception:
       pass
     # Now that this formula has been fit, disable the Fit button until the
