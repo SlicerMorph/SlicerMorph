@@ -16,7 +16,7 @@
 # are read from the parent widget (self.w).
 # -----------------------------------------------------------------------------
 
-import os, time, socket, platform, subprocess, shutil
+import os, time, socket, platform, subprocess, shutil, signal
 import numpy as np
 
 # Optional pandas/patsy import is deferred until needed
@@ -76,6 +76,65 @@ def _is_port_open(host, port, timeout=0.25):
       return True
   except Exception:
     return False
+
+
+def _pids_listening_on_port(port):
+  """Return PIDs of processes currently LISTENing on TCP `port`.
+
+  Cross-platform best-effort:
+    - macOS / Linux: parse `lsof -nP -iTCP:<port> -sTCP:LISTEN -t`
+      (lsof is part of base macOS; on Linux it is almost always installed,
+       and we fall back to `ss`/`fuser` if not).
+    - Windows: parse `netstat -ano -p TCP` and match the local port.
+  Returns [] on any failure (caller treats as 'nothing to kill').
+  """
+  port = int(port)
+  pids = set()
+  try:
+    if platform.system() == "Windows":
+      out = subprocess.check_output(["netstat", "-ano", "-p", "TCP"],
+                                    stderr=subprocess.DEVNULL, text=True)
+      for line in out.splitlines():
+        parts = line.split()
+        # cols: Proto  Local Address  Foreign Address  State  PID
+        if len(parts) >= 5 and parts[0].upper() == "TCP" and parts[3].upper() == "LISTENING":
+          local = parts[1]
+          if local.endswith(f":{port}"):
+            try: pids.add(int(parts[4]))
+            except Exception: pass
+      return list(pids)
+
+    # POSIX: prefer lsof (gives PIDs directly)
+    if shutil.which("lsof"):
+      out = subprocess.check_output(
+        ["lsof", "-nP", "-iTCP:%d" % port, "-sTCP:LISTEN", "-t"],
+        stderr=subprocess.DEVNULL, text=True)
+      for tok in out.split():
+        try: pids.add(int(tok))
+        except Exception: pass
+      return list(pids)
+
+    # Fallback: ss (Linux) or fuser (Linux)
+    if shutil.which("ss"):
+      out = subprocess.check_output(
+        ["ss", "-Hltnp", "sport", "=", ":%d" % port],
+        stderr=subprocess.DEVNULL, text=True)
+      import re as _re
+      for m in _re.finditer(r"pid=(\d+)", out):
+        try: pids.add(int(m.group(1)))
+        except Exception: pass
+      return list(pids)
+
+    if shutil.which("fuser"):
+      out = subprocess.check_output(["fuser", "-n", "tcp", str(port)],
+                                    stderr=subprocess.DEVNULL, text=True)
+      for tok in out.split():
+        try: pids.add(int(tok))
+        except Exception: pass
+      return list(pids)
+  except Exception:
+    pass
+  return list(pids)
 
 
 def _convert_numpy_to_vtk_points(A):
@@ -707,34 +766,57 @@ class GeomorphLR:
 
   def _r_onShutdownClicked(self):
     port = int(self.ui.rPortSpin.value)
-    ok = False
 
-    # Try via pyRserve shutdown
+    # Always close our own pyRserve worker session first; the master daemon
+    # outlives it and that's what we actually need to stop.
+    self._safeCloseRConn()
+
+    # 1. Best-effort: ask the daemon nicely via a fresh shutdown control session.
     try:
       pyR = self._r_ensure_pyRserve()
       if pyR:
-        conn = self._r_conn or pyR.connect(host="127.0.0.1", port=port, timeout=2.0)
         try:
-          if hasattr(conn, "shutdown"):
-            conn.shutdown(); ok = True
-          conn.close()
+          conn = pyR.connect(host="127.0.0.1", port=port, timeout=2.0)
+          try:
+            if hasattr(conn, "shutdown"): conn.shutdown()
+          finally:
+            try: conn.close()
+            except Exception: pass
         except Exception: pass
     except Exception: pass
 
-    # Kill child we spawned if needed
-    if not ok and self._rserve_started_by_us and self._rserve_proc is not None:
+    # 2. Find every process actually listening on the port and terminate it.
+    #    The Popen handle we kept is just the launcher Rscript, which exited
+    #    immediately after Rserve daemonized — terminating it is a no-op.
+    pids = _pids_listening_on_port(port)
+    for pid in pids:
       try:
-        self._rserve_proc.terminate()
-        self._rserve_proc.wait(timeout=4.0)
-        ok = True
+        os.kill(pid, signal.SIGTERM)
       except Exception:
-        try: self._rserve_proc.kill()
+        pass
+
+    # 3. Wait briefly for the port to actually free; SIGKILL stragglers.
+    deadline = time.time() + 3.0
+    while time.time() < deadline and _is_port_open("127.0.0.1", port):
+      time.sleep(0.1)
+    if _is_port_open("127.0.0.1", port):
+      for pid in _pids_listening_on_port(port):
+        try: os.kill(pid, signal.SIGKILL)
         except Exception: pass
+      time.sleep(0.3)
 
-    self._rserve_proc = None; self._rserve_started_by_us = False
+    # Reap our launcher Popen if it's still around (it usually isn't).
+    if self._rserve_proc is not None:
+      try: self._rserve_proc.poll()
+      except Exception: pass
+    self._rserve_proc = None
+    self._rserve_started_by_us = False
 
-    _set_label(self.ui.rRserveStatusLabel, "Rserve shut down." if ok else "Shutdown requested.")
-    self._safeCloseRConn()
+    if _is_port_open("127.0.0.1", port):
+      _set_label(self.ui.rRserveStatusLabel,
+                 f"Shutdown failed: port {port} still in use.")
+    else:
+      _set_label(self.ui.rRserveStatusLabel, "Rserve shut down.")
     self._refreshButtons(); self._refreshStatusLabels()
 
   def _r_onConnectClicked(self):
