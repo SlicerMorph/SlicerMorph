@@ -4231,7 +4231,10 @@ class GPATest(ScriptedLoadableModuleTest):
     import qt
     keys = list(self.DATASETS.keys())
     labels = [self.DATASETS[k]["label"] for k in keys]
-    label, ok = qt.QInputDialog.getItem(
+    # PythonQt's binding for QInputDialog.getItem returns just the selected
+    # string (empty on cancel), not the (value, ok) tuple the C++/PyQt API
+    # uses. Treat an empty / unrecognized return as cancel.
+    label = qt.QInputDialog.getItem(
       slicer.util.mainWindow(),
       "GPA selftest",
       "Select a sample dataset to run the test on:",
@@ -4239,7 +4242,7 @@ class GPATest(ScriptedLoadableModuleTest):
       0,
       False,
     )
-    if not ok:
+    if not label:
       return None
     try:
       return keys[labels.index(label)]
