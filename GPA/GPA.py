@@ -4199,13 +4199,13 @@ class GPATest(ScriptedLoadableModuleTest):
       "mean_lm_basename": "809-3.fcsv",
     },
     "big": {
-      "label": "Big set (62 specimens, 1440 LM, mrk.json + atlas)",
+      "label": "Big set (200 synthetic specimens, 1440 LM, mrk.json + atlas)",
       "layout": "bundle",
       "dataset_url": "https://github.com/SlicerMorph/SampleData/raw/master/big_sample.zip",
       "dataset_dirname": "big_sample",
       "landmark_glob": "*.mrk.json",
       "extension": "json",
-      "expected_num_files": 62,
+      "expected_num_files": 200,
       "expected_num_landmarks": 1440,
       # Bundle ships its own reference model + mean LM under atlas/.
       "atlas_subdir": "atlas",
