@@ -1520,6 +1520,18 @@ class GeomorphLR:
       self._coef_clearChoices()
       return
 
+    # Re-entrance guard: while we are in this function, suppress the cascade
+    # of slider/combobox callbacks that would otherwise re-run
+    # _coef_applyTPS / _coef_set_slider_domain_for_current /
+    # _coef_attachTargets several times for the same fit. We do all those
+    # ourselves at the end of this function, exactly once.
+    self._coef_in_refresh = True
+    try:
+      self._coef_refreshFromFit_body(last)
+    finally:
+      self._coef_in_refresh = False
+
+  def _coef_refreshFromFit_body(self, last):
     import numpy as _np
     coef_mat = _np.asarray(last.get("coef_mat", []))
     coef_names = list(last.get("coef_names", []))
@@ -1640,6 +1652,7 @@ class GeomorphLR:
 
   def _coef_onSelectCoefficient(self):
     if not self._coef_enabled: return
+    if getattr(self, "_coef_in_refresh", False): return
     try:
       vis_idx = int(self.coefController.comboBoxIndex())
     except Exception:
@@ -1672,6 +1685,8 @@ class GeomorphLR:
 
   def _coef_updateScaling(self):
     if not self._coef_enabled:
+      return
+    if getattr(self, "_coef_in_refresh", False):
       return
     # User is interacting with an LR coefficient → claim ownership of the
     # shared warped-landmark/model clones for the LR pipeline. Auto-switches
