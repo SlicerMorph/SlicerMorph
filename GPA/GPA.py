@@ -2820,24 +2820,65 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       arr = self._plotDriveDispCache.get(key)
       if arr is not None:
         return arr
-      try:
-        # getGridTransform reads self.pcScoreAbsMax to size the warp; set it
-        # to the per-PC absolute score range so each PC's grid is built at
-        # its own max-score deformation.
-        prev_abs_max = getattr(self, "pcScoreAbsMax", None)
-        prev_pc = getattr(self, "currentPC", None)
-        self.pcScoreAbsMax = float(np.max(np.abs(self.scatterDataAll[:, pc_index - 1])))
-        self.currentPC = pc_index
+      # Reuse the slider's grid cache when possible: it stores a
+      # vtkImageData built by the same getGridTransform(pc, magnification),
+      # which is exactly what plot-drive needs as a numpy view. Avoids a
+      # second 50^3 * N-control-point TPS evaluation that takes ~30s on
+      # dense LM datasets.
+      img = None
+      shared = getattr(self, "_gridCache", None)
+      if isinstance(shared, dict):
+        cached_img = shared.get((pc_index, magnification))
+        if cached_img is not None:
+          img = cached_img
+      if img is None:
+        # Cache miss on BOTH caches: must compute the grid synchronously.
+        # Show a progress dialog so the user knows the app is working.
+        progressDialog = None
+        restoreCursor = False
         try:
-          img = self.getGridTransform(pc_index)
+          try:
+            progressDialog = slicer.util.createProgressDialog(
+              windowTitle="Caching deformation grid",
+              labelText=f"Caching deformation grid for PC{pc_index} "
+                        f"(magnification {magnification:g})...\n"
+                        f"This is a one-time cost per PC; subsequent uses "
+                        f"of this PC will be instant.",
+              maximum=0,
+            )
+            slicer.app.setOverrideCursor(qt.Qt.WaitCursor)
+            restoreCursor = True
+            slicer.app.processEvents()
+          except Exception:
+            pass
+          try:
+            # getGridTransform reads self.pcScoreAbsMax to size the warp; set it
+            # to the per-PC absolute score range so each PC's grid is built at
+            # its own max-score deformation.
+            prev_abs_max = getattr(self, "pcScoreAbsMax", None)
+            prev_pc = getattr(self, "currentPC", None)
+            self.pcScoreAbsMax = float(np.max(np.abs(self.scatterDataAll[:, pc_index - 1])))
+            self.currentPC = pc_index
+            try:
+              img = self.getGridTransform(pc_index)
+            finally:
+              if prev_abs_max is not None:
+                self.pcScoreAbsMax = prev_abs_max
+              if prev_pc is not None:
+                self.currentPC = prev_pc
+          except Exception as e:
+            print(f"[GPA] plot-drive: getGridTransform failed for PC{pc_index}: {e}", flush=True)
+            return None
+          # Populate the slider cache too so a later slider use is instant.
+          if isinstance(shared, dict):
+            shared[(pc_index, magnification)] = img
         finally:
-          if prev_abs_max is not None:
-            self.pcScoreAbsMax = prev_abs_max
-          if prev_pc is not None:
-            self.currentPC = prev_pc
-      except Exception as e:
-        print(f"[GPA] plot-drive: getGridTransform failed for PC{pc_index}: {e}", flush=True)
-        return None
+          if progressDialog is not None:
+            try: progressDialog.close()
+            except Exception: pass
+          if restoreCursor:
+            try: slicer.app.restoreOverrideCursor()
+            except Exception: pass
       dims = img.GetDimensions()
       vec = numpy_support.vtk_to_numpy(img.GetPointData().GetScalars()).copy()
       vec = vec.reshape((dims[2], dims[1], dims[0], 3))
