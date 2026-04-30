@@ -2197,13 +2197,58 @@ class GeomorphLR:
 
     grid_xform = self._coef_grid_cache.get(cache_key)
     if grid_xform is None:
-      _t = _time.perf_counter()
-      grid_xform = self._coef_buildGridForCurrent(max_delta)
-      if grid_xform is None:
-        self._log("[LR/COEF] grid build returned None; aborting apply")
-        return
-      self._coef_grid_cache[cache_key] = grid_xform
-      self._log(f"[LR/COEF/timing]   build+cache grid: {_time.perf_counter() - _t:.2f}s")
+      # Building the 50x50x50 displacement grid evaluates an O(p^3) TPS
+      # weight solve plus 125k * p kernel evaluations. At p=1000 this is
+      # ~14s on the UI thread; at p=1440 it's ~80s. Show a modal progress
+      # dialog so the user knows the app is working rather than hung. Same
+      # pattern PCA uses in setupPCTransform / getGridTransform.
+      coef_label = "(unknown)"
+      try:
+        if 0 <= int(self._coef_current) < len(self._coef_names):
+          coef_label = str(self._coef_names[self._coef_current])
+      except Exception:
+        pass
+      progressDialog = None
+      restoreCursor = False
+      try:
+        try:
+          progressDialog = slicer.util.createProgressDialog(
+            windowTitle="Caching deformation grid",
+            labelText=f"Caching deformation grid for coefficient '{coef_label}' "
+                      f"(magnification {mag:g})...\n"
+                      f"This is a one-time cost per coefficient; subsequent "
+                      f"slider moves on this coefficient will be instant.",
+            maximum=0,
+          )
+          progressDialog.setModal(True)
+          progressDialog.show()
+          progressDialog.raise_()
+          progressDialog.repaint()
+        except Exception:
+          progressDialog = None
+        try:
+          slicer.app.setOverrideCursor(qt.Qt.WaitCursor)
+          restoreCursor = True
+        except Exception:
+          pass
+        for _ in range(5):
+          try: slicer.app.processEvents()
+          except Exception: pass
+
+        _t = _time.perf_counter()
+        grid_xform = self._coef_buildGridForCurrent(max_delta)
+        if grid_xform is None:
+          self._log("[LR/COEF] grid build returned None; aborting apply")
+          return
+        self._coef_grid_cache[cache_key] = grid_xform
+        self._log(f"[LR/COEF/timing]   build+cache grid: {_time.perf_counter() - _t:.2f}s")
+      finally:
+        if progressDialog is not None:
+          try: progressDialog.close()
+          except Exception: pass
+        if restoreCursor:
+          try: slicer.app.restoreOverrideCursor()
+          except Exception: pass
     else:
       self._log("[LR/COEF/timing]   grid cache hit")
 
