@@ -2116,6 +2116,58 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     except Exception:
       pass
 
+    # Enable / disable the inactive driver's interactive widgets so the user
+    # can't accidentally drive the wrong source. Radio buttons stay enabled
+    # (so the user can switch back).
+    pca_active = (mode == "pca")
+    for name in ("pcSlider", "pcSpinBox", "pcComboBox"):
+      try:
+        w = getattr(self.ui, name, None)
+        if w is not None:
+          w.setEnabled(pca_active)
+      except Exception:
+        pass
+    # The PC combobox is hidden behind a wrapper QSpinBox+label; disable that too.
+    try:
+      wrap = (self._pcSpinWidgets or {}).get("pcComboBox")
+      if wrap:
+        for k in ("spin", "label"):
+          w = wrap.get(k)
+          if w is not None:
+            try: w.setEnabled(pca_active)
+            except Exception: pass
+    except Exception:
+      pass
+    for name in ("coefSlider", "coefSpinBox", "coefComboBox",
+                 "coefMagnificationSpin", "coefUpdateMagnificationButton"):
+      try:
+        w = getattr(self.ui, name, None)
+        if w is not None:
+          w.setEnabled(not pca_active)
+      except Exception:
+        pass
+
+    # Drive-3D from the PCA scatter plot is also a PCA driver. Disable the
+    # toggle + the X/Y PC spinboxes when we leave PCA mode, and force the
+    # toggle off so any active chart->warp binding stops firing.
+    try:
+      cb = getattr(self.ui, "drivePCAPlotCheckBox", None)
+      if cb is not None:
+        if not pca_active and cb.isChecked():
+          # onTogglePlotDriving(False) cleans up the binding + resets to mean.
+          try: cb.setChecked(False)
+          except Exception: pass
+        cb.setEnabled(pca_active)
+    except Exception:
+      pass
+    for attr in ("_driveSpinX", "_driveSpinY", "_driveLabelX", "_driveLabelY"):
+      try:
+        w = getattr(self, attr, None)
+        if w is not None:
+          w.setEnabled(pca_active)
+      except Exception:
+        pass
+
     # Reset viewer 2 to the mean shape on every mode switch so the user
     # always starts from a known reference. For PCA: snap the PC slider to 0
     # (zero displacement scale). For LR: snap the coefficient slider back to

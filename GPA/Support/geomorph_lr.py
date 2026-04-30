@@ -901,12 +901,44 @@ class GeomorphLR:
       ok,_ = self._lr_validateFormula(fml)
     except Exception:
       ok = False
-    return ok and bool(self._r_conn)
+    if not (ok and bool(self._r_conn)):
+      return False
+    # If we already produced a fit for this exact formula, don't let the
+    # user re-run it just to re-arm the LR visualization. They should switch
+    # back via the warp-source radio (PCA / Geomorph LR) instead. Editing
+    # the formula text re-arms the button automatically.
+    try:
+      last = getattr(self, "_lr_last_fit", None)
+      if last and str(last.get("formula", "")) == str(fml):
+        return False
+    except Exception:
+      pass
+    return True
 
   def refreshFitButton(self):
     can = self._lr_canFit()
     _set_enabled(self._lr_fitBtn, bool(can))
-    _set_label(self._lr_fitStatus, "Ready" if can else "Not ready")
+    if can:
+      _set_label(self._lr_fitStatus, "Ready")
+    else:
+      # Distinguish "already fit" from "formula/connection not ready".
+      try:
+        fml = self._lr_getFormulaText()
+        ok,_ = self._lr_validateFormula(fml)
+      except Exception:
+        ok = False
+      already = False
+      try:
+        last = getattr(self, "_lr_last_fit", None)
+        already = bool(ok and self._r_conn and last
+                       and str(last.get("formula", "")) == str(fml))
+      except Exception:
+        pass
+      if already:
+        _set_label(self._lr_fitStatus,
+                   "Fit complete (edit formula or switch warp source to re-fit)")
+      else:
+        _set_label(self._lr_fitStatus, "Not ready")
 
   def _lr_findCovariatesPath(self) -> str:
     paths = []
@@ -1195,6 +1227,12 @@ class GeomorphLR:
 
     try:
       self._coef_refreshFromFit()
+    except Exception:
+      pass
+    # Now that this formula has been fit, disable the Fit button until the
+    # user edits the formula (refreshFitButton checks _lr_last_fit.formula).
+    try:
+      self.refreshFitButton()
     except Exception:
       pass
 
