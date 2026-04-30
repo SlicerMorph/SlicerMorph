@@ -1561,11 +1561,16 @@ class GeomorphLR:
 
     if self.coefController:
       visible_names = [self._coef_names[i] for i in self._coef_visible_indices]
+      import time as _time
+      _t0 = _time.perf_counter()
       self.coefController.populateComboBox(visible_names)
+      self._log(f"[LR/COEF/timing] populateComboBox ({len(visible_names)} terms): {_time.perf_counter() - _t0:.2f}s")
       try:
         # combobox index 0 corresponds to the first visible coef (which is
         # self._coef_visible_indices[0] in the underlying arrays)
+        _t0 = _time.perf_counter()
         self.ui.coefComboBox.setCurrentIndex(0)
+        self._log(f"[LR/COEF/timing] coefComboBox.setCurrentIndex(0): {_time.perf_counter() - _t0:.2f}s")
       except Exception:
         pass
 
@@ -1586,6 +1591,7 @@ class GeomorphLR:
     self._ensureLRTPSNode()
     self._log(f"[LR/COEF/timing] _ensureLRTPSNode: {_time.perf_counter() - _t0:.2f}s")
 
+    _t0 = _time.perf_counter()
     try:
       self._coef_set_slider_domain_for_current()
     except Exception as e:
@@ -1593,6 +1599,7 @@ class GeomorphLR:
       if self.coefController:
         self.coefController.setRange(-1.0, 1.0)
         self.coefController.setValue(0.0)
+    self._log(f"[LR/COEF/timing] _coef_set_slider_domain_for_current: {_time.perf_counter() - _t0:.2f}s")
 
     # Build initial numeric TPS
     _t0 = _time.perf_counter()
