@@ -1617,16 +1617,24 @@ class GeomorphLR:
     # on the 3D Visualization tab, the shared clone landmark/model nodes
     # don't exist yet — so the slider has nothing visible to drive. Nudge
     # them with a one-shot popup (per session).
+    #
+    # Defer via QTimer.singleShot so the modal popup does NOT block (and
+    # inflate) the surrounding timing logs / progress dialog teardown.
     try:
       lm = getattr(self.w, "cloneLandmarkNode", None)
       have_lm = bool(lm is not None and slicer.mrmlScene.IsNodePresent(lm))
       if (not have_lm) and (not getattr(self, "_lr_applyHintShown", False)):
         self._lr_applyHintShown = True
-        slicer.util.infoDisplay(
-          "Regression fit complete, but no warped landmarks are visible yet.\n\n"
-          "Go to the '3D Visualization' tab and click 'Apply' to create the "
-          "warped landmark / model display, then return here.",
-          windowTitle="Geomorph LR")
+        def _showApplyHint():
+          try:
+            slicer.util.infoDisplay(
+              "Regression fit complete, but no warped landmarks are visible yet.\n\n"
+              "Go to the '3D Visualization' tab and click 'Apply' to create the "
+              "warped landmark / model display, then return here.",
+              windowTitle="Geomorph LR")
+          except Exception:
+            pass
+        qt.QTimer.singleShot(0, _showApplyHint)
     except Exception:
       pass
 
