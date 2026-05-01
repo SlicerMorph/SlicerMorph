@@ -3929,11 +3929,40 @@ class GPALogic(ScriptedLoadableModuleLogic):
     plotChartNode.SetTitle('PCA Scatter Plot with factors')
     plotChartNode.SetXAxisTitle(xAxis)
     plotChartNode.SetYAxisTitle(yAxis)
+    self._applyEqualSymmetricRange(plotChartNode, data, xAxis, yAxis)
     layoutManager = slicer.app.layoutManager()
 
     plotWidget = layoutManager.plotWidget(0)
     plotViewNode = plotWidget.mrmlPlotViewNode()
     plotViewNode.SetPlotChartNodeID(plotChartNode.GetID())
+
+  def _applyEqualSymmetricRange(self, plotChartNode, data, xAxis, yAxis, pad=1.05):
+    """Force the PCA scatter chart to use a symmetric, equal range on both
+    axes so (0,0) sits at the chart center and one PC unit on X spans the
+    same numerical extent as one PC unit on Y. The displayed pair is
+    parsed from the axis titles ('PCk' -> column k-1 in `data`).
+
+    VTK's chart can't enforce equal physical units per pixel by itself, but
+    matching the numerical ranges removes the most common misreading: 'PC2
+    looks more variable because the box is taller'. Pair this with a square
+    plot widget on the Qt side for true equal-aspect viewing.
+    """
+    try:
+      ix = int(str(xAxis)[2:]) - 1
+      iy = int(str(yAxis)[2:]) - 1
+      arr = np.asarray(data)
+      if arr.ndim != 2 or ix < 0 or iy < 0 or max(ix, iy) >= arr.shape[1]:
+        return
+      r = float(np.max(np.abs(arr[:, [ix, iy]])))
+      if not np.isfinite(r) or r <= 0.0:
+        return
+      r *= float(pad)
+      plotChartNode.SetXAxisRangeAuto(False)
+      plotChartNode.SetYAxisRangeAuto(False)
+      plotChartNode.SetXAxisRange(-r, r)
+      plotChartNode.SetYAxisRange(-r, r)
+    except Exception:
+      pass
 
   def makeScatterPlot(self, data, files, title,xAxis,yAxis,pcNumber):
     numPoints = len(data)
@@ -3987,6 +4016,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
     plotChartNode.SetTitle('PCA Scatter Plot ')
     plotChartNode.SetXAxisTitle(xAxis)
     plotChartNode.SetYAxisTitle(yAxis)
+    self._applyEqualSymmetricRange(plotChartNode, data, xAxis, yAxis)
 
     layoutManager = slicer.app.layoutManager()
 
