@@ -3641,6 +3641,22 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             currentAtlasPath = os.path.join(modelsDir, modelFiles[0])
             _log(f"Bootstrap reference (default, first model): {modelFiles[0]}")
 
+        # Consensus-specific RANSAC caps (cross-platform).
+        # Specimens of the same sample are morphologically similar; far fewer
+        # RANSAC trials reliably find the correct alignment than for arbitrary
+        # landmark transfer. Cap iteration 0 at 100k and subsequent iterations
+        # at 10k (the atlas is already near the mean so FPFH correspondences
+        # are tight from the start and RANSAC converges on the first attempt).
+        from vtk.util.numpy_support import vtk_to_numpy as _v2n_build
+        _ransac_full = int(parameterDictionary.get("maxRANSAC", 1_000_000))
+        _RANSAC_ITER0 = max(10_000, min(_ransac_full, 100_000))
+        # Use the same cap for all iterations: the consensus atlas is a smooth
+        # population average whose FPFH features are blurrier than any individual
+        # specimen, so ITK RANSAC needs the same number of trials to resolve the
+        # correct global orientation. 10k was too low and caused 180° flips in
+        # iteration 2+ because ITK divides by thread count internally.
+        _RANSAC_ITERN = _RANSAC_ITER0
+
         prevMeanVerts = None
         for it in range(iterations):
             _log(f"--- Consensus iteration {it + 1}/{iterations} ---")
@@ -3656,9 +3672,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             sparseTemplate = self.DownsampleTemplate(atlasPolyData, spacingFactor)
             density = sparseTemplate.GetNumberOfPoints()
             n_atlas_verts = atlasPolyData.GetNumberOfPoints()
-            atlasCorresp = np.array(
-                [sparseTemplate.GetPoint(i) for i in range(density)]
-            )
+            atlasCorresp = _v2n_build(sparseTemplate.GetPoints().GetData()).copy()
             stage_times["downReference"] = time.perf_counter() - t0
             _log(f"  Sparse control points: {density};  atlas vertices: {n_atlas_verts}")
 
@@ -3668,13 +3682,19 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             t0 = time.perf_counter()
             sumVerts = np.zeros((n_atlas_verts, 3), dtype=np.float64)
             countVerts = np.zeros(n_atlas_verts, dtype=np.int64)
+            # Build a consensus-specific parameter dict with a reduced RANSAC
+            # cap. Full user maxRANSAC is preserved for landmark transfer.
+            _ransac_cap = _RANSAC_ITER0 if it == 0 else _RANSAC_ITERN
+            _consensusParamDict = dict(parameterDictionary)
+            _consensusParamDict["maxRANSAC"] = _ransac_cap
+            _log(f"  RANSAC cap this iteration: {_ransac_cap:,}")
             n_used = self._denseConsensusAccumulate(
                 modelsDir=modelsDir,
                 atlasPolyData=atlasPolyData,
                 atlasNode=atlasNode,
                 sparseTemplate=sparseTemplate,
                 atlasCorresp=atlasCorresp,
-                parameterDictionary=parameterDictionary,
+                parameterDictionary=_consensusParamDict,
                 sumVerts=sumVerts,
                 countVerts=countVerts,
                 outlierRejectFactor=outlierRejectFactor,
@@ -3686,9 +3706,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             # 3) Compute per-vertex mean. Vertices with zero hits (shouldn't
             #    happen normally) keep the atlas's original position.
             t0 = time.perf_counter()
-            atlasVertsArray = np.array(
-                [atlasPolyData.GetPoint(i) for i in range(n_atlas_verts)]
-            )
+            atlasVertsArray = _v2n_build(atlasPolyData.GetPoints().GetData()).copy()
             meanVerts = atlasVertsArray.copy()
             mask = countVerts > 0
             meanVerts[mask] = sumVerts[mask] / countVerts[mask, None]
@@ -3891,16 +3909,14 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         """
         import vtk
         import logging
+        from vtk.util.numpy_support import vtk_to_numpy as _v2n, numpy_to_vtk as _n2v
 
         n_atlas_verts = atlasPolyData.GetNumberOfPoints()
-        atlasVertsArray = np.array(
-            [atlasPolyData.GetPoint(i) for i in range(n_atlas_verts)]
-        )
+        atlasVertsArray = _v2n(atlasPolyData.GetPoints().GetData()).copy()
 
         # Source landmarks for TPS (atlas-frame template control points).
         atlasLM_vtk = vtk.vtkPoints()
-        for p in atlasCorresp:
-            atlasLM_vtk.InsertNextPoint(float(p[0]), float(p[1]), float(p[2]))
+        atlasLM_vtk.SetData(_n2v(np.asarray(atlasCorresp, dtype=np.float64), deep=True))
 
         modelFiles = sorted(
             f for f in os.listdir(modelsDir)
@@ -3964,28 +3980,16 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
                 tf.Update()
                 warpedSpecimen = tf.GetOutput()
 
-                # Build cell locator on warped specimen surface.
-                locator = vtk.vtkCellLocator()
-                locator.SetDataSet(warpedSpecimen)
-                locator.BuildLocator()
-
-                # For each atlas vertex, find closest point on warped specimen.
-                # Two-pass: collect closest points + distances, then reject
-                # outliers (specimen-local) before accumulating.
-                closest = [0.0, 0.0, 0.0]
-                cellId = vtk.reference(0)
-                subId = vtk.reference(0)
-                dist2 = vtk.reference(0.0)
-                specimenClosest = np.empty((n_atlas_verts, 3), dtype=np.float64)
-                specimenDist2 = np.empty(n_atlas_verts, dtype=np.float64)
-                for i in range(n_atlas_verts):
-                    locator.FindClosestPoint(
-                        atlasVertsArray[i].tolist(), closest, cellId, subId, dist2
-                    )
-                    specimenClosest[i, 0] = closest[0]
-                    specimenClosest[i, 1] = closest[1]
-                    specimenClosest[i, 2] = closest[2]
-                    specimenDist2[i] = float(dist2)
+                # Batch closest-point lookup via scipy cKDTree on warped
+                # specimen vertices. Vertex-to-vertex matching is consistent
+                # with GetCorrespondingPoints (vtkPointLocator). Cross-platform;
+                # workers=-1 uses C-level threading (safe on Win/macOS/Linux).
+                from scipy.spatial import cKDTree as _cKDTree
+                warpedPts = _v2n(warpedSpecimen.GetPoints().GetData())
+                _tree = _cKDTree(warpedPts)
+                specimenDist, _idx = _tree.query(atlasVertsArray, workers=-1)
+                specimenClosest = warpedPts[_idx].copy()
+                specimenDist2 = specimenDist ** 2
 
                 if outlierRejectFactor and outlierRejectFactor > 0:
                     medianD = float(np.sqrt(np.median(specimenDist2)))
@@ -4032,12 +4036,9 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
 
         out = vtk.vtkPolyData()
         out.DeepCopy(referencePolyData)
+        from vtk.util.numpy_support import numpy_to_vtk as _n2v
         pts = vtk.vtkPoints()
-        pts.SetNumberOfPoints(newVerts.shape[0])
-        for i in range(newVerts.shape[0]):
-            pts.SetPoint(i, float(newVerts[i, 0]),
-                         float(newVerts[i, 1]),
-                         float(newVerts[i, 2]))
+        pts.SetData(_n2v(np.asarray(newVerts, dtype=np.float64), deep=True))
         out.SetPoints(pts)
 
         writer = vtk.vtkPLYWriter()
