@@ -324,6 +324,9 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
         self.ui.buildConsensusAtlasButton.connect(
             "clicked(bool)", self.onBuildConsensusAtlasButton
         )
+        self.ui.previewDensityButton.connect(
+            "clicked(bool)", self.onPreviewDensity
+        )
 
         # RMSE Table initialization
         self.col1List = []
@@ -1006,10 +1009,18 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
             self.ui.modelsMultiSelector.currentPath
             and self.ui.kmeansOutputSelector.currentPath
         )
+        self.ui.previewDensityButton.enabled = bool(
+            self.ui.modelsMultiSelector.currentPath
+        )
 
     def onDownReferenceButton(self):
         logic = ALPACALogic()
-        if bool(self.ui.referenceSelector.currentPath):
+        # Priority: consensus atlas (if built this session) > user-selected
+        # reference > first model in the input directory.
+        consensusPath = getattr(self, "consensusAtlasPath", None)
+        if consensusPath and os.path.isfile(consensusPath):
+            referencePath = consensusPath
+        elif bool(self.ui.referenceSelector.currentPath):
             referencePath = self.ui.referenceSelector.currentPath
         else:
             referenceList = [
@@ -1403,6 +1414,35 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
             ]
             self.ui.sourceFiducialMultiSelector.toolTip = "Select the source landmarks"
 
+    def onPreviewDensity(self):
+        """Subsample the chosen reference at the current spacing factor and
+        report the resulting sparse point count, without altering any state."""
+        if self.ui.selectRefCheckBox.isChecked() and self.ui.referenceSelector.currentPath:
+            refPath = self.ui.referenceSelector.currentPath
+        else:
+            modelsDir = self.ui.modelsMultiSelector.currentPath
+            files = sorted(
+                f for f in os.listdir(modelsDir)
+                if f.endswith((".ply", ".stl", ".obj", ".vtk", ".vtp"))
+            )
+            if not files:
+                slicer.util.errorDisplay("No mesh files found in input directory.")
+                return
+            refPath = os.path.join(modelsDir, files[0])
+
+        node = slicer.util.loadModel(refPath)
+        try:
+            sparse = ALPACALogic().DownsampleTemplate(
+                node.GetPolyData(), self.ui.spacingFactorSlider.value
+            )
+            count = sparse.GetNumberOfPoints()
+            self.ui.consensusInfo.insertPlainText(
+                f"Preview: spacing={self.ui.spacingFactorSlider.value:.3f} -> "
+                f"{count} points (ref: {os.path.basename(refPath)})\n"
+            )
+        finally:
+            slicer.mrmlScene.RemoveNode(node)
+
     def onBuildConsensusAtlasButton(self):
         """Build a bias-free consensus atlas from the input models folder."""
         modelsDir = self.ui.modelsMultiSelector.currentPath
@@ -1428,6 +1468,13 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
             self.ui.consensusInfo.insertPlainText(msg + "\n")
             slicer.app.processEvents()
 
+        # Honor user-selected reference if the "Enable Reference Model"
+        # checkbox is on and a path is set.
+        userReferencePath = None
+        if (self.ui.selectRefCheckBox.isChecked()
+                and self.ui.referenceSelector.currentPath):
+            userReferencePath = self.ui.referenceSelector.currentPath
+
         logic = ALPACALogic()
         try:
             finalPath = logic.buildConsensusAtlas(
@@ -1438,6 +1485,8 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
                 iterations=int(self.ui.consensusIterations.value),
                 useJSONFormat=self.ui.JSONFileFormatSelector.checked,
                 useScaling=self.ui.consensusScalingCheckBox.checked,
+                userReferencePath=userReferencePath,
+                smoothingIterations=int(self.ui.smoothingIterations.value),
                 progressCallback=_progress,
             )
         except Exception as e:
@@ -1445,6 +1494,9 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
             raise
 
         self.ui.consensusInfo.insertPlainText(f"\nDone. Final atlas: {finalPath}\n")
+        # Remember the consensus atlas as the preferred reference for the
+        # downstream "Generate Point Cloud" step.
+        self.consensusAtlasPath = finalPath
         # Load the final atlas into the scene for visual inspection.
         try:
             slicer.util.loadModel(finalPath)
@@ -3307,12 +3359,20 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             for f in os.listdir(modelsDir)
             if f.endswith((".ply", ".stl", ".obj", ".vtk", ".vtp"))
         ]
+        import time as _time
+        _stage_totals = {"load": 0.0, "subsample": 0.0, "estimate": 0.0,
+                         "corresp": 0.0, "save": 0.0}
+        _per_specimen = []
         for file in referenceFileList:
+            _spec_t0 = _time.perf_counter()
             sourceFilePath = os.path.join(modelsDir, file)
+            _t = _time.perf_counter()
             sourceModelNode = slicer.util.loadModel(sourceFilePath)
+            _stage_totals["load"] += _time.perf_counter() - _t
             sourceModelNode.GetDisplayNode().SetVisibility(False)
             rootName = os.path.splitext(file)[0]
             scalingOption = True
+            _t = _time.perf_counter()
             (
                 sourcePoints,
                 targetPoints,
@@ -3327,6 +3387,8 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
                 parameterDictionary,
                 usePoisson,
             )
+            _stage_totals["subsample"] += _time.perf_counter() - _t
+            _t = _time.perf_counter()
             ICPTransform_similarity, similarityFlag = self.estimateTransform(
                 sourcePoints,
                 targetPoints,
@@ -3336,7 +3398,9 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
                 scalingOption,
                 parameterDictionary,
             )
+            _stage_totals["estimate"] += _time.perf_counter() - _t
 
+            _t = _time.perf_counter()
             vtkSimilarityTransform = self.itkToVTKTransform(
                 ICPTransform_similarity, similarityFlag
             )
@@ -3373,14 +3437,35 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
 
             slicer.util.updateMarkupsControlPointsFromArray(subjectFiducial, sourceArray)
 
+            _stage_totals["corresp"] += _time.perf_counter() - _t
+            _t = _time.perf_counter()
             slicer.util.saveNode(
                 subjectFiducial, os.path.join(pcdOutputDir, f"{rootName}" + extensionLM)
             )
+            _stage_totals["save"] += _time.perf_counter() - _t
             slicer.mrmlScene.RemoveNode(sourceModelNode)
             slicer.mrmlScene.RemoveNode(ICPTransformNode)
             slicer.mrmlScene.RemoveNode(subjectFiducial)
+            _per_specimen.append((file, _time.perf_counter() - _spec_t0))
         # Remove template node
         slicer.mrmlScene.RemoveNode(targetModelNode)
+        # Per-specimen + stage timing summary (consensus / templates diagnostics)
+        try:
+            import logging as _lg
+            _total = sum(t for _, t in _per_specimen)
+            _msg = "[matchingPCD] %d specimens in %.1fs" % (len(_per_specimen), _total)
+            print(_msg); _lg.info(_msg)
+            for fn, dt in _per_specimen:
+                _msg = "  %-32s  %6.2fs" % (fn, dt)
+                print(_msg); _lg.info(_msg)
+            _msg = "[matchingPCD] stage totals:"
+            print(_msg); _lg.info(_msg)
+            for k, v in _stage_totals.items():
+                pct = 100.0 * v / _total if _total > 0 else 0.0
+                _msg = "  %-12s %7.2fs  (%.1f%%)" % (k, v, pct)
+                print(_msg); _lg.info(_msg)
+        except Exception:
+            pass
         # Printing results of points matching
         matchedPoints = [len(set(x)) for x in ID_list]
         indices = [i for i, x in enumerate(matchedPoints) if x < template_density]
@@ -3469,6 +3554,9 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         iterations=3,
         useJSONFormat=True,
         useScaling=True,
+        userReferencePath=None,
+        smoothingIterations=20,
+        outlierRejectFactor=3.0,
         progressCallback=None,
     ):
         """Build a bias-free consensus atlas mesh from a folder of models.
@@ -3498,6 +3586,18 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         useScaling : bool
             Whether to allow scaling during Procrustes alignment of
             per-specimen point clouds.
+        userReferencePath : str or None
+            Optional path to a user-selected reference mesh used to bootstrap
+            iteration 0. If None, the first model in ``modelsDir`` is used.
+        smoothingIterations : int
+            Taubin (volume-preserving) smoothing iterations applied to the
+            final consensus atlas to remove high-frequency pitting from
+            outlier closest-point hits. 0 disables smoothing.
+        outlierRejectFactor : float
+            During dense averaging, per-specimen closest-point contributions
+            whose distance to the atlas vertex exceeds this multiple of the
+            specimen's median closest-point distance are dropped. Suppresses
+            artifacts from local TPS folding. Set to 0 to disable.
         progressCallback : callable(str) or None
             Optional callback invoked with status messages.
 
@@ -3510,6 +3610,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         import shutil
         import tempfile
         import logging
+        import time
 
         def _log(msg):
             logging.info(msg)
@@ -3528,71 +3629,95 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         ext = ".mrk.json" if useJSONFormat else ".fcsv"
         workDir = tempfile.mkdtemp(prefix="alpaca_consensus_")
 
-        # Bootstrap reference: arbitrary first model. Identity does NOT bias the
-        # final mean — it only seeds the initial correspondences, which the
-        # subsequent iterations refine using the synthesized atlas.
-        currentAtlasPath = os.path.join(modelsDir, modelFiles[0])
-        _log(f"Bootstrap reference: {modelFiles[0]}")
+        # Bootstrap reference: user-selected if provided, else arbitrary first
+        # model. The choice does NOT bias the final mean — it only seeds the
+        # initial correspondences, which subsequent iterations refine using
+        # the synthesized atlas.
+        if userReferencePath and os.path.isfile(userReferencePath):
+            currentAtlasPath = userReferencePath
+            _log(f"Bootstrap reference (user-selected): "
+                 f"{os.path.basename(userReferencePath)}")
+        else:
+            currentAtlasPath = os.path.join(modelsDir, modelFiles[0])
+            _log(f"Bootstrap reference (default, first model): {modelFiles[0]}")
 
+        prevMeanVerts = None
         for it in range(iterations):
             _log(f"--- Consensus iteration {it + 1}/{iterations} ---")
+            iter_t0 = time.perf_counter()
+            stage_times = {}
 
-            # 1) Downsample current atlas to a sparse template point cloud.
-            sparseTemplate, density, refNode = self.downReference(
-                currentAtlasPath, spacingFactor
-            )
-            _log(f"  Sparse template density: {density} points")
-
-            # 2) Match every model to the sparse template, writing per-specimen
-            #    correspondence point clouds.
-            iterPcdDir = os.path.join(workDir, f"iter{it:02d}_pcds")
-            os.makedirs(iterPcdDir, exist_ok=True)
-            self.matchingPCD(
-                modelsDir, sparseTemplate, refNode, iterPcdDir,
-                spacingFactor, useJSONFormat, parameterDictionary,
-            )
-
-            # 3) Load all per-specimen point clouds as (N_spec, K, 3) array.
-            pcdPaths = sorted(
-                os.path.join(iterPcdDir, f) for f in os.listdir(iterPcdDir)
-                if f.endswith(ext)
-            )
-            configs = self._loadPointCloudsAsArray(pcdPaths)
-            n_spec, k, _ = configs.shape
-            _log(f"  Loaded {n_spec} configurations × {k} points")
-
-            # 4) Procrustes-align all configurations and compute the mean shape.
-            meanShape, alignedConfigs = self._procrustesMean(
-                configs, useScaling=useScaling, maxIter=10, tol=1e-6
-            )
-
-            # 5) Determine atlas's own correspondences (in atlas native space).
-            #    They are the sparse template points themselves.
+            # 1) Load atlas mesh + sparse template control points (atlas frame).
+            t0 = time.perf_counter()
+            atlasNode = slicer.util.loadModel(currentAtlasPath)
+            atlasNode.GetDisplayNode().SetVisibility(False)
+            atlasPolyData = vtk.vtkPolyData()
+            atlasPolyData.DeepCopy(atlasNode.GetPolyData())
+            sparseTemplate = self.DownsampleTemplate(atlasPolyData, spacingFactor)
+            density = sparseTemplate.GetNumberOfPoints()
+            n_atlas_verts = atlasPolyData.GetNumberOfPoints()
             atlasCorresp = np.array(
-                [sparseTemplate.GetPoint(i) for i in range(sparseTemplate.GetNumberOfPoints())]
+                [sparseTemplate.GetPoint(i) for i in range(density)]
             )
+            stage_times["downReference"] = time.perf_counter() - t0
+            _log(f"  Sparse control points: {density};  atlas vertices: {n_atlas_verts}")
 
-            # 6) Bring the (Procrustes-space) mean back into atlas native space
-            #    via similarity alignment to atlasCorresp. This preserves scale
-            #    and orientation of the original atlas mesh.
-            meanInAtlasSpace = self._similarityAlign(
-                source=meanShape, target=atlasCorresp, useScaling=useScaling
+            # 2) For each specimen: rigid+ICP align to atlas, sparse correspondence,
+            #    TPS-warp specimen mesh to atlas frame, nearest-project every
+            #    atlas vertex onto the warped specimen surface. Accumulate mean.
+            t0 = time.perf_counter()
+            sumVerts = np.zeros((n_atlas_verts, 3), dtype=np.float64)
+            countVerts = np.zeros(n_atlas_verts, dtype=np.int64)
+            n_used = self._denseConsensusAccumulate(
+                modelsDir=modelsDir,
+                atlasPolyData=atlasPolyData,
+                atlasNode=atlasNode,
+                sparseTemplate=sparseTemplate,
+                atlasCorresp=atlasCorresp,
+                parameterDictionary=parameterDictionary,
+                sumVerts=sumVerts,
+                countVerts=countVerts,
+                outlierRejectFactor=outlierRejectFactor,
+                progressCallback=progressCallback,
             )
+            stage_times["denseAccumulate"] = time.perf_counter() - t0
+            _log(f"  Aggregated dense correspondences from {n_used} specimens")
 
-            # 7) TPS-warp current atlas mesh: source landmarks = atlasCorresp,
-            #    target landmarks = meanInAtlasSpace. Output = consensus mesh
-            #    with atlas's topology but mean geometry.
+            # 3) Compute per-vertex mean. Vertices with zero hits (shouldn't
+            #    happen normally) keep the atlas's original position.
+            t0 = time.perf_counter()
+            atlasVertsArray = np.array(
+                [atlasPolyData.GetPoint(i) for i in range(n_atlas_verts)]
+            )
+            meanVerts = atlasVertsArray.copy()
+            mask = countVerts > 0
+            meanVerts[mask] = sumVerts[mask] / countVerts[mask, None]
+            stage_times["meanVerts"] = time.perf_counter() - t0
+
+            # 4) Write atlas with reference topology + new mean vertex positions.
             iterAtlasPath = os.path.join(outputDir, f"consensus_atlas_iter{it:02d}.ply")
-            self._tpsWarpMesh(
-                currentAtlasPath, atlasCorresp, meanInAtlasSpace, iterAtlasPath
-            )
+            t0 = time.perf_counter()
+            self._writeMeshWithNewVertices(atlasPolyData, meanVerts, iterAtlasPath)
+            stage_times["writeAtlas"] = time.perf_counter() - t0
             _log(f"  Wrote {iterAtlasPath}")
 
-            # Clean up the loaded reference node from the bootstrap step.
+            # Convergence diagnostic vs previous iteration's atlas vertices.
+            if it > 0 and prevMeanVerts is not None and prevMeanVerts.shape == meanVerts.shape:
+                rms = float(np.sqrt(np.mean(np.sum((meanVerts - prevMeanVerts) ** 2, axis=1))))
+                _log(f"  [convergence] RMS vertex displacement vs iter {it}: {rms:.5f}")
+            prevMeanVerts = meanVerts
+
+            # Clean up the loaded atlas node.
             try:
-                slicer.mrmlScene.RemoveNode(refNode)
+                slicer.mrmlScene.RemoveNode(atlasNode)
             except Exception:
                 pass
+
+            iter_total = time.perf_counter() - iter_t0
+            _log(f"  [timing] iter {it + 1} total: {iter_total:.1f}s")
+            for stage, t in stage_times.items():
+                pct = 100.0 * t / iter_total if iter_total > 0 else 0.0
+                _log(f"    {stage:18s} {t:7.2f}s  ({pct:4.1f}%)")
 
             currentAtlasPath = iterAtlasPath
 
@@ -3600,6 +3725,17 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         finalPath = os.path.join(outputDir, "consensus_atlas.ply")
         shutil.copyfile(currentAtlasPath, finalPath)
         _log(f"Consensus atlas: {finalPath}")
+
+        # Post-process: Taubin smoothing to remove residual high-frequency
+        # pitting from outlier closest-point hits (volume preserving, keeps
+        # topology unchanged).
+        if smoothingIterations and smoothingIterations > 0:
+            t0 = time.perf_counter()
+            self._taubinSmoothMeshInPlace(finalPath, int(smoothingIterations))
+            _log(
+                f"  Post-smoothed atlas (Taubin, {int(smoothingIterations)} iters)"
+                f" in {time.perf_counter() - t0:.2f}s"
+            )
 
         # Clean up temporary correspondence files.
         try:
@@ -3731,6 +3867,212 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         else:
             scale = 1.0
         return scale * (S @ R.T) + tc
+
+    def _denseConsensusAccumulate(
+        self,
+        modelsDir,
+        atlasPolyData,
+        atlasNode,
+        sparseTemplate,
+        atlasCorresp,
+        parameterDictionary,
+        sumVerts,
+        countVerts,
+        outlierRejectFactor=3.0,
+        progressCallback=None,
+    ):
+        """For each input specimen: rigid+ICP align to atlas, get sparse
+        correspondences, TPS-warp the full specimen mesh into atlas frame
+        using sparse correspondences as control points, then for every atlas
+        vertex find nearest point on the warped specimen surface. Accumulate
+        per-vertex sums into ``sumVerts`` and counts into ``countVerts``.
+
+        Returns the number of specimens successfully processed.
+        """
+        import vtk
+        import logging
+
+        n_atlas_verts = atlasPolyData.GetNumberOfPoints()
+        atlasVertsArray = np.array(
+            [atlasPolyData.GetPoint(i) for i in range(n_atlas_verts)]
+        )
+
+        # Source landmarks for TPS (atlas-frame template control points).
+        atlasLM_vtk = vtk.vtkPoints()
+        for p in atlasCorresp:
+            atlasLM_vtk.InsertNextPoint(float(p[0]), float(p[1]), float(p[2]))
+
+        modelFiles = sorted(
+            f for f in os.listdir(modelsDir)
+            if f.endswith((".ply", ".stl", ".obj", ".vtk", ".vtp"))
+        )
+
+        n_used = 0
+        for fname in modelFiles:
+            specimenPath = os.path.join(modelsDir, fname)
+            try:
+                sourceModelNode = slicer.util.loadModel(specimenPath)
+                sourceModelNode.GetDisplayNode().SetVisibility(False)
+
+                # Rigid + ICP align specimen to atlas (atlas == targetNode).
+                (
+                    sourcePoints,
+                    targetPoints,
+                    sourceFeatures,
+                    targetFeatures,
+                    voxelSize,
+                    scalingFactor,
+                ) = self.runSubsample(
+                    sourceModelNode,
+                    atlasNode,
+                    True,                     # scaling on
+                    parameterDictionary,
+                    False,                    # poisson off
+                )
+                ICPTransform_similarity, similarityFlag = self.estimateTransform(
+                    sourcePoints, targetPoints, sourceFeatures, targetFeatures,
+                    voxelSize, True, parameterDictionary,
+                )
+                vtkSimTransform = self.itkToVTKTransform(
+                    ICPTransform_similarity, similarityFlag
+                )
+                ICPTransformNode = self.convertMatrixToTransformNode(
+                    vtkSimTransform, "RigidXform"
+                )
+                sourceModelNode.SetAndObserveTransformNodeID(ICPTransformNode.GetID())
+                slicer.vtkSlicerTransformLogic().hardenTransform(sourceModelNode)
+                alignedSpecimen = sourceModelNode.GetPolyData()
+
+                # Sparse atlas-frame correspondences on this specimen.
+                _ID, correspPts_vtk = self.GetCorrespondingPoints(
+                    sparseTemplate, alignedSpecimen
+                )
+
+                # TPS warp aligned specimen so that its sparse correspondences
+                # land exactly at atlas template control points. This pulls the
+                # specimen geometry into tight alignment with the atlas frame
+                # at high frequency too, not just rigidly.
+                tps = vtk.vtkThinPlateSplineTransform()
+                tps.SetSourceLandmarks(correspPts_vtk)  # specimen-frame
+                tps.SetTargetLandmarks(atlasLM_vtk)     # atlas-frame
+                tps.SetBasisToR()
+                tps.Update()
+
+                tf = vtk.vtkTransformPolyDataFilter()
+                tf.SetInputData(alignedSpecimen)
+                tf.SetTransform(tps)
+                tf.Update()
+                warpedSpecimen = tf.GetOutput()
+
+                # Build cell locator on warped specimen surface.
+                locator = vtk.vtkCellLocator()
+                locator.SetDataSet(warpedSpecimen)
+                locator.BuildLocator()
+
+                # For each atlas vertex, find closest point on warped specimen.
+                # Two-pass: collect closest points + distances, then reject
+                # outliers (specimen-local) before accumulating.
+                closest = [0.0, 0.0, 0.0]
+                cellId = vtk.reference(0)
+                subId = vtk.reference(0)
+                dist2 = vtk.reference(0.0)
+                specimenClosest = np.empty((n_atlas_verts, 3), dtype=np.float64)
+                specimenDist2 = np.empty(n_atlas_verts, dtype=np.float64)
+                for i in range(n_atlas_verts):
+                    locator.FindClosestPoint(
+                        atlasVertsArray[i].tolist(), closest, cellId, subId, dist2
+                    )
+                    specimenClosest[i, 0] = closest[0]
+                    specimenClosest[i, 1] = closest[1]
+                    specimenClosest[i, 2] = closest[2]
+                    specimenDist2[i] = float(dist2)
+
+                if outlierRejectFactor and outlierRejectFactor > 0:
+                    medianD = float(np.sqrt(np.median(specimenDist2)))
+                    threshold = (outlierRejectFactor * medianD) ** 2
+                    keep = specimenDist2 <= threshold
+                    n_rejected = int((~keep).sum())
+                else:
+                    keep = np.ones(n_atlas_verts, dtype=bool)
+                    n_rejected = 0
+
+                sumVerts[keep] += specimenClosest[keep]
+                countVerts[keep] += 1
+
+                n_used += 1
+                if n_rejected and progressCallback is not None:
+                    progressCallback(
+                        f"    rejected {n_rejected}/{n_atlas_verts} outlier verts"
+                    )
+                if progressCallback is not None:
+                    progressCallback(f"  + {fname}")
+                slicer.mrmlScene.RemoveNode(sourceModelNode)
+                slicer.mrmlScene.RemoveNode(ICPTransformNode)
+                # Yield to Qt so the UI stays responsive on long datasets.
+                try:
+                    slicer.app.processEvents()
+                except Exception:
+                    pass
+            except Exception as e:
+                logging.warning(f"Specimen {fname} skipped: {e}")
+                if progressCallback is not None:
+                    progressCallback(f"  ! skipped {fname}: {e}")
+                try:
+                    slicer.mrmlScene.RemoveNode(sourceModelNode)
+                except Exception:
+                    pass
+
+        return n_used
+
+    @staticmethod
+    def _writeMeshWithNewVertices(referencePolyData, newVerts, outputPath):
+        """Write a PLY whose topology is taken from ``referencePolyData`` and
+        whose vertex positions are replaced by ``newVerts`` (N,3)."""
+        import vtk
+
+        out = vtk.vtkPolyData()
+        out.DeepCopy(referencePolyData)
+        pts = vtk.vtkPoints()
+        pts.SetNumberOfPoints(newVerts.shape[0])
+        for i in range(newVerts.shape[0]):
+            pts.SetPoint(i, float(newVerts[i, 0]),
+                         float(newVerts[i, 1]),
+                         float(newVerts[i, 2]))
+        out.SetPoints(pts)
+
+        writer = vtk.vtkPLYWriter()
+        writer.SetFileName(outputPath)
+        writer.SetInputData(out)
+        writer.SetFileTypeToBinary()
+        writer.Write()
+
+    @staticmethod
+    def _taubinSmoothMeshInPlace(meshPath, iterations, passBand=0.1):
+        """Apply Taubin (volume-preserving) smoothing to the mesh at
+        ``meshPath`` and overwrite it. Uses ``vtkWindowedSincPolyDataFilter``
+        which avoids the shrinkage of plain Laplacian smoothing.
+        """
+        import vtk
+
+        reader = vtk.vtkPLYReader()
+        reader.SetFileName(meshPath)
+        reader.Update()
+
+        smoother = vtk.vtkWindowedSincPolyDataFilter()
+        smoother.SetInputData(reader.GetOutput())
+        smoother.SetNumberOfIterations(int(iterations))
+        smoother.SetPassBand(passBand)
+        smoother.BoundarySmoothingOff()
+        smoother.FeatureEdgeSmoothingOff()
+        smoother.NonManifoldSmoothingOn()
+        smoother.NormalizeCoordinatesOn()
+        smoother.Update()
+
+        writer = vtk.vtkPLYWriter()
+        writer.SetFileName(meshPath)
+        writer.SetInputData(smoother.GetOutput())
+        writer.SetFileTypeToBinary()
+        writer.Write()
 
     @staticmethod
     def _tpsWarpMesh(meshPath, sourcePoints, targetPoints, outputPath):
