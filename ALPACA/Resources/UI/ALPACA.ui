@@ -1376,6 +1376,106 @@
          </layout>
         </widget>
        </item>
+       <item>
+        <widget class="ctkCollapsibleButton" name="consensusAtlasWidget" native="true">
+         <property name="text" stdset="0">
+          <string>Consensus Atlas Construction (bias-free)</string>
+         </property>
+         <property name="collapsed" stdset="0">
+          <bool>false</bool>
+         </property>
+         <layout class="QFormLayout" name="consensusAtlasWidgetLayout">
+          <item row="0" column="0" colspan="2">
+           <widget class="QLabel" name="consensusInfoLabel">
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+            <property name="text">
+             <string>Synthesizes a consensus atlas mesh from the input models without privileging any single specimen. Bootstraps correspondences with FPFH+RANSAC+ICP, computes a Procrustes mean shape, and TPS-warps the bootstrap mesh to that mean. Iterates to refine.</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="consensusIterationsLabel">
+            <property name="text">
+             <string>Refinement iterations:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="ctkDoubleSpinBox" name="consensusIterations" native="true">
+            <property name="toolTip">
+             <string>Number of consensus refinement iterations. 2-3 typically suffices.</string>
+            </property>
+            <property name="decimals" stdset="0">
+             <number>0</number>
+            </property>
+            <property name="minimum" stdset="0">
+             <double>1.000000000000000</double>
+            </property>
+            <property name="maximum" stdset="0">
+             <double>10.000000000000000</double>
+            </property>
+            <property name="value" stdset="0">
+             <double>3.000000000000000</double>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="0">
+           <widget class="QLabel" name="consensusScalingLabel">
+            <property name="text">
+             <string>Allow scaling in Procrustes:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="1">
+           <widget class="QCheckBox" name="consensusScalingCheckBox">
+            <property name="toolTip">
+             <string>Normalize each configuration to unit centroid size during Procrustes alignment. Recommended unless absolute scale is biologically meaningful.</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="0" colspan="2">
+           <widget class="QPushButton" name="buildConsensusAtlasButton">
+            <property name="enabled">
+             <bool>false</bool>
+            </property>
+            <property name="toolTip">
+             <string>Build a bias-free consensus atlas mesh from the input models. Output is written to the selected output directory as consensus_atlas.ply.</string>
+            </property>
+            <property name="text">
+             <string>Build Consensus Atlas</string>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="0" colspan="2">
+           <widget class="QPlainTextEdit" name="consensusInfo">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Preferred" vsizetype="MinimumExpanding">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>16777215</width>
+              <height>120</height>
+             </size>
+            </property>
+            <property name="readOnly">
+             <bool>true</bool>
+            </property>
+            <property name="placeholderText">
+             <string>Consensus atlas progress</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
       </layout>
      </widget>
     </widget>

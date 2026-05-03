@@ -312,6 +312,9 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
         self.ui.kmeansTemplatesButton.connect(
             "clicked(bool)", self.onkmeansTemplatesButton
         )
+        self.ui.buildConsensusAtlasButton.connect(
+            "clicked(bool)", self.onBuildConsensusAtlasButton
+        )
 
         # RMSE Table initialization
         self.col1List = []
@@ -990,6 +993,10 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
             and self.ui.kmeansOutputSelector.currentPath
         )
         self.ui.referenceSelector.enabled = self.ui.selectRefCheckBox.isChecked()
+        self.ui.buildConsensusAtlasButton.enabled = bool(
+            self.ui.modelsMultiSelector.currentPath
+            and self.ui.kmeansOutputSelector.currentPath
+        )
 
     def onDownReferenceButton(self):
         logic = ALPACALogic()
@@ -1386,6 +1393,54 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
                 "*.json *.mrk.json *.fcsv"
             ]
             self.ui.sourceFiducialMultiSelector.toolTip = "Select the source landmarks"
+
+    def onBuildConsensusAtlasButton(self):
+        """Build a bias-free consensus atlas from the input models folder."""
+        modelsDir = self.ui.modelsMultiSelector.currentPath
+        if not modelsDir:
+            slicer.util.errorDisplay("Select a models directory first.")
+            return
+        outputRoot = self.ui.kmeansOutputSelector.currentPath
+        if not outputRoot:
+            slicer.util.errorDisplay("Select an output directory first.")
+            return
+
+        dateTimeStamp = datetime.now().strftime("%Y-%m-%d_%H_%M_%S")
+        outputDir = os.path.join(outputRoot, f"consensus_atlas_{dateTimeStamp}")
+        os.makedirs(outputDir, exist_ok=True)
+
+        self.ui.consensusInfo.clear()
+        self.ui.consensusInfo.insertPlainText(
+            f"Output: {outputDir}\nStarting consensus atlas construction...\n"
+        )
+        slicer.app.processEvents()
+
+        def _progress(msg):
+            self.ui.consensusInfo.insertPlainText(msg + "\n")
+            slicer.app.processEvents()
+
+        logic = ALPACALogic()
+        try:
+            finalPath = logic.buildConsensusAtlas(
+                modelsDir=modelsDir,
+                outputDir=outputDir,
+                spacingFactor=self.ui.spacingFactorSlider.value,
+                parameterDictionary=self.parameterDictionary,
+                iterations=int(self.ui.consensusIterations.value),
+                useJSONFormat=self.ui.JSONFileFormatSelector.checked,
+                useScaling=self.ui.consensusScalingCheckBox.checked,
+                progressCallback=_progress,
+            )
+        except Exception as e:
+            slicer.util.errorDisplay(f"Consensus atlas construction failed: {e}")
+            raise
+
+        self.ui.consensusInfo.insertPlainText(f"\nDone. Final atlas: {finalPath}\n")
+        # Load the final atlas into the scene for visual inspection.
+        try:
+            slicer.util.loadModel(finalPath)
+        except Exception:
+            pass
 
     def onChangeCPD(self):
         ALPACALogic().saveBCPDPath(self.ui.BCPDFolder.currentPath)
@@ -3388,6 +3443,330 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             )
             slicer.mrmlScene.RemoveNode(temp_model)
         return templates, clusterID, templatesIndices
+
+    # ------------------------------------------------------------------
+    # Consensus atlas construction (bias-free template generation)
+    # ------------------------------------------------------------------
+    def buildConsensusAtlas(
+        self,
+        modelsDir,
+        outputDir,
+        spacingFactor,
+        parameterDictionary,
+        iterations=3,
+        useJSONFormat=True,
+        useScaling=True,
+        progressCallback=None,
+    ):
+        """Build a bias-free consensus atlas mesh from a folder of models.
+
+        Strategy: bootstrap correspondences from an arbitrary specimen, compute
+        the Procrustes mean shape, TPS-warp the bootstrap mesh to that mean,
+        then iterate using the synthesized atlas as the new reference. After a
+        few iterations the atlas converges to a consensus that no individual
+        specimen biases.
+
+        Parameters
+        ----------
+        modelsDir : str
+            Folder containing input meshes (.ply/.stl/.obj/.vtk/.vtp).
+        outputDir : str
+            Folder to write per-iteration atlases and the final consensus.
+        spacingFactor : float
+            Spacing factor passed to DownsampleTemplate (same meaning as in
+            the existing Templates tab).
+        parameterDictionary : dict
+            FPFH/RANSAC/ICP/CPD parameters (already populated from the
+            Advanced Settings tab).
+        iterations : int
+            Number of refinement iterations. 2-3 usually suffices.
+        useJSONFormat : bool
+            Output format for intermediate per-specimen point clouds.
+        useScaling : bool
+            Whether to allow scaling during Procrustes alignment of
+            per-specimen point clouds.
+        progressCallback : callable(str) or None
+            Optional callback invoked with status messages.
+
+        Returns
+        -------
+        str
+            Path to the final consensus atlas mesh (PLY).
+        """
+        import vtk
+        import shutil
+        import tempfile
+        import logging
+
+        def _log(msg):
+            logging.info(msg)
+            if progressCallback is not None:
+                progressCallback(msg)
+
+        os.makedirs(outputDir, exist_ok=True)
+
+        modelFiles = sorted(
+            f for f in os.listdir(modelsDir)
+            if f.endswith((".ply", ".stl", ".obj", ".vtk", ".vtp"))
+        )
+        if len(modelFiles) < 3:
+            raise ValueError("buildConsensusAtlas requires at least 3 input models")
+
+        ext = ".mrk.json" if useJSONFormat else ".fcsv"
+        workDir = tempfile.mkdtemp(prefix="alpaca_consensus_")
+
+        # Bootstrap reference: arbitrary first model. Identity does NOT bias the
+        # final mean — it only seeds the initial correspondences, which the
+        # subsequent iterations refine using the synthesized atlas.
+        currentAtlasPath = os.path.join(modelsDir, modelFiles[0])
+        _log(f"Bootstrap reference: {modelFiles[0]}")
+
+        for it in range(iterations):
+            _log(f"--- Consensus iteration {it + 1}/{iterations} ---")
+
+            # 1) Downsample current atlas to a sparse template point cloud.
+            sparseTemplate, density, refNode = self.downReference(
+                currentAtlasPath, spacingFactor
+            )
+            _log(f"  Sparse template density: {density} points")
+
+            # 2) Match every model to the sparse template, writing per-specimen
+            #    correspondence point clouds.
+            iterPcdDir = os.path.join(workDir, f"iter{it:02d}_pcds")
+            os.makedirs(iterPcdDir, exist_ok=True)
+            self.matchingPCD(
+                modelsDir, sparseTemplate, refNode, iterPcdDir,
+                spacingFactor, useJSONFormat, parameterDictionary,
+            )
+
+            # 3) Load all per-specimen point clouds as (N_spec, K, 3) array.
+            pcdPaths = sorted(
+                os.path.join(iterPcdDir, f) for f in os.listdir(iterPcdDir)
+                if f.endswith(ext)
+            )
+            configs = self._loadPointCloudsAsArray(pcdPaths)
+            n_spec, k, _ = configs.shape
+            _log(f"  Loaded {n_spec} configurations × {k} points")
+
+            # 4) Procrustes-align all configurations and compute the mean shape.
+            meanShape, alignedConfigs = self._procrustesMean(
+                configs, useScaling=useScaling, maxIter=10, tol=1e-6
+            )
+
+            # 5) Determine atlas's own correspondences (in atlas native space).
+            #    They are the sparse template points themselves.
+            atlasCorresp = np.array(
+                [sparseTemplate.GetPoint(i) for i in range(sparseTemplate.GetNumberOfPoints())]
+            )
+
+            # 6) Bring the (Procrustes-space) mean back into atlas native space
+            #    via similarity alignment to atlasCorresp. This preserves scale
+            #    and orientation of the original atlas mesh.
+            meanInAtlasSpace = self._similarityAlign(
+                source=meanShape, target=atlasCorresp, useScaling=useScaling
+            )
+
+            # 7) TPS-warp current atlas mesh: source landmarks = atlasCorresp,
+            #    target landmarks = meanInAtlasSpace. Output = consensus mesh
+            #    with atlas's topology but mean geometry.
+            iterAtlasPath = os.path.join(outputDir, f"consensus_atlas_iter{it:02d}.ply")
+            self._tpsWarpMesh(
+                currentAtlasPath, atlasCorresp, meanInAtlasSpace, iterAtlasPath
+            )
+            _log(f"  Wrote {iterAtlasPath}")
+
+            # Clean up the loaded reference node from the bootstrap step.
+            try:
+                slicer.mrmlScene.RemoveNode(refNode)
+            except Exception:
+                pass
+
+            currentAtlasPath = iterAtlasPath
+
+        # Copy final iteration as the canonical output.
+        finalPath = os.path.join(outputDir, "consensus_atlas.ply")
+        shutil.copyfile(currentAtlasPath, finalPath)
+        _log(f"Consensus atlas: {finalPath}")
+
+        # Clean up temporary correspondence files.
+        try:
+            shutil.rmtree(workDir)
+        except Exception:
+            pass
+
+        return finalPath
+
+    @staticmethod
+    def _loadPointCloudsAsArray(pcdPaths):
+        """Load a list of .mrk.json or .fcsv point cloud files as (N,K,3) array."""
+        all_pts = []
+        for path in pcdPaths:
+            if path.endswith(".fcsv"):
+                pts = []
+                with open(path) as f:
+                    for line in f:
+                        if line.startswith("#") or not line.strip():
+                            continue
+                        parts = line.strip().split(",")
+                        if len(parts) >= 4:
+                            pts.append([float(parts[1]), float(parts[2]), float(parts[3])])
+                all_pts.append(np.array(pts, dtype=float))
+            else:  # .mrk.json
+                with open(path) as f:
+                    d = json.load(f)
+                cps = d["markups"][0]["controlPoints"]
+                all_pts.append(
+                    np.array([cp["position"] for cp in cps], dtype=float)
+                )
+        # All configurations must share point count.
+        K = all_pts[0].shape[0]
+        for i, a in enumerate(all_pts):
+            if a.shape[0] != K:
+                raise ValueError(
+                    f"Inconsistent point count in {pcdPaths[i]}: "
+                    f"{a.shape[0]} (expected {K})"
+                )
+        return np.stack(all_pts, axis=0)
+
+    @staticmethod
+    def _procrustesMean(configs, useScaling=True, maxIter=10, tol=1e-6):
+        """Generalized Procrustes Analysis.
+
+        Parameters
+        ----------
+        configs : ndarray (N, K, 3)
+            Stacked configurations.
+        useScaling : bool
+            If True, normalize each config to unit centroid size during alignment.
+        maxIter : int
+            Maximum GPA iterations.
+        tol : float
+            Convergence tolerance on mean-shape change.
+
+        Returns
+        -------
+        meanShape : ndarray (K, 3)
+            Procrustes mean configuration.
+        aligned : ndarray (N, K, 3)
+            All configurations aligned to the mean.
+        """
+        configs = np.asarray(configs, dtype=float)
+        N, K, _ = configs.shape
+
+        # Center each configuration on its centroid.
+        centered = configs - configs.mean(axis=1, keepdims=True)
+
+        # Optional unit centroid size normalization.
+        if useScaling:
+            sizes = np.sqrt((centered ** 2).sum(axis=(1, 2), keepdims=True))
+            sizes[sizes == 0] = 1.0
+            centered = centered / sizes
+
+        aligned = centered.copy()
+        meanShape = aligned[0].copy()
+
+        for _ in range(maxIter):
+            new_aligned = np.empty_like(aligned)
+            for i in range(N):
+                # Kabsch alignment of aligned[i] onto meanShape.
+                A = aligned[i]
+                B = meanShape
+                H = A.T @ B
+                U, S, Vt = np.linalg.svd(H)
+                d = np.sign(np.linalg.det(Vt.T @ U.T))
+                D = np.eye(3)
+                D[2, 2] = d
+                R = Vt.T @ D @ U.T
+                new_aligned[i] = A @ R.T
+            new_mean = new_aligned.mean(axis=0)
+            # Re-normalize mean to unit centroid size for stability.
+            if useScaling:
+                ms = np.sqrt((new_mean ** 2).sum())
+                if ms > 0:
+                    new_mean = new_mean / ms
+            change = np.linalg.norm(new_mean - meanShape)
+            aligned = new_aligned
+            meanShape = new_mean
+            if change < tol:
+                break
+
+        return meanShape, aligned
+
+    @staticmethod
+    def _similarityAlign(source, target, useScaling=True):
+        """Align `source` (K,3) to `target` (K,3) via similarity transform
+        (translation + rotation + optional uniform scale). Returns transformed
+        source coordinates (K,3)."""
+        source = np.asarray(source, dtype=float)
+        target = np.asarray(target, dtype=float)
+        sc = source.mean(axis=0)
+        tc = target.mean(axis=0)
+        S = source - sc
+        T = target - tc
+        # Optimal rotation via SVD (Kabsch).
+        H = S.T @ T
+        U, _, Vt = np.linalg.svd(H)
+        d = np.sign(np.linalg.det(Vt.T @ U.T))
+        D = np.eye(3)
+        D[2, 2] = d
+        R = Vt.T @ D @ U.T
+        # Optimal scale.
+        if useScaling:
+            num = np.sum(T * (S @ R.T))
+            den = np.sum(S * S)
+            scale = num / den if den > 0 else 1.0
+        else:
+            scale = 1.0
+        return scale * (S @ R.T) + tc
+
+    @staticmethod
+    def _tpsWarpMesh(meshPath, sourcePoints, targetPoints, outputPath):
+        """TPS-warp a mesh using paired (source -> target) landmarks.
+
+        Reads `meshPath`, applies a vtkThinPlateSplineTransform whose source
+        landmarks are `sourcePoints` (K,3) and target landmarks are
+        `targetPoints` (K,3), and writes the warped mesh to `outputPath`.
+        """
+        import vtk
+
+        ext = os.path.splitext(meshPath)[1].lower()
+        if ext == ".ply":
+            reader = vtk.vtkPLYReader()
+        elif ext in (".vtk", ".vtp"):
+            reader = vtk.vtkPolyDataReader()
+        elif ext == ".obj":
+            reader = vtk.vtkOBJReader()
+        elif ext == ".stl":
+            reader = vtk.vtkSTLReader()
+        else:
+            raise ValueError(f"Unsupported mesh format: {ext}")
+        reader.SetFileName(meshPath)
+        reader.Update()
+        polydata = reader.GetOutput()
+
+        srcPts = vtk.vtkPoints()
+        for p in sourcePoints:
+            srcPts.InsertNextPoint(float(p[0]), float(p[1]), float(p[2]))
+        tgtPts = vtk.vtkPoints()
+        for p in targetPoints:
+            tgtPts.InsertNextPoint(float(p[0]), float(p[1]), float(p[2]))
+
+        tps = vtk.vtkThinPlateSplineTransform()
+        tps.SetSourceLandmarks(srcPts)
+        tps.SetTargetLandmarks(tgtPts)
+        tps.SetBasisToR()  # 3D TPS basis
+        tps.Update()
+
+        tf = vtk.vtkTransformPolyDataFilter()
+        tf.SetInputData(polydata)
+        tf.SetTransform(tps)
+        tf.Update()
+
+        writer = vtk.vtkPLYWriter()
+        writer.SetFileName(outputPath)
+        writer.SetInputData(tf.GetOutput())
+        writer.SetFileTypeToBinary()
+        writer.Write()
 
     def DownsampleTemplate(self, templatePolyData, spacingPercentage):
         import vtk
