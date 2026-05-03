@@ -265,9 +265,18 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
         )
         self.ui.accelerationCheckBox.connect("toggled(bool)", self.onChangeCPD)
         self.ui.accelerationCheckBox.connect("toggled(bool)", self.onChangeAdvanced)
+        self.ui.accelerationCheckBox.connect(
+            "toggled(bool)", self.onAccelerationToggled
+        )
         self.ui.BCPDFolder.connect("validInputChanged(bool)", self.onChangeAdvanced)
         self.ui.BCPDFolder.connect("validInputChanged(bool)", self.onChangeCPD)
-        self.ui.BCPDFolder.currentPath = ALPACALogic().getBCPDPath()
+        # Restore persisted BCPD path and acceleration state from QSettings.
+        _logic = ALPACALogic()
+        _savedBCPDPath = _logic.getBCPDPath()
+        self.ui.BCPDFolder.currentPath = _savedBCPDPath
+        if _savedBCPDPath and _logic.getAccelerationEnabled():
+            self.ui.accelerationCheckBox.checked = True
+            self.ui.BCPDFolder.enabled = True
 
         # Batch Processing connections
         self.ui.methodBatchWidget.connect(
@@ -1441,6 +1450,10 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
             slicer.util.loadModel(finalPath)
         except Exception:
             pass
+
+    def onAccelerationToggled(self, checked):
+        """Persist acceleration checkbox state across reloads/sessions."""
+        ALPACALogic().saveAccelerationEnabled(bool(checked))
 
     def onChangeCPD(self):
         ALPACALogic().saveBCPDPath(self.ui.BCPDFolder.currentPath)
@@ -4075,6 +4088,18 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
                 return BCPDPath
         else:
             return ""
+
+    def saveAccelerationEnabled(self, enabled):
+        """Persist whether the acceleration (BCPD) checkbox is enabled."""
+        qt.QSettings().setValue("Developer/ALPACAAcceleration",
+                                "true" if enabled else "false")
+
+    def getAccelerationEnabled(self):
+        """Return persisted acceleration checkbox state (default False)."""
+        settings = qt.QSettings()
+        if settings.contains("Developer/ALPACAAcceleration"):
+            return str(settings.value("Developer/ALPACAAcceleration")).lower() == "true"
+        return False
 
     def isValidBCPDPath(self, BCPDPath):
         if not os.path.isdir(BCPDPath):
