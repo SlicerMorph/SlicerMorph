@@ -1092,30 +1092,30 @@
            </widget>
           </item>
           <item row="1" column="0">
-           <widget class="QLabel" name="selectRefCheckBoxLabel">
+           <widget class="QLabel" name="useExistingAtlasLabel">
             <property name="text">
-             <string>Enable Reference Model</string>
+             <string>Use existing atlas:</string>
             </property>
            </widget>
           </item>
           <item row="1" column="1">
-           <widget class="QCheckBox" name="selectRefCheckBox">
+           <widget class="QCheckBox" name="useExistingAtlasCheckBox">
             <property name="toolTip">
-             <string>Check to enable selecting a model as the reference. Unchecked = default</string>
+             <string>Check to load a pre-built consensus atlas (or any reference mesh) and skip directly to Point Cloud Generation, without re-running atlas construction.</string>
             </property>
            </widget>
           </item>
           <item row="2" column="0">
-           <widget class="QLabel" name="referenceSelectorLabel">
+           <widget class="QLabel" name="existingAtlasSelectorLabel">
             <property name="text">
-             <string>User-selected reference (optional):</string>
+             <string>Existing atlas path:</string>
             </property>
            </widget>
           </item>
           <item row="2" column="1">
-           <widget class="ctkPathLineEdit" name="referenceSelector" native="true">
+           <widget class="ctkPathLineEdit" name="existingAtlasSelector" native="true">
             <property name="toolTip">
-             <string>The default reference model for downsampling point clouds with matching points will be the first specimen. Users can also manually select a reference model here </string>
+             <string>Path to a pre-built consensus atlas or any reference mesh (.ply, .obj, .stl, .vtk). When "Use existing atlas" is checked this is used as the reference for Point Cloud Generation, bypassing the Consensus Atlas Construction step.</string>
             </property>
             <property name="filters">
              <set>ctkPathLineEdit::Files</set>
@@ -1131,13 +1131,52 @@
            </widget>
           </item>
           <item row="3" column="0">
+           <widget class="QLabel" name="selectRefCheckBoxLabel">
+            <property name="text">
+             <string>Enable Reference Model</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="1">
+           <widget class="QCheckBox" name="selectRefCheckBox">
+            <property name="toolTip">
+             <string>Check to enable selecting a model as the reference for consensus atlas construction. Unchecked = use first model in directory.</string>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="0">
+           <widget class="QLabel" name="referenceSelectorLabel">
+            <property name="text">
+             <string>Reference for consensus (optional):</string>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="1">
+           <widget class="ctkPathLineEdit" name="referenceSelector" native="true">
+            <property name="toolTip">
+             <string>Optional reference model used as the bootstrap starting point for consensus atlas construction. Has no effect when "Use existing atlas" is checked.</string>
+            </property>
+            <property name="filters">
+             <set>ctkPathLineEdit::Files</set>
+            </property>
+            <property name="nameFilters" stdset="0">
+             <stringlist>
+              <string>*.ply</string>
+              <string>*.obj</string>
+              <string>*.stl</string>
+              <string>*.vtk</string>
+             </stringlist>
+            </property>
+           </widget>
+          </item>
+          <item row="5" column="0">
            <widget class="QLabel" name="kmeansOutputSelectorLabel">
             <property name="text">
              <string>Select output directory:</string>
             </property>
            </widget>
           </item>
-          <item row="3" column="1">
+          <item row="5" column="1">
            <widget class="ctkPathLineEdit" name="kmeansOutputSelector" native="true">
             <property name="toolTip">
              <string>Specify the output directory for the kmeans multi-template selection output</string>
@@ -1166,32 +1205,6 @@
             </property>
             <property name="text">
              <string>Synthesizes a consensus atlas mesh from the input models without privileging any single specimen. Each iteration: rigid+ICP align every specimen to the current atlas, TPS-warp it into the atlas frame using sparse correspondences, then average per-vertex closest-points across specimens. Spacing factor controls the sparse correspondence density (lower = denser, slower).</string>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="0">
-           <widget class="QLabel" name="consensusSpacingLabel">
-            <property name="text">
-             <string>Spacing factor:</string>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="1">
-           <widget class="ctkSliderWidget" name="spacingFactorSlider" native="true">
-            <property name="toolTip">
-             <string>Controls density of the sparse correspondence cloud used by both consensus atlas construction and Point Cloud Generation. Lower values = denser sampling = more correspondences = slower but better local alignment. Adjust BEFORE clicking Build Consensus Atlas.</string>
-            </property>
-            <property name="decimals" stdset="0">
-             <number>3</number>
-            </property>
-            <property name="singleStep" stdset="0">
-             <double>0.001000000000000</double>
-            </property>
-            <property name="maximum" stdset="0">
-             <double>0.100000000000000</double>
-            </property>
-            <property name="value" stdset="0">
-             <double>0.040000000000000</double>
             </property>
            </widget>
           </item>
@@ -1324,7 +1337,67 @@
           <bool>false</bool>
          </property>
          <layout class="QFormLayout" name="downMatchingPCDWidgetLayout">
-          <item row="1" column="0" colspan="2">
+          <item row="0" column="0">
+           <widget class="QLabel" name="consensusSpacingLabel">
+            <property name="text">
+             <string>Spacing factor:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="ctkSliderWidget" name="spacingFactorSlider" native="true">
+            <property name="toolTip">
+             <string>Controls density of the sparse correspondence cloud used by both consensus atlas construction and Point Cloud Generation. Lower values = denser sampling = more correspondences = slower but better local alignment. Set BEFORE clicking Step 1 (or Build Consensus Atlas).</string>
+            </property>
+            <property name="decimals" stdset="0">
+             <number>3</number>
+            </property>
+            <property name="singleStep" stdset="0">
+             <double>0.001000000000000</double>
+            </property>
+            <property name="maximum" stdset="0">
+             <double>0.100000000000000</double>
+            </property>
+            <property name="value" stdset="0">
+             <double>0.040000000000000</double>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="useExistingPCDsLabel">
+            <property name="text">
+             <string>Use existing matched PCDs:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="QCheckBox" name="useExistingPCDsCheckBox">
+            <property name="toolTip">
+             <string>Skip Steps 1 and 2 by loading a previously generated 'matching_point_clouds' folder. Use this to re-run k-means with different cluster counts or grouping without redoing point cloud matching.</string>
+            </property>
+            <property name="text">
+             <string></string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="0">
+           <widget class="QLabel" name="existingPCDsSelectorLabel">
+            <property name="text">
+             <string>Existing PCDs folder:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="1">
+           <widget class="ctkPathLineEdit" name="existingPCDsSelector" native="true">
+            <property name="toolTip">
+             <string>Folder containing previously generated matched point cloud files (.mrk.json or .fcsv). Typically the 'matching_point_clouds' subfolder of a prior k-means output directory.</string>
+            </property>
+            <property name="filters">
+             <set>ctkPathLineEdit::Dirs</set>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="0" colspan="2">
            <widget class="QPushButton" name="downReferenceButton">
             <property name="enabled">
              <bool>false</bool>
@@ -1337,7 +1410,7 @@
             </property>
            </widget>
           </item>
-          <item row="2" column="0" colspan="2">
+          <item row="4" column="0" colspan="2">
            <widget class="QPushButton" name="matchingPointsButton">
             <property name="enabled">
              <bool>false</bool>
@@ -1350,7 +1423,7 @@
             </property>
            </widget>
           </item>
-          <item row="3" column="0" colspan="2">
+          <item row="5" column="0" colspan="2">
            <widget class="QPlainTextEdit" name="subsampleInfo2">
             <property name="sizePolicy">
              <sizepolicy hsizetype="Preferred" vsizetype="MinimumExpanding">
