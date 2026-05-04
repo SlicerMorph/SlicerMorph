@@ -660,7 +660,7 @@
              <double>10.000000000000000</double>
             </property>
             <property name="value" stdset="0">
-             <double>1.000000000000000</double>
+             <double>0.000000000000000</double>
             </property>
            </widget>
           </item>
@@ -912,7 +912,7 @@
              <double>0.010000000000000</double>
             </property>
             <property name="maximum" stdset="0">
-             <double>20.000000000000000</double>
+             <double>100.000000000000000</double>
             </property>
             <property name="singleStep" stdset="0">
              <double>0.050000000000000</double>
@@ -1023,7 +1023,7 @@
           <bool>false</bool>
          </property>
          <layout class="QFormLayout" name="outputFormatWidgetLayout">
-          <item row="0" column="0">
+          <item row="0" column="0" colspan="2">
            <widget class="QRadioButton" name="JSONFileFormatSelector">
             <property name="enabled">
              <bool>true</bool>
@@ -1036,22 +1036,6 @@
             </property>
             <property name="checked">
              <bool>true</bool>
-            </property>
-           </widget>
-          </item>
-          <item row="0" column="1">
-           <widget class="QRadioButton" name="FCSVFileFormatSelector">
-            <property name="enabled">
-             <bool>true</bool>
-            </property>
-            <property name="toolTip">
-             <string>Select the file format for the output landmarks.</string>
-            </property>
-            <property name="text">
-             <string>FCSV format(legacy)</string>
-            </property>
-            <property name="checked">
-             <bool>false</bool>
             </property>
            </widget>
           </item>
@@ -1092,66 +1076,27 @@
            </widget>
           </item>
           <item row="1" column="0">
-           <widget class="QLabel" name="useExistingAtlasLabel">
-            <property name="text">
-             <string>Use existing atlas:</string>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="1">
-           <widget class="QCheckBox" name="useExistingAtlasCheckBox">
-            <property name="toolTip">
-             <string>Check to load a pre-built consensus atlas (or any reference mesh) and skip directly to Point Cloud Generation, without re-running atlas construction.</string>
-            </property>
-           </widget>
-          </item>
-          <item row="2" column="0">
-           <widget class="QLabel" name="existingAtlasSelectorLabel">
-            <property name="text">
-             <string>Existing atlas path:</string>
-            </property>
-           </widget>
-          </item>
-          <item row="2" column="1">
-           <widget class="ctkPathLineEdit" name="existingAtlasSelector" native="true">
-            <property name="toolTip">
-             <string>Path to a pre-built consensus atlas or any reference mesh (.ply, .obj, .stl, .vtk). When "Use existing atlas" is checked this is used as the reference for Point Cloud Generation, bypassing the Consensus Atlas Construction step.</string>
-            </property>
-            <property name="filters">
-             <set>ctkPathLineEdit::Files</set>
-            </property>
-            <property name="nameFilters" stdset="0">
-             <stringlist>
-              <string>*.ply</string>
-              <string>*.obj</string>
-              <string>*.stl</string>
-              <string>*.vtk</string>
-             </stringlist>
-            </property>
-           </widget>
-          </item>
-          <item row="3" column="0">
            <widget class="QLabel" name="selectRefCheckBoxLabel">
             <property name="text">
              <string>Enable Reference Model</string>
             </property>
            </widget>
           </item>
-          <item row="3" column="1">
+          <item row="1" column="1">
            <widget class="QCheckBox" name="selectRefCheckBox">
             <property name="toolTip">
              <string>Check to enable selecting a model as the reference for consensus atlas construction. Unchecked = use first model in directory.</string>
             </property>
            </widget>
           </item>
-          <item row="4" column="0">
+          <item row="2" column="0">
            <widget class="QLabel" name="referenceSelectorLabel">
             <property name="text">
              <string>Reference for consensus (optional):</string>
             </property>
            </widget>
           </item>
-          <item row="4" column="1">
+          <item row="2" column="1">
            <widget class="ctkPathLineEdit" name="referenceSelector" native="true">
             <property name="toolTip">
              <string>Optional reference model used as the bootstrap starting point for consensus atlas construction. Has no effect when "Use existing atlas" is checked.</string>
@@ -1169,14 +1114,14 @@
             </property>
            </widget>
           </item>
-          <item row="5" column="0">
+          <item row="3" column="0">
            <widget class="QLabel" name="kmeansOutputSelectorLabel">
             <property name="text">
              <string>Select output directory:</string>
             </property>
            </widget>
           </item>
-          <item row="5" column="1">
+          <item row="3" column="1">
            <widget class="ctkPathLineEdit" name="kmeansOutputSelector" native="true">
             <property name="toolTip">
              <string>Specify the output directory for the kmeans multi-template selection output</string>
@@ -1204,7 +1149,7 @@
              <bool>true</bool>
             </property>
             <property name="text">
-             <string>Synthesizes a consensus atlas mesh from the input models without privileging any single specimen. Each iteration: rigid+ICP align every specimen to the current atlas, TPS-warp it into the atlas frame using sparse correspondences, then average per-vertex closest-points across specimens. Spacing factor controls the sparse correspondence density (lower = denser, slower).</string>
+             <string>Synthesizes a consensus atlas mesh from the input models without privileging any single specimen. Each iteration: rigid+ICP align every specimen to the current atlas, TPS-warp it into the atlas frame using sparse correspondences, then average per-vertex closest-points across specimens. Spacing factor controls the sparse correspondence density (lower = denser, slower).&#xa;&#xa;You can also use a pre-existing atlas and skip the construction.</string>
             </property>
            </widget>
           </item>
@@ -1322,6 +1267,57 @@
             </property>
             <property name="placeholderText">
              <string>Consensus atlas progress</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="ctkCollapsibleButton" name="existingAtlasWidget" native="true">
+         <property name="text" stdset="0">
+          <string>Use Existing Atlas</string>
+         </property>
+         <property name="collapsed" stdset="0">
+          <bool>false</bool>
+         </property>
+         <layout class="QFormLayout" name="existingAtlasWidgetLayout">
+          <item row="0" column="0">
+           <widget class="QLabel" name="useExistingAtlasLabel">
+            <property name="text">
+             <string>Use existing atlas:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QCheckBox" name="useExistingAtlasCheckBox">
+            <property name="toolTip">
+             <string>Check to load a pre-built consensus atlas (or any reference mesh) and skip directly to Point Cloud Generation, without re-running atlas construction.</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="existingAtlasSelectorLabel">
+            <property name="text">
+             <string>Existing atlas path:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="ctkPathLineEdit" name="existingAtlasSelector" native="true">
+            <property name="toolTip">
+             <string>Path to a pre-built consensus atlas or any reference mesh (.ply, .obj, .stl, .vtk). When "Use existing atlas" is checked this is used as the reference for Point Cloud Generation, bypassing the Consensus Atlas Construction step.</string>
+            </property>
+            <property name="filters">
+             <set>ctkPathLineEdit::Files</set>
+            </property>
+            <property name="nameFilters" stdset="0">
+             <stringlist>
+              <string>*.ply</string>
+              <string>*.obj</string>
+              <string>*.stl</string>
+              <string>*.vtk</string>
+             </stringlist>
             </property>
            </widget>
           </item>
