@@ -3505,6 +3505,47 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             currentAtlasPath = os.path.join(modelsDir, refFile)
             _log(f"[consensus] reference (random): {refFile}")
 
+        # ---- Smooth the initial reference once before any iteration ----
+        # All subsequent TPS warps are applied without smoothing so that
+        # the subtle geometric shifts between iterations are fully preserved.
+        if smoothingIterations > 0:
+            _initNode = slicer.util.loadModel(currentAtlasPath)
+            _initNode.GetDisplayNode().SetVisibility(False)
+            _initPD = vtk.vtkPolyData()
+            _initPD.DeepCopy(_initNode.GetPolyData())
+            slicer.mrmlScene.RemoveNode(_initNode)
+
+            _smoother = vtk.vtkWindowedSincPolyDataFilter()
+            _smoother.SetInputData(_initPD)
+            _smoother.SetNumberOfIterations(smoothingIterations)
+            _smoother.SetPassBand(0.1)
+            _smoother.BoundarySmoothingOff()
+            _smoother.FeatureEdgeSmoothingOff()
+            _smoother.NonManifoldSmoothingOn()
+            _smoother.NormalizeCoordinatesOn()
+            _smoother.Update()
+            _smoothedPD = _smoother.GetOutput()
+
+            # Save the smoothed reference as the starting point (LPS on disk)
+            from vtk.util.numpy_support import numpy_to_vtk as n2v
+            _sPts = v2n(_smoothedPD.GetPoints().GetData()).copy()
+            _sPts[:, 0] *= -1
+            _sPts[:, 1] *= -1
+            _sVtkPts = vtk.vtkPoints()
+            _sVtkPts.SetData(n2v(np.ascontiguousarray(_sPts, dtype=np.float64), deep=True))
+            _savePD = vtk.vtkPolyData()
+            _savePD.DeepCopy(_smoothedPD)
+            _savePD.SetPoints(_sVtkPts)
+            _refSmoothedPath = os.path.join(outputDir, "reference_smoothed.ply")
+            _w = vtk.vtkPLYWriter()
+            _w.SetFileName(_refSmoothedPath)
+            _w.SetInputData(_savePD)
+            _w.Write()
+            import subprocess
+            subprocess.run(["xattr", "-c", _refSmoothedPath], check=False)
+            currentAtlasPath = _refSmoothedPath
+            _log(f"  Reference smoothed ({smoothingIterations} Taubin iters) → reference_smoothed.ply")
+
         # ---- GPA iterations ----
         for it in range(iterations):
             t0 = time.perf_counter()
@@ -3572,42 +3613,75 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             meanPts = stack.mean(axis=0)   # (N, 3) — mean shape in atlas space
 
             # --- Warp atlas mesh: sparse template positions → mean positions (TPS) ---
-            srcVtkPts = vtk.vtkPoints()
-            tgtVtkPts = vtk.vtkPoints()
-            for i in range(N):
-                srcVtkPts.InsertNextPoint(*sparseTemplate.GetPoint(i))
-                tgtVtkPts.InsertNextPoint(*meanPts[i])
+            # Numpy TPS: BLAS-accelerated solve + vectorised application,
+            # much faster than vtkThinPlateSplineTransform for N > ~500.
+            srcPtsArr = np.array([sparseTemplate.GetPoint(i) for i in range(N)])
 
-            tps = vtk.vtkThinPlateSplineTransform()
-            tps.SetSourceLandmarks(srcVtkPts)
-            tps.SetTargetLandmarks(tgtVtkPts)
-            tps.SetBasisToR()
-            tps.Update()
+            from scipy.spatial.distance import cdist
+            K = cdist(srcPtsArr, srcPtsArr)               # (N, N) pairwise |r|
+            K[np.diag_indices(N)] += 1e-6                 # Tikhonov regularisation
+            P = np.hstack([np.ones((N, 1)), srcPtsArr])   # (N, 4) polynomial
+            A = np.zeros((N + 4, N + 4))
+            A[:N, :N] = K
+            A[:N, N:] = P
+            A[N:, :N] = P.T
+            rhs = np.zeros((N + 4, 3))
+            rhs[:N] = meanPts
+            coeffs = np.linalg.solve(A, rhs)              # (N+4, 3)
+            w, a = coeffs[:N], coeffs[N:]                 # RBF weights, poly terms
 
-            warp = vtk.vtkTransformPolyDataFilter()
-            warp.SetInputData(atlasPolyData)
-            warp.SetTransform(tps)
-            warp.Update()
-            warpedMesh = warp.GetOutput()
+            # Apply to every atlas vertex in one vectorised pass.
+            # Polynomial evaluation: a[0] (constant) + meshPts @ a[1:] (linear).
+            # Note: no transpose — a[1:] rows are [a_x, a_y, a_z] coefficients.
+            meshPts = v2n(atlasPolyData.GetPoints().GetData()).copy()   # (M, 3)
+            R = cdist(meshPts, srcPtsArr)                               # (M, N)
+            warpedPts = a[0] + meshPts @ a[1:] + R @ w                 # (M, 3)
 
-            # Taubin smoothing to remove TPS interpolation ripple
-            if smoothingIterations > 0:
-                smoother = vtk.vtkWindowedSincPolyDataFilter()
-                smoother.SetInputData(warpedMesh)
-                smoother.SetNumberOfIterations(smoothingIterations)
-                smoother.SetPassBand(0.1)
-                smoother.BoundarySmoothingOff()
-                smoother.FeatureEdgeSmoothingOff()
-                smoother.NonManifoldSmoothingOn()
-                smoother.NormalizeCoordinatesOn()
-                smoother.Update()
-                warpedMesh = smoother.GetOutput()
+            # Rigid re-anchoring: keep the warped atlas in the same coordinate
+            # frame as the input atlas by removing any net rotation/translation
+            # introduced by the warp. Use the sparse control points for this —
+            # we want mean shape change but not frame drift between iterations.
+            src_c   = srcPtsArr.mean(axis=0)
+            tgt_c   = meanPts.mean(axis=0)
+            src_cen = srcPtsArr - src_c
+            tgt_cen = meanPts   - tgt_c
+            H       = tgt_cen.T @ src_cen                 # (3,3)
+            U, _, Vt = np.linalg.svd(H)
+            R_rigid = Vt.T @ U.T
+            if np.linalg.det(R_rigid) < 0:               # fix reflection
+                Vt[-1] *= -1
+                R_rigid = Vt.T @ U.T
+            t_rigid = src_c - R_rigid @ tgt_c
+            warpedPts = (R_rigid @ warpedPts.T).T + t_rigid
+
+            _log(f"  TPS solved & applied ({N} ctrl pts, {len(meshPts):,} verts)")
+
+            from vtk.util.numpy_support import numpy_to_vtk as n2v
+            warpedMesh = vtk.vtkPolyData()
+            warpedMesh.DeepCopy(atlasPolyData)
+            newVtkPts = vtk.vtkPoints()
+            newVtkPts.SetData(n2v(np.ascontiguousarray(warpedPts, dtype=np.float64), deep=True))
+            warpedMesh.SetPoints(newVtkPts)
+
+            # Convert RAS (Slicer internal) → LPS (PLY on-disk convention)
+            # by flipping X and Y before writing. Without this, the next
+            # iteration re-applies Slicer's load-time (-1,-1,1) flip and
+            # accumulates an orientation error each round.
+            from vtk.util.numpy_support import numpy_to_vtk as n2v
+            savePts = v2n(warpedMesh.GetPoints().GetData()).copy()
+            savePts[:, 0] *= -1
+            savePts[:, 1] *= -1
+            saveVtkPts = vtk.vtkPoints()
+            saveVtkPts.SetData(n2v(np.ascontiguousarray(savePts, dtype=np.float64), deep=True))
+            saveMesh = vtk.vtkPolyData()
+            saveMesh.DeepCopy(warpedMesh)
+            saveMesh.SetPoints(saveVtkPts)
 
             # Save and unlock
             atlasPath = os.path.join(outputDir, f"atlas_iter_{it + 1:02d}.ply")
             writer = vtk.vtkPLYWriter()
             writer.SetFileName(atlasPath)
-            writer.SetInputData(warpedMesh)
+            writer.SetInputData(saveMesh)
             writer.Write()
             import subprocess
             subprocess.run(["xattr", "-c", atlasPath], check=False)

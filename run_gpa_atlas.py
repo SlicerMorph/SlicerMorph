@@ -1,7 +1,7 @@
 """GPA-style unbiased consensus atlas — random reference + TPS warp iterations.
 
 Run headless:
-    /Applications/Slicer.app/Contents/MacOS/Slicer \
+    /Users/amaga/Desktop/Slicer.app/Contents/MacOS/Slicer \
         --no-main-window --python-script \
         /Users/amaga/Desktop/SlicerMorph/run_gpa_atlas.py
 """
@@ -41,7 +41,7 @@ def run():
             "FPFHNeighbors":        100,
             "FPFHSearchRadius":     5,
             "distanceThreshold":    3.0,
-            "maxRANSAC":            1000000,
+            "maxRANSAC":            100000,
             "ICPDistanceThreshold": 1.5,
             "alpha":                2.0,
             "beta":                 2.0,
@@ -53,7 +53,7 @@ def run():
 
         log(f"Models dir  : {MODELS_DIR}")
         log(f"Output dir  : {OUTPUT_DIR}")
-        log(f"Iterations  : 3")
+        log(f"Iterations  : 5")
         log(f"spacingFactor: 0.02")
 
         result = logic.buildConsensusAtlas(
@@ -61,10 +61,10 @@ def run():
             outputDir=OUTPUT_DIR,
             spacingFactor=0.02,
             parameterDictionary=params,
-            iterations=3,
+            iterations=5,
             useScaling=True,
             userReferencePath=None,      # None = random
-            smoothingIterations=20,
+            smoothingIterations=100,
             outlierRejectFactor=3.0,
             progressCallback=log,
         )
