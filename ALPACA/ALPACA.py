@@ -3955,27 +3955,6 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
 
         _csv_f.close()
 
-        # Post-process: 100 Taubin iters (standardised across all three methods).
-        _sm_reader = vtk.vtkPLYReader()
-        _sm_reader.SetFileName(currentAtlasPath)
-        _sm_reader.Update()
-        _sm = vtk.vtkWindowedSincPolyDataFilter()
-        _sm.SetInputData(_sm_reader.GetOutput())
-        _sm.SetNumberOfIterations(100)
-        _sm.SetPassBand(0.1)
-        _sm.BoundarySmoothingOff()
-        _sm.FeatureEdgeSmoothingOff()
-        _sm.NonManifoldSmoothingOn()
-        _sm.NormalizeCoordinatesOn()
-        _sm.Update()
-        _sm_writer = vtk.vtkPLYWriter()
-        _sm_writer.SetFileName(currentAtlasPath)
-        _sm_writer.SetInputData(_sm.GetOutput())
-        _sm_writer.SetFileTypeToBinary()
-        _sm_writer.Write()
-        subprocess.run(["xattr", "-c", currentAtlasPath], check=False)
-        _log(f"  Post-smoothed final atlas (Taubin, 100 iters)")
-
         _log(f"[acvd-atlas] final atlas: {currentAtlasPath}")
         return currentAtlasPath
 
