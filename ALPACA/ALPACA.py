@@ -3825,6 +3825,31 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         # We keep the connectivity fixed (acvdPD topology never changes).
         currentAtlasPath = templatePath
         currentAtlasPts  = v2n(acvdPD.GetPoints().GetData()).copy()  # (N, 3) RAS
+        prevAtlasPts     = currentAtlasPts.copy()                    # iter-0 baseline
+
+        # CSV for structured convergence metrics.
+        import csv as _csv_mod
+        csv_path = os.path.join(outputDir, "convergence_metrics.csv")
+        _csv_f = open(csv_path, "w", newline="")
+        _csv_w = _csv_mod.writer(_csv_f)
+        _csv_w.writerow(["method", "iteration", "displacement_mean_mm",
+                         "displacement_max_mm", "hausdorff_mm",
+                         "sd_mean_mm", "procrustes_disparity", "wall_time_s"])
+
+        def _acvd_metrics(prev_pts, curr_pts, spec_stack):
+            from scipy.spatial.distance import directed_hausdorff
+            from scipy.spatial import procrustes as _proc
+            disp = np.linalg.norm(curr_pts - prev_pts, axis=1)
+            dm, dmax = float(disp.mean()), float(disp.max())
+            hd = max(directed_hausdorff(prev_pts, curr_pts)[0],
+                     directed_hausdorff(curr_pts, prev_pts)[0])
+            sd_3d = np.sqrt(((spec_stack - spec_stack.mean(axis=0)) ** 2).sum(axis=2))
+            sd_mean = float(sd_3d.mean())
+            try:
+                _, _, pd = _proc(prev_pts, curr_pts)
+            except Exception:
+                pd = float("nan")
+            return dm, dmax, hd, sd_mean, pd
 
         # ---- Iterations ----
         for it in range(iterations):
@@ -3914,8 +3939,42 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             atlasPath = os.path.join(outputDir, f"atlas_iter_{it + 1:02d}.ply")
             _saveLPS(newAtlasPD, atlasPath)
             currentAtlasPath = atlasPath
+            wall_time = time.perf_counter() - t0
 
-            _log(f"  done in {time.perf_counter() - t0:.1f}s → {os.path.basename(atlasPath)}")
+            # Convergence metrics
+            dm, dmax, hd, sd, pd = _acvd_metrics(prevAtlasPts, meanPts, stack)
+            _log(f"  [metrics] iter {it + 1}: "
+                 f"disp_mean={dm:.4f}mm  disp_max={dmax:.4f}mm  "
+                 f"hausdorff={hd:.4f}mm  sd_mean={sd:.4f}mm  procrustes={pd:.6f}")
+            _csv_w.writerow(["acvd-atlas", it + 1, f"{dm:.6f}", f"{dmax:.6f}",
+                             f"{hd:.6f}", f"{sd:.6f}", f"{pd:.8f}", f"{wall_time:.1f}"])
+            _csv_f.flush()
+            prevAtlasPts = meanPts
+
+            _log(f"  done in {wall_time:.1f}s → {os.path.basename(atlasPath)}")
+
+        _csv_f.close()
+
+        # Post-process: 100 Taubin iters (standardised across all three methods).
+        _sm_reader = vtk.vtkPLYReader()
+        _sm_reader.SetFileName(currentAtlasPath)
+        _sm_reader.Update()
+        _sm = vtk.vtkWindowedSincPolyDataFilter()
+        _sm.SetInputData(_sm_reader.GetOutput())
+        _sm.SetNumberOfIterations(100)
+        _sm.SetPassBand(0.1)
+        _sm.BoundarySmoothingOff()
+        _sm.FeatureEdgeSmoothingOff()
+        _sm.NonManifoldSmoothingOn()
+        _sm.NormalizeCoordinatesOn()
+        _sm.Update()
+        _sm_writer = vtk.vtkPLYWriter()
+        _sm_writer.SetFileName(currentAtlasPath)
+        _sm_writer.SetInputData(_sm.GetOutput())
+        _sm_writer.SetFileTypeToBinary()
+        _sm_writer.Write()
+        subprocess.run(["xattr", "-c", currentAtlasPath], check=False)
+        _log(f"  Post-smoothed final atlas (Taubin, 100 iters)")
 
         _log(f"[acvd-atlas] final atlas: {currentAtlasPath}")
         return currentAtlasPath
