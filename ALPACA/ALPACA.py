@@ -3693,6 +3693,244 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         _log(f"[consensus] final atlas: {currentAtlasPath}")
         return currentAtlasPath
 
+    def buildConsensusAtlasACVD(
+        self,
+        modelsDir,
+        outputDir,
+        nPoints=5000,
+        parameterDictionary=None,
+        iterations=5,
+        useScaling=True,
+        userReferencePath=None,
+        smoothingIterations=100,
+        outlierRejectFactor=3.0,
+        progressCallback=None,
+    ):
+        """ACVD-based unbiased surface atlas construction.
+
+        Instead of TPS-warping a reference mesh, this method:
+          1. ACVD-remeshes the (smoothed) reference to N uniformly distributed
+             vertices, establishing a fixed topology for the entire pipeline.
+          2. Each iteration aligns all specimens to the current atlas and finds
+             the nearest specimen surface point for each of the N atlas vertices
+             (same as GetCorrespondingPoints).
+          3. The mean of those N corresponding positions becomes the new atlas —
+             the ACVD topology is simply re-used with the updated vertex positions.
+
+        No TPS solve and no SDF reconstruction are needed. The atlas topology
+        is topology-free from the reference (uniform Voronoi tiling) and bone
+        thickness is correct because positions come from real specimen surfaces.
+
+        Parameters
+        ----------
+        nPoints : int
+            Target number of uniformly distributed vertices for the ACVD remesh.
+            ACVD snaps to the nearest valid partition so the actual count may
+            differ slightly.
+        smoothingIterations : int
+            Taubin passes applied once to the initial reference before ACVD
+            remeshing, to remove specimen-specific surface detail.
+        All other parameters identical to buildConsensusAtlas.
+        """
+        import os, random, time
+        import numpy as np
+        import vtk
+        from vtk.util.numpy_support import vtk_to_numpy as v2n, numpy_to_vtk as n2v
+
+        def _log(msg):
+            if progressCallback:
+                progressCallback(msg)
+            else:
+                print(msg)
+
+        if parameterDictionary is None:
+            parameterDictionary = {}
+
+        os.makedirs(outputDir, exist_ok=True)
+
+        modelFiles = sorted([
+            f for f in os.listdir(modelsDir)
+            if f.endswith((".ply", ".stl", ".obj", ".vtk", ".vtp"))
+        ])
+        if len(modelFiles) < 3:
+            raise ValueError("buildConsensusAtlasACVD requires at least 3 models")
+        _log(f"[acvd-atlas] {len(modelFiles)} specimens")
+
+        # ---- Choose reference ----
+        if userReferencePath and os.path.isfile(userReferencePath):
+            refPath = userReferencePath
+            _log(f"[acvd-atlas] reference (user): {os.path.basename(refPath)}")
+        else:
+            refFile = random.choice(modelFiles)
+            refPath = os.path.join(modelsDir, refFile)
+            _log(f"[acvd-atlas] reference (random): {refFile}")
+
+        refNode = slicer.util.loadModel(refPath)
+        refNode.GetDisplayNode().SetVisibility(False)
+        refPD = vtk.vtkPolyData()
+        refPD.DeepCopy(refNode.GetPolyData())
+        slicer.mrmlScene.RemoveNode(refNode)
+
+        # ---- Smooth reference once to remove specimen-specific topology ----
+        if smoothingIterations > 0:
+            sm = vtk.vtkWindowedSincPolyDataFilter()
+            sm.SetInputData(refPD)
+            sm.SetNumberOfIterations(smoothingIterations)
+            sm.SetPassBand(0.1)
+            sm.BoundarySmoothingOff()
+            sm.FeatureEdgeSmoothingOff()
+            sm.NonManifoldSmoothingOn()
+            sm.NormalizeCoordinatesOn()
+            sm.Update()
+            refPD = sm.GetOutput()
+            _log(f"  Reference smoothed ({smoothingIterations} Taubin iters)")
+
+        # ---- ACVD remesh reference → uniform topology ----
+        import pyvista as pv
+        import pyacvd
+        pvRef   = pv.wrap(refPD)
+        clus    = pyacvd.Clustering(pvRef)
+        clus.cluster(nPoints)
+        acvdMesh = clus.create_mesh()           # PyVista PolyData = vtkPolyData subclass
+        N = acvdMesh.n_points
+        _log(f"  ACVD remesh: {N} vertices (target {nPoints})")
+
+        # Convert to plain vtkPolyData so VTK filters accept it cleanly
+        acvdPD = vtk.vtkPolyData()
+        acvdPD.DeepCopy(acvdMesh)
+
+        # Save the ACVD template (in LPS) as the iteration-0 reference
+        import subprocess
+
+        def _saveLPS(polydata, path):
+            pts = v2n(polydata.GetPoints().GetData()).copy()
+            pts[:, 0] *= -1
+            pts[:, 1] *= -1
+            vp = vtk.vtkPoints()
+            vp.SetData(n2v(np.ascontiguousarray(pts, dtype=np.float64), deep=True))
+            tmp = vtk.vtkPolyData()
+            tmp.DeepCopy(polydata)
+            tmp.SetPoints(vp)
+            w = vtk.vtkPLYWriter()
+            w.SetFileName(path)
+            w.SetInputData(tmp)
+            w.Write()
+            subprocess.run(["xattr", "-c", path], check=False)
+
+        templatePath = os.path.join(outputDir, "acvd_template.ply")
+        _saveLPS(acvdPD, templatePath)
+        _log(f"  ACVD template saved → acvd_template.ply")
+
+        # The atlas vertex positions are updated each iteration.
+        # We keep the connectivity fixed (acvdPD topology never changes).
+        currentAtlasPath = templatePath
+        currentAtlasPts  = v2n(acvdPD.GetPoints().GetData()).copy()  # (N, 3) RAS
+
+        # ---- Iterations ----
+        for it in range(iterations):
+            t0 = time.perf_counter()
+            _log(f"--- Iteration {it + 1}/{iterations} ---")
+
+            # Build a vtkPolyData with current atlas vertex positions + ACVD topology
+            atlasIterPD = vtk.vtkPolyData()
+            atlasIterPD.DeepCopy(acvdPD)
+            iterVtkPts = vtk.vtkPoints()
+            iterVtkPts.SetData(
+                n2v(np.ascontiguousarray(currentAtlasPts, dtype=np.float64), deep=True)
+            )
+            atlasIterPD.SetPoints(iterVtkPts)
+
+            # Load atlas as a scene node so runSubsample can use it
+            atlasNode = slicer.util.loadModel(currentAtlasPath)
+            atlasNode.GetDisplayNode().SetVisibility(False)
+
+            # ---- Align each specimen and collect N corresponding positions ----
+            allCorr = []
+            for fname in modelFiles:
+                specNode = slicer.util.loadModel(os.path.join(modelsDir, fname))
+                specNode.GetDisplayNode().SetVisibility(False)
+                try:
+                    (srcPts, tgtPts, srcFeats, tgtFeats,
+                     voxelSize, _sf) = self.runSubsample(
+                        specNode, atlasNode, useScaling, parameterDictionary, False
+                    )
+                    ICPXform, simFlag = self.estimateTransform(
+                        srcPts, tgtPts, srcFeats, tgtFeats,
+                        voxelSize, useScaling, parameterDictionary,
+                    )
+                    vtkXform  = self.itkToVTKTransform(ICPXform, simFlag)
+                    xformNode = self.convertMatrixToTransformNode(vtkXform, "_acvdXform")
+                    specNode.SetAndObserveTransformNodeID(xformNode.GetID())
+                    slicer.vtkSlicerTransformLogic().hardenTransform(specNode)
+                    slicer.mrmlScene.RemoveNode(xformNode)
+
+                    # Find the nearest specimen surface point for each atlas vertex.
+                    # atlasIterPD serves as the "sparse template" — its N vertices
+                    # are the query points; the specimen surface is the target.
+                    _, corrPts = self.GetCorrespondingPoints(
+                        atlasIterPD, specNode.GetPolyData()
+                    )
+                    allCorr.append(v2n(corrPts.GetData()).copy())   # (N, 3)
+                    _log(f"    aligned {fname}")
+                except Exception as exc:
+                    _log(f"    ! skipped {fname}: {exc}")
+                finally:
+                    slicer.mrmlScene.RemoveNode(specNode)
+
+            slicer.mrmlScene.RemoveNode(atlasNode)
+
+            if len(allCorr) < 3:
+                raise RuntimeError(
+                    f"Iteration {it + 1}: only {len(allCorr)} specimens aligned"
+                )
+
+            stack = np.array(allCorr)   # (M, N, 3)
+
+            # ---- Outlier rejection ----
+            if outlierRejectFactor > 0 and len(stack) > 3:
+                ptMean  = stack.mean(axis=0)
+                perSpec = np.sqrt(((stack - ptMean) ** 2).sum(axis=2)).mean(axis=1)
+                mu, sig = perSpec.mean(), perSpec.std()
+                keep    = perSpec < mu + outlierRejectFactor * sig
+                if not keep.all():
+                    _log(f"  outlier rejection: dropped {int((~keep).sum())} specimen(s)")
+                    stack = stack[keep]
+
+            # ---- New atlas = mean positions assigned to ACVD topology ----
+            meanPts = stack.mean(axis=0)   # (N, 3)
+
+            # Update current atlas vertex positions
+            currentAtlasPts = meanPts
+
+            # Save with RAS→LPS flip
+            newVtkPts = vtk.vtkPoints()
+            newVtkPts.SetData(
+                n2v(np.ascontiguousarray(meanPts, dtype=np.float64), deep=True)
+            )
+            newAtlasPD = vtk.vtkPolyData()
+            newAtlasPD.DeepCopy(acvdPD)      # reuse ACVD connectivity
+            newAtlasPD.SetPoints(newVtkPts)
+
+            atlasPath = os.path.join(outputDir, f"atlas_iter_{it + 1:02d}.ply")
+            _saveLPS(newAtlasPD, atlasPath)
+            currentAtlasPath = atlasPath
+
+            _log(f"  done in {time.perf_counter() - t0:.1f}s → {os.path.basename(atlasPath)}")
+
+        _log(f"[acvd-atlas] final atlas: {currentAtlasPath}")
+        return currentAtlasPath
+
+    def _acvdResample(self, polyData, nPoints):
+        """Remesh polyData to ~nPoints uniformly distributed vertices using ACVD."""
+        import pyvista as pv
+        import pyacvd
+        pvMesh = pv.wrap(polyData)
+        clus   = pyacvd.Clustering(pvMesh)
+        clus.cluster(nPoints)
+        result = vtk.vtkPolyData()
+        result.DeepCopy(clus.create_mesh())
+        return result
+
     def makeScatterPlotWithFactors(
         self, data, files, factors, title, xAxis, yAxis, pcNumber, templatesIndices
     ):
