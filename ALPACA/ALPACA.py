@@ -3421,6 +3421,204 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             # Index.append(index)
         return ID, correspondingPoints
 
+    def buildConsensusAtlas(
+        self,
+        modelsDir,
+        outputDir,
+        spacingFactor=0.02,
+        parameterDictionary=None,
+        iterations=3,
+        useScaling=True,
+        userReferencePath=None,
+        smoothingIterations=20,
+        outlierRejectFactor=3.0,
+        progressCallback=None,
+    ):
+        """GPA-style unbiased surface atlas construction.
+
+        Iteration 0 aligns all specimens to a random (or user-specified)
+        reference. The mean of the corresponding points warps that reference
+        mesh via thin-plate spline to produce atlas_iter_01.ply. Every
+        subsequent iteration aligns to the previous atlas, reducing the
+        influence of the initial reference choice.
+
+        Parameters
+        ----------
+        modelsDir : str
+            Folder containing specimen meshes (.ply/.stl/.obj/.vtk/.vtp).
+        outputDir : str
+            Folder where per-iteration atlases and the final atlas are saved.
+        spacingFactor : float
+            Passed to DownsampleTemplate; controls the number of sparse
+            control points (smaller = more points).
+        parameterDictionary : dict
+            ALPACA registration parameters.
+        iterations : int
+            Number of GPA rounds. 3-5 is usually sufficient.
+        useScaling : bool
+            Allow similarity (scale+rigid) alignment so specimens of
+            different sizes can be brought to a common scale.
+        userReferencePath : str or None
+            Path to a specific mesh to use as the iteration-0 reference.
+            If None, a random specimen is chosen.
+        smoothingIterations : int
+            Taubin smoothing passes applied to the warped atlas after each
+            iteration to reduce thin-plate-spline interpolation ripple.
+        outlierRejectFactor : float
+            Specimens whose mean point deviation exceeds
+            (mean + outlierRejectFactor * std) are excluded from that
+            iteration's mean. 0 disables rejection.
+        progressCallback : callable or None
+            Called with a string message for each progress update.
+        """
+        import os, random, time
+        import numpy as np
+        import vtk
+        from vtk.util.numpy_support import vtk_to_numpy as v2n
+
+        def _log(msg):
+            if progressCallback:
+                progressCallback(msg)
+            else:
+                print(msg)
+
+        if parameterDictionary is None:
+            parameterDictionary = {}
+
+        os.makedirs(outputDir, exist_ok=True)
+
+        # ---- Collect specimen files ----
+        modelFiles = sorted([
+            f for f in os.listdir(modelsDir)
+            if f.endswith((".ply", ".stl", ".obj", ".vtk", ".vtp"))
+        ])
+        if len(modelFiles) < 3:
+            raise ValueError("buildConsensusAtlas requires at least 3 models")
+        _log(f"[consensus] {len(modelFiles)} specimens")
+
+        # ---- Choose iteration-0 reference ----
+        if userReferencePath and os.path.isfile(userReferencePath):
+            currentAtlasPath = userReferencePath
+            _log(f"[consensus] reference (user): {os.path.basename(userReferencePath)}")
+        else:
+            refFile = random.choice(modelFiles)
+            currentAtlasPath = os.path.join(modelsDir, refFile)
+            _log(f"[consensus] reference (random): {refFile}")
+
+        # ---- GPA iterations ----
+        for it in range(iterations):
+            t0 = time.perf_counter()
+            _log(f"--- Iteration {it + 1}/{iterations} ---")
+
+            atlasNode = slicer.util.loadModel(currentAtlasPath)
+            atlasNode.GetDisplayNode().SetVisibility(False)
+            atlasPolyData = vtk.vtkPolyData()
+            atlasPolyData.DeepCopy(atlasNode.GetPolyData())
+
+            sparseTemplate = self.DownsampleTemplate(atlasPolyData, spacingFactor)
+            N = sparseTemplate.GetNumberOfPoints()
+            _log(f"  {N} template control points")
+
+            # --- Align each specimen and collect corresponding points ---
+            # Corresponding points are returned in atlas space (after alignment),
+            # so averaging them directly gives the mean shape in atlas space.
+            allCorr = []
+            for fname in modelFiles:
+                specNode = slicer.util.loadModel(os.path.join(modelsDir, fname))
+                specNode.GetDisplayNode().SetVisibility(False)
+                try:
+                    (srcPts, tgtPts, srcFeats, tgtFeats,
+                     voxelSize, _scalingFactor) = self.runSubsample(
+                        specNode, atlasNode, useScaling, parameterDictionary, False
+                    )
+                    ICPXform, simFlag = self.estimateTransform(
+                        srcPts, tgtPts, srcFeats, tgtFeats,
+                        voxelSize, useScaling, parameterDictionary,
+                    )
+                    vtkXform  = self.itkToVTKTransform(ICPXform, simFlag)
+                    xformNode = self.convertMatrixToTransformNode(vtkXform, "_atlasXform")
+                    specNode.SetAndObserveTransformNodeID(xformNode.GetID())
+                    slicer.vtkSlicerTransformLogic().hardenTransform(specNode)
+                    slicer.mrmlScene.RemoveNode(xformNode)
+
+                    _, corrPts = self.GetCorrespondingPoints(
+                        sparseTemplate, specNode.GetPolyData()
+                    )
+                    allCorr.append(v2n(corrPts.GetData()).copy())   # (N, 3)
+                    _log(f"    aligned {fname}")
+                except Exception as exc:
+                    _log(f"    ! skipped {fname}: {exc}")
+                finally:
+                    slicer.mrmlScene.RemoveNode(specNode)
+
+            if len(allCorr) < 3:
+                raise RuntimeError(
+                    f"Iteration {it + 1}: only {len(allCorr)} specimens aligned — too few to continue"
+                )
+
+            stack = np.array(allCorr)   # (M, N, 3)
+
+            # --- Outlier rejection ---
+            if outlierRejectFactor > 0 and len(stack) > 3:
+                ptMean    = stack.mean(axis=0)                              # (N, 3)
+                perSpec   = np.sqrt(((stack - ptMean) ** 2).sum(axis=2)).mean(axis=1)  # (M,)
+                mu, sigma = perSpec.mean(), perSpec.std()
+                keep      = perSpec < mu + outlierRejectFactor * sigma
+                n_drop    = int((~keep).sum())
+                if n_drop:
+                    _log(f"  outlier rejection: dropped {n_drop} specimen(s)")
+                    stack = stack[keep]
+
+            meanPts = stack.mean(axis=0)   # (N, 3) — mean shape in atlas space
+
+            # --- Warp atlas mesh: sparse template positions → mean positions (TPS) ---
+            srcVtkPts = vtk.vtkPoints()
+            tgtVtkPts = vtk.vtkPoints()
+            for i in range(N):
+                srcVtkPts.InsertNextPoint(*sparseTemplate.GetPoint(i))
+                tgtVtkPts.InsertNextPoint(*meanPts[i])
+
+            tps = vtk.vtkThinPlateSplineTransform()
+            tps.SetSourceLandmarks(srcVtkPts)
+            tps.SetTargetLandmarks(tgtVtkPts)
+            tps.SetBasisToR()
+            tps.Update()
+
+            warp = vtk.vtkTransformPolyDataFilter()
+            warp.SetInputData(atlasPolyData)
+            warp.SetTransform(tps)
+            warp.Update()
+            warpedMesh = warp.GetOutput()
+
+            # Taubin smoothing to remove TPS interpolation ripple
+            if smoothingIterations > 0:
+                smoother = vtk.vtkWindowedSincPolyDataFilter()
+                smoother.SetInputData(warpedMesh)
+                smoother.SetNumberOfIterations(smoothingIterations)
+                smoother.SetPassBand(0.1)
+                smoother.BoundarySmoothingOff()
+                smoother.FeatureEdgeSmoothingOff()
+                smoother.NonManifoldSmoothingOn()
+                smoother.NormalizeCoordinatesOn()
+                smoother.Update()
+                warpedMesh = smoother.GetOutput()
+
+            # Save and unlock
+            atlasPath = os.path.join(outputDir, f"atlas_iter_{it + 1:02d}.ply")
+            writer = vtk.vtkPLYWriter()
+            writer.SetFileName(atlasPath)
+            writer.SetInputData(warpedMesh)
+            writer.Write()
+            import subprocess
+            subprocess.run(["xattr", "-c", atlasPath], check=False)
+
+            slicer.mrmlScene.RemoveNode(atlasNode)
+            currentAtlasPath = atlasPath
+            _log(f"  done in {time.perf_counter() - t0:.1f}s → {os.path.basename(atlasPath)}")
+
+        _log(f"[consensus] final atlas: {currentAtlasPath}")
+        return currentAtlasPath
+
     def makeScatterPlotWithFactors(
         self, data, files, factors, title, xAxis, yAxis, pcNumber, templatesIndices
     ):
