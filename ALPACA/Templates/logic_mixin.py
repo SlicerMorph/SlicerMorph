@@ -880,14 +880,23 @@ class _ALPACATemplatesLogic:
     @staticmethod
     def _writeMeshWithNewVertices(referencePolyData, newVerts, outputPath):
         """Write a PLY whose topology is taken from ``referencePolyData`` and
-        whose vertex positions are replaced by ``newVerts`` (N,3)."""
+        whose vertex positions are replaced by ``newVerts`` (N,3).
+
+        slicer.util.loadModel returns polydata in RAS (Slicer internal).
+        PLY files on disk use LPS.  Flip X and Y before writing so the next
+        iteration's loadModel produces correct RAS coordinates again.
+        """
         import vtk
+        from vtk.util.numpy_support import numpy_to_vtk as _n2v
+
+        savePts = np.array(newVerts, dtype=np.float64).copy()
+        savePts[:, 0] *= -1
+        savePts[:, 1] *= -1
 
         out = vtk.vtkPolyData()
         out.DeepCopy(referencePolyData)
-        from vtk.util.numpy_support import numpy_to_vtk as _n2v
         pts = vtk.vtkPoints()
-        pts.SetData(_n2v(np.asarray(newVerts, dtype=np.float64), deep=True))
+        pts.SetData(_n2v(np.ascontiguousarray(savePts), deep=True))
         out.SetPoints(pts)
 
         writer = vtk.vtkPLYWriter()
