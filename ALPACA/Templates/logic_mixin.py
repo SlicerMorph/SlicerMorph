@@ -430,7 +430,7 @@ class _ALPACATemplatesLogic:
             _consensusParamDict = dict(parameterDictionary)
             _consensusParamDict["maxRANSAC"] = _ransac_cap
             _log(f"  RANSAC cap this iteration: {_ransac_cap:,}")
-            n_used = self._denseConsensusAccumulate(
+            n_used, closest_stack = self._denseConsensusAccumulate(
                 modelsDir=modelsDir,
                 atlasPolyData=atlasPolyData,
                 atlasNode=atlasNode,
@@ -445,14 +445,31 @@ class _ALPACATemplatesLogic:
             stage_times["denseAccumulate"] = time.perf_counter() - t0
             _log(f"  Aggregated dense correspondences from {n_used} specimens")
 
-            # 3) Compute per-vertex mean. Vertices with zero hits (shouldn't
-            #    happen normally) keep the atlas's original position.
+            # 3) Compute per-vertex mean via partial Procrustes (rotation +
+            #    translation only, no scale).  This replaces the star-shaped
+            #    simple average with a GPA that simultaneously aligns all M
+            #    per-specimen correspondence arrays to their common mean,
+            #    removing residual pose inconsistency from independent ICP
+            #    solutions and reducing the anchor bias toward the current
+            #    atlas shape.  The result is re-anchored to the initial
+            #    simple-average frame so the atlas stays co-registered across
+            #    iterations.  Vertices with zero hits fall back to their
+            #    current atlas position.
             t0 = time.perf_counter()
             atlasVertsArray = _v2n_build(atlasPolyData.GetPoints().GetData()).copy()
             meanVerts = atlasVertsArray.copy()
-            mask = countVerts > 0
-            meanVerts[mask] = sumVerts[mask] / countVerts[mask, None]
+            if len(closest_stack) >= 3:
+                stack_arr = np.array(closest_stack, dtype=np.float64)  # (M, N, 3)
+                mask = countVerts > 0
+                meanVerts[mask] = self._partial_procrustes_mean(
+                    stack_arr[:, mask, :]
+                )
+            else:
+                # Fewer than 3 specimens — fall back to simple average.
+                mask = countVerts > 0
+                meanVerts[mask] = sumVerts[mask] / countVerts[mask, None]
             stage_times["meanVerts"] = time.perf_counter() - t0
+            _log(f"  Partial Procrustes mean computed ({len(closest_stack)} specimens)")
 
             # 4) Write atlas with reference topology + new mean vertex positions.
             iterAtlasPath = os.path.join(outputDir, f"consensus_atlas_iter{it:02d}.ply")
@@ -630,6 +647,76 @@ class _ALPACATemplatesLogic:
             scale = 1.0
         return scale * (S @ R.T) + tc
 
+    @staticmethod
+    def _partial_procrustes_mean(stack, max_iter=20, tol=1e-6):
+        """Partial Procrustes mean of M correspondence sets (rotation + translation only).
+
+        Each of the M per-specimen arrays is optimally aligned to the evolving
+        group mean using a rigid (no-scale) transform, preserving biological
+        scale.  After GPA convergence the result is re-anchored to the initial
+        simple-average frame via a second rigid transform, so the atlas remains
+        co-registered with the previous iteration's output.
+
+        Parameters
+        ----------
+        stack : (M, N, 3) ndarray
+            M per-specimen closest-point arrays, each of length N (= number of
+            atlas vertices), already expressed in atlas space.
+        max_iter : int
+            Maximum GPA iterations (typically converges in < 10).
+        tol : float
+            Convergence threshold: RMS change in the mean across iterations (mm).
+
+        Returns
+        -------
+        mean : (N, 3) ndarray
+            Partial Procrustes mean, re-anchored to the initial frame.
+        """
+        M, N, _ = stack.shape
+
+        # Initialise with simple average (already in atlas frame) and remember
+        # it for re-anchoring after GPA.
+        mean   = stack.mean(axis=0)   # (N, 3)
+        anchor = mean.copy()
+
+        for _ in range(max_iter):
+            aligned = np.empty_like(stack)
+            for j in range(M):
+                cj  = stack[j].mean(axis=0)
+                cm  = mean.mean(axis=0)
+                Xj  = stack[j] - cj          # centred source
+                Xm  = mean     - cm          # centred target
+                H   = Xj.T @ Xm             # (3, 3) cross-covariance
+                U, _, Vt = np.linalg.svd(H)
+                R   = Vt.T @ U.T
+                if np.linalg.det(R) < 0:    # avoid improper rotation
+                    Vt[-1] *= -1
+                    R = Vt.T @ U.T
+                t   = cm - R @ cj
+                aligned[j] = (R @ stack[j].T).T + t
+
+            new_mean = aligned.mean(axis=0)
+            change   = float(np.sqrt(((new_mean - mean) ** 2).sum(axis=1).mean()))
+            mean     = new_mean
+            if change < tol:
+                break
+
+        # Re-anchor: rigid transform (no scale) that maps the GPA mean back to
+        # the initial simple-average frame, keeping the atlas co-registered with
+        # the previous iteration.
+        ca  = anchor.mean(axis=0)
+        cm  = mean.mean(axis=0)
+        H   = (mean - cm).T @ (anchor - ca)
+        U, _, Vt = np.linalg.svd(H)
+        R   = Vt.T @ U.T
+        if np.linalg.det(R) < 0:
+            Vt[-1] *= -1
+            R = Vt.T @ U.T
+        t   = ca - R @ cm
+        mean = (R @ mean.T).T + t
+
+        return mean
+
     def _denseConsensusAccumulate(
         self,
         modelsDir,
@@ -649,7 +736,16 @@ class _ALPACATemplatesLogic:
         vertex find nearest point on the warped specimen surface. Accumulate
         per-vertex sums into ``sumVerts`` and counts into ``countVerts``.
 
-        Returns the number of specimens successfully processed.
+        Returns
+        -------
+        n_used : int
+            Number of specimens successfully processed.
+        closest_stack : list of (n_atlas_verts, 3) ndarray
+            Per-specimen closest-point arrays in atlas space, one entry per
+            successfully processed specimen.  Vertices whose closest-point
+            distance exceeded the outlier threshold are filled with the atlas
+            vertex's own position so they contribute zero displacement to any
+            downstream mean.
         """
         import vtk
         import logging
@@ -668,6 +764,7 @@ class _ALPACATemplatesLogic:
         )
 
         n_used = 0
+        closest_stack = []
         for fname in modelFiles:
             specimenPath = os.path.join(modelsDir, fname)
             try:
@@ -747,6 +844,14 @@ class _ALPACATemplatesLogic:
                 sumVerts[keep] += specimenClosest[keep]
                 countVerts[keep] += 1
 
+                # Build per-specimen array for partial Procrustes averaging.
+                # Rejected vertices are filled with the atlas vertex's own
+                # position so they contribute zero displacement to the mean.
+                specimenEntry = specimenClosest.copy()
+                if not keep.all():
+                    specimenEntry[~keep] = atlasVertsArray[~keep]
+                closest_stack.append(specimenEntry)
+
                 n_used += 1
                 if n_rejected and progressCallback is not None:
                     progressCallback(
@@ -770,7 +875,7 @@ class _ALPACATemplatesLogic:
                 except Exception:
                     pass
 
-        return n_used
+        return n_used, closest_stack
 
     @staticmethod
     def _writeMeshWithNewVertices(referencePolyData, newVerts, outputPath):
