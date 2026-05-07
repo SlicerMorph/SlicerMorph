@@ -406,20 +406,11 @@ class _ALPACATemplatesLogic:
             stage_times = {}
 
             # 1) Load atlas mesh + sparse template control points (atlas frame).
-            #    Use vtkPLYReader directly (same as _taubinSmoothMeshInPlace /
-            #    _writeMeshWithNewVertices) so that no Slicer LPS→RAS coordinate
-            #    transform is applied to the polydata.  All geometry stays in the
-            #    file's native coordinate system throughout the pipeline.
             t0 = time.perf_counter()
-            _atlasReader = vtk.vtkPLYReader()
-            _atlasReader.SetFileName(currentAtlasPath)
-            _atlasReader.Update()
-            atlasPolyData = vtk.vtkPolyData()
-            atlasPolyData.DeepCopy(_atlasReader.GetOutput())
-            atlasNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLModelNode")
-            atlasNode.SetAndObserveMesh(atlasPolyData)
-            atlasNode.CreateDefaultDisplayNodes()
+            atlasNode = slicer.util.loadModel(currentAtlasPath)
             atlasNode.GetDisplayNode().SetVisibility(False)
+            atlasPolyData = vtk.vtkPolyData()
+            atlasPolyData.DeepCopy(atlasNode.GetPolyData())
             sparseTemplate = self.DownsampleTemplate(atlasPolyData, spacingFactor)
             density = sparseTemplate.GetNumberOfPoints()
             n_atlas_verts = atlasPolyData.GetNumberOfPoints()
@@ -777,21 +768,7 @@ class _ALPACATemplatesLogic:
         for fname in modelFiles:
             specimenPath = os.path.join(modelsDir, fname)
             try:
-                # Load directly via VTK reader — no Slicer LPS→RAS flip.
-                _ext = os.path.splitext(fname)[1].lower()
-                if _ext == ".ply":
-                    _specReader = vtk.vtkPLYReader()
-                elif _ext == ".stl":
-                    _specReader = vtk.vtkSTLReader()
-                elif _ext == ".obj":
-                    _specReader = vtk.vtkOBJReader()
-                else:
-                    _specReader = vtk.vtkPolyDataReader()
-                _specReader.SetFileName(specimenPath)
-                _specReader.Update()
-                sourceModelNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLModelNode")
-                sourceModelNode.SetAndObserveMesh(_specReader.GetOutput())
-                sourceModelNode.CreateDefaultDisplayNodes()
+                sourceModelNode = slicer.util.loadModel(specimenPath)
                 sourceModelNode.GetDisplayNode().SetVisibility(False)
 
                 # Rigid + ICP align specimen to atlas (atlas == targetNode).
