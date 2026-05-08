@@ -111,7 +111,87 @@
       <string>Synchronize View</string>
      </property>
      <layout class="QFormLayout" name="formLayout_3">
-      <item row="0" column="0" colspan="2">
+      <item row="0" column="0">
+       <widget class="QLabel" name="landmarksLabel1">
+        <property name="text">
+         <string>Landmarks 1:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="qMRMLNodeComboBox" name="landmarksSelector1">
+        <property name="enabled">
+         <bool>false</bool>
+        </property>
+        <property name="toolTip">
+         <string>Optional: Select landmarks/fiducials for Object 1</string>
+        </property>
+        <property name="nodeTypes">
+         <stringlist notr="true">
+          <string>vtkMRMLMarkupsFiducialNode</string>
+          <string>vtkMRMLMarkupsLineNode</string>
+          <string>vtkMRMLMarkupsCurveNode</string>
+          <string>vtkMRMLMarkupsPlaneNode</string>
+         </stringlist>
+        </property>
+        <property name="showChildNodeTypes">
+         <bool>false</bool>
+        </property>
+        <property name="noneEnabled">
+         <bool>true</bool>
+        </property>
+        <property name="addEnabled">
+         <bool>false</bool>
+        </property>
+        <property name="removeEnabled">
+         <bool>false</bool>
+        </property>
+        <property name="selectNodeUponCreation">
+         <bool>false</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="landmarksLabel2">
+        <property name="text">
+         <string>Landmarks 2:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="qMRMLNodeComboBox" name="landmarksSelector2">
+        <property name="enabled">
+         <bool>false</bool>
+        </property>
+        <property name="toolTip">
+         <string>Optional: Select landmarks/fiducials for Object 2</string>
+        </property>
+        <property name="nodeTypes">
+         <stringlist notr="true">
+          <string>vtkMRMLMarkupsFiducialNode</string>
+          <string>vtkMRMLMarkupsLineNode</string>
+          <string>vtkMRMLMarkupsCurveNode</string>
+          <string>vtkMRMLMarkupsPlaneNode</string>
+         </stringlist>
+        </property>
+        <property name="showChildNodeTypes">
+         <bool>false</bool>
+        </property>
+        <property name="noneEnabled">
+         <bool>true</bool>
+        </property>
+        <property name="addEnabled">
+         <bool>false</bool>
+        </property>
+        <property name="removeEnabled">
+         <bool>false</bool>
+        </property>
+        <property name="selectNodeUponCreation">
+         <bool>false</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0" colspan="2">
        <widget class="QCheckBox" name="jointEditCheckBox">
         <property name="enabled">
          <bool>false</bool>
@@ -124,7 +204,7 @@
         </property>
        </widget>
       </item>
-      <item row="1" column="0" colspan="2">
+      <item row="3" column="0" colspan="2">
        <widget class="QPushButton" name="linkButton">
         <property name="enabled">
          <bool>false</bool>
@@ -137,7 +217,7 @@
         </property>
        </widget>
       </item>
-      <item row="2" column="0" colspan="2">
+      <item row="4" column="0" colspan="2">
        <widget class="QPushButton" name="unlinkButton">
         <property name="enabled">
          <bool>false</bool>
