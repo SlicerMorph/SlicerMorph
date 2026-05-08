@@ -316,6 +316,16 @@ class _ALPACATemplatesWidget:
         if len(PCDFiles) < 1:
             logging.error(f"No point cloud files read from {self.pcdOutputFolder}\n")
             return
+
+        # Optionally exclude the atlas/reference point cloud from analysis.
+        if not self.ui.includeAtlasCheckBox.isChecked():
+            atlasName = getattr(self, "refName", None)
+            if atlasName:
+                PCDFiles = [
+                    f for f in PCDFiles
+                    if os.path.splitext(f)[0] != atlasName
+                ]
+
         pcdFilePaths = [os.path.join(self.pcdOutputFolder, file) for file in PCDFiles]
         # GPA for all specimens
         self.scores, self.LM = logic.pcdGPA(pcdFilePaths)

@@ -1572,7 +1572,24 @@
             </property>
            </widget>
           </item>
-          <item row="6" column="0" colspan="2">
+          <item row="6" column="0">
+           <widget class="QLabel" name="includeAtlasLabel">
+            <property name="text">
+             <string>Include Atlas:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="6" column="1">
+           <widget class="QCheckBox" name="includeAtlasCheckBox">
+            <property name="toolTip">
+             <string>Include the atlas (reference template) point cloud in the GPA, PCA, and k-means analysis. When unchecked the atlas is excluded so template selection reflects the specimen space only.</string>
+            </property>
+            <property name="checked">
+             <bool>false</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="7" column="0" colspan="2">
            <widget class="QPushButton" name="kmeansTemplatesButton">
             <property name="enabled">
              <bool>false</bool>
@@ -1585,7 +1602,7 @@
             </property>
            </widget>
           </item>
-          <item row="7" column="0" colspan="2">
+          <item row="8" column="0" colspan="2">
            <widget class="QPlainTextEdit" name="templatesInfo">
             <property name="sizePolicy">
              <sizepolicy hsizetype="Preferred" vsizetype="MinimumExpanding">
