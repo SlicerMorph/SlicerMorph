@@ -300,7 +300,6 @@ class _ALPACATemplatesLogic:
         smoothingIterations=20,
         outlierRejectFactor=3.0,
         progressCallback=None,
-        pcdOutputDir=None,
         smoothReferenceIterations=20,
     ):
         """Build a bias-free consensus atlas mesh from a folder of models.
@@ -431,20 +430,6 @@ class _ALPACATemplatesLogic:
             stage_times["downReference"] = time.perf_counter() - t0
             _log(f"  Sparse control points: {density};  atlas vertices: {n_atlas_verts}")
 
-            # Save atlas control points for this iteration as mrk.json.
-            if pcdOutputDir:
-                os.makedirs(pcdOutputDir, exist_ok=True)
-                _atlasFid = slicer.vtkMRMLMarkupsFiducialNode()
-                for _pt in atlasCorresp:
-                    _atlasFid.AddControlPoint(_pt.tolist())
-                slicer.mrmlScene.AddNode(_atlasFid)
-                _atlasFid.SetFixedNumberOfControlPoints(True)
-                slicer.util.saveNode(
-                    _atlasFid,
-                    os.path.join(pcdOutputDir, f"consensus_atlas_iter{it:02d}.mrk.json"),
-                )
-                slicer.mrmlScene.RemoveNode(_atlasFid)
-
             # 2) For each specimen: similarity-transform align to atlas
             #    (FPFH+RANSAC+ICP with scale), find sparse correspondences,
             #    invert the transform to recover original-space positions.
@@ -460,7 +445,6 @@ class _ALPACATemplatesLogic:
                 sparseTemplate=sparseTemplate,
                 parameterDictionary=_consensusParamDict,
                 progressCallback=progressCallback,
-                pcdOutputDir=pcdOutputDir if it == 0 else None,
             )
             stage_times["accumulate"] = time.perf_counter() - t0
             _log(f"  Collected correspondences from {n_used} specimens")
@@ -533,17 +517,6 @@ class _ALPACATemplatesLogic:
         _sparseF = self.DownsampleTemplate(_atlasPolyF, spacingFactor)
         _atlasCorrespF = _v2n_build(_sparseF.GetPoints().GetData()).copy()
         _log(f"  Sparse control points: {_sparseF.GetNumberOfPoints()}")
-
-        if pcdOutputDir:
-            _fidF = slicer.vtkMRMLMarkupsFiducialNode()
-            for _pt in _atlasCorrespF:
-                _fidF.AddControlPoint(_pt.tolist())
-            slicer.mrmlScene.AddNode(_fidF)
-            _fidF.SetFixedNumberOfControlPoints(True)
-            slicer.util.saveNode(
-                _fidF, os.path.join(pcdOutputDir, "consensus_atlas.mrk.json")
-            )
-            slicer.mrmlScene.RemoveNode(_fidF)
 
         _n_used_F, _stack_F_list = self._denseConsensusAccumulate(
             modelsDir=modelsDir,
@@ -797,7 +770,6 @@ class _ALPACATemplatesLogic:
         sparseTemplate,
         parameterDictionary,
         progressCallback=None,
-        pcdOutputDir=None,
     ):
         """For each specimen: align to atlas via similarity transform
         (FPFH+RANSAC+ICP with scale), find sparse correspondences on the
@@ -888,21 +860,6 @@ class _ALPACATemplatesLogic:
 
                 corresp_stack.append(origSpacePts)
                 n_used += 1
-
-                # Iter-0 only: save specimen original-space points as mrk.json.
-                if pcdOutputDir is not None:
-                    os.makedirs(pcdOutputDir, exist_ok=True)
-                    _specFid = slicer.vtkMRMLMarkupsFiducialNode()
-                    for _pt in origSpacePts:
-                        _specFid.AddControlPoint(_pt.tolist())
-                    slicer.mrmlScene.AddNode(_specFid)
-                    _specFid.SetFixedNumberOfControlPoints(True)
-                    _stem = os.path.splitext(fname)[0]
-                    slicer.util.saveNode(
-                        _specFid,
-                        os.path.join(pcdOutputDir, f"{_stem}.mrk.json"),
-                    )
-                    slicer.mrmlScene.RemoveNode(_specFid)
 
                 if progressCallback is not None:
                     progressCallback(f"  + {fname}")

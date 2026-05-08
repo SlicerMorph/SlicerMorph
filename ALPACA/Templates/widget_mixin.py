@@ -219,6 +219,23 @@ class _ALPACATemplatesWidget:
             self.ui.subsampleInfo2.insertPlainText(
                 "{} unique points are sampled from each model to match the template pointcloud \n"
             )
+        # Save the reference/template's own point cloud so the output folder
+        # contains all specimens including the reference itself.
+        try:
+            refFid = slicer.vtkMRMLMarkupsFiducialNode()
+            nPts = self.sparseTemplate.GetNumberOfPoints()
+            for i in range(nPts):
+                pt = [0.0, 0.0, 0.0]
+                self.sparseTemplate.GetPoint(i, pt)
+                refFid.AddControlPoint(pt)
+            slicer.mrmlScene.AddNode(refFid)
+            refFid.SetFixedNumberOfControlPoints(True)
+            refMrkPath = os.path.join(self.pcdOutputFolder, f"{self.refName}.mrk.json")
+            slicer.util.saveNode(refFid, refMrkPath)
+            slicer.mrmlScene.RemoveNode(refFid)
+        except Exception as _e:
+            logging.warning(f"Could not save reference point cloud: {_e}")
+
         # Enable buttons for kmeans
         self.ui.noGroupInput.enabled = True
         self.ui.multiGroupInput.enabled = True
@@ -533,6 +550,7 @@ class _ALPACATemplatesWidget:
                 useScaling=self.ui.consensusScalingCheckBox.checked,
                 userReferencePath=userReferencePath,
                 smoothingIterations=int(self.ui.smoothingIterations.value),
+                smoothReferenceIterations=int(self.ui.smoothReferenceIterations.value),
                 progressCallback=_progress,
             )
         except Exception as e:
