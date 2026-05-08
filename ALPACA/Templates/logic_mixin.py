@@ -418,71 +418,75 @@ class _ALPACATemplatesLogic:
             stage_times["downReference"] = time.perf_counter() - t0
             _log(f"  Sparse control points: {density};  atlas vertices: {n_atlas_verts}")
 
-            # 2) For each specimen: rigid+ICP align to atlas, sparse correspondence,
-            #    TPS-warp specimen mesh to atlas frame, nearest-project every
-            #    atlas vertex onto the warped specimen surface. Accumulate mean.
+            # 2) For each specimen: rigid+similarity+ICP align to atlas, find
+            #    sparse correspondences on the aligned specimen, invert the
+            #    similarity transform to recover positions in original specimen
+            #    space. No TPS is applied to specimens.
             t0 = time.perf_counter()
-            sumVerts = np.zeros((n_atlas_verts, 3), dtype=np.float64)
-            countVerts = np.zeros(n_atlas_verts, dtype=np.int64)
-            # Build a consensus-specific parameter dict with a reduced RANSAC
-            # cap. Full user maxRANSAC is preserved for landmark transfer.
             _ransac_cap = _RANSAC_ITER0 if it == 0 else _RANSAC_ITERN
             _consensusParamDict = dict(parameterDictionary)
             _consensusParamDict["maxRANSAC"] = _ransac_cap
             _log(f"  RANSAC cap this iteration: {_ransac_cap:,}")
-            n_used, closest_stack = self._denseConsensusAccumulate(
+            n_used, corresp_stack = self._denseConsensusAccumulate(
                 modelsDir=modelsDir,
-                atlasPolyData=atlasPolyData,
                 atlasNode=atlasNode,
                 sparseTemplate=sparseTemplate,
-                atlasCorresp=atlasCorresp,
                 parameterDictionary=_consensusParamDict,
-                sumVerts=sumVerts,
-                countVerts=countVerts,
-                outlierRejectFactor=outlierRejectFactor,
                 progressCallback=progressCallback,
             )
-            stage_times["denseAccumulate"] = time.perf_counter() - t0
-            _log(f"  Aggregated dense correspondences from {n_used} specimens")
+            stage_times["accumulate"] = time.perf_counter() - t0
+            _log(f"  Collected correspondences from {n_used} specimens")
 
-            # 3) Compute per-vertex mean via partial Procrustes (rotation +
-            #    translation only, no scale).  This replaces the star-shaped
-            #    simple average with a GPA that simultaneously aligns all M
-            #    per-specimen correspondence arrays to their common mean,
-            #    removing residual pose inconsistency from independent ICP
-            #    solutions and reducing the anchor bias toward the current
-            #    atlas shape.  The result is re-anchored to the initial
-            #    simple-average frame so the atlas stays co-registered across
-            #    iterations.  Vertices with zero hits fall back to their
-            #    current atlas position.
+            # 3) Partial Procrustes GPA on the sparse (N_sparse, 3) arrays
+            #    expressed in original specimen space.  Re-anchor the GPA mean
+            #    to the atlas control-point frame (atlasCorresp) so the result
+            #    is directly usable as TPS target landmarks.
             t0 = time.perf_counter()
-            atlasVertsArray = _v2n_build(atlasPolyData.GetPoints().GetData()).copy()
-            meanVerts = atlasVertsArray.copy()
-            if len(closest_stack) >= 3:
-                stack_arr = np.array(closest_stack, dtype=np.float64)  # (M, N, 3)
-                mask = countVerts > 0
-                meanVerts[mask] = self._partial_procrustes_mean(
-                    stack_arr[:, mask, :]
+            if len(corresp_stack) >= 3:
+                stack_arr = np.array(corresp_stack, dtype=np.float64)  # (M, N_sparse, 3)
+                meanShape2K = self._partial_procrustes_mean(
+                    stack_arr, anchor=atlasCorresp
                 )
             else:
-                # Fewer than 3 specimens — fall back to simple average.
-                mask = countVerts > 0
-                meanVerts[mask] = sumVerts[mask] / countVerts[mask, None]
-            stage_times["meanVerts"] = time.perf_counter() - t0
-            _log(f"  Partial Procrustes mean computed ({len(closest_stack)} specimens)")
+                # Fewer than 3 specimens — cannot run GPA; keep atlas unchanged.
+                meanShape2K = atlasCorresp.copy()
+            stage_times["gpa"] = time.perf_counter() - t0
+            _log(f"  Partial Procrustes mean computed ({len(corresp_stack)} specimens)")
 
-            # 4) Write atlas with reference topology + new mean vertex positions.
+            # 4) TPS-warp the full atlas mesh: source control points are the
+            #    current atlas sparse template positions (atlasCorresp), target
+            #    control points are the GPA mean expressed in atlas space
+            #    (meanShape2K).  Write the warped mesh as the iteration output.
             iterAtlasPath = os.path.join(outputDir, f"consensus_atlas_iter{it:02d}.ply")
             t0 = time.perf_counter()
-            self._writeMeshWithNewVertices(atlasPolyData, meanVerts, iterAtlasPath)
+            from vtk.util.numpy_support import numpy_to_vtk as _n2v_build
+            srcLM = vtk.vtkPoints()
+            srcLM.SetData(_n2v_build(
+                np.ascontiguousarray(atlasCorresp, dtype=np.float64), deep=True
+            ))
+            tgtLM = vtk.vtkPoints()
+            tgtLM.SetData(_n2v_build(
+                np.ascontiguousarray(meanShape2K, dtype=np.float64), deep=True
+            ))
+            tps = vtk.vtkThinPlateSplineTransform()
+            tps.SetSourceLandmarks(srcLM)
+            tps.SetTargetLandmarks(tgtLM)
+            tps.SetBasisToR()
+            tps.Update()
+            tf = vtk.vtkTransformPolyDataFilter()
+            tf.SetInputData(atlasPolyData)
+            tf.SetTransform(tps)
+            tf.Update()
+            warpedVerts = _v2n_build(tf.GetOutput().GetPoints().GetData()).copy()
+            self._writeMeshWithNewVertices(atlasPolyData, warpedVerts, iterAtlasPath)
             stage_times["writeAtlas"] = time.perf_counter() - t0
             _log(f"  Wrote {iterAtlasPath}")
 
-            # Convergence diagnostic vs previous iteration's atlas vertices.
-            if it > 0 and prevMeanVerts is not None and prevMeanVerts.shape == meanVerts.shape:
-                rms = float(np.sqrt(np.mean(np.sum((meanVerts - prevMeanVerts) ** 2, axis=1))))
-                _log(f"  [convergence] RMS vertex displacement vs iter {it}: {rms:.5f}")
-            prevMeanVerts = meanVerts
+            # Convergence diagnostic on sparse control point displacement.
+            if it > 0 and prevMeanVerts is not None and prevMeanVerts.shape == meanShape2K.shape:
+                rms = float(np.sqrt(np.mean(np.sum((meanShape2K - prevMeanVerts) ** 2, axis=1))))
+                _log(f"  [convergence] RMS control-point displacement vs iter {it}: {rms:.5f}")
+            prevMeanVerts = meanShape2K
 
             # Clean up the loaded atlas node.
             try:
@@ -648,36 +652,42 @@ class _ALPACATemplatesLogic:
         return scale * (S @ R.T) + tc
 
     @staticmethod
-    def _partial_procrustes_mean(stack, max_iter=20, tol=1e-6):
+    def _partial_procrustes_mean(stack, max_iter=20, tol=1e-6, anchor=None):
         """Partial Procrustes mean of M correspondence sets (rotation + translation only).
 
         Each of the M per-specimen arrays is optimally aligned to the evolving
         group mean using a rigid (no-scale) transform, preserving biological
-        scale.  After GPA convergence the result is re-anchored to the initial
-        simple-average frame via a second rigid transform, so the atlas remains
-        co-registered with the previous iteration's output.
+        scale.  After GPA convergence the result is re-anchored to the ``anchor``
+        frame (default: simple average of the input stack) via a second rigid
+        transform, keeping the atlas co-registered across iterations.
 
         Parameters
         ----------
         stack : (M, N, 3) ndarray
-            M per-specimen closest-point arrays, each of length N (= number of
-            atlas vertices), already expressed in atlas space.
+            M per-specimen correspondence arrays, each of length N.
         max_iter : int
             Maximum GPA iterations (typically converges in < 10).
         tol : float
             Convergence threshold: RMS change in the mean across iterations (mm).
+        anchor : (N, 3) ndarray or None
+            Target frame for re-anchoring after GPA.  When supplied (e.g. the
+            atlas control-point positions in atlas space), the GPA mean is
+            rigid-transformed so that it best matches ``anchor``, expressing
+            the population mean in the atlas coordinate frame.  When None the
+            initial simple average is used (original behaviour).
 
         Returns
         -------
         mean : (N, 3) ndarray
-            Partial Procrustes mean, re-anchored to the initial frame.
+            Partial Procrustes mean, re-anchored to the requested frame.
         """
         M, N, _ = stack.shape
 
-        # Initialise with simple average (already in atlas frame) and remember
-        # it for re-anchoring after GPA.
-        mean   = stack.mean(axis=0)   # (N, 3)
-        anchor = mean.copy()
+        mean = stack.mean(axis=0)   # (N, 3)
+        if anchor is None:
+            reanchor = mean.copy()
+        else:
+            reanchor = np.asarray(anchor, dtype=np.float64)
 
         for _ in range(max_iter):
             aligned = np.empty_like(stack)
@@ -701,12 +711,10 @@ class _ALPACATemplatesLogic:
             if change < tol:
                 break
 
-        # Re-anchor: rigid transform (no scale) that maps the GPA mean back to
-        # the initial simple-average frame, keeping the atlas co-registered with
-        # the previous iteration.
-        ca  = anchor.mean(axis=0)
+        # Re-anchor: rigid transform (no scale) from GPA mean → anchor frame.
+        ca  = reanchor.mean(axis=0)
         cm  = mean.mean(axis=0)
-        H   = (mean - cm).T @ (anchor - ca)
+        H   = (mean - cm).T @ (reanchor - ca)
         U, _, Vt = np.linalg.svd(H)
         R   = Vt.T @ U.T
         if np.linalg.det(R) < 0:
@@ -720,43 +728,29 @@ class _ALPACATemplatesLogic:
     def _denseConsensusAccumulate(
         self,
         modelsDir,
-        atlasPolyData,
         atlasNode,
         sparseTemplate,
-        atlasCorresp,
         parameterDictionary,
-        sumVerts,
-        countVerts,
-        outlierRejectFactor=3.0,
         progressCallback=None,
     ):
-        """For each input specimen: rigid+ICP align to atlas, get sparse
-        correspondences, TPS-warp the full specimen mesh into atlas frame
-        using sparse correspondences as control points, then for every atlas
-        vertex find nearest point on the warped specimen surface. Accumulate
-        per-vertex sums into ``sumVerts`` and counts into ``countVerts``.
+        """For each specimen: rigid+similarity+ICP align to atlas, find sparse
+        correspondences on the aligned specimen, then invert the similarity
+        transform to recover those correspondence positions in original specimen
+        space.
+
+        No TPS warp is applied to specimens.  The returned coordinates are in
+        each specimen's own original coordinate frame, suitable for partial
+        Procrustes GPA without atlas-frame bias.
 
         Returns
         -------
         n_used : int
             Number of specimens successfully processed.
-        closest_stack : list of (n_atlas_verts, 3) ndarray
-            Per-specimen closest-point arrays in atlas space, one entry per
-            successfully processed specimen.  Vertices whose closest-point
-            distance exceeded the outlier threshold are filled with the atlas
-            vertex's own position so they contribute zero displacement to any
-            downstream mean.
+        corresp_stack : list of (N_sparse, 3) ndarray
+            Per-specimen sparse correspondence arrays in original specimen
+            space, one entry per successfully processed specimen.
         """
-        import vtk
         import logging
-        from vtk.util.numpy_support import vtk_to_numpy as _v2n, numpy_to_vtk as _n2v
-
-        n_atlas_verts = atlasPolyData.GetNumberOfPoints()
-        atlasVertsArray = _v2n(atlasPolyData.GetPoints().GetData()).copy()
-
-        # Source landmarks for TPS (atlas-frame template control points).
-        atlasLM_vtk = vtk.vtkPoints()
-        atlasLM_vtk.SetData(_n2v(np.asarray(atlasCorresp, dtype=np.float64), deep=True))
 
         modelFiles = sorted(
             f for f in os.listdir(modelsDir)
@@ -764,14 +758,14 @@ class _ALPACATemplatesLogic:
         )
 
         n_used = 0
-        closest_stack = []
+        corresp_stack = []
         for fname in modelFiles:
             specimenPath = os.path.join(modelsDir, fname)
             try:
                 sourceModelNode = slicer.util.loadModel(specimenPath)
                 sourceModelNode.GetDisplayNode().SetVisibility(False)
 
-                # Rigid + ICP align specimen to atlas (atlas == targetNode).
+                # Rigid + similarity + ICP align specimen to atlas.
                 (
                     sourcePoints,
                     targetPoints,
@@ -782,9 +776,9 @@ class _ALPACATemplatesLogic:
                 ) = self.runSubsample(
                     sourceModelNode,
                     atlasNode,
-                    True,                     # scaling on
+                    True,            # scaling on
                     parameterDictionary,
-                    False,                    # poisson off
+                    False,           # poisson off
                 )
                 ICPTransform_similarity, similarityFlag = self.estimateTransform(
                     sourcePoints, targetPoints, sourceFeatures, targetFeatures,
@@ -800,68 +794,41 @@ class _ALPACATemplatesLogic:
                 slicer.vtkSlicerTransformLogic().hardenTransform(sourceModelNode)
                 alignedSpecimen = sourceModelNode.GetPolyData()
 
-                # Sparse atlas-frame correspondences on this specimen.
+                # Sparse correspondences: for each atlas control point find the
+                # nearest vertex on the rigidly-aligned specimen.
                 _ID, correspPts_vtk = self.GetCorrespondingPoints(
                     sparseTemplate, alignedSpecimen
                 )
 
-                # TPS warp aligned specimen so that its sparse correspondences
-                # land exactly at atlas template control points. This pulls the
-                # specimen geometry into tight alignment with the atlas frame
-                # at high frequency too, not just rigidly.
-                tps = vtk.vtkThinPlateSplineTransform()
-                tps.SetSourceLandmarks(correspPts_vtk)  # specimen-frame
-                tps.SetTargetLandmarks(atlasLM_vtk)     # atlas-frame
-                tps.SetBasisToR()
-                tps.Update()
+                # Put correspondence points into a fiducial node so we can
+                # apply the inverse similarity transform via hardenTransform,
+                # recovering the positions in original specimen space.
+                subjectFiducial = slicer.vtkMRMLMarkupsFiducialNode()
+                for i in range(correspPts_vtk.GetNumberOfPoints()):
+                    subjectFiducial.AddControlPoint(correspPts_vtk.GetPoint(i))
+                slicer.mrmlScene.AddNode(subjectFiducial)
+                subjectFiducial.SetFixedNumberOfControlPoints(True)
 
-                tf = vtk.vtkTransformPolyDataFilter()
-                tf.SetInputData(alignedSpecimen)
-                tf.SetTransform(tps)
-                tf.Update()
-                warpedSpecimen = tf.GetOutput()
+                ICPTransformNode.Inverse()
+                subjectFiducial.SetAndObserveTransformNodeID(ICPTransformNode.GetID())
+                slicer.vtkSlicerTransformLogic().hardenTransform(subjectFiducial)
 
-                # Batch closest-point lookup via scipy cKDTree on warped
-                # specimen vertices. Vertex-to-vertex matching is consistent
-                # with GetCorrespondingPoints (vtkPointLocator). Cross-platform;
-                # workers=-1 uses C-level threading (safe on Win/macOS/Linux).
-                from scipy.spatial import cKDTree as _cKDTree
-                warpedPts = _v2n(warpedSpecimen.GetPoints().GetData())
-                _tree = _cKDTree(warpedPts)
-                specimenDist, _idx = _tree.query(atlasVertsArray, workers=-1)
-                specimenClosest = warpedPts[_idx].copy()
-                specimenDist2 = specimenDist ** 2
+                origSpacePts = slicer.util.arrayFromMarkupsControlPoints(
+                    subjectFiducial
+                ).copy()
+                # Remove the uniform scale that runSubsample embeds in the
+                # similarity transform (mirrors the matchingPCD convention).
+                origSpacePts = origSpacePts * (1.0 / scalingFactor)
 
-                if outlierRejectFactor and outlierRejectFactor > 0:
-                    medianD = float(np.sqrt(np.median(specimenDist2)))
-                    threshold = (outlierRejectFactor * medianD) ** 2
-                    keep = specimenDist2 <= threshold
-                    n_rejected = int((~keep).sum())
-                else:
-                    keep = np.ones(n_atlas_verts, dtype=bool)
-                    n_rejected = 0
-
-                sumVerts[keep] += specimenClosest[keep]
-                countVerts[keep] += 1
-
-                # Build per-specimen array for partial Procrustes averaging.
-                # Rejected vertices are filled with the atlas vertex's own
-                # position so they contribute zero displacement to the mean.
-                specimenEntry = specimenClosest.copy()
-                if not keep.all():
-                    specimenEntry[~keep] = atlasVertsArray[~keep]
-                closest_stack.append(specimenEntry)
-
+                corresp_stack.append(origSpacePts)
                 n_used += 1
-                if n_rejected and progressCallback is not None:
-                    progressCallback(
-                        f"    rejected {n_rejected}/{n_atlas_verts} outlier verts"
-                    )
+
                 if progressCallback is not None:
                     progressCallback(f"  + {fname}")
+
+                slicer.mrmlScene.RemoveNode(subjectFiducial)
                 slicer.mrmlScene.RemoveNode(sourceModelNode)
                 slicer.mrmlScene.RemoveNode(ICPTransformNode)
-                # Yield to Qt so the UI stays responsive on long datasets.
                 try:
                     slicer.app.processEvents()
                 except Exception:
@@ -870,12 +837,13 @@ class _ALPACATemplatesLogic:
                 logging.warning(f"Specimen {fname} skipped: {e}")
                 if progressCallback is not None:
                     progressCallback(f"  ! skipped {fname}: {e}")
-                try:
-                    slicer.mrmlScene.RemoveNode(sourceModelNode)
-                except Exception:
-                    pass
+                for _node_name in ("sourceModelNode", "ICPTransformNode", "subjectFiducial"):
+                    try:
+                        slicer.mrmlScene.RemoveNode(locals().get(_node_name))
+                    except Exception:
+                        pass
 
-        return n_used, closest_stack
+        return n_used, corresp_stack
 
     @staticmethod
     def _writeMeshWithNewVertices(referencePolyData, newVerts, outputPath):
