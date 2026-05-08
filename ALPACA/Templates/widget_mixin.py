@@ -230,7 +230,7 @@ class _ALPACATemplatesWidget:
                 refFid.AddControlPoint(pt)
             slicer.mrmlScene.AddNode(refFid)
             refFid.SetFixedNumberOfControlPoints(True)
-            refMrkPath = os.path.join(self.pcdOutputFolder, f"{self.refName}.mrk.json")
+            refMrkPath = os.path.join(self.pcdOutputFolder, f"{self.refName}_atlas.mrk.json")
             slicer.util.saveNode(refFid, refMrkPath)
             slicer.mrmlScene.RemoveNode(refFid)
         except Exception as _e:
@@ -317,14 +317,12 @@ class _ALPACATemplatesWidget:
             logging.error(f"No point cloud files read from {self.pcdOutputFolder}\n")
             return
 
-        # Optionally exclude the atlas/reference point cloud from analysis.
+        # Optionally exclude atlas files (identified by the _atlas suffix) from analysis.
         if not self.ui.includeAtlasCheckBox.isChecked():
-            atlasName = getattr(self, "refName", None)
-            if atlasName:
-                PCDFiles = [
-                    f for f in PCDFiles
-                    if os.path.splitext(f)[0] != atlasName
-                ]
+            PCDFiles = [
+                f for f in PCDFiles
+                if not os.path.splitext(f)[0].endswith("_atlas")
+            ]
 
         pcdFilePaths = [os.path.join(self.pcdOutputFolder, file) for file in PCDFiles]
         # GPA for all specimens
