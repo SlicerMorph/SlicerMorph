@@ -418,10 +418,10 @@ class _ALPACATemplatesLogic:
             stage_times["downReference"] = time.perf_counter() - t0
             _log(f"  Sparse control points: {density};  atlas vertices: {n_atlas_verts}")
 
-            # 2) For each specimen: rigid+similarity+ICP align to atlas, find
-            #    sparse correspondences on the aligned specimen, invert the
-            #    similarity transform to recover positions in original specimen
-            #    space. No TPS is applied to specimens.
+            # 2) For each specimen: similarity-transform align to atlas
+            #    (FPFH+RANSAC+ICP with scale), find sparse correspondences,
+            #    invert the transform to recover original-space positions.
+            #    No TPS is applied to specimens.
             t0 = time.perf_counter()
             _ransac_cap = _RANSAC_ITER0 if it == 0 else _RANSAC_ITERN
             _consensusParamDict = dict(parameterDictionary)
@@ -453,31 +453,20 @@ class _ALPACATemplatesLogic:
             stage_times["gpa"] = time.perf_counter() - t0
             _log(f"  Partial Procrustes mean computed ({len(corresp_stack)} specimens)")
 
-            # 4) TPS-warp the full atlas mesh: source control points are the
-            #    current atlas sparse template positions (atlasCorresp), target
-            #    control points are the GPA mean expressed in atlas space
-            #    (meanShape2K).  Write the warped mesh as the iteration output.
+            # 4) Warp the full atlas mesh via RBF interpolation of the
+            #    displacement field defined at the 2K control points.
+            #    scipy RBFInterpolator uses LAPACK (BLAS-threaded) for the
+            #    linear solve, avoiding VTK's single-threaded TPS solver which
+            #    becomes prohibitively slow at ~2K control points (O(N³)).
+            #    kernel='linear' (φ(r)=r) matches VTK SetBasisToR(), degree=1
+            #    adds a linear polynomial trend (standard TPS formulation).
             iterAtlasPath = os.path.join(outputDir, f"consensus_atlas_iter{it:02d}.ply")
             t0 = time.perf_counter()
-            from vtk.util.numpy_support import numpy_to_vtk as _n2v_build
-            srcLM = vtk.vtkPoints()
-            srcLM.SetData(_n2v_build(
-                np.ascontiguousarray(atlasCorresp, dtype=np.float64), deep=True
-            ))
-            tgtLM = vtk.vtkPoints()
-            tgtLM.SetData(_n2v_build(
-                np.ascontiguousarray(meanShape2K, dtype=np.float64), deep=True
-            ))
-            tps = vtk.vtkThinPlateSplineTransform()
-            tps.SetSourceLandmarks(srcLM)
-            tps.SetTargetLandmarks(tgtLM)
-            tps.SetBasisToR()
-            tps.Update()
-            tf = vtk.vtkTransformPolyDataFilter()
-            tf.SetInputData(atlasPolyData)
-            tf.SetTransform(tps)
-            tf.Update()
-            warpedVerts = _v2n_build(tf.GetOutput().GetPoints().GetData()).copy()
+            from scipy.interpolate import RBFInterpolator
+            atlasVertsArray = _v2n_build(atlasPolyData.GetPoints().GetData()).copy()
+            displacements = meanShape2K - atlasCorresp
+            rbf = RBFInterpolator(atlasCorresp, displacements, kernel='linear', degree=1)
+            warpedVerts = atlasVertsArray + rbf(atlasVertsArray)
             self._writeMeshWithNewVertices(atlasPolyData, warpedVerts, iterAtlasPath)
             stage_times["writeAtlas"] = time.perf_counter() - t0
             _log(f"  Wrote {iterAtlasPath}")
@@ -733,10 +722,10 @@ class _ALPACATemplatesLogic:
         parameterDictionary,
         progressCallback=None,
     ):
-        """For each specimen: rigid+similarity+ICP align to atlas, find sparse
-        correspondences on the aligned specimen, then invert the similarity
-        transform to recover those correspondence positions in original specimen
-        space.
+        """For each specimen: align to atlas via similarity transform
+        (FPFH+RANSAC+ICP with scale), find sparse correspondences on the
+        aligned specimen, then invert the similarity transform to recover those
+        positions in original specimen space.
 
         No TPS warp is applied to specimens.  The returned coordinates are in
         each specimen's own original coordinate frame, suitable for partial
@@ -765,7 +754,7 @@ class _ALPACATemplatesLogic:
                 sourceModelNode = slicer.util.loadModel(specimenPath)
                 sourceModelNode.GetDisplayNode().SetVisibility(False)
 
-                # Rigid + similarity + ICP align specimen to atlas.
+                # Similarity-transform align specimen to atlas.
                 (
                     sourcePoints,
                     targetPoints,
