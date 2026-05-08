@@ -318,16 +318,17 @@ class _ALPACATemplatesWidget:
             return
 
         # Optionally exclude atlas files (identified by the _atlas suffix) from analysis.
+        # Use split(".")[0] to handle double extensions like .mrk.json correctly.
         if not self.ui.includeAtlasCheckBox.isChecked():
             PCDFiles = [
                 f for f in PCDFiles
-                if not os.path.splitext(f)[0].endswith("_atlas")
+                if not f.split(".")[0].endswith("_atlas")
             ]
 
         pcdFilePaths = [os.path.join(self.pcdOutputFolder, file) for file in PCDFiles]
         # GPA for all specimens
         self.scores, self.LM = logic.pcdGPA(pcdFilePaths)
-        files = [os.path.splitext(file)[0] for file in PCDFiles]
+        files = [f.split(".")[0] for f in PCDFiles]
         # Set up a seed for numpy for random results
         if self.ui.setSeedCheckBox.isChecked():
             np.random.seed(1000)
