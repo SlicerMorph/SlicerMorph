@@ -1149,7 +1149,7 @@
              <bool>true</bool>
             </property>
             <property name="text">
-             <string>Synthesizes a consensus atlas mesh from the input models without privileging any single specimen. Each iteration: rigid+ICP align every specimen to the current atlas, TPS-warp it into the atlas frame using sparse correspondences, then average per-vertex closest-points across specimens. Spacing factor controls the sparse correspondence density (lower = denser, slower).&#xa;&#xa;You can also use a pre-existing atlas and skip the construction.</string>
+             <string>Synthesizes a consensus atlas mesh from the input models without privileging any single specimen. Each iteration: align every specimen to the current atlas via similarity transform, find sparse correspondences in each specimen's original coordinate frame, run partial Procrustes GPA on those correspondences, then RBF-warp the atlas to the Procrustes mean. Spacing factor controls the sparse correspondence density (lower = denser, slower).&#xa;&#xa;You can also use a pre-existing atlas and skip the construction.</string>
             </property>
            </widget>
           </item>
@@ -1225,7 +1225,7 @@
           <item row="5" column="0">
            <widget class="QLabel" name="smoothReferenceIterationsLabel">
             <property name="text">
-             <string>Reference pre-smoothing iterations:</string>
+             <string>Smooth Reference Model:</string>
             </property>
            </widget>
           </item>
