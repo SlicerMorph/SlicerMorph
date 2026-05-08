@@ -57,14 +57,11 @@ def createTPS( sourceLM, targetLM):
 
 def convertFudicialToVTKPoint(fnode):
     import numpy as np
-    numberOfLM=fnode.GetNumberOfFiducials()
-    x=y=z=0
-    loc=[x,y,z]
+    numberOfLM=fnode.GetNumberOfControlPoints()
     lmData=np.zeros((numberOfLM,3))
     #
     for i in range(numberOfLM):
-        fnode.GetNthFiducialPosition(i,loc)
-        lmData[i,:]=np.asarray(loc)
+        lmData[i,:]=fnode.GetNthControlPointPosition(i)
     #return lmData
     #
     points=vtk.vtkPoints()
