@@ -252,6 +252,12 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.outputSpacingWidget.toolTip = "Slice spacing of the volume that will be loaded"
     outputFormLayout.addRow("Output spacing: ", self.outputSpacingWidget)
 
+    # 8-bit conversion section (uses VTK AutoRange for optimal thresholds)
+    self.convert8bitCheckBox = qt.QCheckBox()
+    self.convert8bitCheckBox.checked = False
+    self.convert8bitCheckBox.toolTip = "Convert output volume to grayscale (8bit) using percentile-based intensity rescaling"
+    outputFormLayout.addRow("8-bit intensity: ", self.convert8bitCheckBox)
+
     self.loadButton = qt.QPushButton("Load files")
     self.loadButton.toolTip = "Load files as a 3D volume"
     self.loadButton.enabled = False
@@ -412,6 +418,7 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
       selectedItem = self.outputSelector.currentItem()
       outputNode = shNode.GetItemDataNode(selectedItem)
+      return outputNode
     else:
       return self.outputSelector.currentNode()
 
@@ -434,9 +441,10 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     outputBounds = None
     if self.outputROINode:
       center = [0.0, 0.0, 0.0]
-      radius = [0.0, 0.0, 0.0]
-      self.outputROINode.GetXYZ(center)
-      self.outputROINode.GetRadiusXYZ(radius)
+      self.outputROINode.GetCenter(center)
+      size = [0.0, 0.0, 0.0]
+      self.outputROINode.GetSize(size)
+      radius = [s / 2.0 for s in size]
       outputBounds = [
         center[0]-radius[0], center[0]+radius[0],
         center[1]-radius[1], center[1]+radius[1],
@@ -461,6 +469,12 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       slicer.app.pauseRender()
       outputNode = self.logic.loadVolume(self.currentNode(), progressCallback=self.onProgress)
       self.setCurrentNode(outputNode)
+      
+      # Apply 8-bit conversion if requested
+      if self.convert8bitCheckBox.checked:
+        outputNode = self.logic.convertTo8Bit(outputNode, progressCallback=self.onProgress)
+        self.setCurrentNode(outputNode)
+      
       qt.QApplication.restoreOverrideCursor()
     except Exception as e:
       qt.QApplication.restoreOverrideCursor()
@@ -668,7 +682,6 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
 
     fileName, fileExtension = os.path.splitext(filePath)
     if fileExtension.lower() == ".nhdr" or fileExtension.lower() == ".nrrd":
-        self._filePaths[0]
         reader.ReadImageInformation()
 
         self.originalVolumeDimensions = reader.GetSize()
@@ -1090,6 +1103,89 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
         sliceArray = sliceArray.squeeze()
 
     return sliceArray
+
+  def convertTo8Bit(self, volumeNode, progressCallback=None):
+    """
+    Convert a volume to 8-bit unsigned char using VTK's optimized intensity rescaling.
+    This method operates on the output volume created by loadVolume().
+    
+    Parameters
+    ----------
+    volumeNode : vtkMRMLScalarVolumeNode
+        The volume node to convert
+    progressCallback : callable, optional
+        Callback function for progress updates
+        
+    Returns
+    -------
+    vtkMRMLScalarVolumeNode
+        The converted 8-bit volume node
+    """
+    
+    if progressCallback:
+      progressCallback(0.0)
+    
+    # Check if volume is multi-component (e.g., RGB)
+    if volumeNode.IsA("vtkMRMLVectorVolumeNode"):
+      raise ValueError("8-bit conversion is not supported for multi-component (RGB/RGBA) volumes")
+    
+    # Get the volume array
+    volumeArray = slicer.util.arrayFromVolume(volumeNode)
+    
+    # Check if already 8-bit
+    if volumeArray.dtype == numpy.uint8:
+      logging.info("Volume is already 8-bit, no conversion needed")
+      return volumeNode
+    
+    if progressCallback:
+      progressCallback(0.1)
+    
+    # Use vtkImageHistogramStatistics for optimal intensity thresholds
+    # This avoids saturation and provides robust threshold values automatically
+    histogramStatistics = vtk.vtkImageHistogramStatistics()
+    histogramStatistics.SetInputData(volumeNode.GetImageData())
+    histogramStatistics.Update()
+    
+    # Get optimal threshold values using VTK's AutoRange
+    lowerValue = histogramStatistics.GetAutoRange()[0]
+    upperValue = histogramStatistics.GetAutoRange()[1]
+    
+    if progressCallback:
+      progressCallback(0.3)
+    
+    # Rescale intensities to 0-255 range
+    volumeArray = numpy.clip(volumeArray, lowerValue, upperValue)
+    
+    # Prevent division by zero if lowerValue == upperValue (e.g., constant image)
+    if numpy.isclose(upperValue, lowerValue):
+      volumeArray = numpy.zeros_like(volumeArray)
+    else:
+      volumeArray = ((volumeArray - lowerValue) / (upperValue - lowerValue) * 255.0)
+    
+    if progressCallback:
+      progressCallback(0.6)
+    
+    # Cast to 8-bit unsigned char
+    volumeArray = volumeArray.astype(numpy.uint8)
+    
+    if progressCallback:
+      progressCallback(0.8)
+    
+    # Update the volume node with converted data
+    slicer.util.updateVolumeFromArray(volumeNode, volumeArray)
+    
+    # Update display node to reflect the new scalar range
+    displayNode = volumeNode.GetDisplayNode()
+    if displayNode:
+      displayNode.AutoWindowLevelOff()
+      displayNode.SetWindowLevel(255, 127.5)
+    
+    if progressCallback:
+      progressCallback(1.0)
+    
+    logging.info(f"Volume converted to 8-bit using VTK AutoRange: intensity range [{lowerValue:.2f}, {upperValue:.2f}] mapped to [0, 255]")
+    
+    return volumeNode
 
 
 class ImageStacksTest(ScriptedLoadableModuleTest):
