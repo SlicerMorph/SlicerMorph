@@ -51,10 +51,10 @@ class ALPACA_legacy(ScriptedLoadableModule):
           </view>
          </item>
          <item>
-          <view class=\"vtkMRMLTableViewNode\" singletontag=\"TableViewerWindow_1\">"
-           <property name=\"viewlabel\" action=\"default\">T</property>"
-          </view>"
-         </item>"
+          <view class=\"vtkMRMLTableViewNode\" singletontag=\"TableViewerWindow_1\">
+           <property name=\"viewlabel\" action=\"default\">T</property>
+          </view>
+         </item>
        </item>
       </layout>
   """
@@ -62,10 +62,10 @@ class ALPACA_legacy(ScriptedLoadableModule):
     slicer.customLayoutTableOnly = """
       <layout type=\"horizontal\" >
        <item>
-        <view class=\"vtkMRMLTableViewNode\" singletontag=\"TableViewerWindow_1\">"
-         <property name=\"viewlabel\" action=\"default\">T</property>"
-        </view>"
-       </item>"
+        <view class=\"vtkMRMLTableViewNode\" singletontag=\"TableViewerWindow_1\">
+         <property name=\"viewlabel\" action=\"default\">T</property>
+        </view>
+       </item>
       </layout>
   """
 
@@ -74,8 +74,8 @@ class ALPACA_legacy(ScriptedLoadableModule):
        <item>
         <view class=\"vtkMRMLPlotViewNode\" singletontag=\"PlotViewerWindow_1\">
          <property name=\"viewlabel\" action=\"default\">1</property>
-        </view>"
-       </item>"
+        </view>
+       </item>
       </layout>
   """
 
@@ -511,8 +511,8 @@ class ALPACA_legacyWidget(ScriptedLoadableModuleWidget):
     targetCloudItem = folderNode.GetItemByDataNode(self.targetCloudNode_2)
     ICPTransformItem = folderNode.GetItemByDataNode(self.ICPTransformNode)
     sourceLMItem = folderNode.GetItemByDataNode(self.sourceLMNode)
-    nonProjectLMItem = folderNode.GetItemByDataNode(self.warpedSourceNode)
-    warpedSourceItem = folderNode.GetItemByDataNode(self.outputPoints)
+    warpedSourceItem = folderNode.GetItemByDataNode(self.warpedSourceNode)
+    nonProjectLMItem = folderNode.GetItemByDataNode(self.outputPoints)
     #
     folderNode.SetItemParent(sourceModelItem, newFolder)
     folderNode.SetItemParent(sourceCloudItem, newFolder)
@@ -774,7 +774,7 @@ class ALPACA_legacyWidget(ScriptedLoadableModuleWidget):
       else:
         self.ui.subsampleInfo2.insertPlainText("All error rates smaller than the threshold \n")
     else:
-      self.ui.subsampleInfo2.insertPlainText("{} unique points are sampled from each model to match the template pointcloud \n")
+      self.ui.subsampleInfo2.insertPlainText(f"{template_density} unique points are sampled from each model to match the template pointcloud \n")
     #Enable buttons for kmeans
     self.ui.noGroupInput.enabled = True
     self.ui.multiGroupInput.enabled = True
@@ -1013,7 +1013,7 @@ class ALPACA_legacyWidget(ScriptedLoadableModuleWidget):
       and self.ui.targetModelMultiSelector.currentPath and self.ui.landmarkOutputSelector.currentPath and self.ui.BCPDFolder.currentPath)
     else:
       self.ui.BCPDFolder.enabled = False
-      self.ui.subsampleButton.enabled = bool ( self.ui.sourceModelSelector.currentNode and self.ui.targetModelSelector.currentNode and self.ui.sourceLandmarkSetSelector.currentNode)
+      self.ui.subsampleButton.enabled = bool ( self.ui.sourceModelSelector.currentNode() and self.ui.targetModelSelector.currentNode() and self.ui.sourceLandmarkSetSelector.currentNode())
       self.ui.applyLandmarkMultiButton.enabled = bool ( self.ui.sourceModelMultiSelector.currentPath and self.ui.sourceFiducialMultiSelector.currentPath
       and self.ui.targetModelMultiSelector.currentPath and self.ui.landmarkOutputSelector.currentPath)
 
@@ -1089,18 +1089,24 @@ class ALPACA_legacyLogic(ScriptedLoadableModuleLogic):
           outputMedianPath = os.path.join(medianOutput, f'{rootName}_median' + extensionLM)
           if not os.path.exists(outputMedianPath):
             for file in sourceModelList:
-              sourceFilePath = os.path.join(sourceModelPath,file)
+              sourceFilePath = file
               (baseName, ext) = os.path.splitext(os.path.basename(file))
               sourceLandmarkFile = None
               for lmFile in sourceLMList:
-                if baseName in lmFile:
-                  sourceLandmarkFile = os.path.join(sourceLandmarkPath, lmFile)
+                lmBaseName = os.path.splitext(os.path.basename(lmFile))[0]
+                if lmBaseName.endswith('.mrk'):
+                  lmBaseName = lmBaseName[:-4]
+                if baseName == lmBaseName:
+                  sourceLandmarkFile = lmFile
               if sourceLandmarkFile is None:
                 print('::::Could not find the file corresponding to ', file)
-                next
+                continue
               outputFilePath = os.path.join(specimenOutput, f'{rootName}_{baseName}' + extensionLM)
               array = self.pairwiseAlignment(sourceFilePath, sourceLandmarkFile, targetFilePath, outputFilePath, skipScaling, projectionFactor, parameters)
               landmarkList.append(array)
+            if not landmarkList:
+              print(f'::::No templates matched for {targetFileName}, skipping median computation')
+              continue
             medianLandmark = np.median(landmarkList, axis=0)
             outputMedianNode = self.exportPointCloud(medianLandmark, "Median Predicted Landmarks")
             slicer.util.saveNode(outputMedianNode, outputMedianPath)
@@ -1114,7 +1120,8 @@ class ALPACA_legacyLogic(ScriptedLoadableModuleLogic):
     extras = {"Source" : sourceModelList, "SourceLandmarks" : sourceLMList, "Target" : TargetModelList, "Output" : outputDirectory, 'Skip scaling ?' : bool(skipScaling)}
     extras.update(parameters)
     parameterFile = os.path.join(outputDirectory, 'advancedParameters.txt')
-    json.dump(extras, open(parameterFile,'w'), indent = 2)
+    with open(parameterFile, 'w') as f:
+      json.dump(extras, f, indent=2)
 
 
   def pairwiseAlignment (self, sourceFilePath, sourceLandmarkFile, targetFilePath, outputFilePath, skipScaling, projectionFactor, parameters):
@@ -2011,8 +2018,7 @@ class ALPACA_legacyLogic(ScriptedLoadableModuleLogic):
       BCPDPath = settings.value('Developer/BCPDPath')
       if self.isValidBCPDPath(BCPDPath):
         return BCPDPath
-    else:
-        return ""
+    return ""
 
   def isValidBCPDPath(self, BCPDPath):
     if not os.path.isdir(BCPDPath):
