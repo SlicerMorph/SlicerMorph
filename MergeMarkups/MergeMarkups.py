@@ -63,6 +63,10 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
 
     # Instantiate and connect widgets ...
 
+    # Initialize batch file paths
+    self.fixedFilePaths = []
+    self.semiFilePaths = []
+
     # Set up tabs to split workflow
     tabsWidget = qt.QTabWidget()
     curvesTab = qt.QWidget()
@@ -102,14 +106,14 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     #
     # markups view
     #
-    self.markupsView = slicer.qMRMLSubjectHierarchyTreeView()
-    self.markupsView.setMRMLScene(slicer.mrmlScene)
-    self.markupsView.setMultiSelection(True)
-    self.markupsView.setAlternatingRowColors(True)
-    self.markupsView.setDragDropMode(qt.QAbstractItemView().DragDrop)
-    self.markupsView.setColumnHidden(self.markupsView.model().transformColumn, True)
-    self.markupsView.sortFilterProxyModel().setNodeTypes(["vtkMRMLMarkupsCurveNode"])
-    parametersCurveFormLayout.addRow(self.markupsView)
+    self.markupsCurveView = slicer.qMRMLSubjectHierarchyTreeView()
+    self.markupsCurveView.setMRMLScene(slicer.mrmlScene)
+    self.markupsCurveView.setMultiSelection(True)
+    self.markupsCurveView.setAlternatingRowColors(True)
+    self.markupsCurveView.setDragDropMode(qt.QAbstractItemView().DragDrop)
+    self.markupsCurveView.setColumnHidden(self.markupsCurveView.model().transformColumn, True)
+    self.markupsCurveView.sortFilterProxyModel().setNodeTypes(["vtkMRMLMarkupsCurveNode"])
+    parametersCurveFormLayout.addRow(self.markupsCurveView)
 
     #
     # Merge Button
@@ -121,7 +125,7 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
 
     # connections
     self.mergeButton.connect('clicked(bool)', self.onMergeButton)
-    self.markupsView.connect('currentItemChanged(vtkIdType)', self.updateMergeButton)
+    self.markupsCurveView.selectionModel().selectionChanged.connect(self.updateMergeButton)
 
     ################ Landmark Set Tab
     #
@@ -142,7 +146,7 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     self.markupsFiducialView.setMultiSelection(True)
     self.markupsFiducialView.setAlternatingRowColors(True)
     self.markupsFiducialView.setDragDropMode(qt.QAbstractItemView().DragDrop)
-    self.markupsFiducialView.setColumnHidden(self.markupsView.model().transformColumn, True)
+    self.markupsFiducialView.setColumnHidden(self.markupsFiducialView.model().transformColumn, True)
     self.markupsFiducialView.sortFilterProxyModel().setNodeTypes(["vtkMRMLMarkupsFiducialNode"])
     parametersLMFormLayout.addWidget(self.markupsFiducialView,0,0,1,3)
 
@@ -174,7 +178,7 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     # connections
     self.mergeLMButton.connect('clicked(bool)', self.onMergeLMButton)
     self.ApplyLMButton.connect('clicked(bool)', self.onApplyLMButton)
-    self.markupsFiducialView.connect('currentItemChanged(vtkIdType)', self.updateMergeLMButton)
+    self.markupsFiducialView.selectionModel().selectionChanged.connect(self.updateMergeLMButton)
     self.LandmarkTypeSelection.connect('currentIndexChanged(int)', self.updateApplyLMButton)
 
     ################ All Markups Tab
@@ -211,7 +215,7 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
 
     # connections
     self.mergeAllButton.connect('clicked(bool)', self.onMergeAllButton)
-    self.markupsView.connect('currentItemChanged(vtkIdType)', self.updateMergeAllButton)
+    self.markupsView.selectionModel().selectionChanged.connect(self.updateMergeAllButton)
 
     ################ Batch Run LM Merge Tab
     #
@@ -315,10 +319,10 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
 
   def onMergeButton(self):
     logic = MergeMarkupsLogic()
-    logic.runCurves(self.markupsView, self.continuousCurvesCheckBox.checked)
+    logic.runCurves(self.markupsCurveView, self.continuousCurvesCheckBox.checked)
 
   def updateMergeButton(self):
-    nodes=self.markupsView.selectedIndexes()
+    nodes=self.markupsCurveView.selectedIndexes()
     self.mergeButton.enabled = bool(nodes)
 
   def updateMergeLMButton(self):
@@ -432,16 +436,16 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
     # fixed/semiLM box they were entered in
     mergedNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode')
     for index in range(fixedLM.GetNumberOfControlPoints()):
-      pt = fixedLM.GetNthControlPointPositionVector(index)
+      pt = fixedLM.GetNthControlPointPosition(index)
       fiducialLabel = fixedLM.GetNthControlPointLabel(index)
       fiducialDescription = fixedLM.GetNthControlPointDescription(index)
       if fiducialDescription == "":
         fiducialDescription = "Fixed"
       mergedNode.AddControlPoint(pt,fiducialLabel)
-      mergedNode.SetNthControlPointDescription(index,"Fixed")
+      mergedNode.SetNthControlPointDescription(index,fiducialDescription)
 
     for index in range(semiLM.GetNumberOfControlPoints()):
-      pt = semiLM.GetNthControlPointPositionVector(index)
+      pt = semiLM.GetNthControlPointPosition(index)
       fiducialLabel = semiLM.GetNthControlPointLabel(index)
       fiducialDescription = semiLM.GetNthControlPointDescription(index)
       mergedNode.AddControlPoint(pt,fiducialLabel)
@@ -498,8 +502,8 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
     for currentNode in nodeList:
       for index in range(currentNode.GetNumberOfControlPoints()):
         if not(index==0 and continuousCurveOption and connectingNode):
-          pt = currentNode.GetNthControlPointPositionVector(index)
-          pt_array = [pt.GetX(), pt.GetY(), pt.GetZ()]
+          pt = currentNode.GetNthControlPointPosition(index)
+          pt_array = list(pt)
           if pt_array not in pointList:
             pointList.append(pt_array)
             fiducialLabel = currentNode.GetNthControlPointLabel(index)

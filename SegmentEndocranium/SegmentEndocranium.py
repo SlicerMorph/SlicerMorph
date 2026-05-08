@@ -266,7 +266,7 @@ class SegmentEndocraniumLogic(ScriptedLoadableModuleLogic):
     slicer.mrmlScene.AddNode(segmentEditorNode)
     segmentEditorWidget.setMRMLSegmentEditorNode(segmentEditorNode)
     segmentEditorWidget.setSegmentationNode(outputSegmentation)
-    segmentEditorWidget.setMasterVolumeNode(inputVolume)
+    segmentEditorWidget.setSourceVolumeNode(inputVolume)
 
     # Create bone segment by thresholding
     boneSegmentID = outputSegmentation.GetSegmentation().AddEmptySegment("bone")
@@ -294,7 +294,7 @@ class SegmentEndocraniumLogic(ScriptedLoadableModuleLogic):
     effect.self().onApply()
 
     # Clean up
-    #slicer.mrmlScene.RemoveNode(segmentEditorNode)
+    slicer.mrmlScene.RemoveNode(segmentEditorNode)
     #outputSegmentation.RemoveSegment(boneSegmentID)
     #segmentEditorWidget = None
 

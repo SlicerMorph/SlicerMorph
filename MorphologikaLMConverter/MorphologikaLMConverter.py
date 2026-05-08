@@ -170,9 +170,8 @@ class MorphologikaLMConverterLogic(ScriptedLoadableModuleLogic):
     """
     Run the actual conversion
     """
-    f=open(morphFileName)
-    data=f.readlines()
-    f.close
+    with open(morphFileName) as f:
+      data=f.readlines()
 
     subjectNumber= 0
     landmarkNumber=0
@@ -214,15 +213,14 @@ class MorphologikaLMConverterLogic(ScriptedLoadableModuleLogic):
         for landmark in range(landmarkNumber):
           lineData = rawData.pop(0).split() #get first line and split by whitespace
           coordinates = [float(lineData[0]), float(lineData[1]), float(lineData[2])]
-          fiducialNode.AddFiducialFromArray(coordinates, str(landmark)) #insert fiducial named by landmark number
+          fiducialNode.AddControlPoint(vtk.vtkVector3d(coordinates), str(landmark)) #insert fiducial named by landmark number
 
         slicer.mrmlScene.AddNode(fiducialNode)
         fiducialNode.SetName(subject.split()[0]) # set name to subject name, removing new line char
         path = os.path.join(outputDirectory, subject.split()[0] + '.fcsv')
         slicer.util.saveNode(fiducialNode, path)
+        fiducialNode.RemoveAllControlPoints() # remove all landmarks from node
         slicer.mrmlScene.RemoveNode(fiducialNode)  #remove node from scene
-        #fiducialNode.RemoveAllControlPoints() # remove all landmarks from node (new markups version)
-        fiducialNode.RemoveAllMarkups()  # remove all landmarks from node
     logging.info('Processing completed')
 
     return True

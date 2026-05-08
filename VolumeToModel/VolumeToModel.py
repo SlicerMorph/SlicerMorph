@@ -27,7 +27,7 @@ class VolumeToModel(ScriptedLoadableModule):
       This module takes a directory of volumes and segments them using a user-supplied threshold value. The output segments are converted to models and saved in the
       output directory.
       """
-    self.parent.helpText += self.getDefaultModuleDocumentationLink()
+    # self.parent.helpText += self.getDefaultModuleDocumentationLink()  # removed in Slicer 5.x
     self.parent.acknowledgementText = """
       This module was developed by Sara Rolfe and Murat Maga for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections"
       awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839).
@@ -133,9 +133,7 @@ class VolumeToModelWidget(ScriptedLoadableModuleWidget):
   def onApplyButton(self):
     logic = VolumeToModelLogic()
     enableScreenshotsFlag = self.enableScreenshotsFlagCheckBox.checked
-    extension =""
-    if self.extensionOptionGZ.checked:
-      extension = ".nii.gz"
+    extension = ".nii.gz" if self.extensionOptionGZ.checked else ".nii"
 
     logic.run(self.inputDirectory.currentPath, self.outputDirectory.currentPath, extension, int(self.threshold.value))
 

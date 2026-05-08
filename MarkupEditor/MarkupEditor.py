@@ -111,7 +111,7 @@ class MarkupEditorSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin)
         slicer.mrmlScene.RemoveNode(self.closedCurveNode)
         self.reset()
 
-    def onSelectViewAction(self, selectOption):
+    def onSelectViewAction(self, selectOption="set"):
         interactionNode = slicer.app.applicationLogic().GetInteractionNode()
         selectionNode = slicer.app.applicationLogic().GetSelectionNode()
         self.closedCurveNode = slicer.vtkMRMLMarkupsClosedCurveNode()
@@ -456,7 +456,7 @@ class MarkupEditorTest(ScriptedLoadableModuleTest):
     filePath = SampleData.SampleDataLogic().downloadFileIntoCache(url, "4074_S_lm1.fcsv")
 
     self.delayDisplay("reading")
-    markups = slicer.util.loadMarkupsFiducialList(filePath)
+    markups = slicer.util.loadMarkups(filePath)
 
     slicer.app.layoutManager().threeDWidget(0).threeDView().resetCamera()
 
