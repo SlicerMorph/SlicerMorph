@@ -1253,6 +1253,8 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
                 return
 
         _config_dict = self.prepareDownloadConfig()
+        if _config_dict is None:
+            return
 
         # Disable buttons
         self.disableButtons()

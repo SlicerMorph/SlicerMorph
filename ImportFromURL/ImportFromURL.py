@@ -128,6 +128,7 @@ class ImportFromURLLogic(ScriptedLoadableModuleLogic):
     """
   def runImport(self, url, fileNames, nodeNames):
     loadFileProperties={}
+    fileTypes = None
     filename, extension = os.path.splitext(fileNames)
     if(extension in ['.zip']):
       fileTypes = 'ZipFile'
@@ -149,7 +150,6 @@ class ImportFromURLLogic(ScriptedLoadableModuleLogic):
           fileTypes = 'VolumeFile'
           if '-label' in filename:
             loadFileProperties["labelmap"] = True
-        fileTypes = 'VolumeFile'
       else:
         logging.debug('Could not download data. Not a supported file type.')
     elif(extension in ['.vtk', '.vtp', '.obj', '.ply', '.stl'] ):
@@ -158,6 +158,9 @@ class ImportFromURLLogic(ScriptedLoadableModuleLogic):
       fileTypes = 'MarkupsFile'
     else:
       logging.debug('Could not download data. Not a supported file type.')
+
+    if fileTypes is None:
+      raise ValueError(f"Unsupported file type: {extension}")
 
     sampleDataLogic = SampleData.SampleDataLogic()
     url=self.processUrl(url)
