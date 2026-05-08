@@ -1156,14 +1156,14 @@
           <item row="2" column="0">
            <widget class="QLabel" name="consensusIterationsLabel">
             <property name="text">
-             <string>Refinement iterations:</string>
+             <string>Iterations:</string>
             </property>
            </widget>
           </item>
           <item row="2" column="1">
            <widget class="ctkDoubleSpinBox" name="consensusIterations" native="true">
             <property name="toolTip">
-             <string>Number of consensus refinement iterations. 2-3 typically suffices.</string>
+             <string>Number of atlas warp iterations. Each iteration aligns all specimens, runs partial Procrustes GPA, and RBF-warps the atlas. One additional final pass is always applied after the loop.</string>
             </property>
             <property name="decimals" stdset="0">
              <number>0</number>
@@ -1175,7 +1175,7 @@
              <double>10.000000000000000</double>
             </property>
             <property name="value" stdset="0">
-             <double>2.000000000000000</double>
+             <double>3.000000000000000</double>
             </property>
            </widget>
           </item>
