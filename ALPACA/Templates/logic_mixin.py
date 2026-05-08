@@ -519,10 +519,58 @@ class _ALPACATemplatesLogic:
 
             currentAtlasPath = iterAtlasPath
 
-        # Copy final iteration as the canonical output.
+        # Final pass: run one more GPA + RBF warp on the last intermediate
+        # atlas to produce the true consensus output.  This is distinct from
+        # the last iter file — iter{N-1}.ply is the *input* to this pass.
         finalPath = os.path.join(outputDir, "consensus_atlas.ply")
-        import shutil
-        shutil.copyfile(currentAtlasPath, finalPath)
+        _log("--- Final consensus pass ---")
+        _t_final = time.perf_counter()
+
+        _atlasNodeF = slicer.util.loadModel(currentAtlasPath)
+        _atlasNodeF.GetDisplayNode().SetVisibility(False)
+        _atlasPolyF = vtk.vtkPolyData()
+        _atlasPolyF.DeepCopy(_atlasNodeF.GetPolyData())
+        _sparseF = self.DownsampleTemplate(_atlasPolyF, spacingFactor)
+        _atlasCorrespF = _v2n_build(_sparseF.GetPoints().GetData()).copy()
+        _log(f"  Sparse control points: {_sparseF.GetNumberOfPoints()}")
+
+        if pcdOutputDir:
+            _fidF = slicer.vtkMRMLMarkupsFiducialNode()
+            for _pt in _atlasCorrespF:
+                _fidF.AddControlPoint(_pt.tolist())
+            slicer.mrmlScene.AddNode(_fidF)
+            _fidF.SetFixedNumberOfControlPoints(True)
+            slicer.util.saveNode(
+                _fidF, os.path.join(pcdOutputDir, "consensus_atlas.mrk.json")
+            )
+            slicer.mrmlScene.RemoveNode(_fidF)
+
+        _n_used_F, _stack_F_list = self._denseConsensusAccumulate(
+            modelsDir=modelsDir,
+            atlasNode=_atlasNodeF,
+            sparseTemplate=_sparseF,
+            parameterDictionary=_consensusParamDict,
+            progressCallback=progressCallback,
+        )
+        _log(f"  Collected correspondences from {_n_used_F} specimens")
+
+        if len(_stack_F_list) >= 3:
+            _stackF = np.array(_stack_F_list, dtype=np.float64)
+            _meanF = self._partial_procrustes_mean(_stackF, anchor=_atlasCorrespF)
+        else:
+            _meanF = _atlasCorrespF.copy()
+        _log(f"  Partial Procrustes mean computed ({len(_stack_F_list)} specimens)")
+
+        from scipy.interpolate import RBFInterpolator as _RBFF
+        _vertsF = _v2n_build(_atlasPolyF.GetPoints().GetData()).copy()
+        _rbfF = _RBFF(_atlasCorrespF, _meanF - _atlasCorrespF, kernel='linear', degree=1)
+        self._writeMeshWithNewVertices(_atlasPolyF, _vertsF + _rbfF(_vertsF), finalPath)
+
+        try:
+            slicer.mrmlScene.RemoveNode(_atlasNodeF)
+        except Exception:
+            pass
+        _log(f"  [timing] final pass: {time.perf_counter() - _t_final:.1f}s")
         _log(f"Consensus atlas: {finalPath}")
 
         # Post-process: Taubin smoothing to remove residual high-frequency
