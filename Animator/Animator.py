@@ -623,6 +623,9 @@ class ExplodeModelsAction(AnimatorAction):
 
     if action['id'] not in ExplodeModelsAction.cache:
       self.updateCache(action)
+    if action['id'] not in ExplodeModelsAction.cache:
+      # updateCache failed (e.g. user declined package install) — skip silently.
+      return
     cache = ExplodeModelsAction.cache[action['id']]
 
     normalizedActionTime = (scriptTime - action['startTime'])/(action['endTime']-action['startTime'])
@@ -710,12 +713,17 @@ class ExplodeModelsAction(AnimatorAction):
   def updateCache(self, action):
     try:
       import easing_functions
-    except ModuleNotFoundError as e:
-      if slicer.util.confirmOkCancelDisplay(
-              "This module requires 'easing-functions' Python package. Click OK to install it now."):
-        slicer.util.pip_install("easing-functions")
+    except ModuleNotFoundError:
+      if not slicer.util.confirmOkCancelDisplay(
+              "This action requires the 'easing-functions' Python package. Click OK to install it now."):
+        return
+      slicer.util.pip_install("easing-functions")
+      try:
         import easing_functions
-      else:
+      except ModuleNotFoundError:
+        slicer.util.errorDisplay(
+          "Failed to import 'easing-functions' after installation. "
+          "Please restart Slicer and try again.")
         return
 
     # Insert transform node above the model so that we can move it
@@ -754,7 +762,6 @@ class ExplodeModelsAction(AnimatorAction):
         # folder with models is selected.
         modelsCenterOfGravity = np.zeros(3)
 
-    import easing_functions
     expandScaleFactors = easing_functions.CircularEaseInOut(start=0, end=1, duration=1.0)
     contractScaleFactors = easing_functions.CircularEaseInOut(start=1, end=0, duration=1.0)
 
