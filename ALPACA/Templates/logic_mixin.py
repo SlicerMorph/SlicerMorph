@@ -297,10 +297,11 @@ class _ALPACATemplatesLogic:
         useJSONFormat=True,
         useScaling=True,
         userReferencePath=None,
-        smoothingIterations=20,
+        smoothingIterations=0,
         outlierRejectFactor=3.0,
         progressCallback=None,
         smoothReferenceIterations=20,
+        smoothReferencePassBand=0.1,
     ):
         """Build a bias-free consensus atlas mesh from a folder of models.
 
@@ -334,8 +335,14 @@ class _ALPACATemplatesLogic:
             iteration 0. If None, the first model in ``modelsDir`` is used.
         smoothingIterations : int
             Taubin (volume-preserving) smoothing iterations applied to the
-            final consensus atlas to remove high-frequency pitting from
-            outlier closest-point hits. 0 disables smoothing.
+            final consensus atlas. Default 0 (disabled). Post-smoothing was
+            empirically shown to reverse the per-vertex displacements produced
+            by the final RBF warp (median cos(warp, smoothing) ≈ -0.98 on
+            mouse data), effectively erasing the final pass's anatomical
+            update. The initial reference smoothing (smoothReferenceIterations)
+            is sufficient to suppress high-frequency surface noise. Set to a
+            non-zero value only if a specific use case requires further
+            smoothing of the final output.
         outlierRejectFactor : float
             During dense averaging, per-specimen closest-point contributions
             whose distance to the atlas vertex exceeds this multiple of the
@@ -391,9 +398,16 @@ class _ALPACATemplatesLogic:
             smoothedRefPath = os.path.join(outputDir, "reference_smoothed.ply")
             import shutil as _shutil_ref
             _shutil_ref.copy2(currentAtlasPath, smoothedRefPath)
-            self._taubinSmoothMeshInPlace(smoothedRefPath, int(smoothReferenceIterations))
+            self._taubinSmoothMeshInPlace(
+                smoothedRefPath,
+                int(smoothReferenceIterations),
+                passBand=float(smoothReferencePassBand),
+            )
             currentAtlasPath = smoothedRefPath
-            _log(f"  Reference pre-smoothed ({smoothReferenceIterations} Taubin iters)")
+            _log(
+                f"  Reference pre-smoothed ({smoothReferenceIterations} Taubin iters, "
+                f"passBand={float(smoothReferencePassBand):.3g})"
+            )
 
         # Consensus-specific RANSAC caps (cross-platform).
         # Specimens of the same sample are morphologically similar; far fewer

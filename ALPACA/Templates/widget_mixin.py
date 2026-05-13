@@ -558,8 +558,12 @@ class _ALPACATemplatesWidget:
                 useJSONFormat=self.ui.JSONFileFormatSelector.checked,
                 useScaling=self.ui.consensusScalingCheckBox.checked,
                 userReferencePath=userReferencePath,
-                smoothingIterations=int(self.ui.smoothingIterations.value),
-                smoothReferenceIterations=int(self.ui.smoothReferenceIterations.value),
+                smoothingIterations=0,
+                smoothReferenceIterations=(
+                    int(self.ui.smoothReferenceIterations.value)
+                    if self.ui.smoothReferenceCheckBox.isChecked() else 0
+                ),
+                smoothReferencePassBand=float(self.ui.smoothReferencePassBand.value),
                 progressCallback=_progress,
             )
         except Exception as e:

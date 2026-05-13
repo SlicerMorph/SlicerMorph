@@ -1115,13 +1115,77 @@
            </widget>
           </item>
           <item row="3" column="0">
+           <widget class="QCheckBox" name="smoothReferenceCheckBox">
+            <property name="toolTip">
+             <string>Apply Taubin (volume-preserving) smoothing once to the bootstrap reference before iteration 0. Reduces high-frequency surface noise that would otherwise bias the initial atlas shape. Final consensus is never post-smoothed (empirically that reverses the RBF warp).</string>
+            </property>
+            <property name="text">
+             <string>Smooth Reference Model</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="1">
+           <widget class="ctkSliderWidget" name="smoothReferenceIterations" native="true">
+            <property name="toolTip">
+             <string>Taubin smoothing iterations applied to the reference model. Higher = more smoothing.</string>
+            </property>
+            <property name="decimals" stdset="0">
+             <number>0</number>
+            </property>
+            <property name="singleStep" stdset="0">
+             <double>1.000000000000000</double>
+            </property>
+            <property name="minimum" stdset="0">
+             <double>0.000000000000000</double>
+            </property>
+            <property name="maximum" stdset="0">
+             <double>100.000000000000000</double>
+            </property>
+            <property name="value" stdset="0">
+             <double>50.000000000000000</double>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="0">
+           <widget class="QLabel" name="smoothReferencePassBandLabel">
+            <property name="text">
+             <string>PassBand:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="1">
+           <widget class="ctkSliderWidget" name="smoothReferencePassBand" native="true">
+            <property name="toolTip">
+             <string>Pass-band parameter of the Taubin (vtkWindowedSincPolyDataFilter) smoother applied to the reference model. Lower = stronger low-pass filtering (more aggressive noise removal). Default 0.1.</string>
+            </property>
+            <property name="decimals" stdset="0">
+             <number>2</number>
+            </property>
+            <property name="singleStep" stdset="0">
+             <double>0.010000000000000</double>
+            </property>
+            <property name="minimum" stdset="0">
+             <double>0.000000000000000</double>
+            </property>
+            <property name="maximum" stdset="0">
+             <double>2.000000000000000</double>
+            </property>
+            <property name="value" stdset="0">
+             <double>0.100000000000000</double>
+            </property>
+           </widget>
+          </item>
+          <item row="5" column="0">
            <widget class="QLabel" name="kmeansOutputSelectorLabel">
             <property name="text">
              <string>Select output directory:</string>
             </property>
            </widget>
           </item>
-          <item row="3" column="1">
+          <item row="5" column="1">
            <widget class="ctkPathLineEdit" name="kmeansOutputSelector" native="true">
             <property name="toolTip">
              <string>Specify the output directory for the kmeans multi-template selection output</string>
@@ -1196,59 +1260,7 @@
             </property>
            </widget>
           </item>
-          <item row="4" column="0">
-           <widget class="QLabel" name="smoothingIterationsLabel">
-            <property name="text">
-             <string>Post-smoothing iterations:</string>
-            </property>
-           </widget>
-          </item>
-          <item row="4" column="1">
-           <widget class="ctkDoubleSpinBox" name="smoothingIterations" native="true">
-            <property name="toolTip">
-             <string>Taubin (volume-preserving) smoothing iterations applied to the final consensus atlas mesh. 0 disables smoothing. 20-30 typically removes high-frequency pitting from outlier correspondences.</string>
-            </property>
-            <property name="decimals" stdset="0">
-             <number>0</number>
-            </property>
-            <property name="minimum" stdset="0">
-             <double>0.000000000000000</double>
-            </property>
-            <property name="maximum" stdset="0">
-             <double>200.000000000000000</double>
-            </property>
-            <property name="value" stdset="0">
-             <double>20.000000000000000</double>
-            </property>
-           </widget>
-          </item>
-          <item row="5" column="0">
-           <widget class="QLabel" name="smoothReferenceIterationsLabel">
-            <property name="text">
-             <string>Smooth Reference Model:</string>
-            </property>
-           </widget>
-          </item>
-          <item row="5" column="1">
-           <widget class="ctkDoubleSpinBox" name="smoothReferenceIterations" native="true">
-            <property name="toolTip">
-             <string>Taubin (volume-preserving) smoothing iterations applied once to the bootstrap reference before iteration 0. Reduces high-frequency surface noise that would otherwise bias the initial atlas shape. 0 disables pre-smoothing.</string>
-            </property>
-            <property name="decimals" stdset="0">
-             <number>0</number>
-            </property>
-            <property name="minimum" stdset="0">
-             <double>0.000000000000000</double>
-            </property>
-            <property name="maximum" stdset="0">
-             <double>100.000000000000000</double>
-            </property>
-            <property name="value" stdset="0">
-             <double>50.000000000000000</double>
-            </property>
-           </widget>
-          </item>
-          <item row="6" column="0" colspan="2">
+          <item row="4" column="0" colspan="2">
            <widget class="QPushButton" name="previewDensityButton">
             <property name="enabled">
              <bool>false</bool>
@@ -1261,7 +1273,7 @@
             </property>
            </widget>
           </item>
-          <item row="7" column="0" colspan="2">
+          <item row="5" column="0" colspan="2">
            <widget class="QPushButton" name="buildConsensusAtlasButton">
             <property name="enabled">
              <bool>false</bool>
@@ -1274,7 +1286,7 @@
             </property>
            </widget>
           </item>
-          <item row="8" column="0" colspan="2">
+          <item row="6" column="0" colspan="2">
            <widget class="QPlainTextEdit" name="consensusInfo">
             <property name="sizePolicy">
              <sizepolicy hsizetype="Preferred" vsizetype="MinimumExpanding">

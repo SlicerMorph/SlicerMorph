@@ -329,6 +329,12 @@ class ALPACAWidget(_ALPACATemplatesWidget, ScriptedLoadableModuleWidget):
             "validInputChanged(bool)", self.onSelectKmeans
         )
         self.ui.selectRefCheckBox.connect("toggled(bool)", self.onSelectKmeans)
+        def _onSmoothReferenceToggled(checked):
+            self.ui.smoothReferenceIterations.setEnabled(checked)
+            self.ui.smoothReferencePassBand.setEnabled(checked)
+            self.ui.smoothReferencePassBandLabel.setEnabled(checked)
+        self.ui.smoothReferenceCheckBox.connect("toggled(bool)", _onSmoothReferenceToggled)
+        _onSmoothReferenceToggled(self.ui.smoothReferenceCheckBox.isChecked())
         self.ui.downReferenceButton.connect("clicked(bool)", self.onDownReferenceButton)
         self.ui.useExistingAtlasCheckBox.connect("toggled(bool)", self.onUseExistingAtlasToggled)
         self.ui.existingAtlasSelector.connect("validInputChanged(bool)", self.onSelectKmeans)
