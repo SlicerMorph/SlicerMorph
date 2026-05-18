@@ -934,7 +934,7 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
 
     requirementsPath = os.path.join(
       os.path.dirname(slicer.util.modulePath("ImageStacks")),
-      "Resources", "requirements.txt")
+      "Resources", "requirements_ImageStacks.txt")
     reqs = slicer.packaging.load_requirements(requirementsPath)
     slicer.packaging.pip_ensure(reqs, requester="ImageStacks")
     import nrrd
