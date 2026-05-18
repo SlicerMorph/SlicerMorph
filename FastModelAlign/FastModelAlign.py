@@ -262,7 +262,7 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     def _ensureDependencies(self):
         """Install FastModelAlign's Python dependencies if missing."""
         try:
-            reqs = slicer.packaging.load_requirements(self.resourcePath("requirements.txt"))
+            reqs = slicer.packaging.load_requirements(self.resourcePath("requirements_FastModelAlign.txt"))
             slicer.packaging.pip_ensure(reqs, requester="FastModelAlign")
         except RuntimeError:
             slicer.util.messageBox(
