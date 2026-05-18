@@ -880,7 +880,6 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
     from nrrd.reader import _NRRD_REQUIRED_FIELDS, _determine_datatype, _READ_CHUNKSIZE
     import zlib
     import numpy as np
-    import os
     import io
     import bz2
 
