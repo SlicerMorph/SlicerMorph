@@ -26,6 +26,7 @@ except Exception:
   pd = None
 
 import vtk, qt, slicer
+import slicer.packaging
 
 
 # ----------------------------- Small helpers ---------------------------------
