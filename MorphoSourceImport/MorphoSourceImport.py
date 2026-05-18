@@ -13,6 +13,7 @@ import concurrent.futures
 import ctk
 import qt
 import slicer
+import slicer.packaging
 from slicer.ScriptedLoadableModule import *
 
 warnings.filterwarnings("ignore", "DataFrame.applymap has been deprecated")
