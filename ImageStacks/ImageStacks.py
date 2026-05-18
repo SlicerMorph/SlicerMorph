@@ -865,11 +865,12 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
 
   def loadNrrdSlice(self, filename, sliceIndex):
 
-    try:
-      import nrrd
-    except ImportError:
-      slicer.util.pip_install("pynrrd")
-      import nrrd
+    requirementsPath = os.path.join(
+      os.path.dirname(slicer.util.modulePath("ImageStacks")),
+      "Resources", "requirements.txt")
+    reqs = slicer.packaging.load_requirements(requirementsPath)
+    slicer.packaging.pip_ensure(reqs, requester="ImageStacks")
+    import nrrd
 
     from nrrd.types import IndexOrder, NRRDFieldMap, NRRDFieldType, NRRDHeader
     from typing import Optional, IO, List
