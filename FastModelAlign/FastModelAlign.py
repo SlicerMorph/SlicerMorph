@@ -6,6 +6,7 @@ import vtk
 import vtk.util.numpy_support as vtk_np
 
 import slicer
+import slicer.packaging
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 
