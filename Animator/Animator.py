@@ -667,23 +667,6 @@ class ExplodeModelsAction(AnimatorAction):
   def gui(self, action, layout):
     super().gui(action, layout)
 
-    # Prompt for easing-functions as soon as the editor is shown, so the
-    # user is told about the dependency before they configure or play.
-    # updateCache() still calls pip_ensure as a safety net for actions
-    # loaded from a saved scene without going through gui().
-    try:
-      requirementsPath = os.path.join(
-        os.path.dirname(slicer.util.modulePath("Animator")),
-        "Resources", "requirements.txt")
-      reqs = slicer.packaging.load_requirements(requirementsPath)
-      slicer.packaging.pip_ensure(reqs, requester="Animator")
-    except RuntimeError:
-      # User declined; updateCache will pip_ensure again and act() will
-      # skip silently when the cache is unpopulated.
-      pass
-    except Exception:
-      pass
-
     self.shFolderSelector = slicer.qMRMLSubjectHierarchyComboBox()
     self.shFolderSelector.setMRMLScene( slicer.mrmlScene )
     self.shFolderSelector.setToolTip("Pick the folder that contains all the model nodes")
@@ -728,71 +711,16 @@ class ExplodeModelsAction(AnimatorAction):
     self.updateCache(action)
 
   def updateCache(self, action):
-    try:
-      requirementsPath = os.path.join(
-        os.path.dirname(slicer.util.modulePath("Animator")),
-        "Resources", "requirements.txt")
-      reqs = slicer.packaging.load_requirements(requirementsPath)
-      slicer.packaging.pip_ensure(reqs, requester="Animator")
-      import easing_functions
-    except RuntimeError:
-      # User declined installation -- skip silently.
-      return
-    except Exception:
-      slicer.util.errorDisplay(
-        "Failed to import 'easing-functions' after installation. "
-        "Please restart Slicer and try again.")
-      return
-
-    # Insert transform node above the model so that we can move it
-    shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
-    modelNodesCollection = vtk.vtkCollection()
-    shNode.GetDataNodesInBranch(action['subjectHierarchyFolderID'], modelNodesCollection, "vtkMRMLModelNode")
-    modelNodes = []
-    transformNodes = []
-    for i in range(modelNodesCollection.GetNumberOfItems()):
-      modelNode = modelNodesCollection.GetItemAsObject(i)
-      modelNodes.append(modelNode)
-      transformNode = modelNode.GetParentTransformNode()
-      if not transformNode or not transformNode.GetAttribute("Animator.ExplodeModels.AutoCreated"):
-        transformNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTransformNode")
-        transformNode.SetAttribute("Animator.ExplodeModels.AutoCreated", "1")
-        oldParentTransformNode = modelNode.GetParentTransformNode()
-        modelNode.SetAndObserveTransformNodeID(transformNode.GetID())
-        if oldParentTransformNode:
-          transformNode.SetAndObserveTransformNodeID(oldParentTransformNode.GetID())
-      transformNodes.append(transformNode)
-      transformNode.SetAndObserveMatrixTransformToParent(vtk.vtkMatrix4x4())
-
-    import numpy as np
-    modelPositions = []
-    for modelNode in modelNodes:
-        bounds = np.zeros(6)
-        modelNode.GetRASBounds(bounds)
-        modelPositions.append(np.array([(bounds[0]+bounds[1])/2.0, (bounds[2]+bounds[3])/2.0, (bounds[4]+bounds[5])/2.0]))
-
-    if modelPositions:
-        modelsCenterOfGravity = np.mean(np.array(modelPositions), axis=0)
-    else:
-        # No models in the selected folder yet (e.g. action was added
-        # before the user populated the folder). Skip building the
-        # cache; updateCache will be re-run via updateFromGUI once a
-        # folder with models is selected.
-        modelsCenterOfGravity = np.zeros(3)
-
-    expandScaleFactors = easing_functions.CircularEaseInOut(start=0, end=1, duration=1.0)
-    contractScaleFactors = easing_functions.CircularEaseInOut(start=1, end=0, duration=1.0)
-
-    cache = {
-      'modelNodes': modelNodes,
-      'transformNodes': transformNodes,
-      'modelPositions': modelPositions,
-      'modelsCenterOfGravity': modelsCenterOfGravity,
-      'expandScaleFactors': expandScaleFactors,
-      'contractScaleFactors': contractScaleFactors,
-      }
-
-    ExplodeModelsAction.cache[action['id']] = cache
+    # ExplodeModelsAction has been superseded by SceneSnapshotAction's
+    # per-segment explode/implode modes (see AnimatorLib.SceneSnapshot),
+    # which use an internal smoothstep instead of the easing-functions
+    # package. The class is kept defined so older animation scripts that
+    # reference it can still load, but the cache is no longer populated:
+    # act() detects the missing cache entry and skips silently.
+    logging.warning(
+      "ExplodeModelsAction is deprecated and no longer animates. "
+      "Use SceneSnapshotAction's 'explode'/'implode' segment modes instead."
+    )
 
 
 class SceneSnapshotAction(AnimatorAction):
