@@ -5,11 +5,6 @@ import logging
 import requests
 import webbrowser
 
-try:
-    import mistune
-except ImportError:
-    slicer.util.pip_install('mistune')
-    import mistune
 
 class SlicerMorphTutorials(ScriptedLoadableModule):
 
@@ -26,6 +21,17 @@ class SlicerMorphTutorialsWidget(ScriptedLoadableModuleWidget):
 
     def setup(self):
         ScriptedLoadableModuleWidget.setup(self)
+
+        # Ensure mistune is installed before rendering the tutorials index.
+        try:
+            reqs = slicer.packaging.load_requirements(self.resourcePath("requirements.txt"))
+            slicer.packaging.pip_ensure(reqs, requester="SlicerMorph Tutorials")
+        except RuntimeError:
+            slicer.util.messageBox(
+                "SlicerMorph Tutorials requires the 'mistune' Python package to render the tutorials index."
+            )
+            return
+        import mistune
 
         # URL of the Markdown file
         markdown_url = "https://raw.githubusercontent.com/SlicerMorph/Tutorials/main/README.md"
