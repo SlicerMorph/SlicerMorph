@@ -1,4 +1,5 @@
 import os
+import re
 import unittest
 import math
 import numpy
@@ -8,6 +9,51 @@ import SimpleITK as sitk
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 import logging
+
+
+def naturalSortKey(path):
+  """Sort key that orders filenames by their trailing numeric token before the
+  extension (with full natural-sort as a tiebreaker), so that ``slice_2.tif``
+  comes before ``slice_10.tif`` regardless of zero-padding. Used at every entry
+  point that builds a slice list, so order is deterministic across OSes and
+  irrespective of how the dialog or drag-drop happened to return paths."""
+  name = os.path.basename(path)
+  stem, _ = os.path.splitext(name)
+  match = re.search(r'(\d+)(?!.*\d)', stem)
+  trailing = int(match.group(1)) if match else -1
+  fullSplit = [int(token) if token.isdigit() else token.lower()
+               for token in re.split(r'(\d+)', name)]
+  return (trailing, fullSplit)
+
+
+def imageStackSanityReport(filePaths):
+  """Compare the collected slice list against the contents of its source
+  folder(s). Returns a (status, message) tuple where status is one of
+  'ok', 'mismatch', 'multifolder', 'empty'. The message is a short
+  human-readable string suitable for a status label."""
+  if not filePaths:
+    return ('empty', '')
+  parentDirs = {os.path.dirname(p) for p in filePaths}
+  if len(parentDirs) > 1:
+    return ('multifolder', f"Detected {len(filePaths)} files from {len(parentDirs)} folders")
+  parent = next(iter(parentDirs))
+  ext = os.path.splitext(filePaths[0])[1].lower()
+  if not ext or not parent or not os.path.isdir(parent):
+    return ('ok', f"Detected {len(filePaths)} files")
+  try:
+    siblings = [entry.name for entry in os.scandir(parent)
+                if entry.is_file() and os.path.splitext(entry.name)[1].lower() == ext]
+  except OSError:
+    return ('ok', f"Detected {len(filePaths)} files")
+  if len(filePaths) == len(siblings):
+    return ('ok', f"Detected {len(filePaths)} / {len(siblings)} {ext} files in folder")
+  loadedNames = {os.path.basename(p) for p in filePaths}
+  missing = sorted(name for name in siblings if name not in loadedNames)
+  preview = ', '.join(missing[:5])
+  more = '' if len(missing) <= 5 else f", +{len(missing)-5} more"
+  message = (f"Detected {len(filePaths)} / {len(siblings)} {ext} files in folder "
+             f"⚠  (not included: {preview}{more})")
+  return ('mismatch', message)
 
 #
 # ImageStacks
@@ -109,6 +155,11 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # disable wrapping
     self.fileTable.setLineWrapMode(qt.QTextBrowser.NoWrap)
     fileListLayout.addWidget(self.fileTable)
+
+    self.fileStatusLabel = qt.QLabel()
+    self.fileStatusLabel.setWordWrap(True)
+    self.fileStatusLabel.setTextInteractionFlags(qt.Qt.TextSelectableByMouse)
+    fileListLayout.addWidget(self.fileStatusLabel)
 
     fileListGroupBox.collapsed = True
 
@@ -339,6 +390,8 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
   def onClear(self):
     self.fileTable.clear()
+    self.fileStatusLabel.setText("")
+    self.fileStatusLabel.setStyleSheet("")
     self.outputSelector.currentNodeID = ""
     self.logic.filePaths = []
     self.updateWidgetFromLogic()
@@ -349,8 +402,19 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.setFilePaths(filePaths)
 
   def setFilePaths(self, filePaths):
+    # Order from QFileDialog, drag-drop, or directory enumeration is not
+    # guaranteed to be slice order — natural-sort here so every entry point
+    # ends up with the same deterministic ordering.
+    filePaths = sorted(filePaths, key=naturalSortKey)
     self.fileTable.plainText = '\n'.join(filePaths)
     self.logic.filePaths = filePaths
+
+    status, message = imageStackSanityReport(filePaths)
+    self.fileStatusLabel.setText(message)
+    if status == 'mismatch':
+      self.fileStatusLabel.setStyleSheet("QLabel { color: #b35900; }")
+    else:
+      self.fileStatusLabel.setStyleSheet("")
 
     self.updateWidgetFromLogic()
 
@@ -561,7 +625,9 @@ class ImageStacksFileDialog:
         if pathInfo.isDir(): # if it is a directory we add the files to the dialog
           directory = qt.QDir(localPath)
           nameFilters = ['*.'+ext for ext in acceptedFileExtensions]
-          filenamesInFolder = directory.entryList(nameFilters, qt.QDir.Files, qt.QDir.Name)
+          # Enumerate unsorted; setFilePaths applies natural sort. Qt's QDir.Name
+          # is locale-aware and lex-only, so it mis-orders mixed-width numeric names.
+          filenamesInFolder = directory.entryList(nameFilters, qt.QDir.Files, qt.QDir.Unsorted)
           for filenameInFolder in filenamesInFolder:
             filesToAdd.append(directory.absoluteFilePath(filenameInFolder))
         else:
