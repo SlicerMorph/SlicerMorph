@@ -712,19 +712,20 @@ class ExplodeModelsAction(AnimatorAction):
 
   def updateCache(self, action):
     try:
+      requirementsPath = os.path.join(
+        os.path.dirname(slicer.util.modulePath("Animator")),
+        "Resources", "requirements.txt")
+      reqs = slicer.packaging.load_requirements(requirementsPath)
+      slicer.packaging.pip_ensure(reqs, requester="Animator")
       import easing_functions
-    except ModuleNotFoundError:
-      if not slicer.util.confirmOkCancelDisplay(
-              "This action requires the 'easing-functions' Python package. Click OK to install it now."):
-        return
-      slicer.util.pip_install("easing-functions")
-      try:
-        import easing_functions
-      except ModuleNotFoundError:
-        slicer.util.errorDisplay(
-          "Failed to import 'easing-functions' after installation. "
-          "Please restart Slicer and try again.")
-        return
+    except RuntimeError:
+      # User declined installation -- skip silently.
+      return
+    except Exception:
+      slicer.util.errorDisplay(
+        "Failed to import 'easing-functions' after installation. "
+        "Please restart Slicer and try again.")
+      return
 
     # Insert transform node above the model so that we can move it
     shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
