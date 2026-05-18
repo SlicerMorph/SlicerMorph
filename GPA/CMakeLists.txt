@@ -19,7 +19,7 @@ set(MODULE_PYTHON_RESOURCES
   Resources/UI/GPA_ExploreDataResults.ui
   Resources/UI/GPA_Interactive3D.ui
   Resources/UI/GPA_GeomorphLR.ui
-  Resources/requirements.txt
+  Resources/requirements_GPA.txt
 )
 #-----------------------------------------------------------------------------
 slicerMacroBuildScriptedModule(
