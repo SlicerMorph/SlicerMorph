@@ -6,6 +6,7 @@ import copy
 import json
 import subprocess
 import vtk, qt, ctk, slicer
+import slicer.packaging
 from slicer.ScriptedLoadableModule import *
 import glob
 import vtk.util.numpy_support as vtk_np
