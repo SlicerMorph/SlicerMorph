@@ -25,7 +25,7 @@ class SlicerMorphTutorialsWidget(ScriptedLoadableModuleWidget):
 
         # Ensure mistune is installed before rendering the tutorials index.
         try:
-            reqs = slicer.packaging.load_requirements(self.resourcePath("requirements.txt"))
+            reqs = slicer.packaging.load_requirements(self.resourcePath("requirements_Tutorials.txt"))
             slicer.packaging.pip_ensure(reqs, requester="SlicerMorph Tutorials")
         except RuntimeError:
             slicer.util.messageBox(
