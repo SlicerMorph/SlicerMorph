@@ -377,7 +377,7 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
 
     # Ensure dataset-matcher is installed before using it to match files.
     try:
-      reqs = slicer.packaging.load_requirements(self.resourcePath("requirements.txt"))
+      reqs = slicer.packaging.load_requirements(self.resourcePath("requirements_MergeMarkups.txt"))
       slicer.packaging.pip_ensure(reqs, requester="MergeMarkups")
     except RuntimeError:
       slicer.util.messageBox(
