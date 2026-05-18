@@ -92,14 +92,6 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         ScriptedLoadableModuleWidget.setup(self)
 
-        # Install required packages by running Alpaca setup
-        try:
-          from itk import Fpfh
-          import cpdalp
-        except ModuleNotFoundError:
-          slicer.util.selectModule(slicer.modules.alpaca)
-          slicer.util.selectModule(slicer.modules.fastmodelalign)
-
         # Load widget from .ui file (created by Qt Designer).
         # Additional widgets can be instantiated manually and added to self.layout.
         uiWidget = slicer.util.loadUI(self.resourcePath('UI/FastModelAlign.ui'))
@@ -266,7 +258,22 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # if self.parent.isEntered:
         #     self.initializeParameterNode()
 
+    def _ensureDependencies(self):
+        """Install FastModelAlign's Python dependencies if missing."""
+        try:
+            reqs = slicer.packaging.load_requirements(self.resourcePath("requirements.txt"))
+            slicer.packaging.pip_ensure(reqs, requester="FastModelAlign")
+        except RuntimeError:
+            slicer.util.messageBox(
+                "FastModelAlign requires its Python packages (itk, scikit-learn, "
+                "itk-fpfh, itk-ransac, cpdalp) to run."
+            )
+            return False
+        return True
+
     def onSubsampleButton(self):
+        if not self._ensureDependencies():
+            return
         try:
             if self.targetCloudNodeTest is not None:
                 slicer.mrmlScene.RemoveNode(self.targetCloudNodeTest)
@@ -341,6 +348,8 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         Run all selected registration steps in sequence.
         """
+        if not self._ensureDependencies():
+            return
         try:
             if hasattr(self, 'targetCloudNodeTest') and self.targetCloudNodeTest is not None:
                 slicer.mrmlScene.RemoveNode(self.targetCloudNodeTest)
