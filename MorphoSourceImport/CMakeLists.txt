@@ -11,7 +11,7 @@ set(MODULE_PYTHON_RESOURCES
   Resources/UI/${MODULE_NAME}.ui
   Resources/download_items.py
   Resources/download_csv.py
-  Resources/requirements.txt
+  Resources/requirements_MorphoSourceImport.txt
   )
 
 #-----------------------------------------------------------------------------

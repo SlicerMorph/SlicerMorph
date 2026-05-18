@@ -29,7 +29,7 @@ def _ensure_morphosource_dependencies():
     requirementsPath = os.path.join(
         os.path.dirname(modulePath("MorphoSourceImport")),
         "Resources",
-        "requirements.txt",
+        "requirements_MorphoSourceImport.txt",
     )
     reqs = slicer.packaging.load_requirements(requirementsPath)
     slicer.packaging.pip_ensure(reqs, requester="MorphoSourceImport")
