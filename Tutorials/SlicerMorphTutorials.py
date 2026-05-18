@@ -1,5 +1,6 @@
 import os
 import vtk, qt, ctk, slicer
+import slicer.packaging
 from slicer.ScriptedLoadableModule import *
 import logging
 import requests
