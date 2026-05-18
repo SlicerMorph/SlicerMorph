@@ -99,69 +99,6 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
 
     def setup(self):
         ScriptedLoadableModuleWidget.setup(self)
-        needInstall = False
-
-        try:
-            from itk import Fpfh
-            import cpdalp
-        except ModuleNotFoundError:
-            needInstall = True
-
-        if needInstall:
-            progressDialog = slicer.util.createProgressDialog(
-                windowTitle="Installing...",
-                labelText="Installing ALPACA Python packages. This may take a minute...",
-                maximum=0,
-            )
-            slicer.app.processEvents()
-            try:
-                slicer.util.pip_install(["itk~=5.4.0"])
-                slicer.util.pip_install(["scikit-learn"])
-                slicer.util.pip_install(["itk-fpfh~=0.2.0"])
-                slicer.util.pip_install(["itk-ransac~=0.2.1"])
-                slicer.util.pip_install(f"cpdalp")
-            except:
-                slicer.util.infoDisplay("Issue while installing the ITK Python packages")
-                progressDialog.close()
-            import itk
-
-            fpfh = itk.Fpfh.PointFeature.MF3MF3.New()
-            progressDialog.close()
-
-        try:
-            import cpdalp
-            import itk
-            from itk import Fpfh
-            from itk import Ransac
-        except ModuleNotFoundError as e:
-            print("Module Not found. Please restart Slicer to load packages.")
-
-        progressDialog = slicer.util.createProgressDialog(
-            windowTitle="Importing...",
-            labelText="Importing ALPACA Python packages. This may take few seconds...",
-            maximum=0,
-        )
-        slicer.app.processEvents()
-        with slicer.util.WaitCursor():
-            fpfh = itk.Fpfh.PointFeature.MF3MF3.New()
-        progressDialog.close()
-
-        # Import pandas if needed
-        try:
-          import pandas
-        except:
-          progressDialog = slicer.util.createProgressDialog(
-              windowTitle="Installing...",
-              labelText="Installing Pandas Python package...",
-              maximum=0,
-          )
-          slicer.app.processEvents()
-          try:
-            slicer.util.pip_install(["pandas"])
-            progressDialog.close()
-          except:
-            slicer.util.infoDisplay("Issue while installing Pandas Python package. Please install manually.")
-            progressDialog.close()
 
         # Load widget from .ui file (created by Qt Designer).
         uiWidget = slicer.util.loadUI(self.resourcePath("UI/ALPACA.ui"))
@@ -438,6 +375,23 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
             self.ui.replicateAnalysisCheckBox.isChecked()
         )
 
+    def _ensureDependencies(self):
+        """Install ALPACA's Python dependencies if missing.
+
+        Returns True if dependencies are now available, False if the user
+        declined installation. Call from any entry point that runs ALPACA.
+        """
+        try:
+            reqs = slicer.packaging.load_requirements(self.resourcePath("requirements.txt"))
+            slicer.packaging.pip_ensure(reqs, requester="ALPACA")
+        except RuntimeError:
+            slicer.util.messageBox(
+                "ALPACA requires its Python packages (itk, scikit-learn, itk-fpfh, "
+                "itk-ransac, cpdalp, pandas) to run."
+            )
+            return False
+        return True
+
     def transform_numpy_points(self, points_np, transform):
         import itk
 
@@ -453,6 +407,8 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
         return points_tranformed
 
     def onSubsampleButton(self):
+        if not self._ensureDependencies():
+            return
         try:
             if self.targetCloudNodeTest is not None:
                 slicer.mrmlScene.RemoveNode(self.targetCloudNodeTest)
@@ -538,6 +494,8 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
 
     # Run all button for Single Alignment ALPACA
     def onRunALPACAButton(self):
+        if not self._ensureDependencies():
+            return
         run_counter = (
             self.runALPACACounter()
         )  # the counter for executing this function in str format
@@ -942,6 +900,8 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
             self.ui.showManualLMCheckBox.enabled = False
 
     def onApplyLandmarkMulti(self):
+        if not self._ensureDependencies():
+            return
         logic = ALPACALogic()
         if self.ui.projectionCheckBoxMulti.checked is False:
             projectionFactor = 0
