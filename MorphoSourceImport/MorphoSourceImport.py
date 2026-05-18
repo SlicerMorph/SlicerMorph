@@ -15,26 +15,23 @@ import qt
 import slicer
 from slicer.ScriptedLoadableModule import *
 
-try:
-    from importlib.metadata import version
-except ImportError:
-    from importlib_metadata import version
-
 warnings.filterwarnings("ignore", "DataFrame.applymap has been deprecated")
 
 #
 # MorphoSourceImport
 #
 
-morphosourceVersion = "1.1.0"
 
-
-def is_correct_version_installed(package, desired_version):
-    try:
-        installed_version = version(package)
-        return installed_version == desired_version
-    except Exception:
-        return False
+def _ensure_morphosource_dependencies():
+    """Install pandas + morphosource (at the version pinned in requirements.txt) if missing."""
+    from slicer.util import modulePath
+    requirementsPath = os.path.join(
+        os.path.dirname(modulePath("MorphoSourceImport")),
+        "Resources",
+        "requirements.txt",
+    )
+    reqs = slicer.packaging.load_requirements(requirementsPath)
+    slicer.packaging.pip_ensure(reqs, requester="MorphoSourceImport")
 
 
 def unlist_cell(cell):
@@ -156,44 +153,12 @@ class ClickableLabel(qt.QLabel):
 class MSQuery:
     def __init__(self, query: str, media_type: str, taxonomy_gbif: str,
                  openDownloadsOnly: bool, media_tag: str = None, per_page: int = 20):
-        # Attempt to import pandas, and install if not present
-        try:
-            import pandas as pd
-        except ImportError:
-            slicer.util.pip_install('pandas')
-            import pandas as pd
-
-        # Attempt to import morphosource, and install if not present
-        try:
-            import morphosource as ms
-            from morphosource import search_media, get_media, DownloadVisibility
-            from morphosource.search import SearchResults
-            from morphosource.exceptions import MetadataMissingError
-
-            # Check if MorphoSource is installed and at the correct version
-            if is_correct_version_installed('morphosource', '1.1.0'):
-                print("MorphoSource is already installed and at the correct version.")
-            else:
-                raise ImportError("MorphoSource is not installed or not the correct version.")
-        except ImportError:
-            # Show a dialog indicating that installation is in progress
-            dependencyDialog = slicer.util.createProgressDialog(
-                windowTitle="Installing...",
-                labelText="Installing and Loading Required Python packages",
-                maximum=0,
-            )
-            slicer.app.processEvents()
-
-            # Install the required packages
-            slicer.util.pip_install('morphosource==' + morphosourceVersion)
-
-            import morphosource as ms
-            from morphosource import search_media, get_media, DownloadVisibility
-            from morphosource.search import SearchResults
-            from morphosource.exceptions import MetadataMissingError
-
-            # Close the installation dialog
-            dependencyDialog.close()
+        _ensure_morphosource_dependencies()
+        import pandas as pd
+        import morphosource as ms
+        from morphosource import search_media, get_media, DownloadVisibility
+        from morphosource.search import SearchResults
+        from morphosource.exceptions import MetadataMissingError
 
         self.MetadataMissingError = MetadataMissingError
         self.pd = pd
@@ -1384,50 +1349,7 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
             self.downloadProcess.waitForFinished(2000)
 
     def load_dependencies(self):
-        # Attempt to import pandas, and install if not present
-        try:
-            import pandas as pd
-        except ImportError:
-            slicer.util.pip_install('pandas')
-            import pandas as pd
-
-        # Attempt to import morphosource, and install if not present
-        try:
-            from morphosource import search_media, get_media, DownloadVisibility
-            from morphosource.search import SearchResults
-
-            # Check if MorphoSource is installed and at the correct version
-            if is_correct_version_installed('morphosource', '1.1.0'):
-                print("MorphoSource is already installed and at the correct version.")
-            else:
-                raise ImportError("MorphoSource is not installed or not the correct version.")
-        except ImportError:
-            # Show a dialog indicating that installation is in progress
-            dependencyDialog = slicer.util.createProgressDialog(
-                windowTitle="Installing...",
-                labelText="Installing and Loading Required Python packages",
-                maximum=0,
-            )
-            slicer.app.processEvents()
-
-            # Install the required packages.
-            # NOTE: The contourpy pin below is likely no longer necessary.
-            # It was added in Aug 2025 to work around a manylinux 2.27 wheel
-            # incompatibility on older Linux Slicer builds while installing
-            # pygbif (a transitive dependency that pulls in matplotlib, which
-            # in turn requires contourpy). Verified Apr 2026 on a current
-            # Linux Slicer build that morphosource (and its full dependency
-            # chain) installs cleanly without forcing this pin. Leaving it
-            # commented out for now in case the workaround is still needed on
-            # some platform; remove entirely once confirmed unnecessary.
-            # slicer.util.pip_install("contourpy==1.3.2")
-            slicer.util.pip_install('morphosource==' + morphosourceVersion)
-
-            from morphosource import search_media, get_media, DownloadVisibility
-            from morphosource.search import SearchResults
-
-            # Close the installation dialog
-            dependencyDialog.close()
+        _ensure_morphosource_dependencies()
 
 
 #
