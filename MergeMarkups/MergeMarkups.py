@@ -8,12 +8,6 @@ import  numpy as np
 import random
 import math
 
-try:
-  from dataset_matcher import match_datasets, DatasetError
-except ImportError:
-  slicer.util.pip_install('git+https://github.com/SlicerMorph/dataset-matcher.git')
-  from dataset_matcher import match_datasets, DatasetError
-
 
 #
 # MergeMarkups
@@ -380,11 +374,22 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
       slicer.util.messageBox(warning)
       return False
 
+    # Ensure dataset-matcher is installed before using it to match files.
+    try:
+      reqs = slicer.packaging.load_requirements(self.resourcePath("requirements.txt"))
+      slicer.packaging.pip_ensure(reqs, requester="MergeMarkups")
+    except RuntimeError:
+      slicer.util.messageBox(
+        "MergeMarkups requires the 'dataset-matcher' Python package to batch-match files."
+      )
+      return False
+    from dataset_matcher import match_datasets, DatasetError
+
     # Use dataset_matcher to match files by basename
     try:
       # Match semi-landmark files to fixed landmark files by basename
       matchedSemiFilePaths = match_datasets(
-        fixedFilePaths, 
+        fixedFilePaths,
         semiFilePaths,
         name="semi-landmarks"
       )
