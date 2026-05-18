@@ -667,6 +667,23 @@ class ExplodeModelsAction(AnimatorAction):
   def gui(self, action, layout):
     super().gui(action, layout)
 
+    # Prompt for easing-functions as soon as the editor is shown, so the
+    # user is told about the dependency before they configure or play.
+    # updateCache() still calls pip_ensure as a safety net for actions
+    # loaded from a saved scene without going through gui().
+    try:
+      requirementsPath = os.path.join(
+        os.path.dirname(slicer.util.modulePath("Animator")),
+        "Resources", "requirements.txt")
+      reqs = slicer.packaging.load_requirements(requirementsPath)
+      slicer.packaging.pip_ensure(reqs, requester="Animator")
+    except RuntimeError:
+      # User declined; updateCache will pip_ensure again and act() will
+      # skip silently when the cache is unpopulated.
+      pass
+    except Exception:
+      pass
+
     self.shFolderSelector = slicer.qMRMLSubjectHierarchyComboBox()
     self.shFolderSelector.setMRMLScene( slicer.mrmlScene )
     self.shFolderSelector.setToolTip("Pick the folder that contains all the model nodes")
