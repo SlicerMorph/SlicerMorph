@@ -3,6 +3,7 @@ import unittest
 import math
 import numpy
 import vtk, qt, ctk, slicer
+import slicer.packaging
 import SimpleITK as sitk
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
