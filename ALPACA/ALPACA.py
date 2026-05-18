@@ -383,7 +383,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
         declined installation. Call from any entry point that runs ALPACA.
         """
         try:
-            reqs = slicer.packaging.load_requirements(self.resourcePath("requirements.txt"))
+            reqs = slicer.packaging.load_requirements(self.resourcePath("requirements_ALPACA.txt"))
             slicer.packaging.pip_ensure(reqs, requester="ALPACA")
         except RuntimeError:
             slicer.util.messageBox(
