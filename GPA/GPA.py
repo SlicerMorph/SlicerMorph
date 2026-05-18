@@ -74,40 +74,16 @@ def _ensure_pyRserve_early() -> bool:
     pass
 
   # ---- Already imported? -----------------------------------------------------
-  try:
-    import sys
-    if "pyRserve" in sys.modules:
-      return True
-  except Exception:
-    pass
+  import sys
+  if "pyRserve" in sys.modules:
+    return True
 
-  # ---- Try normal import -----------------------------------------------------
+  # ---- Ensure installed, then import -----------------------------------------
   try:
+    slicer.packaging.pip_ensure("pyRserve", requester="GPA")
     import pyRserve  # noqa: F401
     return True
   except Exception:
-    pass
-
-  # ---- Install and import ----------------------------------------------------
-  progress = None
-  try:
-    progress = slicer.util.createProgressDialog(
-      windowTitle="Installing...",
-      labelText="Installing pyRserve...",
-      maximum=0,
-    )
-    slicer.app.processEvents()
-    slicer.util.pip_install(["pyRserve"])
-    if progress:
-      progress.close()
-    import pyRserve  # noqa: F401
-    return True
-  except Exception:
-    try:
-      if progress:
-        progress.close()
-    except Exception:
-      pass
     # Non-fatal: fitting will still fail gracefully later if Rserve is used without pyRserve.
     return False
 
@@ -536,20 +512,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     # Import pandas if needed (unchanged)
     try:
-      import pandas  # noqa: F401
+      slicer.packaging.pip_ensure("pandas", requester="GPA")
     except Exception:
-      progressDialog = slicer.util.createProgressDialog(
-        windowTitle="Installing...",
-        labelText="Installing Pandas Python package...",
-        maximum=0,
-      )
-      slicer.app.processEvents()
-      try:
-        slicer.util.pip_install(["pandas"])
-        progressDialog.close()
-      except Exception:
-        slicer.util.infoDisplay("Issue while installing Pandas Python package. Please install manually.")
-        progressDialog.close()
+      slicer.util.infoDisplay("Issue while installing Pandas Python package. Please install manually.")
 
     # ---- Assemble split UI tabs into one QTabWidget ----
     tab = qt.QTabWidget()
@@ -2610,23 +2575,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     # 1) Ensure patsy is available (install on-demand)
     try:
-      import patsy  # noqa: F401
+      slicer.packaging.pip_ensure("patsy", requester="GPA")
     except Exception:
-      try:
-        progressDialog = slicer.util.createProgressDialog(
-          windowTitle="Installing...",
-          labelText="Installing patsy (formula parser)...",
-          maximum=0
-        )
-        slicer.app.processEvents()
-        slicer.util.pip_install(["patsy"])
-        progressDialog.close()
-      except Exception:
-        try:
-          progressDialog.close()
-        except Exception:
-          pass
-        # Continue; geomorph_lr will try again if needed.
+      # Continue; geomorph_lr will try again if needed.
+      pass
 
     # 2) Ensure pyRserve importability (install on-demand)
     try:

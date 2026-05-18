@@ -416,20 +416,10 @@ class GeomorphLR:
   def _lr_validateFormula(self, formula):
     # ensure patsy
     try:
+      slicer.packaging.pip_ensure("patsy", requester="GPA")
       import patsy  # noqa: F401
     except Exception:
-      try:
-        progress = slicer.util.createProgressDialog(windowTitle="Installing...",
-                                                    labelText="Installing patsy (formula parser)...",
-                                                    maximum=0)
-        slicer.app.processEvents()
-        slicer.util.pip_install(["patsy"])
-        progress.close()
-        import patsy  # noqa: F401
-      except Exception:
-        try: progress.close()
-        except Exception: pass
-        return (False, "patsy is not available and could not be installed.")
+      return (False, "patsy is not available and could not be installed.")
 
     import patsy
     txt = (formula or "").strip()
@@ -878,18 +868,12 @@ class GeomorphLR:
     try:
       import pyRserve as _pyRserve
       return _pyRserve
-    except Exception as e:
+    except Exception:
       try:
-        progress = slicer.util.createProgressDialog(
-          windowTitle="Installing...", labelText="Installing pyRserve...", maximum=0)
-        slicer.app.processEvents()
-        slicer.util.pip_install(["pyRserve"])
-        progress.close()
+        slicer.packaging.pip_ensure("pyRserve", requester="GPA")
         import pyRserve as _pyRserve
         return _pyRserve
       except Exception as ee:
-        try: progress.close()
-        except Exception: pass
         self._r_last_error = str(ee)
         return None
 
