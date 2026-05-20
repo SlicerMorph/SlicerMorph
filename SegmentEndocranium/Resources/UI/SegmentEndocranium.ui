@@ -113,19 +113,39 @@
       <item row="2" column="0">
        <widget class="QLabel" name="label_3">
         <property name="text">
-         <string>Smoothing kernel size:</string>
+         <string>Smoothing kernel size (voxels):</string>
         </property>
        </widget>
       </item>
       <item row="2" column="1">
-       <widget class="qMRMLSpinBox" name="smoothingKernelSizeSliderWidget">
-        <property name="value">
-         <double>3.000000000000000</double>
-        </property>
-        <property name="quantity">
-         <string>length</string>
-        </property>
-       </widget>
+       <layout class="QHBoxLayout" name="smoothingKernelLayout">
+        <item>
+         <widget class="QSpinBox" name="smoothingKernelSizeSliderWidget">
+          <property name="toolTip">
+           <string>Closing kernel size specified in voxels (isotropic). Use small values (e.g. 3) for high-resolution scans to avoid excessive memory use and slowdowns.</string>
+          </property>
+          <property name="minimum">
+           <number>1</number>
+          </property>
+          <property name="maximum">
+           <number>100</number>
+          </property>
+          <property name="value">
+           <number>3</number>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="smoothingKernelSizeMmLabel">
+          <property name="toolTip">
+           <string>Equivalent physical kernel size, computed from the input volume spacing.</string>
+          </property>
+          <property name="text">
+           <string>(select input volume)</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
       </item>
       <item row="3" column="0">
        <widget class="QLabel" name="label_4">
@@ -257,22 +277,6 @@
     <hint type="destinationlabel">
      <x>192</x>
      <y>18</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>SegmentEndocranium</sender>
-   <signal>mrmlSceneChanged(vtkMRMLScene*)</signal>
-   <receiver>smoothingKernelSizeSliderWidget</receiver>
-   <slot>setMRMLScene(vtkMRMLScene*)</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>224</x>
-     <y>185</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>230</x>
-     <y>126</y>
     </hint>
    </hints>
   </connection>
