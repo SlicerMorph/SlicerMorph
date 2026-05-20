@@ -90,7 +90,7 @@ class SegmentEndocraniumWidget(ScriptedLoadableModuleWidget, VTKObservationMixin
     # (in the selected parameter node).
     self.ui.inputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
     self.ui.outputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.updateParameterNodeFromGUI)
-    self.ui.smoothingKernelSizeSliderWidget.connect("valueChanged(double)", self.updateParameterNodeFromGUI)
+    self.ui.smoothingKernelSizeSliderWidget.connect("valueChanged(int)", self.updateParameterNodeFromGUI)
     self.ui.splitCavitiesDiameterSliderWidget.connect("valueChanged(double)", self.updateParameterNodeFromGUI)
 
     # Initial GUI update
@@ -156,9 +156,11 @@ class SegmentEndocraniumWidget(ScriptedLoadableModuleWidget, VTKObservationMixin
     self.ui.outputSelector.blockSignals(wasBlocked)
 
     wasBlocked = self.ui.smoothingKernelSizeSliderWidget.blockSignals(True)
-    if self._parameterNode.GetParameter("SmoothingKernelSize"):
-      self.ui.smoothingKernelSizeSliderWidget.value = float(self._parameterNode.GetParameter("SmoothingKernelSize"))
+    if self._parameterNode.GetParameter("SmoothingKernelSizeVoxels"):
+      self.ui.smoothingKernelSizeSliderWidget.value = int(float(self._parameterNode.GetParameter("SmoothingKernelSizeVoxels")))
     self.ui.smoothingKernelSizeSliderWidget.blockSignals(wasBlocked)
+
+    self.updateSmoothingKernelMmLabel()
 
     wasBlocked = self.ui.splitCavitiesDiameterSliderWidget.blockSignals(True)
     if self._parameterNode.GetParameter("SplitCavitiesDiameter"):
@@ -184,8 +186,22 @@ class SegmentEndocraniumWidget(ScriptedLoadableModuleWidget, VTKObservationMixin
 
     self._parameterNode.SetNodeReferenceID("InputVolume", self.ui.inputSelector.currentNodeID)
     self._parameterNode.SetNodeReferenceID("OutputSegmentation", self.ui.outputSelector.currentNodeID)
-    self._parameterNode.SetParameter("SmoothingKernelSize", str(self.ui.smoothingKernelSizeSliderWidget.value))
+    self._parameterNode.SetParameter("SmoothingKernelSizeVoxels", str(int(self.ui.smoothingKernelSizeSliderWidget.value)))
     self._parameterNode.SetParameter("SplitCavitiesDiameter", str(self.ui.splitCavitiesDiameterSliderWidget.value))
+
+    self.updateSmoothingKernelMmLabel()
+
+  def updateSmoothingKernelMmLabel(self):
+    inputVolume = self.ui.inputSelector.currentNode()
+    voxels = int(self.ui.smoothingKernelSizeSliderWidget.value)
+    if not inputVolume:
+      self.ui.smoothingKernelSizeMmLabel.text = "(select input volume)"
+      return
+    spacing = inputVolume.GetSpacing()
+    kx, ky, kz = voxels * spacing[0], voxels * spacing[1], voxels * spacing[2]
+    self.ui.smoothingKernelSizeMmLabel.text = (
+      f"= {voxels} x {voxels} x {voxels} voxels = {kx:.4g} x {ky:.4g} x {kz:.4g} mm"
+    )
 
   def onApplyButton(self):
     """
@@ -195,7 +211,7 @@ class SegmentEndocraniumWidget(ScriptedLoadableModuleWidget, VTKObservationMixin
     try:
       qt.QApplication.setOverrideCursor(qt.Qt.WaitCursor)
       self.logic.run(self.ui.inputSelector.currentNode(), self.ui.outputSelector.currentNode(),
-        self.ui.smoothingKernelSizeSliderWidget.value, self.ui.splitCavitiesDiameterSliderWidget.value)
+        int(self.ui.smoothingKernelSizeSliderWidget.value), self.ui.splitCavitiesDiameterSliderWidget.value)
     except Exception as e:
       slicer.util.errorDisplay("Failed to compute results: "+str(e))
       import traceback
@@ -222,16 +238,17 @@ class SegmentEndocraniumLogic(ScriptedLoadableModuleLogic):
     """
     Initialize parameter node with default settings.
     """
-    if not parameterNode.GetParameter("SmoothingKernelSize"):
-      parameterNode.SetParameter("SmoothingKernelSize", "3.0")
+    if not parameterNode.GetParameter("SmoothingKernelSizeVoxels"):
+      parameterNode.SetParameter("SmoothingKernelSizeVoxels", "3")
 
-  def run(self, inputVolume, outputSegmentation, smoothingKernelSize=3.0, splitCavitiesDiameter=15.0):
+  def run(self, inputVolume, outputSegmentation, smoothingKernelSizeVoxels=3, splitCavitiesDiameter=15.0):
     """
     Run the processing algorithm.
     Can be used without GUI widget.
     :param inputVolume: volume to be segmented
     :param outputSegmentation: segmentation to sore the result in
-    :param smoothingKernelSize: this is used for closing small holes in the segmentation
+    :param smoothingKernelSizeVoxels: closing kernel size in voxels (isotropic). Converted to mm
+      using the smallest spacing component of the input volume.
     :param splitCavitiesDiameter: plugs in holes smaller than splitCavitiesDiamater.
     """
 
@@ -239,6 +256,8 @@ class SegmentEndocraniumLogic(ScriptedLoadableModuleLogic):
       raise ValueError("Input volume or output segmentation is invalid")
 
     logging.info('Processing started')
+    smoothingKernelSizeMm = int(smoothingKernelSizeVoxels) * min(inputVolume.GetSpacing())
+    logging.info(f"Smoothing kernel: {int(smoothingKernelSizeVoxels)} voxels = {smoothingKernelSizeMm:g} mm")
 
     # Compute bone threshold value automatically
     import vtkITK
@@ -281,7 +300,7 @@ class SegmentEndocraniumLogic(ScriptedLoadableModuleLogic):
     segmentEditorWidget.setActiveEffectByName("Smoothing")
     effect = segmentEditorWidget.activeEffect()
     effect.setParameter("SmoothingMethod", "MORPHOLOGICAL_CLOSING")
-    effect.setParameter("KernelSizeMm", str(smoothingKernelSize))
+    effect.setParameter("KernelSizeMm", str(smoothingKernelSizeMm))
     effect.self().onApply()
 
     # Solidify bone
