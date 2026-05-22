@@ -150,7 +150,7 @@ class PseudoLMGeneratorWidget(ScriptedLoadableModuleWidget):
     self.projectionFactor.singleStep = 1
     self.projectionFactor.minimum = 1
     self.projectionFactor.maximum = 200
-    self.projectionFactor.value = 200
+    self.projectionFactor.value = 10
     self.projectionFactor.setToolTip("Set maximum projection as a percentage of the image diagonal")
     templateFormLayout.addRow("Maximum projection factor : ", self.projectionFactor)
 
