@@ -1,2 +1,4 @@
 pynrrd
 nptyping
+tifffile
+imagecodecs

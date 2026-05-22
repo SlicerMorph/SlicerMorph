@@ -693,6 +693,10 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
     # but image coordinate system in files is always LPS, therefore we invert the
     # sign of the first two axes when we compute image extents.
     self.outputVolumeBounds = None
+    # True when the file list is a single multi-page TIFF whose pages are the Z
+    # slices of a 3D volume. Read page-by-page via tifffile to keep the
+    # streaming memory profile of the regular per-file slice loop.
+    self.isMultiFrameTiff = False
 
   @staticmethod
   def humanizeByteCount(byteCount):
@@ -725,17 +729,18 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
     self._filePaths = filePaths
     self.originalVolumeDimensions = [0, 0, 0]
     self.originalVolumeRecommendedSpacing = [0.0, 0.0, 0.0]
+    self.isMultiFrameTiff = False
 
     if not self._filePaths:
       return
 
-    reader = sitk.ImageFileReader()
     filePath = self._filePaths[0]
-    reader.SetFileName(filePath)
-
     fileName, fileExtension = os.path.splitext(filePath)
-    if fileExtension.lower() == ".nhdr" or fileExtension.lower() == ".nrrd":
-        self._filePaths[0]
+    extLower = fileExtension.lower()
+
+    if extLower == ".nhdr" or extLower == ".nrrd":
+        reader = sitk.ImageFileReader()
+        reader.SetFileName(filePath)
         reader.ReadImageInformation()
 
         self.originalVolumeDimensions = reader.GetSize()
@@ -744,17 +749,143 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
         pixelType=reader.GetPixelID()
         self.originalVolumeVoxelDataType = sitk.GetArrayFromImage(sitk.Image(1,1,1,pixelType)).dtype
         self.originalVolumeRecommendedSpacing = reader.GetSpacing()
+        return
 
+    if len(self._filePaths) == 1 and extLower in (".tif", ".tiff"):
+      if self._tryReadMultiPageTiffMetadata(filePath):
+        return
+
+    reader = sitk.ImageFileReader()
+    reader.SetFileName(filePath)
+    image = reader.Execute()
+    sliceArray = sitk.GetArrayFromImage(image)
+
+    self.originalVolumeDimensions = [sliceArray.shape[1], sliceArray.shape[0], len(filePaths)]
+    self.originalVolumeNumberOfScalarComponents = sliceArray.shape[2] if len(sliceArray.shape) == 3 else 1
+    self.originalVolumeVoxelDataType = numpy.dtype(sliceArray.dtype)
+
+    firstSliceSpacing = image.GetSpacing()
+    self.originalVolumeRecommendedSpacing = [firstSliceSpacing[1], firstSliceSpacing[0], 0.0]
+
+  def _ensureTifffile(self):
+    """Ensure tifffile is importable; installs from the module's requirements file if needed.
+    Returns the imported tifffile module."""
+    requirementsPath = os.path.join(
+      os.path.dirname(slicer.util.modulePath("ImageStacks")),
+      "Resources", "requirements_ImageStacks.txt")
+    reqs = slicer.packaging.load_requirements(requirementsPath)
+    slicer.packaging.pip_ensure(reqs, requester="ImageStacks")
+    import tifffile
+    return tifffile
+
+  def _tryReadMultiPageTiffMetadata(self, filePath):
+    """Inspect a single TIFF file using tifffile and, if it is a multi-page
+    TIFF whose pages are Z slices, populate originalVolume* fields and set
+    isMultiFrameTiff. Returns True if the file was handled as multi-page."""
+    try:
+      tifffile = self._ensureTifffile()
+    except Exception as e:
+      logging.warning(f"ImageStacks: tifffile unavailable, falling back to SimpleITK path ({e})")
+      return False
+
+    try:
+      tif = tifffile.TiffFile(filePath)
+    except Exception as e:
+      logging.warning(f"ImageStacks: tifffile could not open {filePath}: {e}")
+      return False
+
+    with tif:
+      pages = tif.pages
+      pageCount = len(pages)
+      if pageCount < 2:
+        # Single-page TIFF; let the regular SimpleITK path handle it.
+        return False
+
+      page0 = pages[0]
+      # page0.shape is (H, W) for scalar pages, (H, W, C) for multi-sample pages.
+      shape = page0.shape
+      if len(shape) < 2:
+        return False
+      height, width = shape[0], shape[1]
+      samples = shape[2] if len(shape) == 3 else 1
+
+      self.isMultiFrameTiff = True
+      self.originalVolumeDimensions = [width, height, pageCount]
+      self.originalVolumeNumberOfScalarComponents = samples
+      self.originalVolumeVoxelDataType = numpy.dtype(page0.dtype)
+
+      sx, sy = self._readTiffXYSpacing(page0)
+      sz = self._readTiffZSpacing(page0, tif)
+      self.originalVolumeRecommendedSpacing = [sx, sy, sz]
+
+    return True
+
+  @staticmethod
+  def _rationalToFloat(value):
+    """TIFF rationals can come back as a (num, denom) tuple or a numpy scalar
+    depending on tifffile version. Return a float or 0.0 if not convertible."""
+    try:
+      if isinstance(value, tuple) and len(value) == 2:
+        num, denom = value
+        return float(num) / float(denom) if float(denom) != 0.0 else 0.0
+      return float(value)
+    except (TypeError, ValueError, ZeroDivisionError):
+      return 0.0
+
+  @classmethod
+  def _readTiffXYSpacing(cls, page):
+    """Derive X/Y spacing in millimeters from a TIFF page's resolution tags.
+    Returns (sx, sy); each is 0.0 if not determinable."""
+    tags = page.tags
+
+    def tagValue(name):
+      if name in tags:
+        return tags[name].value
+      return None
+
+    xres = cls._rationalToFloat(tagValue("XResolution"))
+    yres = cls._rationalToFloat(tagValue("YResolution"))
+    unit = tagValue("ResolutionUnit")
+    # ResolutionUnit: 1 = no unit (treat as undefined), 2 = inch, 3 = centimeter.
+    if unit == 2:
+      unitToMm = 25.4
+    elif unit == 3:
+      unitToMm = 10.0
     else:
-        image = reader.Execute()
-        sliceArray = sitk.GetArrayFromImage(image)
+      # Without a unit we cannot convert to mm reliably. Fall back to 0 so the
+      # user is prompted to set spacing manually.
+      return 0.0, 0.0
+    sx = unitToMm / xres if xres > 0 else 0.0
+    sy = unitToMm / yres if yres > 0 else 0.0
+    return sx, sy
 
-        self.originalVolumeDimensions = [sliceArray.shape[1], sliceArray.shape[0], len(filePaths)]
-        self.originalVolumeNumberOfScalarComponents = sliceArray.shape[2] if len(sliceArray.shape) == 3 else 1
-        self.originalVolumeVoxelDataType = numpy.dtype(sliceArray.dtype)
+  @classmethod
+  def _readTiffZSpacing(cls, page, tif):
+    """Try to read Z spacing from common multi-page TIFF conventions
+    (ImageJ hyperstack ImageDescription, OME-TIFF). Returns 0.0 if unknown."""
+    # ImageJ writes a `spacing=` token in ImageDescription on the first page.
+    desc = None
+    if "ImageDescription" in page.tags:
+      desc = page.tags["ImageDescription"].value
+      if isinstance(desc, bytes):
+        try:
+          desc = desc.decode("utf-8", errors="replace")
+        except Exception:
+          desc = None
+    if desc:
+      match = re.search(r"(?im)^\s*spacing\s*=\s*([0-9.+eE-]+)", desc)
+      if match:
+        try:
+          return float(match.group(1))
+        except ValueError:
+          pass
+      # ImageJ also sometimes writes `unit=micron` etc. — leave that to the user
+      # for now; the magnitude alone is what most micro-CT exports need.
 
-        firstSliceSpacing = image.GetSpacing()
-        self.originalVolumeRecommendedSpacing = [firstSliceSpacing[1], firstSliceSpacing[0], 0.0]
+    # OME-TIFF carries PhysicalSizeZ in tif.ome_metadata as XML. tifffile exposes
+    # parsed series spacings via tif.series[0].axes / .shape, but the spacing
+    # itself needs OME XML parsing which we skip in this prototype.
+    return 0.0
 
   def setOriginalVolumeSpacing(self, spacing):
     # Volume is in LPS, therefore we invert the first two axes
@@ -824,76 +955,100 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
     filePath = self._filePaths[0]
     fileExtension = os.path.splitext(filePath)[1]
     isNrrd = fileExtension.lower() == ".nhdr" or fileExtension.lower() == ".nrrd"
-    if isNrrd:
-      paths = ([filePath] * self.originalVolumeDimensions[2])
-    else:
-      paths = self._filePaths
+    isMultiFrameTiff = self.isMultiFrameTiff
 
-    # Keep every stepSize[2]'th slice
-    paths = paths[::stepSize[2]]
+    # Open the multi-page TIFF once and reuse its file handle across slices, so
+    # tifffile decodes only the requested page on each .asarray() call.
+    tiffHandle = None
+    if isMultiFrameTiff:
+      tifffile = self._ensureTifffile()
+      tiffHandle = tifffile.TiffFile(filePath)
 
-    if self.reverseSliceOrder:
-      paths.reverse()
-
-    volumeArray = None
-    sliceIndex = 0
-    firstArrayFullShape = None
-
-    for inputSliceIndex, path in enumerate(paths):
-
-      if progressCallback:
-        toContinue = progressCallback(inputSliceIndex/len(paths))
-        if not toContinue:
-          raise ValueError("User requested cancel")
-
-      if inputSliceIndex < extent[4] or inputSliceIndex > extent[5]:
-        # out of selected bounds
-        continue
-
-      if isNrrd:
-        sliceArray = self.loadNrrdSlice(path, inputSliceIndex * stepSize[2])
+    try:
+      if isNrrd or isMultiFrameTiff:
+        paths = ([filePath] * self.originalVolumeDimensions[2])
       else:
-        reader = sitk.ImageFileReader()
-        reader.SetFileName(path)
-        image = reader.Execute()
+        paths = self._filePaths
 
-        sliceArray = sitk.GetArrayFromImage(image)
+      # Keep every stepSize[2]'th slice
+      paths = paths[::stepSize[2]]
 
-      if len(sliceArray.shape) == 3 and self.outputGrayscale:
-        # We convert to grayscale by simply taking the first component, which is appropriate for cases when grayscale image is stored as R=G=B,
-        # but to convert real RGB images it could better to compute the mean or luminance.
-        sliceArray = sliceArray[:,:,0]
-      currentArrayFullShape = sliceArray.shape
-      if firstArrayFullShape is None:
-        firstArrayFullShape = currentArrayFullShape
-      if volumeArray is None:
-        shape = [extent[5]-extent[4]+1, extent[3]-extent[2]+1, extent[1]-extent[0]+1]
+      # For multi-page TIFF the path list is identical strings, so we need an
+      # explicit page index for each position. Mirror the same stride/reverse
+      # transform applied to `paths` so the two stay in lockstep.
+      tiffPageIndices = None
+      if isMultiFrameTiff:
+        tiffPageIndices = list(range(0, self.originalVolumeDimensions[2], stepSize[2]))
+
+      if self.reverseSliceOrder:
+        paths.reverse()
+        if tiffPageIndices is not None:
+          tiffPageIndices.reverse()
+
+      volumeArray = None
+      sliceIndex = 0
+      firstArrayFullShape = None
+
+      for inputSliceIndex, path in enumerate(paths):
+
+        if progressCallback:
+          toContinue = progressCallback(inputSliceIndex/len(paths))
+          if not toContinue:
+            raise ValueError("User requested cancel")
+
+        if inputSliceIndex < extent[4] or inputSliceIndex > extent[5]:
+          # out of selected bounds
+          continue
+
+        if isNrrd:
+          sliceArray = self.loadNrrdSlice(path, inputSliceIndex * stepSize[2])
+        elif isMultiFrameTiff:
+          sliceArray = tiffHandle.pages[tiffPageIndices[inputSliceIndex]].asarray()
+        else:
+          reader = sitk.ImageFileReader()
+          reader.SetFileName(path)
+          image = reader.Execute()
+
+          sliceArray = sitk.GetArrayFromImage(image)
+
+        if len(sliceArray.shape) == 3 and self.outputGrayscale:
+          # We convert to grayscale by simply taking the first component, which is appropriate for cases when grayscale image is stored as R=G=B,
+          # but to convert real RGB images it could better to compute the mean or luminance.
+          sliceArray = sliceArray[:,:,0]
+        currentArrayFullShape = sliceArray.shape
+        if firstArrayFullShape is None:
+          firstArrayFullShape = currentArrayFullShape
+        if volumeArray is None:
+          shape = [extent[5]-extent[4]+1, extent[3]-extent[2]+1, extent[1]-extent[0]+1]
+          if len(sliceArray.shape) == 3:
+            shape.append(sliceArray.shape[2])
+          volumeArray = numpy.zeros(shape, dtype=sliceArray.dtype)
         if len(sliceArray.shape) == 3:
-          shape.append(sliceArray.shape[2])
-        volumeArray = numpy.zeros(shape, dtype=sliceArray.dtype)
-      if len(sliceArray.shape) == 3:
-        # vector volume
-        sliceArray = sliceArray[
-          extent[2]*stepSize[1]:(extent[3]+1)*stepSize[1]:stepSize[1],
-          extent[0]*stepSize[0]:(extent[1]+1)*stepSize[0]:stepSize[0], :]
-      else:
-        # grayscale volume
-        sliceArray = sliceArray[
-                     extent[2] * stepSize[1]:(extent[3] + 1) * stepSize[1]:stepSize[1],
-                     extent[0] * stepSize[0]:(extent[1] + 1) * stepSize[0]:stepSize[0]]
+          # vector volume
+          sliceArray = sliceArray[
+            extent[2]*stepSize[1]:(extent[3]+1)*stepSize[1]:stepSize[1],
+            extent[0]*stepSize[0]:(extent[1]+1)*stepSize[0]:stepSize[0], :]
+        else:
+          # grayscale volume
+          sliceArray = sliceArray[
+                       extent[2] * stepSize[1]:(extent[3] + 1) * stepSize[1]:stepSize[1],
+                       extent[0] * stepSize[0]:(extent[1] + 1) * stepSize[0]:stepSize[0]]
 
-      if (sliceIndex > 0) and (volumeArray[sliceIndex].shape != sliceArray.shape):
-        logging.debug("After downsampling, {} size is {} x {}\n\n{} size is {} x {} ({} scalar components)".format(
-          paths[0], volumeArray[0].shape[0], volumeArray[0].shape[1],
-          path, sliceArray.shape[0], sliceArray.shape[1],
-          sliceArray.shape[2] if len(sliceArray.shape)==3 else 1))
-        message = "There are multiple datasets in the folder. Please select a single file as a sample or specify a pattern.\nDetails:\n"
-        message += f"{paths[0]} size is {firstArrayFullShape[0]} x {firstArrayFullShape[1]} ({firstArrayFullShape[2] if len(firstArrayFullShape)==3 else 1} scalar components)\n\n"
-        message += f"{path} size is {currentArrayFullShape[0]} x {currentArrayFullShape[1]} ({currentArrayFullShape[2] if len(currentArrayFullShape)==3 else 1} scalar components)"
-        raise ValueError(message)
+        if (sliceIndex > 0) and (volumeArray[sliceIndex].shape != sliceArray.shape):
+          logging.debug("After downsampling, {} size is {} x {}\n\n{} size is {} x {} ({} scalar components)".format(
+            paths[0], volumeArray[0].shape[0], volumeArray[0].shape[1],
+            path, sliceArray.shape[0], sliceArray.shape[1],
+            sliceArray.shape[2] if len(sliceArray.shape)==3 else 1))
+          message = "There are multiple datasets in the folder. Please select a single file as a sample or specify a pattern.\nDetails:\n"
+          message += f"{paths[0]} size is {firstArrayFullShape[0]} x {firstArrayFullShape[1]} ({firstArrayFullShape[2] if len(firstArrayFullShape)==3 else 1} scalar components)\n\n"
+          message += f"{path} size is {currentArrayFullShape[0]} x {currentArrayFullShape[1]} ({currentArrayFullShape[2] if len(currentArrayFullShape)==3 else 1} scalar components)"
+          raise ValueError(message)
 
-      volumeArray[sliceIndex] = sliceArray
-      sliceIndex += 1
+        volumeArray[sliceIndex] = sliceArray
+        sliceIndex += 1
+    finally:
+      if tiffHandle is not None:
+        tiffHandle.close()
 
     newVolume = False
     if not outputNode:
