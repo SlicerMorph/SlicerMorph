@@ -1,4 +1,3 @@
 pynrrd
 nptyping
 tifffile
-imagecodecs

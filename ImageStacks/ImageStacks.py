@@ -1003,7 +1003,21 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
         if isNrrd:
           sliceArray = self.loadNrrdSlice(path, inputSliceIndex * stepSize[2])
         elif isMultiFrameTiff:
-          sliceArray = tiffHandle.pages[tiffPageIndices[inputSliceIndex]].asarray()
+          try:
+            sliceArray = tiffHandle.pages[tiffPageIndices[inputSliceIndex]].asarray()
+          except (ImportError, ValueError) as e:
+            # tifffile delegates JPEG/JPEG2000/WebP decode to the optional
+            # imagecodecs package. Surface an actionable message instead of
+            # the raw exception so the user can opt in to that dependency
+            # manually (we keep it out of the default requirements because
+            # its wheels can drag in a numpy ABI change).
+            if "imagecodecs" in str(e).lower():
+              raise ValueError(
+                "This TIFF uses a compression that requires the optional "
+                "'imagecodecs' package. Install it from the Slicer Python "
+                "console with:\n    slicer.util.pip_install('imagecodecs')"
+              ) from e
+            raise
         else:
           reader = sitk.ImageFileReader()
           reader.SetFileName(path)
