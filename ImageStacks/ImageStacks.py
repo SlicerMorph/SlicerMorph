@@ -1108,9 +1108,7 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
     slicer.packaging.pip_ensure(reqs, requester="ImageStacks")
     import nrrd
 
-    from nrrd.types import IndexOrder, NRRDFieldMap, NRRDFieldType, NRRDHeader
-    from typing import Optional, IO, List
-    import nptyping as npt
+    from typing import Optional, IO
     from nrrd import NRRDError
     from nrrd.reader import _NRRD_REQUIRED_FIELDS, _determine_datatype, _READ_CHUNKSIZE
     import zlib
@@ -1118,8 +1116,8 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
     import io
     import bz2
 
-    def read_data(header: NRRDHeader, fh: Optional[IO] = None, filename: Optional[str] = None,
-                  index_order: IndexOrder = 'F', extract_slice_range: Optional[list[int]] = None) -> npt.NDArray:
+    def read_data(header: dict, fh: Optional[IO] = None, filename: Optional[str] = None,
+                  index_order: str = 'F', extract_slice_range: Optional[list] = None) -> np.ndarray:
         """Read data from file into :class:`numpy.ndarray`
 
         The two parameters :obj:`fh` and :obj:`filename` are optional depending on the parameters but it never hurts to
