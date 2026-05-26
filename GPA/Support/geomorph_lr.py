@@ -871,7 +871,10 @@ class GeomorphLR:
       return _pyRserve
     except Exception:
       try:
-        slicer.packaging.pip_ensure("pyRserve", requester="GPA")
+        # --no-deps: pyRserve metadata pins numpy<2, which would downgrade
+        # numpy and break tifffile/imagecodecs/etc. The shim above keeps
+        # pyRserve working against numpy 2.x.
+        slicer.packaging.pip_install("pyRserve --no-deps", requester="GPA")
         import pyRserve as _pyRserve
         return _pyRserve
       except Exception as ee:

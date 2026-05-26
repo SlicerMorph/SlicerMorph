@@ -80,8 +80,11 @@ def _ensure_pyRserve_early() -> bool:
     return True
 
   # ---- Ensure installed, then import -----------------------------------------
+  # Install with --no-deps to avoid pyRserve's overly strict numpy<2 metadata
+  # pin from downgrading numpy and breaking tifffile/imagecodecs/etc. The
+  # NumPy 2.x compatibility shim above makes pyRserve safe on numpy 2.x.
   try:
-    slicer.packaging.pip_ensure("pyRserve", requester="GPA")
+    slicer.packaging.pip_install("pyRserve --no-deps", requester="GPA")
     import pyRserve  # noqa: F401
     return True
   except Exception:
