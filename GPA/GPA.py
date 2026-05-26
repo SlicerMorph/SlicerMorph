@@ -138,20 +138,20 @@ This module performs standard Generalized Procrustes Analysis (GPA) based on Dry
          </layout>
        </item>
        <item splitSize=\"500\">
-        <layout type=\"horizontal\">
-         <item>
+        <layout type=\"horizontal\" split=\"true\">
+         <item splitSize=\"400\">
           <view class=\"vtkMRMLSliceNode\" singletontag=\"Red\">
            <property name=\"orientation\" action=\"default\">Axial</property>
            <property name=\"viewlabel\" action=\"default\">R</property>
            <property name=\"viewcolor\" action=\"default\">#F34A33</property>
           </view>
          </item>
-           <item>
+           <item splitSize=\"600\">
             <view class=\"vtkMRMLPlotViewNode\" singletontag=\"PlotViewerWindow_1\">
              <property name=\"viewlabel\" action=\"default\">1</property>
             </view>
            </item>
-         <item>
+         <item splitSize=\"400\">
           <view class=\"vtkMRMLTableViewNode\" singletontag=\"TableViewerWindow_1\">"
            <property name=\"viewlabel\" action=\"default\">T</property>"
           </view>"
@@ -389,7 +389,6 @@ class LMData:
     self.vec=np.real(self.vec)
     # scale eigenvector
     pcComponent = pcNumber - 1
-    print("scaling factor: ", pcRange)
     shift[:,0]=shift[:,0]+float(pcRange)*self.vec[0:i,pcComponent]*SampleScaleFactor/3
     shift[:,1]=shift[:,1]+float(pcRange)*self.vec[i:2*i,pcComponent]*SampleScaleFactor/3
     shift[:,2]=shift[:,2]+float(pcRange)*self.vec[2*i:3*i,pcComponent]*SampleScaleFactor/3
@@ -500,6 +499,13 @@ class GPAWidget(ScriptedLoadableModuleWidget):
   def onReload(self):
     """Reload Support submodules before reloading the main module so that
     edits in Support/*.py take effect on 'Reload'."""
+    # Tear down session state first so reloads don't accumulate event
+    # filters, observers, or scene nodes (each accumulation has been
+    # observed to cause repaint storms and 3D background hue flicker).
+    try:
+      self._gpaTeardown()
+    except Exception as e:
+      print(f"[GPA] teardown warning: {e}")
     import importlib, sys
     for name in list(sys.modules):
       if name == "Support" or name.startswith("Support."):
@@ -508,6 +514,58 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         except Exception as e:
           print(f"[GPA] Could not reload {name}: {e}")
     ScriptedLoadableModuleWidget.onReload(self)
+
+  def cleanup(self):
+    """Called by Slicer when the module is unloaded (and on Reload)."""
+    try:
+      self._gpaTeardown()
+    except Exception as e:
+      print(f"[GPA] cleanup warning: {e}")
+    try:
+      ScriptedLoadableModuleWidget.cleanup(self)
+    except Exception:
+      pass
+
+  def _gpaTeardown(self):
+    """Idempotent teardown of all session-scoped state that survives Reload
+    if not explicitly torn down (Qt event filters, mouse-tracking flags on
+    plot view children, MRML observers, and engine-owned transform nodes)."""
+    # Plot-drive event filter + mouseTracking on plot view children.
+    try:
+      if getattr(self, "_plotDriveFilteredWidgets", None):
+        self._detachPlotMouseFilter()
+    except Exception as e:
+      print(f"[GPA teardown] plot mouse filter: {e}")
+    # Remove the persistent status-bar PCA cursor label so reloads do not
+    # leave stale widgets in Slicer's main status bar.
+    try:
+      self._removeStatusBarPCALabel()
+    except Exception as e:
+      print(f"[GPA teardown] status-bar label: {e}")
+    # Reset mouseTracking on any plot view child we may have touched, even
+    # if the filter list got out of sync (e.g. from a previous reload).
+    try:
+      pv = self._plotView() if hasattr(self, "_plotView") else None
+      if pv is not None:
+        try: pv.setMouseTracking(False)
+        except Exception: pass
+        for child in pv.findChildren(qt.QWidget):
+          try: child.setMouseTracking(False)
+          except Exception: pass
+    except Exception:
+      pass
+    # LR controller: dispose the warp engine + drop the LR transform node
+    # it owned, so the next instance does not contend with a stale node.
+    try:
+      lr = getattr(self, "lr", None) or getattr(self, "geomorphLR", None)
+      if lr is not None:
+        eng = getattr(lr, "_warp_engine", None)
+        if eng is not None:
+          try: eng.dispose()
+          except Exception as e: print(f"[GPA teardown] engine.dispose: {e}")
+          lr._warp_engine = None
+    except Exception as e:
+      print(f"[GPA teardown] LR engine: {e}")
 
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
@@ -526,8 +584,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     tabs = [
       ("Setup Analysis", "UI/GPA_SetupAnalysis.ui"),
-      ("Explore Data/Results", "UI/GPA_ExploreDataResults.ui"),
-      ("Interactive 3D Visualization", "UI/GPA_Interactive3D.ui"),
+      ("Results", "UI/GPA_ExploreDataResults.ui"),
+      ("Interactive 3D", "UI/GPA_Interactive3D.ui"),
       ("Geomorph Linear Regression", "UI/GPA_GeomorphLR.ui"),
     ]
 
@@ -565,6 +623,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     except Exception:
       # PyQt4-style fallback
       tab.connect('currentChanged(int)', self._onTabChanged)
+
+    # Gate non-Setup tabs until a GPA analysis is run / loaded. Setup
+    # Analysis (index 0) is always enabled; Explore, Interactive 3D, and
+    # LR depend on having self.LM and self.scatterDataAll populated.
+    self._setAnalysisTabsEnabled(False)
 
     # If LR tab is already selected (unlikely), initialize immediately
     try:
@@ -609,6 +672,17 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.ui.grayscaleSelector.connect('validInputChanged(bool)', self.onModelSelected)
     self.ui.FudSelect.connect('validInputChanged(bool)', self.onModelSelected)
     self.ui.selectorButton.connect('clicked(bool)', self.onSelect)
+    # Warp-source toggle (PCA vs Geomorph LR). The two radio buttons have
+    # `autoExclusive=false` (set in the .ui) so they don't get pulled into
+    # the same exclusive group as the mean-vs-model radios above. We manage
+    # mutual exclusivity manually here.
+    try:
+      self.ui.warpModePCA.toggled.connect(
+        lambda checked: self._setWarpMode("pca") if checked else None)
+      self.ui.warpModeLR.toggled.connect(
+        lambda checked: self._setWarpMode("lr") if checked else None)
+    except Exception:
+      pass
     self.ui.startRecordButton.connect('clicked(bool)', self.onStartRecording)
     self.ui.stopRecordButton.connect('clicked(bool)', self.onStopRecording)
     self.ui.resetButton.connect('clicked(bool)', self.reset)
@@ -632,6 +706,51 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.setupPCTransform()
     self.updatePCScaling()
 
+    # Wrap PC-selection comboboxes with QSpinBox + variance QLabel.
+    # The original combobox is hidden but kept alive so all existing
+    # handlers (currentIndexChanged, currentIndex reads) keep working;
+    # the spinbox writes through to combobox.setCurrentIndex().
+    self._pcVariancePercent = []      # list[float], populated in updateList()
+    self._pcSpinWidgets = {}          # combobox name -> {"spin": QSpinBox, "label": QLabel}
+    self._wrapComboWithSpinBox(self.ui.pcComboBox,    allow_none=True,
+                               prefix_text="Slider warps:")   # Interactive 3D
+    self._wrapComboWithSpinBox(self.ui.XcomboBox,     allow_none=False)  # Results X
+    self._wrapComboWithSpinBox(self.ui.YcomboBox,     allow_none=False)  # Results Y
+    self._wrapComboWithSpinBox(self.ui.vectorOne,     allow_none=True)   # Lollipop 1
+    self._wrapComboWithSpinBox(self.ui.vectorTwo,     allow_none=True)   # Lollipop 2
+    self._wrapComboWithSpinBox(self.ui.vectorThree,   allow_none=True)   # Lollipop 3
+
+    # Force tight vertical spacing on the Results-tab grids. The .ui file
+    # sets verticalSpacing=2 but PythonQt's QUiLoader does not always honor
+    # the property tag for QGridLayout, so we apply it explicitly here.
+    # Layouts aren't exposed via childWidgetVariables, so we walk the widget
+    # tree from the parent frame and pull the layout off each frame widget.
+    for frame_name in ("plotFrame", "lolliFrame", "meanShapeFrame", "distributionFrame"):
+      try:
+        frame = getattr(self.ui, frame_name, None)
+        if frame is None:
+          continue
+        grid = frame.layout()
+        if grid is None:
+          continue
+        try: grid.setVerticalSpacing(2)
+        except Exception: pass
+        try: grid.setHorizontalSpacing(6)
+        except Exception: pass
+        try: grid.setContentsMargins(4, 2, 4, 2)
+        except Exception: pass
+        try:
+          for r in range(int(grid.rowCount())):
+            grid.setRowMinimumHeight(r, 0)
+            grid.setRowStretch(r, 0)
+        except Exception:
+          pass
+      except Exception:
+        pass
+
+    # Inject Drive-3D X/Y PC selector row right under the status label.
+    self._injectDrivePlotPCRow()
+
     # Core state defaults (unchanged)
     self.LM = None
     self.sampleSizeScaleFactor = 1.0
@@ -643,6 +762,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.cloneModelDisplayNode = None
     self.factorTableNode = None
     self.gridTransformNode = None
+    # Active warp source for the shared Interactive-Visualization clones
+    # (cloneLandmarkNode + cloneModelNode). "pca" parents them under
+    # gridTransformNode; "lr" parents them under LRTPS_Transform.
+    self.activeWarpMode = "pca"
     self._gridCache = {}
     self.files = []
     self.inputFilePaths = []
@@ -762,6 +885,363 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     button=qt.QPushButton(buttonText)
     return textInLine, lineLabel, button
 
+  # ------------------------------------------------------------------
+  # PC selection: spinbox + variance-label wrapper around each combobox
+  # ------------------------------------------------------------------
+  def _wrapComboWithSpinBox(self, combo, allow_none: bool, prefix_text: str = ""):
+    """Hide `combo` and inject a QSpinBox + variance QLabel in its place.
+    The spinbox writes through to combo.setCurrentIndex() so all existing
+    handlers and reads continue to work unchanged.
+
+    allow_none=True : spinbox 0..N where 0 maps to combo index 0 ('None')
+                      and label shows '(none)' at 0.
+    allow_none=False: spinbox 1..N where 1 maps to combo index 0
+                      (i.e. PC1 is the first item in the combo).
+    """
+    parent = combo.parentWidget() if hasattr(combo, "parentWidget") else combo.parent()
+    layout = parent.layout() if parent is not None else None
+    if layout is None:
+      return  # Cannot wrap — leave combo visible as-is.
+
+    # The combobox may live inside a nested sub-layout (e.g. a QHBoxLayout
+    # placed directly into a grid cell with no intermediate QWidget). Find
+    # the actual layout that contains the combobox.
+    def _find_owning_layout(root_layout, target):
+      try:
+        if root_layout.indexOf(target) >= 0:
+          return root_layout
+      except Exception:
+        pass
+      try:
+        n = root_layout.count()
+      except Exception:
+        n = 0
+      for i in range(n):
+        try:
+          item = root_layout.itemAt(i)
+          if item is None:
+            continue
+          sub = item.layout()
+          if sub is not None:
+            found = _find_owning_layout(sub, target)
+            if found is not None:
+              return found
+        except Exception:
+          continue
+      return None
+
+    owning = _find_owning_layout(layout, combo)
+    if owning is not None:
+      layout = owning
+
+    # Build the replacement: [QSpinBox][QLabel] inside a container widget.
+    container = qt.QWidget(parent)
+    h = qt.QHBoxLayout(container)
+    h.setContentsMargins(0, 0, 0, 0)
+    h.setSpacing(4)
+    try:
+      container.setSizePolicy(qt.QSizePolicy.Preferred, qt.QSizePolicy.Fixed)
+    except Exception:
+      pass
+    spin = qt.QSpinBox(container)
+    spin.setMinimum(0 if allow_none else 1)
+    spin.setMaximum(1)  # placeholder; updated by _refreshPCSpinBoxes()
+    if allow_none:
+      spin.setSpecialValueText("None")
+    spin.setFixedWidth(70)
+    label = qt.QLabel("(no analysis)", container)
+    label.setStyleSheet("color: gray;")
+    if prefix_text:
+      prefix = qt.QLabel(prefix_text, container)
+      h.addWidget(prefix)
+    h.addWidget(spin)
+    h.addWidget(label, 1)
+
+    # Insert container into the same slot the combobox occupies.
+    # PythonQt's `isinstance(layout, qt.QGridLayout)` and `getItemPosition`
+    # are unreliable. Use itemAtPosition() iteration for grids, which works.
+    inserted = False
+
+    # Try QGridLayout via row/col iteration
+    if not inserted and hasattr(layout, "itemAtPosition") and hasattr(layout, "rowCount"):
+      try:
+        rc = int(layout.rowCount())
+        cc = int(layout.columnCount())
+        target_rc = None
+        for r in range(rc):
+          for c in range(cc):
+            it = layout.itemAtPosition(r, c)
+            if it is not None and it.widget() is combo:
+              target_rc = (r, c)
+              break
+          if target_rc:
+            break
+        if target_rc is not None:
+          r, c = target_rc
+          # Span enough columns to consume the wasted space to the right.
+          # Original combos use colspan=3 so we mirror that.
+          try:
+            layout.removeWidget(combo)
+          except Exception:
+            pass
+          combo.setParent(parent)
+          layout.addWidget(container, r, c, 1, 3)
+          inserted = True
+      except Exception:
+        pass
+
+    # Try QFormLayout
+    if not inserted and hasattr(layout, "getWidgetPosition"):
+      try:
+        row, role = layout.getWidgetPosition(combo)
+        if row >= 0:
+          layout.setWidget(row, role, container)
+          inserted = True
+      except Exception:
+        pass
+
+    # Try QBoxLayout
+    if not inserted and hasattr(layout, "insertWidget"):
+      try:
+        idx = layout.indexOf(combo)
+        if idx >= 0:
+          layout.removeWidget(combo)
+          layout.insertWidget(idx, container)
+          combo.setParent(parent)
+          inserted = True
+      except Exception:
+        pass
+
+    if not inserted:
+      try:
+        layout.addWidget(container)
+      except Exception:
+        pass
+    combo.setVisible(False)
+
+    # Wire spinbox -> combobox (mapped). When None is selected (allow_none
+    # only), set combo index 0; else set combo index = spin.value - 1.
+    offset = 0 if allow_none else 1
+    def _on_spin_changed(v, _combo=combo, _label=label, _allow=allow_none, _off=offset):
+      try:
+        target_idx = (int(v) - _off) if not _allow else (0 if int(v) == 0 else int(v))
+      except Exception:
+        return
+      try:
+        if int(_combo.currentIndex) != target_idx:
+          _combo.setCurrentIndex(target_idx)
+      except Exception:
+        try:
+          _combo.setCurrentIndex(target_idx)
+        except Exception:
+          pass
+      self._updatePCVarianceLabel(_label, int(v), _allow)
+    spin.valueChanged.connect(_on_spin_changed)
+
+    self._pcSpinWidgets[combo.objectName] = {
+      "spin": spin, "label": label, "combo": combo, "allow_none": allow_none,
+    }
+
+  def _updatePCVarianceLabel(self, label, spin_value: int, allow_none: bool):
+    pcs = getattr(self, "_pcVariancePercent", []) or []
+    if not pcs:
+      label.setText("(no analysis)")
+      label.setStyleSheet("color: gray;")
+      return
+    if allow_none and spin_value == 0:
+      label.setText("(none)")
+      label.setStyleSheet("color: gray;")
+      return
+    pc_index_1based = spin_value if allow_none else spin_value
+    if pc_index_1based < 1 or pc_index_1based > len(pcs):
+      label.setText("")
+      return
+    pct = pcs[pc_index_1based - 1]
+    label.setText(f"PC {pc_index_1based} \u2014 {pct:.2f}% var")
+    label.setStyleSheet("")
+
+  def _refreshPCSpinBoxes(self):
+    """Update spinbox max + label after a new analysis populates _pcVariancePercent."""
+    n = len(getattr(self, "_pcVariancePercent", []) or [])
+    if n <= 0:
+      return
+    for name, w in (getattr(self, "_pcSpinWidgets", {}) or {}).items():
+      spin = w["spin"]; label = w["label"]; allow = w["allow_none"]
+      spin.blockSignals(True)
+      try:
+        spin.setMaximum(n if allow else n)
+        # Ensure value is in range; preserve current value if possible.
+        v = int(spin.value)
+        if allow:
+          if v < 0: v = 0
+          if v > n: v = n
+        else:
+          if v < 1: v = 1
+          if v > n: v = n
+        spin.setValue(v)
+      finally:
+        spin.blockSignals(False)
+      self._updatePCVarianceLabel(label, int(spin.value), allow)
+    # Also update Drive-3D X/Y spinbox ranges + labels.
+    if hasattr(self, "_driveSpinX") and self._driveSpinX is not None:
+      for spin, lbl, default_v in (
+        (self._driveSpinX, self._driveLabelX, 1),
+        (self._driveSpinY, self._driveLabelY, 2),
+      ):
+        spin.blockSignals(True)
+        try:
+          spin.setMaximum(n)
+          v = int(spin.value)
+          if v < 1: v = default_v
+          if v > n: v = n
+          spin.setValue(v)
+        finally:
+          spin.blockSignals(False)
+        pcs = getattr(self, "_pcVariancePercent", []) or []
+        if pcs and 1 <= int(spin.value) <= len(pcs):
+          lbl.setText(f"PC {int(spin.value)} \u2014 {pcs[int(spin.value)-1]:.2f}% var")
+          lbl.setStyleSheet("")
+
+  # ------------------------------------------------------------------
+  # Drive 3D: X/Y PC selector row injected on Interactive 3D tab
+  # ------------------------------------------------------------------
+  def _injectDrivePlotPCRow(self):
+    """Add 'X: [..] PC.. var   Y: [..] PC.. var' under the Status label so
+    the user can change Drive-3D PC pair without leaving the tab."""
+    status = getattr(self.ui, "drivePCAPlotStatus", None)
+    if status is None:
+      return
+    parent = status.parentWidget()
+    if parent is None:
+      return
+    layout = parent.layout()
+    if layout is None or not hasattr(layout, "itemAtPosition"):
+      return
+    # Find row of status label.
+    target_row = None
+    try:
+      rc = int(layout.rowCount()); cc = int(layout.columnCount())
+      for r in range(rc):
+        for c in range(cc):
+          it = layout.itemAtPosition(r, c)
+          if it is not None and it.widget() is status:
+            target_row = r; break
+        if target_row is not None: break
+    except Exception:
+      return
+    if target_row is None:
+      return
+
+    # Build container row.
+    container = qt.QWidget(parent)
+    h = qt.QHBoxLayout(container)
+    h.setContentsMargins(0, 4, 0, 0)
+    h.setSpacing(6)
+
+    self._driveSpinX = qt.QSpinBox(container)
+    self._driveSpinX.setMinimum(1); self._driveSpinX.setMaximum(1); self._driveSpinX.setFixedWidth(70)
+    self._driveLabelX = qt.QLabel("(no analysis)", container)
+    self._driveLabelX.setStyleSheet("color: gray;")
+    h.addWidget(qt.QLabel("X:", container))
+    h.addWidget(self._driveSpinX)
+    h.addWidget(self._driveLabelX, 1)
+
+    self._driveSpinY = qt.QSpinBox(container)
+    self._driveSpinY.setMinimum(1); self._driveSpinY.setMaximum(1); self._driveSpinY.setFixedWidth(70)
+    self._driveLabelY = qt.QLabel("(no analysis)", container)
+    self._driveLabelY.setStyleSheet("color: gray;")
+    h.addWidget(qt.QLabel("Y:", container))
+    h.addWidget(self._driveSpinY)
+    h.addWidget(self._driveLabelY, 1)
+
+    # Insert below the status label.
+    new_row = target_row + 1
+    # Push subsequent rows down by re-adding (Qt grids can have empty rows).
+    layout.addWidget(container, new_row, 0, 1, 3)
+
+    # Wire: spinbox change -> update Results combo (single source of truth) +
+    # reset to mean shape + (only if toggle is ON) replot + rebind.
+    self._driveSpinX.valueChanged.connect(lambda v: self._onDrivePCChanged("X", int(v)))
+    self._driveSpinY.valueChanged.connect(lambda v: self._onDrivePCChanged("Y", int(v)))
+
+    # Mirror the other direction: when the user changes XcomboBox/YcomboBox
+    # on the Results tab, sync these spinboxes back.
+    try:
+      self.ui.XcomboBox.currentIndexChanged.connect(lambda _i: self._syncDriveSpinsFromCombos())
+      self.ui.YcomboBox.currentIndexChanged.connect(lambda _i: self._syncDriveSpinsFromCombos())
+    except Exception:
+      pass
+
+  def _onDrivePCChanged(self, axis: str, value: int):
+    """Spinbox changed: write through to Results combobox, reset to mean,
+    and (if Drive-3D is currently ON) trigger a replot + rebind."""
+    combo = self.ui.XcomboBox if axis == "X" else self.ui.YcomboBox
+    target_idx = max(0, value - 1)
+    try:
+      if int(combo.currentIndex) != target_idx:
+        combo.setCurrentIndex(target_idx)  # also updates the Results spinbox via its own wiring
+    except Exception:
+      try: combo.setCurrentIndex(target_idx)
+      except Exception: pass
+    # Update variance label for this drive spinbox.
+    pcs = getattr(self, "_pcVariancePercent", []) or []
+    if pcs and 1 <= value <= len(pcs):
+      lbl = self._driveLabelX if axis == "X" else self._driveLabelY
+      lbl.setText(f"PC {value} \u2014 {pcs[value-1]:.2f}% var")
+      lbl.setStyleSheet("")
+    # Always reset visualization to mean shape so user starts clean.
+    self._resetDrivePlotToMean()
+    # Only rebuild the chart + rebind if the toggle is ON. Otherwise the
+    # change is just a future-intent setting.
+    if getattr(self, "_plotDriveActive", False):
+      try:
+        self.plot()  # rebuilds chart from XcomboBox/YcomboBox + factor
+      except Exception:
+        pass
+      try:
+        self._refreshPlotDriving(forceLog=True)
+      except Exception:
+        pass
+
+  def _syncDriveSpinsFromCombos(self):
+    """Mirror XcomboBox/YcomboBox -> drive spinboxes (no recursion: spinbox
+    setValue is signal-blocked)."""
+    if not hasattr(self, "_driveSpinX") or self._driveSpinX is None:
+      return
+    try:
+      x_val = int(self.ui.XcomboBox.currentIndex) + 1
+      y_val = int(self.ui.YcomboBox.currentIndex) + 1
+    except Exception:
+      return
+    for spin, val, lbl in (
+      (self._driveSpinX, x_val, self._driveLabelX),
+      (self._driveSpinY, y_val, self._driveLabelY),
+    ):
+      if val < spin.minimum or val > spin.maximum:
+        continue
+      if int(spin.value) == val:
+        continue
+      spin.blockSignals(True)
+      try: spin.setValue(val)
+      finally: spin.blockSignals(False)
+      pcs = getattr(self, "_pcVariancePercent", []) or []
+      if pcs and 1 <= val <= len(pcs):
+        lbl.setText(f"PC {val} \u2014 {pcs[val-1]:.2f}% var")
+        lbl.setStyleSheet("")
+
+  def _resetDrivePlotToMean(self):
+    """Reset Drive-3D visualization to the mean shape (zero displacement)."""
+    # Engine path / fused-array path:
+    if getattr(self, "_plotDriveFusedArray", None) is not None:
+      try:
+        self._applyPlotScores(0.0, 0.0)
+      except Exception:
+        pass
+    try:
+      self._updatePCACursor(0.0, 0.0)
+    except Exception:
+      pass
+
   def updateList(self):
     i,j,k=self.LM.lm.shape
     self.PCList=[]
@@ -778,8 +1258,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.ui.vectorOne.addItem('None')
     self.ui.vectorTwo.addItem('None')
     self.ui.vectorThree.addItem('None')
-    if len(percentVar)<self.pcNumber:
-      self.pcNumber=len(percentVar)
+    # Populate with ALL PCs (combos are hidden; spinboxes drive selection).
+    self.pcNumber = int(len(percentVar))
+    self._pcVariancePercent = [float(v) * 100.0 for v in percentVar]
     for x in range(self.pcNumber):
       tmp=f"{percentVar[x]*100:.1f}"
       string='PC '+str(x+1)+': '+str(tmp)+"%" +" var"
@@ -789,6 +1270,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.ui.vectorOne.addItem(string)
       self.ui.vectorTwo.addItem(string)
       self.ui.vectorThree.addItem(string)
+    # Refresh spinbox ranges and variance labels.
+    self._refreshPCSpinBoxes()
 
   def factorStringChanged(self):
     if self.ui.factorNames.text != "" and getattr(self, 'inputFilePaths', None) and self.inputFilePaths is not []:
@@ -849,6 +1332,18 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.LM_dir_name=None
     self.ui.openResultsButton.enabled = False
 
+    # Clear covariate table selection so the next run starts without inheriting
+    # the previous CSV path (the LR pipeline reads selectCovariatesText.text
+    # to decide whether covariates are available).
+    self.covariateTableFile = None
+    try:
+      self.ui.selectCovariatesText.setText("")
+    except Exception:
+      pass
+    try:
+      self.factorTableNode = None
+    except Exception:
+      pass
     self.ui.grayscaleSelector.setCurrentPath("")
     self.ui.FudSelect.setCurrentPath("")
     self.ui.grayscaleSelector.enabled = False
@@ -1238,13 +1733,25 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.sampleSizeScaleFactor = logic.dist2(self.rawMeanLandmarks).max()
     print("Scale Factor: " + str(self.sampleSizeScaleFactor))
     self.ui.GPALogTextbox.insertPlainText(f"Scale Factor: {self.sampleSizeScaleFactor}\n")
-    for landmarkNumber in range (shape[0]):
-      name = str(landmarkNumber+1) #start numbering at 1
-      self.meanLandmarkNode.AddControlPoint(self.rawMeanLandmarks[landmarkNumber,:], name)
+    # Perf: see onLoad() for rationale. Wrap in StartModify/EndModify so we
+    # don't trigger N synchronous renders during point creation.
+    _wasMod = self.meanLandmarkNode.StartModify()
+    try:
+      for landmarkNumber in range (shape[0]):
+        name = str(landmarkNumber+1) #start numbering at 1
+        self.meanLandmarkNode.AddControlPoint(self.rawMeanLandmarks[landmarkNumber,:], name)
+    finally:
+      self.meanLandmarkNode.EndModify(_wasMod)
     self.meanLandmarkNode.SetDisplayVisibility(1)
     self.meanLandmarkNode.LockedOn() #lock position so when displayed they cannot be moved
-    self.meanLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(1)
+    _showLabelsByDefault = (shape[0] <= 200)
+    self.meanLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(1 if _showLabelsByDefault else 0)
     self.meanLandmarkNode.GetDisplayNode().SetTextScale(3)
+    # On dense LM datasets the default glyph size of 3 is visually noisy and
+    # eats fill rate. Drop to 1 when N>200; user can re-scale via the slider.
+    if shape[0] > 200:
+      try: self.ui.scaleMeanShapeSlider.value = 1
+      except Exception: pass
     #initialize mean LM display
     self.scaleMeanGlyph()
     self.toggleMeanColor()
@@ -1254,7 +1761,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(shNode, itemIDToClone)
     self.copyLandmarkNode = shNode.GetItemDataNode(clonedItemID)
     GPANodeCollection.AddItem(self.copyLandmarkNode)
-    self.copyLandmarkNode.SetName('PC Warped Landmarks')
+    self.copyLandmarkNode.SetName('Warped Landmarks')
     self.copyLandmarkNode.SetDisplayVisibility(0)
 
     #set up procrustes distance plot
@@ -1297,6 +1804,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     if hasattr(self, "lr"):
       self.lr.refreshFromCovariates()
       self.lr.refreshFitButton()
+
+    self._setAnalysisTabsEnabled(True)
 
   def onLoad(self):
     self.initializeOnLoad() #clean up module from previous runs
@@ -1366,12 +1875,38 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       GPANodeCollection.AddItem(modelDisplayNode)
     self.meanLandmarkNode.GetDisplayNode().SetSliceProjection(True)
     self.meanLandmarkNode.GetDisplayNode().SetSliceProjectionOpacity(1)
-    for landmarkNumber in range(shape[0]):
-      name = str(landmarkNumber+1) #start numbering at 1
-      self.meanLandmarkNode.AddControlPoint(vtk.vtkVector3d(self.rawMeanLandmarks[landmarkNumber,:]), name)
+    # Perf: at high N, per-control-point Modified events trigger N renders
+    # which can take seconds per render once labels are enabled. Wrap the
+    # population loop in a single Modify block so the scene is rendered
+    # exactly once after all points are added.
+    _wasMod = self.meanLandmarkNode.StartModify()
+    try:
+      for landmarkNumber in range(shape[0]):
+        name = str(landmarkNumber+1) #start numbering at 1
+        self.meanLandmarkNode.AddControlPoint(vtk.vtkVector3d(self.rawMeanLandmarks[landmarkNumber,:]), name)
+    finally:
+      self.meanLandmarkNode.EndModify(_wasMod)
     self.meanLandmarkNode.SetDisplayVisibility(1)
-    self.meanLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(1)
+    # Perf: per-point label rendering scales linearly with N (each text
+    # actor re-rasterizes on every render). At N=1440 this drops the 3D
+    # interactive frame rate from ~380fps to ~14fps. Default labels OFF
+    # for high-N datasets; the user can re-enable via the "Show mean
+    # landmark labels" button.
+    _showLabelsByDefault = (shape[0] <= 200)
+    self.meanLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(1 if _showLabelsByDefault else 0)
     self.meanLandmarkNode.GetDisplayNode().SetTextScale(3)
+    # On dense LM datasets the default glyph size of 3 is visually noisy and
+    # eats fill rate. Drop to 1 when N>200; user can re-scale via the slider.
+    if shape[0] > 200:
+      try: self.ui.scaleMeanShapeSlider.value = 1
+      except Exception: pass
+    if not _showLabelsByDefault:
+      msg = (f"Note: point labels are off by default for {shape[0]} landmarks "
+             f"(>200) to keep the 3D viewer responsive. Use the 'Show mean "
+             f"landmark labels' button to toggle.\n")
+      try: self.ui.GPALogTextbox.insertPlainText(msg)
+      except Exception: pass
+      print(msg, end="")
     self.meanLandmarkNode.LockedOn() #lock position so when displayed they cannot be moved
 
     # Set up cloned mean landmark node for pc warping
@@ -1380,7 +1915,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(shNode, itemIDToClone)
     self.copyLandmarkNode = shNode.GetItemDataNode(clonedItemID)
     GPANodeCollection.AddItem(self.copyLandmarkNode)
-    self.copyLandmarkNode.SetName('PC Warped Landmarks')
+    self.copyLandmarkNode.SetName('Warped Landmarks')
     self.copyLandmarkNode.SetDisplayVisibility(0)
 
     # Set up output
@@ -1444,8 +1979,12 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.lr.refreshFromCovariates()
       self.lr.refreshFitButton()
 
+    self._setAnalysisTabsEnabled(True)
+
   def initializeOnLoad(self):
     # clear rest of module when starting GPA analysis
+
+    self._setAnalysisTabsEnabled(False)
 
     self.ui.grayscaleSelector.setCurrentPath("")
     self.ui.FudSelect.setCurrentPath("")
@@ -1520,6 +2059,179 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     if getattr(self, "_plotDriveActive", False):
       self._refreshPlotDriving()
 
+  def _setWarpMode(self, mode):
+    """Switch the active warp source for the shared Interactive-Visualization
+    clones (cloneLandmarkNode + cloneModelNode). Reparents them under either
+    `self.gridTransformNode` (PCA) or the LR module's `LRTPS_Transform`
+    (Geomorph LR). Updates the radio-button UI signal-blocked."""
+    mode = "lr" if str(mode).lower() == "lr" else "pca"
+    self.activeWarpMode = mode
+
+    # Pick parent transform.
+    if mode == "pca":
+      tnode = getattr(self, "gridTransformNode", None)
+    else:
+      lr = getattr(self, "lr", None)
+      tnode = getattr(lr, "lrGridTransformNode", None) if lr else None
+      # Fall back to scene lookup by name (LR module instance may not be cached on widget).
+      if tnode is None or not slicer.mrmlScene.IsNodePresent(tnode):
+        tnode = slicer.mrmlScene.GetFirstNodeByName("LRGridTransform")
+      # Legacy fallback for scenes built before the grid-cache refactor.
+      if tnode is None or not slicer.mrmlScene.IsNodePresent(tnode):
+        tnode = slicer.mrmlScene.GetFirstNodeByName("LRTPS_Transform")
+
+    tid = tnode.GetID() if (tnode is not None and slicer.mrmlScene.IsNodePresent(tnode)) else None
+
+    lm = getattr(self, "cloneLandmarkNode", None) or getattr(self, "copyLandmarkNode", None)
+    if lm is not None and slicer.mrmlScene.IsNodePresent(lm):
+      try: lm.SetAndObserveTransformNodeID(tid)
+      except Exception: pass
+
+    try: modelChecked = bool(self.ui.modelVisualizationType.isChecked())
+    except Exception: modelChecked = False
+    cm = getattr(self, "cloneModelNode", None)
+    if modelChecked and cm is not None and slicer.mrmlScene.IsNodePresent(cm):
+      try: cm.SetAndObserveTransformNodeID(tid)
+      except Exception: pass
+
+    # Recolor the warped landmark glyphs to make the active source obvious.
+    #   PCA  -> dark red    (rgb 0.55, 0.05, 0.05)
+    #   LR   -> light pink  (rgb 1.00, 0.71, 0.76)
+    if mode == "pca":
+      glyph_rgb = (0.55, 0.05, 0.05)
+      model_rgb = (0x7f / 255.0, 0xf4 / 255.0, 0xfd / 255.0)  # light blue (default)
+    else:
+      glyph_rgb = (1.00, 0.71, 0.76)
+      model_rgb = (0.78, 0.65, 0.95)                          # light purple / lavender
+    if lm is not None and slicer.mrmlScene.IsNodePresent(lm):
+      try:
+        d = lm.GetDisplayNode()
+        if d is not None:
+          try: d.SetSelectedColor(glyph_rgb)
+          except Exception: pass
+          try: d.SetColor(glyph_rgb)
+          except Exception: pass
+      except Exception:
+        pass
+
+    # Recolor the warped model surface so it pairs visually with the glyphs.
+    cmd = getattr(self, "cloneModelDisplayNode", None)
+    if cmd is None and cm is not None and slicer.mrmlScene.IsNodePresent(cm):
+      try: cmd = cm.GetDisplayNode()
+      except Exception: cmd = None
+    if cmd is not None:
+      try: cmd.SetColor(*model_rgb)
+      except Exception: pass
+
+    # Reflect in the radio buttons without re-emitting toggled signals.
+    try:
+      pca_btn = self.ui.warpModePCA
+      lr_btn = self.ui.warpModeLR
+      pca_was = pca_btn.blockSignals(True)
+      lr_was = lr_btn.blockSignals(True)
+      try:
+        pca_btn.setChecked(mode == "pca")
+        lr_btn.setChecked(mode == "lr")
+      finally:
+        pca_btn.blockSignals(pca_was)
+        lr_btn.blockSignals(lr_was)
+    except Exception:
+      pass
+
+    # Enable / disable the inactive driver's interactive widgets so the user
+    # can't accidentally drive the wrong source. Radio buttons stay enabled
+    # (so the user can switch back).
+    pca_active = (mode == "pca")
+    for name in ("pcSlider", "pcSpinBox", "pcComboBox"):
+      try:
+        w = getattr(self.ui, name, None)
+        if w is not None:
+          w.setEnabled(pca_active)
+      except Exception:
+        pass
+    # The PC combobox is hidden behind a wrapper QSpinBox+label; disable that too.
+    try:
+      wrap = (self._pcSpinWidgets or {}).get("pcComboBox")
+      if wrap:
+        for k in ("spin", "label"):
+          w = wrap.get(k)
+          if w is not None:
+            try: w.setEnabled(pca_active)
+            except Exception: pass
+    except Exception:
+      pass
+    for name in ("coefSlider", "coefSpinBox", "coefComboBox",
+                 "coefMagnificationSpin", "coefUpdateMagnificationButton"):
+      try:
+        w = getattr(self.ui, name, None)
+        if w is not None:
+          w.setEnabled(not pca_active)
+      except Exception:
+        pass
+
+    # Drive-3D from the PCA scatter plot is also a PCA driver. Disable the
+    # toggle + the X/Y PC spinboxes when we leave PCA mode, and force the
+    # toggle off so any active chart->warp binding stops firing.
+    try:
+      cb = getattr(self.ui, "drivePCAPlotCheckBox", None)
+      if cb is not None:
+        if not pca_active and cb.isChecked():
+          # onTogglePlotDriving(False) cleans up the binding + resets to mean.
+          try: cb.setChecked(False)
+          except Exception: pass
+        cb.setEnabled(pca_active)
+    except Exception:
+      pass
+    for attr in ("_driveSpinX", "_driveSpinY", "_driveLabelX", "_driveLabelY"):
+      try:
+        w = getattr(self, attr, None)
+        if w is not None:
+          w.setEnabled(pca_active)
+      except Exception:
+        pass
+
+    # Reset viewer 2 to the mean shape on every mode switch so the user
+    # always starts from a known reference. For PCA: snap the PC slider to 0
+    # (zero displacement scale). For LR: snap the coefficient slider back to
+    # its neutral value (mean of numeric domain, ref level for categorical),
+    # which produces an identity TPS at the next apply.
+    #
+    # Skip this entire block if the LR module is currently rebuilding its
+    # post-fit state (_coef_in_refresh is True): _coef_refreshFromFit already
+    # performs the slider-reset and TPS apply exactly once, and re-running
+    # them here doubles a multi-second op at high p (e.g. ~13s at p=1000).
+    _lr_obj = getattr(self, "lr", None)
+    if _lr_obj is not None and getattr(_lr_obj, "_coef_in_refresh", False):
+      return
+    try:
+      if mode == "pca":
+        if getattr(self, "pcController", None) is not None:
+          self.pcController.setValue(0)
+        # Force scale -> 0 even if the slider was already at 0 (no signal fires).
+        gtn = getattr(self, "gridTransformNode", None)
+        if gtn is not None:
+          try:
+            gtn.GetTransformFromParent().SetDisplacementScale(0.0)
+            gtn.Modified()
+          except Exception:
+            pass
+      else:
+        lr = getattr(self, "lr", None)
+        if lr is not None and getattr(lr, "coefController", None) is not None:
+          # Re-apply the per-coefficient domain default (sets slider to neutral
+          # AND triggers _coef_updateScaling -> _coef_applyTPS for the reset).
+          try:
+            lr._coef_set_slider_domain_for_current()
+          except Exception:
+            try: lr.coefController.setValue(0.0)
+            except Exception: pass
+          # Also force a TPS rebuild at neutral in case setValue was a no-op
+          # (slider already at neutral -> no signal).
+          try: lr._coef_applyTPS()
+          except Exception: pass
+    except Exception:
+      pass
+
   def setupPCTransform(self):
     # Determine currently selected PC (combo index > 0 means a PC is selected)
     pc_index = self.pcController.comboBoxIndex()
@@ -1544,8 +2256,50 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     cache_key = (self.currentPC, magnification)
     cached = self._gridCache.get(cache_key)
     if cached is None:
-      cached = self.getGridTransform(self.currentPC)
-      self._gridCache[cache_key] = cached
+      # Building the 50x50x50 displacement grid evaluates a TPS over all N
+      # control points at every grid sample (~125k * N kernel evals). On
+      # dense LM datasets this can take many seconds and runs synchronously
+      # on the UI thread; show a progress dialog so the user knows the app
+      # is working rather than hung. Cached after the first build per
+      # (PC, magnification).
+      progressDialog = None
+      restoreCursor = False
+      try:
+        progressDialog = slicer.util.createProgressDialog(
+          windowTitle="Caching deformation grid",
+          labelText=f"Caching deformation grid for PC{self.currentPC} "
+                    f"(magnification {magnification:g})...\n"
+                    f"This is a one-time cost per PC; subsequent selections "
+                    f"of this PC will be instant.",
+          maximum=0,
+        )
+        # A freshly-created modal dialog needs the Qt event loop to spin
+        # several times before it is actually painted to the screen.
+        # Without forcing show + raise + repaint + a few processEvents()
+        # ticks here, the long synchronous getGridTransform() call below
+        # would start before the dialog is visible and the user would see
+        # nothing during the wait. This pattern is portable across
+        # platforms; macOS just happens to expose the bug most reliably.
+        try:
+          progressDialog.setModal(True)
+          progressDialog.show()
+          progressDialog.raise_()
+          progressDialog.repaint()
+        except Exception:
+          pass
+        slicer.app.setOverrideCursor(qt.Qt.WaitCursor)
+        restoreCursor = True
+        for _ in range(5):
+          slicer.app.processEvents()
+        cached = self.getGridTransform(self.currentPC)
+        self._gridCache[cache_key] = cached
+      finally:
+        if progressDialog is not None:
+          try: progressDialog.close()
+          except Exception: pass
+        if restoreCursor:
+          try: slicer.app.restoreOverrideCursor()
+          except Exception: pass
     self.displacementGridData = cached
 
     needNewNode = (self._node('gridTransformNode') is None)
@@ -1556,22 +2310,22 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     # Assign the displacement grid
     self.gridTransformNode.GetTransformFromParent().SetDisplacementGridData(self.displacementGridData)
 
-    # Attach transform to the warped landmark/model nodes if present
-    targetModelChecked = False
+    # Claim the shared Interactive-Visualization clones for PCA. This both
+    # parents them under `gridTransformNode` and updates the warp-mode toggle.
+    # Replaces an earlier unconditional `SetAndObserveTransformNodeID` block;
+    # routing through `_setWarpMode` keeps the toggle UI in sync.
     try:
-      targetModelChecked = bool(self.ui.modelVisualizationType.isChecked())
+      self._setWarpMode("pca")
     except Exception:
-      # Fall back to attribute access pattern used elsewhere
-      targetModelChecked = bool(getattr(self.ui.modelVisualizationType, "checked", False))
-
-    # Landmarks: prefer cloneLandmarkNode, fall back to copyLandmarkNode if used in older code
-    lm_node = getattr(self, "cloneLandmarkNode", None) or getattr(self, "copyLandmarkNode", None)
-    if lm_node is not None:
-      lm_node.SetAndObserveTransformNodeID(self.gridTransformNode.GetID())
-
-    # Model (if present and selected)
-    if targetModelChecked and getattr(self, "cloneModelNode", None) and self.cloneModelNode is not None:
-      self.cloneModelNode.SetAndObserveTransformNodeID(self.gridTransformNode.GetID())
+      # Safety net: if `_setWarpMode` is unavailable (e.g. legacy path),
+      # fall back to the original direct attachment.
+      lm_node = getattr(self, "cloneLandmarkNode", None) or getattr(self, "copyLandmarkNode", None)
+      if lm_node is not None:
+        lm_node.SetAndObserveTransformNodeID(self.gridTransformNode.GetID())
+      try: targetModelChecked = bool(self.ui.modelVisualizationType.isChecked())
+      except Exception: targetModelChecked = False
+      if targetModelChecked and getattr(self, "cloneModelNode", None) and self.cloneModelNode is not None:
+        self.cloneModelNode.SetAndObserveTransformNodeID(self.gridTransformNode.GetID())
 
     # Update the UI-driven range for live scaling
     self.pcController.setRange(self.pcMin, self.pcMax)
@@ -1590,13 +2344,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     # Shift mean landmarks along selected PC at the maximum score
     shiftMax = self.LM.ExpandAlongSinglePC(pcValue, self.pcScoreAbsMax * magnification, self.sampleSizeScaleFactor)
     target = self.rawMeanLandmarks + shiftMax
-    targetLMVTK = logic.convertNumpyToVTK(target)
-    sourceLMVTK = logic.convertNumpyToVTK(self.rawMeanLandmarks)
-
-    VTKTPS = vtk.vtkThinPlateSplineTransform()
-    VTKTPS.SetSourceLandmarks(targetLMVTK)
-    VTKTPS.SetTargetLandmarks(sourceLMVTK)
-    VTKTPS.SetBasisToR()
 
     # Choose bounds from model if in model mode; otherwise from the landmark clone/copy
     try:
@@ -1618,14 +2365,20 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     extent = [0, dimension - 1, 0, dimension - 1, 0, dimension - 1]
     spacing = (size[0] / dimension, size[1] / dimension, size[2] / dimension)
 
-    transformToGrid = vtk.vtkTransformToGrid()
-    transformToGrid.SetInput(VTKTPS)
-    transformToGrid.SetGridOrigin(origin)
-    transformToGrid.SetGridSpacing(spacing)
-    transformToGrid.SetGridExtent(extent)
-    transformToGrid.Update()
-
-    return transformToGrid.GetOutput()
+    # NOTE: vtkTransformToGrid actually samples the FORWARD transform (the
+    # "samples the inverse" comment in older code is wrong, verified empirically).
+    # We pass (source=target, target=mean) -- same call shape the old vtkTPS+
+    # vtkTransformToGrid path used -- and get a numerically identical displacement
+    # field via a NumPy/SciPy TPS solve + chunked GEMM eval. ~50x faster than
+    # vtkTPS at p=1440 because vtkTPS's solve is sequential O(p^3); LAPACK uses
+    # multi-threaded BLAS.
+    return vtk_lib.buildDisplacementGridFromTPS(
+      sourceLM=target,
+      targetLM=self.rawMeanLandmarks,
+      origin=origin,
+      spacing=spacing,
+      extent=extent,
+    )
 
   def getExpandedBounds(self, node, paddingFactor: float = 0.1):
     bounds = [0.0] * 6
@@ -1644,6 +2397,12 @@ class GPAWidget(ScriptedLoadableModuleWidget):
   def updatePCScaling(self):
     if not getattr(self, 'gridTransformNode', None):
       return
+    # User is interacting with a PC control → claim ownership of the shared
+    # warped-landmark/model clones for the PCA pipeline. Auto-switches the
+    # warp-mode toggle if the LR tab had previously claimed them.
+    if getattr(self, "activeWarpMode", "pca") != "pca":
+      try: self._setWarpMode("pca")
+      except Exception: pass
     # Use the controller's current value mapped to the PC score range
     try:
       dynamic_value = float(self.pcController.getValue())
@@ -1770,10 +2529,93 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         self.ui.drivePCAPlotStatus.setText("Status: off")
       except Exception:
         pass
+      self._setStatusBarPCACursor(None)
       self._detachPlotMouseFilter()
       return
-    # Attach + ensure cursor + sanity check
+    # Attach + ensure cursor + sanity check.
+    # Auto-create a default PC1-vs-PC2 plot if the current plot view does
+    # NOT show a PCA scatter (it may be empty, or showing an unrelated
+    # chart like the Procrustes Distances plot from the Results tab).
+    if not self._isPCAChartActive():
+      if not self._autoCreateDefaultPCAPlot():
+        # Failure path already set status + unchecked the box.
+        return
     self._refreshPlotDriving(forceLog=True)
+
+  def _isPCAChartActive(self):
+    """True iff plot view 0 currently shows a PCA scatter chart created
+    by self.plot() (makeScatterPlot / makeScatterPlotWithFactors). We
+    identify by the chart title which both helpers set to a string
+    starting with 'PCA Scatter Plot'."""
+    chart = self._currentPlotChartNode()
+    if chart is None:
+      return False
+    try:
+      title = chart.GetTitle() or ""
+    except Exception:
+      return False
+    return title.startswith("PCA Scatter Plot")
+
+  def _autoCreateDefaultPCAPlot(self):
+    """Convenience: when the user toggles 'Drive 3D from PCA scatter plot'
+    without having clicked the Explore tab's 'Plot' button, build a default
+    PC1-vs-PC2 scatter and bind it to plot view 0. Returns True on success."""
+    # Prerequisite: GPA results must exist.
+    if (getattr(self, "LM", None) is None
+        or getattr(self, "scatterDataAll", None) is None
+        or self.scatterDataAll.size == 0):
+      self._setPlotDriveStatus("Status: load data and run GPA first")
+      try: self.ui.drivePCAPlotCheckBox.setChecked(False)
+      except Exception: pass
+      self._plotDriveActive = False
+      return False
+
+    # If the current layout has no plot view, switch to the GPA custom
+    # layout (id 500) which contains one. Avoids the surprise of clicking
+    # 'on' and seeing nothing happen because plot view 0 doesn't exist.
+    if self._plotWidget() is None:
+      try:
+        slicer.app.layoutManager().setLayout(500)
+      except Exception as e:
+        print(f"[GPA plot-drive] could not switch to layout 500: {e}",
+              flush=True)
+    if self._plotWidget() is None:
+      self._setPlotDriveStatus("Status: no plot view available in current layout")
+      try: self.ui.drivePCAPlotCheckBox.setChecked(False)
+      except Exception: pass
+      self._plotDriveActive = False
+      return False
+
+    # Force PC1 vs PC2 on the Explore-tab combos so that what the user sees
+    # in the plot matches what drives the warp. Suppress signals to avoid
+    # firing whatever index-changed handlers Explore may have wired up.
+    try:
+      for combo, idx in ((self.ui.XcomboBox, 0), (self.ui.YcomboBox, 1)):
+        if combo.count > idx:
+          blocked = combo.blockSignals(True)
+          try: combo.setCurrentIndex(idx)
+          finally: combo.blockSignals(blocked)
+    except Exception as e:
+      print(f"[GPA plot-drive] could not set PC1/PC2 combos: {e}",
+            flush=True)
+
+    # Build the chart via the same code path the 'Plot' button uses.
+    try:
+      self.plot()
+    except Exception as e:
+      self._setPlotDriveStatus(f"Status: auto-plot failed ({e})")
+      try: self.ui.drivePCAPlotCheckBox.setChecked(False)
+      except Exception: pass
+      self._plotDriveActive = False
+      return False
+
+    if self._currentPlotChartNode() is None:
+      self._setPlotDriveStatus("Status: plot creation failed")
+      try: self.ui.drivePCAPlotCheckBox.setChecked(False)
+      except Exception: pass
+      self._plotDriveActive = False
+      return False
+    return True
 
   def _refreshPlotDriving(self, forceLog=False):
     """Wire the event filter and ensure a crosshair series exists.
@@ -1904,9 +2746,21 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     if abs(bx_p2[0] - bx_p1[0]) < 1e-6 or abs(ly_p2[1] - ly_p1[1]) < 1e-6:
       return
     # Qt y is top-down, VTK chart axis points are bottom-up.
-    h = float(widget.height)
-    px = float(event.x())
-    py = h - float(event.y())
+    # On HiDPI displays (Retina) Qt reports widget coordinates in logical
+    # pixels but VTK's chart scene works in physical (render-window) pixels —
+    # without scaling, the cursor lands at half the offset on macOS.
+    try:
+      dpr = float(widget.devicePixelRatioF())
+    except Exception:
+      try:
+        dpr = float(widget.devicePixelRatio())
+      except Exception:
+        dpr = 1.0
+    if dpr <= 0:
+      dpr = 1.0
+    h = float(widget.height) * dpr
+    px = float(event.x()) * dpr
+    py = h - float(event.y()) * dpr
     fx = (px - bx_p1[0]) / (bx_p2[0] - bx_p1[0])
     fy = (py - ly_p1[1]) / (ly_p2[1] - ly_p1[1])
     fx = max(0.0, min(1.0, fx))
@@ -1982,24 +2836,73 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       arr = self._plotDriveDispCache.get(key)
       if arr is not None:
         return arr
-      try:
-        # getGridTransform reads self.pcScoreAbsMax to size the warp; set it
-        # to the per-PC absolute score range so each PC's grid is built at
-        # its own max-score deformation.
-        prev_abs_max = getattr(self, "pcScoreAbsMax", None)
-        prev_pc = getattr(self, "currentPC", None)
-        self.pcScoreAbsMax = float(np.max(np.abs(self.scatterDataAll[:, pc_index - 1])))
-        self.currentPC = pc_index
+      # Reuse the slider's grid cache when possible: it stores a
+      # vtkImageData built by the same getGridTransform(pc, magnification),
+      # which is exactly what plot-drive needs as a numpy view. Avoids a
+      # second 50^3 * N-control-point TPS evaluation that takes ~30s on
+      # dense LM datasets.
+      img = None
+      shared = getattr(self, "_gridCache", None)
+      if isinstance(shared, dict):
+        cached_img = shared.get((pc_index, magnification))
+        if cached_img is not None:
+          img = cached_img
+      if img is None:
+        # Cache miss on BOTH caches: must compute the grid synchronously.
+        # Show a progress dialog so the user knows the app is working.
+        progressDialog = None
+        restoreCursor = False
         try:
-          img = self.getGridTransform(pc_index)
+          try:
+            progressDialog = slicer.util.createProgressDialog(
+              windowTitle="Caching deformation grid",
+              labelText=f"Caching deformation grid for PC{pc_index} "
+                        f"(magnification {magnification:g})...\n"
+                        f"This is a one-time cost per PC; subsequent uses "
+                        f"of this PC will be instant.",
+              maximum=0,
+            )
+            try:
+              progressDialog.setModal(True)
+              progressDialog.show()
+              progressDialog.raise_()
+              progressDialog.repaint()
+            except Exception:
+              pass
+            slicer.app.setOverrideCursor(qt.Qt.WaitCursor)
+            restoreCursor = True
+            for _ in range(5):
+              slicer.app.processEvents()
+          except Exception:
+            pass
+          try:
+            # getGridTransform reads self.pcScoreAbsMax to size the warp; set it
+            # to the per-PC absolute score range so each PC's grid is built at
+            # its own max-score deformation.
+            prev_abs_max = getattr(self, "pcScoreAbsMax", None)
+            prev_pc = getattr(self, "currentPC", None)
+            self.pcScoreAbsMax = float(np.max(np.abs(self.scatterDataAll[:, pc_index - 1])))
+            self.currentPC = pc_index
+            try:
+              img = self.getGridTransform(pc_index)
+            finally:
+              if prev_abs_max is not None:
+                self.pcScoreAbsMax = prev_abs_max
+              if prev_pc is not None:
+                self.currentPC = prev_pc
+          except Exception as e:
+            print(f"[GPA] plot-drive: getGridTransform failed for PC{pc_index}: {e}", flush=True)
+            return None
+          # Populate the slider cache too so a later slider use is instant.
+          if isinstance(shared, dict):
+            shared[(pc_index, magnification)] = img
         finally:
-          if prev_abs_max is not None:
-            self.pcScoreAbsMax = prev_abs_max
-          if prev_pc is not None:
-            self.currentPC = prev_pc
-      except Exception as e:
-        print(f"[GPA] plot-drive: getGridTransform failed for PC{pc_index}: {e}", flush=True)
-        return None
+          if progressDialog is not None:
+            try: progressDialog.close()
+            except Exception: pass
+          if restoreCursor:
+            try: slicer.app.restoreOverrideCursor()
+            except Exception: pass
       dims = img.GetDimensions()
       vec = numpy_support.vtk_to_numpy(img.GetPointData().GetScalars()).copy()
       vec = vec.reshape((dims[2], dims[1], dims[0], 3))
@@ -2102,9 +3005,15 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       colX = vtk.vtkFloatArray(); colX.SetName("X")
       colY = vtk.vtkFloatArray(); colY.SetName("Y")
       tbl.AddColumn(colX); tbl.AddColumn(colY)
-      tbl.SetNumberOfRows(1)
+      # VTK's chart scene logs 'Attempted to paint a line with <2 points'
+      # for any series that has fewer than 2 rows, even when LineStyleNone is
+      # set. Stamp two identical rows so VTK draws a zero-length line and
+      # stays quiet; both rows render as the same crosshair marker.
+      tbl.SetNumberOfRows(2)
       tbl.SetValue(0, 0, 0.0)
       tbl.SetValue(0, 1, 0.0)
+      tbl.SetValue(1, 0, 0.0)
+      tbl.SetValue(1, 1, 0.0)
       self._plotDriveCursorTable = tableNode
     if self._plotDriveCursorSeries is None:
       seriesNode = slicer.mrmlScene.GetFirstNodeByName('PCA Cursor')
@@ -2132,7 +3041,76 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     tbl = self._plotDriveCursorTable.GetTable()
     tbl.SetValue(0, 0, float(scoreX))
     tbl.SetValue(0, 1, float(scoreY))
+    # Mirror to the second row so the renderer has ≥2 points and stays quiet.
+    if tbl.GetNumberOfRows() >= 2:
+      tbl.SetValue(1, 0, float(scoreX))
+      tbl.SetValue(1, 1, float(scoreY))
     self._plotDriveCursorTable.Modified()
+    # Mirror to Slicer's main status bar (bottom-right) so the user can read
+    # the cursor coordinate without squinting at the plot symbol.
+    if getattr(self, "_plotDriveActive", False):
+      self._setStatusBarPCACursor((float(scoreX), float(scoreY)))
+
+  def _ensureStatusBarPCALabel(self):
+    """Create (once) and return the persistent QLabel docked bottom-right of
+    Slicer's main status bar, or None if no main window/status bar exists."""
+    lbl = getattr(self, "_plotDriveStatusBarLabel", None)
+    if lbl is not None:
+      return lbl
+    try:
+      mw = slicer.util.mainWindow()
+      sb = mw.statusBar() if mw is not None else None
+    except Exception:
+      sb = None
+    if sb is None:
+      return None
+    lbl = qt.QLabel("")
+    lbl.setObjectName("GPA_PCA_Cursor_StatusLabel")
+    lbl.setStyleSheet("QLabel { padding: 0 8px; font-family: monospace; }")
+    try:
+      sb.addPermanentWidget(lbl)
+    except Exception:
+      return None
+    self._plotDriveStatusBarLabel = lbl
+    return lbl
+
+  def _setStatusBarPCACursor(self, scores):
+    """scores=None hides the label; (x, y) updates the text using current
+    Drive-3D X/Y PC indices."""
+    lbl = self._ensureStatusBarPCALabel()
+    if lbl is None:
+      return
+    if scores is None:
+      lbl.setText("")
+      lbl.setVisible(False)
+      return
+    try:
+      pcX = int(self.ui.XcomboBox.currentIndex) + 1
+      pcY = int(self.ui.YcomboBox.currentIndex) + 1
+    except Exception:
+      pcX, pcY = 1, 2
+    sx, sy = scores
+    lbl.setText(f"X(PC{pcX})={sx:+.4f}  Y(PC{pcY})={sy:+.4f}")
+    lbl.setVisible(True)
+
+  def _removeStatusBarPCALabel(self):
+    """Remove the status-bar label from Slicer's main window. Called from
+    _gpaTeardown so reloads do not leave stale labels behind."""
+    lbl = getattr(self, "_plotDriveStatusBarLabel", None)
+    if lbl is None:
+      return
+    try:
+      mw = slicer.util.mainWindow()
+      sb = mw.statusBar() if mw is not None else None
+      if sb is not None:
+        sb.removeWidget(lbl)
+    except Exception:
+      pass
+    try:
+      lbl.deleteLater()
+    except Exception:
+      pass
+    self._plotDriveStatusBarLabel = None
 
   # ---- Mouse → data coordinate conversion + dispatch ----
   def _handleVTKMouseEvent(self, interactor):
@@ -2148,9 +3126,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     vis = node.GetDisplayVisibility()
     if vis:
       node.SetDisplayVisibility(False)
-      clone = self._node('cloneLandmarkNode')
-      if clone:
-        clone.SetDisplayVisibility(False)
     else:
       node.SetDisplayVisibility(True)
       disp = self._display(node)
@@ -2158,13 +3133,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         disp.SetGlyphScale(self.ui.scaleMeanShapeSlider.value)
         color = self.ui.meanShapeColor.color
         disp.SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
-      clone = self._node('cloneLandmarkNode')
-      if clone:
-        clone.SetDisplayVisibility(True)
-        cdisp = self._display(clone)
-        if cdisp:
-          cdisp.SetGlyphScale(self.ui.scaleMeanShapeSlider.value)
-          cdisp.SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
+    # Note: do NOT propagate visibility to cloneLandmarkNode. The viewer-2
+    # clone is owned by the active warp source (PCA/LR) and should remain
+    # visible while the user toggles the viewer-1 mean shape independently.
 
   def toggleMeanLabels(self):
     node = self._node('meanLandmarkNode')
@@ -2200,11 +3171,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       return
     color = self.ui.meanShapeColor.color
     disp.SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
-    clone = self._node('cloneLandmarkNode')
-    if clone:
-      cdisp = self._display(clone)
-      if cdisp:
-        cdisp.SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
+    # Note: do NOT propagate to cloneLandmarkNode. The viewer-2 clone color is
+    # owned by the active warp source (PCA = dark red, LR = light pink) via
+    # _setWarpMode and overriding it here would break that visual convention.
 
   def scaleMeanGlyph(self):
     node = self._node('meanLandmarkNode')
@@ -2437,31 +3406,29 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       GPANodeCollection.AddItem(self.sourceLMNode)
 
       # set up transform
-      targetLMVTK=logic.convertNumpyToVTK(self.rawMeanLandmarks)
-      sourceLMVTK=logic.convertNumpyToVTK(self.sourceLMnumpy)
-      VTKTPSMean = vtk.vtkThinPlateSplineTransform()
-      VTKTPSMean.SetSourceLandmarks( sourceLMVTK )
-      VTKTPSMean.SetTargetLandmarks( targetLMVTK )
-      VTKTPSMean.SetBasisToR()  # for 3D transform
-
-      # transform from selected to mean
-      self.transformMeanNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', 'Mean TPS Transform')
-      GPANodeCollection.AddItem(self.transformMeanNode)
-      self.transformMeanNode.SetAndObserveTransformToParent( VTKTPSMean )
+      # We used to: build a vtkThinPlateSplineTransform, attach it to the
+      # model, then call hardenTransform. At p=1440 vtkTPS's solve alone
+      # takes ~30s (sequential O(p^3)). Replaced with a NumPy/SciPy TPS
+      # that solves the same system via LAPACK + multi-threaded BLAS and
+      # warps the model vertices in place. Numerically equivalent within
+      # float32 epsilon; ~50x faster at p=1440.
 
       # load model node
       self.modelNode=slicer.util.loadModel(self.ui.grayscaleSelector.currentPath)
       GPANodeCollection.AddItem(self.modelNode)
       self.modelDisplayNode = self.modelNode.GetDisplayNode()
-      self.modelNode.SetAndObserveTransformNodeID(self.transformMeanNode.GetID())
-      slicer.vtkSlicerTransformLogic().hardenTransform(self.modelNode)
+      vtk_lib.hardenWarpedModel(
+        self.modelNode,
+        sourceLM=self.sourceLMnumpy,
+        targetLM=self.rawMeanLandmarks,
+      )
 
       # create a PC warped model as clone of the selected model node
       shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
       itemIDToClone = shNode.GetItemByDataNode(self.modelNode)
       clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(shNode, itemIDToClone)
       self.cloneModelNode = shNode.GetItemDataNode(clonedItemID)
-      self.cloneModelNode.SetName('PC Warped Model')
+      self.cloneModelNode.SetName('Warped Model')
       self.cloneModelDisplayNode =  self.cloneModelNode.GetDisplayNode()
       # Light cyan (#7ff4fd) reads better than pure blue against the dark 3D background
       self.cloneModelDisplayNode.SetColor(0x7f/255.0, 0xf4/255.0, 0xfd/255.0)
@@ -2500,6 +3467,31 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.pcController.populateComboBox(self.PCList)
     self.applyEnabled = True
     self.ui.startRecordButton.enabled = True
+
+    # Bind the existing PC grid transform (if any) to the newly created
+    # cloneModelNode so the slider warps the model in addition to landmarks.
+    # populateComboBox above resets the combobox to 'None', which would make
+    # setupPCTransform() return early. Instead, attach the model directly to
+    # whatever gridTransformNode is currently active. If no grid exists yet,
+    # the user's first PC selection runs setupPCTransform() which already
+    # handles the model attach.
+    grid_node = getattr(self, "gridTransformNode", None)
+    if (grid_node is not None
+        and slicer.mrmlScene.IsNodePresent(grid_node)
+        and getattr(self, "cloneModelNode", None) is not None
+        and bool(self.ui.modelVisualizationType.isChecked())):
+      try:
+        self.cloneModelNode.SetAndObserveTransformNodeID(grid_node.GetID())
+      except Exception:
+        pass
+
+    # Apply the active warp-mode color scheme to the freshly-created clones
+    # so the user gets visual confirmation (dark red = PCA, light pink = LR)
+    # immediately after Apply, not only after picking a PC / LR coefficient.
+    try:
+      self._setWarpMode(getattr(self, "activeWarpMode", "pca"))
+    except Exception:
+      pass
 
   def onStartRecording(self):
     #set up sequences for template model and PC TPS transform
@@ -2557,6 +3549,26 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     if(temporaryNode):
       GPANodeCollection.RemoveItem(temporaryNode)
       slicer.mrmlScene.RemoveNode(temporaryNode)
+
+  def _setAnalysisTabsEnabled(self, enabled: bool):
+    """Enable/disable the post-GPA tabs (everything except Setup Analysis).
+    Setup Analysis (index 0) is always enabled. Called with False from
+    setup() and True from the success path of onLoad / onLoadFromFile."""
+    tab = getattr(self, "_tabWidget", None)
+    if tab is None:
+      return
+    try:
+      total = int(tab.count)
+    except Exception:
+      try:
+        total = int(tab.count())
+      except Exception:
+        return
+    for i in range(1, total):
+      try:
+        tab.setTabEnabled(i, bool(enabled))
+      except Exception:
+        pass
 
   def _onTabChanged(self, index: int):
     """Initialize the LR tab on first entry."""
@@ -2873,11 +3885,40 @@ class GPALogic(ScriptedLoadableModuleLogic):
     plotChartNode.SetTitle('PCA Scatter Plot with factors')
     plotChartNode.SetXAxisTitle(xAxis)
     plotChartNode.SetYAxisTitle(yAxis)
+    self._applyEqualSymmetricRange(plotChartNode, data, xAxis, yAxis)
     layoutManager = slicer.app.layoutManager()
 
     plotWidget = layoutManager.plotWidget(0)
     plotViewNode = plotWidget.mrmlPlotViewNode()
     plotViewNode.SetPlotChartNodeID(plotChartNode.GetID())
+
+  def _applyEqualSymmetricRange(self, plotChartNode, data, xAxis, yAxis, pad=1.05):
+    """Force the PCA scatter chart to use a symmetric, equal range on both
+    axes so (0,0) sits at the chart center and one PC unit on X spans the
+    same numerical extent as one PC unit on Y. The displayed pair is
+    parsed from the axis titles ('PCk' -> column k-1 in `data`).
+
+    VTK's chart can't enforce equal physical units per pixel by itself, but
+    matching the numerical ranges removes the most common misreading: 'PC2
+    looks more variable because the box is taller'. Pair this with a square
+    plot widget on the Qt side for true equal-aspect viewing.
+    """
+    try:
+      ix = int(str(xAxis)[2:]) - 1
+      iy = int(str(yAxis)[2:]) - 1
+      arr = np.asarray(data)
+      if arr.ndim != 2 or ix < 0 or iy < 0 or max(ix, iy) >= arr.shape[1]:
+        return
+      r = float(np.max(np.abs(arr[:, [ix, iy]])))
+      if not np.isfinite(r) or r <= 0.0:
+        return
+      r *= float(pad)
+      plotChartNode.SetXAxisRangeAuto(False)
+      plotChartNode.SetYAxisRangeAuto(False)
+      plotChartNode.SetXAxisRange(-r, r)
+      plotChartNode.SetYAxisRange(-r, r)
+    except Exception:
+      pass
 
   def makeScatterPlot(self, data, files, title,xAxis,yAxis,pcNumber):
     numPoints = len(data)
@@ -2917,7 +3958,10 @@ class GPALogic(ScriptedLoadableModuleLogic):
     plotSeriesNode1.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeScatter)
     plotSeriesNode1.SetLineStyle(slicer.vtkMRMLPlotSeriesNode.LineStyleNone)
     plotSeriesNode1.SetMarkerStyle(slicer.vtkMRMLPlotSeriesNode.MarkerStyleSquare)
-    plotSeriesNode1.SetUniqueColor()
+    # Predictable, distinct color (deep blue) instead of SetUniqueColor()'s
+    # randomly-picked palette entry — picks a color that contrasts with the
+    # cursor crosshair (which is black).
+    plotSeriesNode1.SetColor(0.12, 0.47, 0.71)
 
     plotChartNode=slicer.mrmlScene.GetFirstNodeByName("Chart_PCA" + xAxis + "v" +yAxis)
     if plotChartNode is None:
@@ -2928,6 +3972,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
     plotChartNode.SetTitle('PCA Scatter Plot ')
     plotChartNode.SetXAxisTitle(xAxis)
     plotChartNode.SetYAxisTitle(yAxis)
+    self._applyEqualSymmetricRange(plotChartNode, data, xAxis, yAxis)
 
     layoutManager = slicer.app.layoutManager()
 
@@ -3107,120 +4152,214 @@ class GPATest(ScriptedLoadableModuleTest):
     GPA_SELFTEST_OUT_DIR  override timing JSON output folder
   """
 
-  DATASET_URL = "https://github.com/SlicerMorph/SampleData/raw/master/converted_LMs.zip"
-  DATASET_DIRNAME = "converted_LMs"
-  MODEL_URL = "https://github.com/SlicerMorph/SampleData/raw/master/809-3.obj.zip"
-  MODEL_FILENAME = "809-3.obj"
-  METADATA_URL = "https://github.com/SlicerMorph/SampleData/raw/master/matched_metadata.csv"
-  METADATA_FILENAME = "matched_metadata.csv"
-  EXPECTED_NUM_FILES = 431
-  EXPECTED_NUM_LANDMARKS = 55
+  # Available test datasets. Each entry is a self-contained spec for the
+  # workflow runner: where to download the zip, what to find inside, the
+  # expected file/landmark counts for the sanity checks, and which file
+  # inside the dataset corresponds to the mean-specimen landmark + 3D model
+  # used for the optional Interactive Visualization step.
+  #
+  # Layout types:
+  #   "flat": zip extracts directly to a folder of landmark files plus the
+  #           covariate CSV (no parent dir inside the zip). The companion
+  #           reference model is downloaded separately.
+  #   "bundle": zip extracts to a single top-level folder containing the
+  #           landmarks, the covariate CSV, and an `atlas/` subfolder with
+  #           the reference model + mean landmark.
+  DATASETS = {
+    "small": {
+      "label": "Small set (431 specimens, 55 LM, fcsv)",
+      "layout": "flat",
+      "dataset_url": "https://github.com/SlicerMorph/SampleData/raw/master/converted_LMs.zip",
+      "dataset_dirname": "converted_LMs",
+      "landmark_glob": "*.fcsv",
+      "extension": "fcsv",
+      "expected_num_files": 431,
+      "expected_num_landmarks": 55,
+      "model_url": "https://github.com/SlicerMorph/SampleData/raw/master/809-3.obj.zip",
+      "model_filename": "809-3.obj",
+      "metadata_url": "https://github.com/SlicerMorph/SampleData/raw/master/matched_metadata.csv",
+      "metadata_filename": "matched_metadata.csv",
+      "mean_lm_basename": "809-3.fcsv",
+    },
+    "big": {
+      "label": "Big set (200 synthetic specimens, 1440 LM, mrk.json + atlas)",
+      "layout": "bundle",
+      "dataset_url": "https://github.com/SlicerMorph/SampleData/raw/master/big_sample.zip",
+      "dataset_dirname": "big_sample",
+      "landmark_glob": "*.mrk.json",
+      "extension": "json",
+      "expected_num_files": 200,
+      "expected_num_landmarks": 1440,
+      # Bundle ships its own reference model + mean LM under atlas/.
+      "atlas_subdir": "atlas",
+      "atlas_model": "atlasModel.ply",
+      "atlas_mean_lm": "atlas.mrk.json",
+      "metadata_filename": "matched_metadata.csv",
+    },
+  }
 
   def setUp(self):
     slicer.mrmlScene.Clear(0)
 
   def runTest(self):
     self.setUp()
-    self.test_GPAWorkflow()
+    spec_key = self._pickDataset()
+    if spec_key is None:
+      print("[GPA selftest] cancelled", flush=True)
+      return
+    self.test_GPAWorkflow(spec_key)
 
-  def _ensureDataset(self):
-    """Download + unzip the test dataset into Slicer's cache.
-    Returns the absolute path to the folder containing *.fcsv files.
+  def _pickDataset(self):
+    """Modal picker. Returns a key into DATASETS, or None if cancelled."""
+    import qt
+    keys = list(self.DATASETS.keys())
+    labels = [self.DATASETS[k]["label"] for k in keys]
+    # PythonQt's binding for QInputDialog.getItem returns just the selected
+    # string (empty on cancel), not the (value, ok) tuple the C++/PyQt API
+    # uses. Treat an empty / unrecognized return as cancel.
+    label = qt.QInputDialog.getItem(
+      slicer.util.mainWindow(),
+      "GPA selftest",
+      "Select a sample dataset to run the test on:",
+      labels,
+      0,
+      False,
+    )
+    if not label:
+      return None
+    try:
+      return keys[labels.index(label)]
+    except ValueError:
+      return None
 
-    If a previously cached dataset has a file count different from
-    EXPECTED_NUM_FILES, the stale folder and zip are removed so the new
-    dataset is re-downloaded.
+  def _ensureDataset(self, spec):
+    """Download + unzip the test dataset for the given spec into Slicer's cache.
+    Returns the absolute path to the folder containing landmark files.
+
+    For "flat" specs the cache layout is:
+        <cache>/GPA_selftest/<dataset_dirname>/*.fcsv
+    For "bundle" specs the zip already wraps a single top-level folder:
+        <cache>/GPA_selftest/<dataset_dirname>/{*.mrk.json, atlas/, ...}
+
+    A previously cached folder whose landmark count differs from
+    spec["expected_num_files"] is wiped and re-downloaded.
     """
     import os, zipfile, shutil
     cache_root = slicer.app.cachePath
-    target_dir = os.path.join(cache_root, "GPA_selftest", self.DATASET_DIRNAME)
-    zip_path = os.path.join(cache_root, "GPA_selftest", "converted_LMs.zip")
+    selftest_root = os.path.join(cache_root, "GPA_selftest")
+    target_dir = os.path.join(selftest_root, spec["dataset_dirname"])
+    zip_path = os.path.join(selftest_root, os.path.basename(spec["dataset_url"]))
+    glob_suffix = spec["landmark_glob"].replace("*", "")
 
-    def _fcsv_count(d):
-      return sum(1 for f in os.listdir(d) if f.endswith(".fcsv")) if os.path.isdir(d) else 0
+    def _lm_count(d):
+      return sum(1 for f in os.listdir(d) if f.endswith(glob_suffix)) if os.path.isdir(d) else 0
 
-    cached = _fcsv_count(target_dir)
-    if cached and cached != self.EXPECTED_NUM_FILES:
-      print(f"[GPA selftest] stale cache ({cached} files, expected {self.EXPECTED_NUM_FILES}); refreshing", flush=True)
+    cached = _lm_count(target_dir)
+    if cached and cached != spec["expected_num_files"]:
+      print(f"[GPA selftest] stale cache ({cached} files, expected {spec['expected_num_files']}); refreshing", flush=True)
       shutil.rmtree(target_dir, ignore_errors=True)
       if os.path.exists(zip_path):
         os.remove(zip_path)
-    elif cached == self.EXPECTED_NUM_FILES:
+    elif cached == spec["expected_num_files"]:
       return target_dir
 
-    os.makedirs(os.path.dirname(target_dir), exist_ok=True)
+    os.makedirs(selftest_root, exist_ok=True)
     if not os.path.exists(zip_path):
-      print(f"[GPA selftest] downloading {self.DATASET_URL}", flush=True)
-      slicer.util.downloadFile(self.DATASET_URL, zip_path)
-    print(f"[GPA selftest] extracting -> {os.path.dirname(target_dir)}", flush=True)
+      print(f"[GPA selftest] downloading {spec['dataset_url']}", flush=True)
+      slicer.util.downloadFile(spec["dataset_url"], zip_path)
+    print(f"[GPA selftest] extracting -> {selftest_root}", flush=True)
     with zipfile.ZipFile(zip_path) as zf:
-      zf.extractall(os.path.dirname(target_dir))
+      zf.extractall(selftest_root)
     if not os.path.isdir(target_dir):
       # The zip may extract to a slightly different folder name; try to find it.
-      for name in os.listdir(os.path.dirname(target_dir)):
-        cand = os.path.join(os.path.dirname(target_dir), name)
-        if os.path.isdir(cand) and any(f.endswith(".fcsv") for f in os.listdir(cand)):
+      for name in os.listdir(selftest_root):
+        cand = os.path.join(selftest_root, name)
+        if os.path.isdir(cand) and any(f.endswith(glob_suffix) for f in os.listdir(cand)):
           return cand
-      raise RuntimeError(f"Extracted dataset folder not found under {os.path.dirname(target_dir)}")
+      raise RuntimeError(f"Extracted dataset folder not found under {selftest_root}")
     return target_dir
 
-  def _ensureModel(self):
-    """Download + unzip the reference 3D model into Slicer's cache.
-    Returns the absolute path to the .obj file (or None if it cannot be located).
+  def _ensureModel(self, spec, dataset_dir):
+    """Return the absolute path to the reference 3D model for this dataset,
+    or None if it could not be located.
+
+    For "flat" specs the model is downloaded from spec["model_url"] (a zip
+    containing a single .obj). For "bundle" specs the model already lives
+    inside the dataset under spec["atlas_subdir"]/spec["atlas_model"].
     """
     import os, zipfile
+    if spec["layout"] == "bundle":
+      cand = os.path.join(dataset_dir, spec.get("atlas_subdir", "atlas"),
+                          spec["atlas_model"])
+      return cand if os.path.isfile(cand) else None
+
     cache_root = slicer.app.cachePath
     model_dir = os.path.join(cache_root, "GPA_selftest")
-    model_path = os.path.join(model_dir, self.MODEL_FILENAME)
+    model_path = os.path.join(model_dir, spec["model_filename"])
     if os.path.isfile(model_path):
       return model_path
     os.makedirs(model_dir, exist_ok=True)
-    zip_path = os.path.join(model_dir, os.path.basename(self.MODEL_URL))
+    zip_path = os.path.join(model_dir, os.path.basename(spec["model_url"]))
     if not os.path.exists(zip_path):
-      print(f"[GPA selftest] downloading {self.MODEL_URL}", flush=True)
-      slicer.util.downloadFile(self.MODEL_URL, zip_path)
+      print(f"[GPA selftest] downloading {spec['model_url']}", flush=True)
+      slicer.util.downloadFile(spec["model_url"], zip_path)
     print(f"[GPA selftest] extracting -> {model_dir}", flush=True)
     with zipfile.ZipFile(zip_path) as zf:
       zf.extractall(model_dir)
     if os.path.isfile(model_path):
       return model_path
-    # Fallback: pick the first .obj that appeared.
+    # Fallback: pick the first model-shaped file that appeared.
     for name in os.listdir(model_dir):
-      if name.lower().endswith(".obj"):
+      if name.lower().endswith((".obj", ".ply", ".stl", ".vtk", ".vtp")):
         return os.path.join(model_dir, name)
     return None
 
-  def _ensureMetadata(self):
-    """Download the matched-metadata covariate CSV into Slicer's cache.
-    Returns the absolute path to the CSV (or None on failure).
+  def _ensureMetadata(self, spec, dataset_dir):
+    """Return the absolute path to the matched-metadata covariate CSV for
+    this dataset, or None on failure.
 
-    The downloaded CSV is always re-sorted by the first column (ID) using
-    the same lexicographic order that ``sorted(glob('*.fcsv'))`` produces,
-    so the row order matches the landmark file order GPA expects.
+    For "flat" specs the CSV is downloaded from spec["metadata_url"] and
+    sorted by first column to match sorted(glob('*.fcsv')) ordering. For
+    "bundle" specs the CSV ships inside the dataset (at the root of the
+    dataset folder) and is used in place; we still re-sort it so row order
+    matches the landmark file order GPA expects.
     """
     import os, csv as _csv
     cache_root = slicer.app.cachePath
     meta_dir = os.path.join(cache_root, "GPA_selftest")
-    raw_path = os.path.join(meta_dir, "_raw_" + self.METADATA_FILENAME)
-    meta_path = os.path.join(meta_dir, self.METADATA_FILENAME)
     os.makedirs(meta_dir, exist_ok=True)
+    meta_filename = spec["metadata_filename"]
+    raw_path = os.path.join(meta_dir, "_raw_" + meta_filename)
+    meta_path = os.path.join(meta_dir, meta_filename)
 
-    # Always re-download the raw CSV (small file) so we pick up upstream edits
-    if os.path.isfile(raw_path):
+    if spec["layout"] == "bundle":
+      bundled = os.path.join(dataset_dir, meta_filename)
+      if not os.path.isfile(bundled):
+        print(f"[GPA selftest] bundled metadata not found at {bundled}", flush=True)
+        return None
       try:
-        os.remove(raw_path)
-      except OSError:
-        pass
-    print(f"[GPA selftest] downloading {self.METADATA_URL}", flush=True)
-    try:
-      slicer.util.downloadFile(self.METADATA_URL, raw_path)
-    except Exception as e:
-      print(f"[GPA selftest] metadata download failed: {e}", flush=True)
-      return None
-    if not os.path.isfile(raw_path):
-      return None
+        import shutil as _shutil
+        _shutil.copyfile(bundled, raw_path)
+      except Exception as e:
+        print(f"[GPA selftest] metadata copy failed: {e}", flush=True)
+        return bundled
+    else:
+      # Always re-download the raw CSV (small file) so we pick up upstream edits
+      if os.path.isfile(raw_path):
+        try:
+          os.remove(raw_path)
+        except OSError:
+          pass
+      print(f"[GPA selftest] downloading {spec['metadata_url']}", flush=True)
+      try:
+        slicer.util.downloadFile(spec["metadata_url"], raw_path)
+      except Exception as e:
+        print(f"[GPA selftest] metadata download failed: {e}", flush=True)
+        return None
+      if not os.path.isfile(raw_path):
+        return None
 
-    # Sort rows by first column (ID) to match sorted(glob('*.fcsv'))
+    # Sort rows by first column (ID) to match sorted(glob('*.<ext>'))
     try:
       with open(raw_path, newline='') as f:
         reader = _csv.reader(f)
@@ -3236,26 +4375,27 @@ class GPATest(ScriptedLoadableModuleTest):
       meta_path = raw_path
     return meta_path
 
-  def test_GPAWorkflow(self):
+  def test_GPAWorkflow(self, spec_key="small"):
     import os, glob, time, json
     from datetime import datetime
+
+    spec = self.DATASETS[spec_key]
+    print(f"[GPA selftest] dataset: {spec['label']}", flush=True)
 
     cache_root = slicer.app.cachePath
     default_out_dir = os.path.join(cache_root, "GPA_selftest", "results")
 
     lm_dir = os.environ.get("GPA_SELFTEST_LM_DIR")
     if not lm_dir:
-      lm_dir = self._ensureDataset()
-    model_path = self._ensureModel()
-    metadata_path = self._ensureMetadata()
+      lm_dir = self._ensureDataset(spec)
+    model_path = self._ensureModel(spec, lm_dir)
+    metadata_path = self._ensureMetadata(spec, lm_dir)
     out_dir = os.environ.get("GPA_SELFTEST_OUT_DIR", default_out_dir)
 
     self.assertTrue(os.path.isdir(lm_dir), f"Landmark dir not found: {lm_dir}")
-    files = sorted(glob.glob(os.path.join(lm_dir, "*.fcsv")))
-    if not files:
-      files = sorted(glob.glob(os.path.join(lm_dir, "*.mrk.json")))
+    files = sorted(glob.glob(os.path.join(lm_dir, spec["landmark_glob"])))
     self.assertTrue(files, f"No landmark files in {lm_dir}")
-    extension = "fcsv" if files[0].endswith(".fcsv") else "json"
+    extension = spec["extension"]
     os.makedirs(out_dir, exist_ok=True)
     print(f"[GPA selftest] LM dir : {lm_dir}", flush=True)
     print(f"[GPA selftest] results: {out_dir}", flush=True)
@@ -3347,13 +4487,13 @@ class GPATest(ScriptedLoadableModuleTest):
     print(f"\n[GPA selftest] TOTAL onLoad: {total*1000:.1f} ms\n", flush=True)
 
     # ---- Sanity checks on the output ----
-    self.assertEqual(len(files), self.EXPECTED_NUM_FILES,
-                     f"Expected {self.EXPECTED_NUM_FILES} landmark files, found {len(files)}")
+    self.assertEqual(len(files), spec["expected_num_files"],
+                     f"Expected {spec['expected_num_files']} landmark files, found {len(files)}")
     self.assertIsNotNone(getattr(widget, "LM", None), "widget.LM was not created")
-    self.assertEqual(widget.LM.lmOrig.shape[0], self.EXPECTED_NUM_LANDMARKS,
-                     f"Expected {self.EXPECTED_NUM_LANDMARKS} landmarks per specimen, got {widget.LM.lmOrig.shape[0]}")
-    self.assertEqual(widget.LM.lmOrig.shape[2], self.EXPECTED_NUM_FILES,
-                     f"Expected {self.EXPECTED_NUM_FILES} specimens in array, got {widget.LM.lmOrig.shape[2]}")
+    self.assertEqual(widget.LM.lmOrig.shape[0], spec["expected_num_landmarks"],
+                     f"Expected {spec['expected_num_landmarks']} landmarks per specimen, got {widget.LM.lmOrig.shape[0]}")
+    self.assertEqual(widget.LM.lmOrig.shape[2], spec["expected_num_files"],
+                     f"Expected {spec['expected_num_files']} specimens in array, got {widget.LM.lmOrig.shape[2]}")
     eigvals = widget.LM.val
     self.assertTrue(eigvals[0] > 0, "Top eigenvalue is not positive")
     self.assertTrue((eigvals[:-1] >= eigvals[1:] - 1e-12).all(), "Eigenvalues are not sorted descending")
@@ -3377,19 +4517,29 @@ class GPATest(ScriptedLoadableModuleTest):
     print(f"[GPA selftest] wrote {out_json}", flush=True)
 
     # ---- User-visible summary: paths to plug into the GPA module UI ----
+    selftest_root = os.path.join(cache_root, "GPA_selftest")
     summary_lines = [
       "=" * 72,
       "[GPA selftest] PASSED -- to try interactive 3D visualization, set:",
-      f"[GPA selftest]   Landmark folder : {lm_dir}",
-      f"[GPA selftest]   Output folder   : {out_dir}",
     ]
     if model_path and os.path.isfile(model_path):
-      summary_lines.append(f"[GPA selftest]   Reference model : {model_path}")
-      summary_lines.append(f"[GPA selftest]   Mean specimen LM: {os.path.join(lm_dir, '809-3.fcsv')}")
+      # Compute the mean-specimen LM path for the chosen dataset.
+      if spec["layout"] == "bundle":
+        mean_lm_path = os.path.join(lm_dir, spec.get("atlas_subdir", "atlas"),
+                                    spec["atlas_mean_lm"])
+      else:
+        mean_lm_path = os.path.join(lm_dir, spec["mean_lm_basename"])
+      summary_lines.append(
+        f"[GPA selftest] Reference model (paste into 3D Visualization): {model_path}")
+      summary_lines.append(
+        f"[GPA selftest] Mean specimen LM (paste into 3D Visualization): "
+        f"{mean_lm_path}")
     else:
-      summary_lines.append("[GPA selftest]   Reference model : <download failed>")
-    if metadata_path and os.path.isfile(metadata_path):
-      summary_lines.append(f"[GPA selftest]   Covariate CSV   : {metadata_path}")
+      mean_lm_path = None
+      summary_lines.append("[GPA selftest] Reference model : <download failed>")
+    summary_lines.append(
+      f"[GPA selftest] All other inputs (landmark folder, output folder, "
+      f"covariate CSV) are under {selftest_root}/")
     summary_lines.append("=" * 72)
     summary = "\n".join(summary_lines)
     print("\n" + summary + "\n", flush=True)
@@ -3397,6 +4547,33 @@ class GPATest(ScriptedLoadableModuleTest):
     try:
       widget.ui.GPALogTextbox.insertPlainText("\n" + summary + "\n")
       widget.ui.GPALogTextbox.ensureCursorVisible()
+    except Exception:
+      pass
+
+    # ---- Auto-populate 3D Visualization selectors and offer to launch ----
+    try:
+      have_inputs = bool(model_path and os.path.isfile(model_path)
+                         and mean_lm_path and os.path.isfile(mean_lm_path))
+      if have_inputs:
+        try:
+          widget.ui.modelVisualizationType.setChecked(True)
+          widget.onToggleVisualization()
+        except Exception:
+          pass
+        try: widget.ui.grayscaleSelector.setCurrentPath(model_path)
+        except Exception: pass
+        try: widget.ui.FudSelect.setCurrentPath(mean_lm_path)
+        except Exception: pass
+        try: widget.onModelSelected()
+        except Exception: pass
+        try:
+          if slicer.util.confirmYesNoDisplay(
+              "Selftest passed and 3D Visualization inputs are pre-filled.\n\n"
+              "Click 'Apply' now to build the warped landmark + model display?",
+              windowTitle="GPA selftest"):
+            widget.onSelect()
+        except Exception:
+          pass
     except Exception:
       pass
 

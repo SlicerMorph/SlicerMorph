@@ -16,7 +16,7 @@
 # are read from the parent widget (self.w).
 # -----------------------------------------------------------------------------
 
-import os, time, socket, platform, subprocess, shutil
+import os, time, socket, platform, subprocess, shutil, signal
 import numpy as np
 
 # Optional pandas/patsy import is deferred until needed
@@ -26,7 +26,6 @@ except Exception:
   pd = None
 
 import vtk, qt, slicer
-import slicer.packaging
 
 
 # ----------------------------- Small helpers ---------------------------------
@@ -75,6 +74,89 @@ def _is_port_open(host, port, timeout=0.25):
   try:
     with socket.create_connection((host, int(port)), timeout=timeout):
       return True
+  except Exception:
+    return False
+
+
+def _pids_listening_on_port(port):
+  """Return PIDs of processes currently LISTENing on TCP `port`.
+
+  Cross-platform best-effort:
+    - macOS / Linux: parse `lsof -nP -iTCP:<port> -sTCP:LISTEN -t`
+      (lsof is part of base macOS; on Linux it is almost always installed,
+       and we fall back to `ss`/`fuser` if not).
+    - Windows: parse `netstat -ano -p TCP` and match the local port.
+  Returns [] on any failure (caller treats as 'nothing to kill').
+  """
+  port = int(port)
+  pids = set()
+  try:
+    if platform.system() == "Windows":
+      out = subprocess.check_output(["netstat", "-ano", "-p", "TCP"],
+                                    stderr=subprocess.DEVNULL, text=True)
+      for line in out.splitlines():
+        parts = line.split()
+        # cols: Proto  Local Address  Foreign Address  State  PID
+        if len(parts) >= 5 and parts[0].upper() == "TCP" and parts[3].upper() == "LISTENING":
+          local = parts[1]
+          if local.endswith(f":{port}"):
+            try: pids.add(int(parts[4]))
+            except Exception: pass
+      return list(pids)
+
+    # POSIX: prefer lsof (gives PIDs directly)
+    if shutil.which("lsof"):
+      out = subprocess.check_output(
+        ["lsof", "-nP", "-iTCP:%d" % port, "-sTCP:LISTEN", "-t"],
+        stderr=subprocess.DEVNULL, text=True)
+      for tok in out.split():
+        try: pids.add(int(tok))
+        except Exception: pass
+      return list(pids)
+
+    # Fallback: ss (Linux) or fuser (Linux)
+    if shutil.which("ss"):
+      out = subprocess.check_output(
+        ["ss", "-Hltnp", "sport", "=", ":%d" % port],
+        stderr=subprocess.DEVNULL, text=True)
+      import re as _re
+      for m in _re.finditer(r"pid=(\d+)", out):
+        try: pids.add(int(m.group(1)))
+        except Exception: pass
+      return list(pids)
+
+    if shutil.which("fuser"):
+      out = subprocess.check_output(["fuser", "-n", "tcp", str(port)],
+                                    stderr=subprocess.DEVNULL, text=True)
+      for tok in out.split():
+        try: pids.add(int(tok))
+        except Exception: pass
+      return list(pids)
+  except Exception:
+    pass
+  return list(pids)
+
+
+def _terminate_pid(pid, force=False):
+  """Cross-platform process termination by PID.
+
+  Windows:  taskkill (graceful when force=False uses no /F; force=True adds /F).
+            os.kill on Windows would map SIGTERM -> TerminateProcess unconditionally
+            and SIGKILL is not defined at all, so we shell out to taskkill instead.
+  POSIX:    SIGTERM, then SIGKILL when force=True.
+  Returns True if the OS accepted the request (does not guarantee the process is gone).
+  """
+  pid = int(pid)
+  try:
+    if platform.system() == "Windows":
+      args = ["taskkill", "/PID", str(pid)]
+      if force: args.insert(1, "/F")
+      subprocess.run(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                     check=False, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+      return True
+    sig = signal.SIGKILL if force else signal.SIGTERM
+    os.kill(pid, sig)
+    return True
   except Exception:
     return False
 
@@ -148,7 +230,22 @@ class _PCSliderController:
       self.slider.blockSignals(False); self.spinBox.blockSignals(False)
 
   def setValue(self, dynamic_value):
-    self.slider.setValue(self._map_dynamic_to_slider(float(dynamic_value)))
+    # The slider is a 200-tick integer; mapping a continuous dynamic value
+    # (e.g. ref=123.456) to the nearest tick loses sub-quantum precision,
+    # which shows up as tiny non-zero delta from "neutral" -- invisible at
+    # mag=1 but visible after a magnification bump. Override the spinbox
+    # value exactly *after* the slider has propagated, so sliderValue()
+    # returns the caller's exact request. spinbox signals are blocked so
+    # this doesn't bounce back to the slider.
+    dv = float(dynamic_value)
+    self.slider.setValue(self._map_dynamic_to_slider(dv))
+    self.spinBox.blockSignals(True)
+    try:
+      self.spinBox.setValue(dv)
+    except Exception:
+      pass
+    finally:
+      self.spinBox.blockSignals(False)
 
   def sliderValue(self):
     try: return float(self.spinBox.value())
@@ -417,10 +514,20 @@ class GeomorphLR:
   def _lr_validateFormula(self, formula):
     # ensure patsy
     try:
-      slicer.packaging.pip_ensure("patsy", requester="GPA")
       import patsy  # noqa: F401
     except Exception:
-      return (False, "patsy is not available and could not be installed.")
+      try:
+        progress = slicer.util.createProgressDialog(windowTitle="Installing...",
+                                                    labelText="Installing patsy (formula parser)...",
+                                                    maximum=0)
+        slicer.app.processEvents()
+        slicer.util.pip_install(["patsy"])
+        progress.close()
+        import patsy  # noqa: F401
+      except Exception:
+        try: progress.close()
+        except Exception: pass
+        return (False, "patsy is not available and could not be installed.")
 
     import patsy
     txt = (formula or "").strip()
@@ -654,13 +761,29 @@ class GeomorphLR:
 
     cmd = [rscript, "-e", code]
 
+    # Pin BLAS / OpenMP thread counts to 1 for the Rserve child.
+    # Rationale: macOS Accelerate/vecLib (and several OpenBLAS builds on Linux)
+    # crash the R process with a segfault / "EndOfData" when an Rserve worker
+    # session calls into multi-threaded BLAS routines from packages like
+    # RRPP::lm.rrpp / geomorph::procD.lm with response widths >~ 600 columns.
+    # These env vars must be set BEFORE R loads its BLAS, hence Popen(env=...).
+    # Cost is negligible: GPA's R workload is dominated by R-level loops, not
+    # large dense matmul, and this trade is universally safer than the crash.
+    rserve_env = os.environ.copy()
+    rserve_env.setdefault("VECLIB_MAXIMUM_THREADS", "1")
+    rserve_env.setdefault("OPENBLAS_NUM_THREADS", "1")
+    rserve_env.setdefault("OMP_NUM_THREADS", "1")
+    rserve_env.setdefault("MKL_NUM_THREADS", "1")
+    rserve_env.setdefault("BLIS_NUM_THREADS", "1")
+
     try:
         flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if platform.system() == "Windows" else 0
         self._rserve_proc = subprocess.Popen(
             cmd,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            creationflags=flags
+            creationflags=flags,
+            env=rserve_env,
         )
         self._rserve_started_by_us = True
 
@@ -682,34 +805,53 @@ class GeomorphLR:
 
   def _r_onShutdownClicked(self):
     port = int(self.ui.rPortSpin.value)
-    ok = False
 
-    # Try via pyRserve shutdown
+    # Always close our own pyRserve worker session first; the master daemon
+    # outlives it and that's what we actually need to stop.
+    self._safeCloseRConn()
+
+    # 1. Best-effort: ask the daemon nicely via a fresh shutdown control session.
     try:
       pyR = self._r_ensure_pyRserve()
       if pyR:
-        conn = self._r_conn or pyR.connect(host="127.0.0.1", port=port, timeout=2.0)
         try:
-          if hasattr(conn, "shutdown"):
-            conn.shutdown(); ok = True
-          conn.close()
+          conn = pyR.connect(host="127.0.0.1", port=port, timeout=2.0)
+          try:
+            if hasattr(conn, "shutdown"): conn.shutdown()
+          finally:
+            try: conn.close()
+            except Exception: pass
         except Exception: pass
     except Exception: pass
 
-    # Kill child we spawned if needed
-    if not ok and self._rserve_started_by_us and self._rserve_proc is not None:
-      try:
-        self._rserve_proc.terminate()
-        self._rserve_proc.wait(timeout=4.0)
-        ok = True
-      except Exception:
-        try: self._rserve_proc.kill()
-        except Exception: pass
+    # 2. Find every process actually listening on the port and terminate it.
+    #    The Popen handle we kept is just the launcher Rscript, which exited
+    #    immediately after Rserve daemonized — terminating it is a no-op.
+    pids = _pids_listening_on_port(port)
+    for pid in pids:
+      _terminate_pid(pid, force=False)
 
-    self._rserve_proc = None; self._rserve_started_by_us = False
+    # 3. Wait briefly for the port to actually free; force-kill stragglers.
+    deadline = time.time() + 3.0
+    while time.time() < deadline and _is_port_open("127.0.0.1", port):
+      time.sleep(0.1)
+    if _is_port_open("127.0.0.1", port):
+      for pid in _pids_listening_on_port(port):
+        _terminate_pid(pid, force=True)
+      time.sleep(0.3)
 
-    _set_label(self.ui.rRserveStatusLabel, "Rserve shut down." if ok else "Shutdown requested.")
-    self._safeCloseRConn()
+    # Reap our launcher Popen if it's still around (it usually isn't).
+    if self._rserve_proc is not None:
+      try: self._rserve_proc.poll()
+      except Exception: pass
+    self._rserve_proc = None
+    self._rserve_started_by_us = False
+
+    if _is_port_open("127.0.0.1", port):
+      _set_label(self.ui.rRserveStatusLabel,
+                 f"Shutdown failed: port {port} still in use.")
+    else:
+      _set_label(self.ui.rRserveStatusLabel, "Rserve shut down.")
     self._refreshButtons(); self._refreshStatusLabels()
 
   def _r_onConnectClicked(self):
@@ -869,15 +1011,21 @@ class GeomorphLR:
     try:
       import pyRserve as _pyRserve
       return _pyRserve
-    except Exception:
+    except Exception as e:
       try:
+        progress = slicer.util.createProgressDialog(
+          windowTitle="Installing...", labelText="Installing pyRserve...", maximum=0)
+        slicer.app.processEvents()
         # --no-deps: pyRserve metadata pins numpy<2, which would downgrade
         # numpy and break tifffile/imagecodecs/etc. The shim above keeps
         # pyRserve working against numpy 2.x.
-        slicer.packaging.pip_install("pyRserve --no-deps", requester="GPA")
+        slicer.util.pip_install("pyRserve --no-deps")
+        progress.close()
         import pyRserve as _pyRserve
         return _pyRserve
       except Exception as ee:
+        try: progress.close()
+        except Exception: pass
         self._r_last_error = str(ee)
         return None
 
@@ -889,12 +1037,44 @@ class GeomorphLR:
       ok,_ = self._lr_validateFormula(fml)
     except Exception:
       ok = False
-    return ok and bool(self._r_conn)
+    if not (ok and bool(self._r_conn)):
+      return False
+    # If we already produced a fit for this exact formula, don't let the
+    # user re-run it just to re-arm the LR visualization. They should switch
+    # back via the warp-source radio (PCA / Geomorph LR) instead. Editing
+    # the formula text re-arms the button automatically.
+    try:
+      last = getattr(self, "_lr_last_fit", None)
+      if last and str(last.get("formula", "")) == str(fml):
+        return False
+    except Exception:
+      pass
+    return True
 
   def refreshFitButton(self):
     can = self._lr_canFit()
     _set_enabled(self._lr_fitBtn, bool(can))
-    _set_label(self._lr_fitStatus, "Ready" if can else "Not ready")
+    if can:
+      _set_label(self._lr_fitStatus, "Ready")
+    else:
+      # Distinguish "already fit" from "formula/connection not ready".
+      try:
+        fml = self._lr_getFormulaText()
+        ok,_ = self._lr_validateFormula(fml)
+      except Exception:
+        ok = False
+      already = False
+      try:
+        last = getattr(self, "_lr_last_fit", None)
+        already = bool(ok and self._r_conn and last
+                       and str(last.get("formula", "")) == str(fml))
+      except Exception:
+        pass
+      if already:
+        _set_label(self._lr_fitStatus,
+                   "Fit complete (edit formula or switch warp source to re-fit)")
+      else:
+        _set_label(self._lr_fitStatus, "Not ready")
 
   def _lr_findCovariatesPath(self) -> str:
     paths = []
@@ -947,6 +1127,53 @@ class GeomorphLR:
       self._log(f"[LR] Invalid formula: {msg}")
       return
 
+    # Show a progress dialog so the UI doesn't appear frozen during the fit
+    # (procD.lm itself is fast; the post-fit TPS warp setup with many landmarks
+    # is what tends to dominate wall-clock).
+    pd = None
+    try:
+      pd = slicer.util.createProgressDialog(
+        windowTitle="Fitting linear model",
+        labelText=f"Fitting:  {fml_raw}\n(this may take a moment for high-density landmarks)",
+        maximum=0,
+      )
+      pd.setCancelButton(None)
+      pd.setModal(True); pd.show(); pd.raise_(); pd.repaint()
+      for _ in range(5): slicer.app.processEvents()
+    except Exception:
+      pd = None
+
+    # Stash the dialog so _lr_doFitInR / sub-steps can update its label without
+    # plumbing it through every signature.
+    self._lr_progress = pd
+
+    import time as _time
+    t_start = _time.perf_counter()
+    try:
+      self._lr_doFitInR(fml_raw)
+    finally:
+      self._log(f"[LR] total fit + post-fit: {_time.perf_counter() - t_start:.2f}s")
+      self._lr_progress = None
+      if pd is not None:
+        try: pd.close(); pd.deleteLater()
+        except Exception: pass
+
+  def _lr_progressLabel(self, text):
+    """Update the fit progress dialog's label, if visible. Safe to call any time."""
+    pd = getattr(self, "_lr_progress", None)
+    if pd is None:
+      return
+    try:
+      pd.labelText = str(text)
+      pd.repaint()
+      slicer.app.processEvents()
+    except Exception:
+      pass
+
+  def _lr_doFitInR(self, fml_raw):
+    import numpy as _np
+    import time as _time
+
     conn = self._r_conn
     if not conn:
       _set_label(self._lr_fitStatus, "Rserve not connected");
@@ -989,16 +1216,29 @@ class GeomorphLR:
         if cov_df.shape[1] < 2:
           raise ValueError("Covariate CSV needs ID col + covariate columns.")
         cov_df = cov_df.set_index(cov_df.columns[0])
-        missing = [f for f in files if f not in cov_df.index]
+        # Strip extension(s). Slicer markup files use the double extension
+        # ".mrk.json"; splitext only removes one, so strip a trailing
+        # ".mrk" too. Covariate CSVs typically key on the bare specimen ID.
+        def _stem(f):
+          s = os.path.splitext(os.path.basename(f))[0]
+          if s.endswith(".mrk"):
+            s = s[:-4]
+          return s
+        ids = [_stem(f) for f in files]
+        missing = [i for i in ids if i not in cov_df.index]
         if missing:
           raise ValueError(f"IDs missing in covariate table (first 10): {missing[:10]}")
-        cov_df = cov_df.loc[files]
+        cov_df = cov_df.loc[ids]
       except Exception as e:
         _set_label(self._lr_fitStatus, "Covariate load error")
         self._log(f"[LR] Failed to read/align covariates: {e}")
         return
 
     step = self._r_step
+
+    # --- PHASE: ship landmarks + size to R ---
+    self._lr_progressLabel(f"Sending {n} specimens × {p} landmarks to R…")
+    _tphase = _time.perf_counter()
 
     # Headless rgl
     if not step(conn, "Headless rgl",
@@ -1029,6 +1269,10 @@ class GeomorphLR:
     if not step(conn, "arrayspecs", f'arr <- geomorph::arrayspecs(coords, p={p}, k=3)'):
       _set_label(self._lr_fitStatus, "R data error (arrayspecs)");
       return
+    self._log(f"[LR/timing] ship + arrayspecs: {_time.perf_counter() - _tphase:.2f}s")
+
+    # --- PHASE: predictors / covariates ---
+    _tphase = _time.perf_counter()
 
     # predictors in .GlobalEnv
     added_vars = []
@@ -1061,6 +1305,7 @@ class GeomorphLR:
     if not step(conn, "Build gdf", gdf_call):
       _set_label(self._lr_fitStatus, "R data error (gdf)");
       return
+    self._log(f"[LR/timing] covariates + gdf: {_time.perf_counter() - _tphase:.2f}s")
 
     import re as _re
     fml = _re.sub(r'^\s*(Y|Coords|Shape|SHAPE|shape)\s*~', 'Coords ~', fml_raw.strip())
@@ -1074,11 +1319,18 @@ class GeomorphLR:
       _set_label(self._lr_fitStatus, "Bad formula");
       return
 
+    # --- PHASE: actual procD.lm fit ---
+    self._lr_progressLabel(f"Running procD.lm:  {fml}")
+    _tphase = _time.perf_counter()
     if not step(conn, "Fit procD.lm",
                 'outlm <- geomorph::procD.lm(mod, data=gdf, SS.type="II")'):
       _set_label(self._lr_fitStatus, "Fit failed");
       return
+    self._log(f"[LR/timing] procD.lm fit: {_time.perf_counter() - _tphase:.2f}s")
 
+    # --- PHASE: pull coefficients back to Python ---
+    self._lr_progressLabel(f"Pulling coefficients back from R…")
+    _tphase = _time.perf_counter()
     if not step(conn, "Extract coefficients", 'coef_mat <- outlm$coefficients; coef_names <- base::rownames(coef_mat)'):
       _set_label(self._lr_fitStatus, "Extract error");
       return
@@ -1090,16 +1342,66 @@ class GeomorphLR:
       _set_label(self._lr_fitStatus, "Pull-back error")
       self._log(f"[LR] pull coef: {repr(e)}");
       return
+    self._log(f"[LR/timing] pull coef_mat ({coef_mat.shape}): {_time.perf_counter() - _tphase:.2f}s")
+
+    # Pull factor levels (so we can label categorical sliders by group name).
+    # R returns a named list; ask for names + JSON-ish flat encoding to keep pyRserve happy.
+    if not step(conn, "Summarize model", 'sumtxt <- paste(utils::capture.output(summary(outlm)), collapse="\\n")'):
+      self._lr_setSummaryText("Failed to build summary(outlm).")
+      summary_text = ""
+    else:
+      try:
+        summary_text = str(conn.eval('sumtxt'))
+      except Exception as e:
+        summary_text = f"Could not read summary from R: {repr(e)}"
+      self._lr_setSummaryText(summary_text)
+
+    # --- PHASE: factor levels + covariate stats (categorical slider labels etc.) ---
+    self._lr_progressLabel("Pulling factor levels & covariate stats…")
+    _tphase = _time.perf_counter()
+    factor_levels = {}
+    try:
+      conn.eval('factor_levels <- lapply(Filter(is.factor, as.list(gdf)), levels)')
+      fl_names = self._py_to_str_list(conn.eval('as.character(names(factor_levels))'))
+      for nm in fl_names:
+        nm = str(nm)
+        if not nm:
+          continue
+        try:
+          lv = conn.eval(f'as.character(factor_levels[["{nm}"]])')
+          factor_levels[nm] = self._py_to_str_list(lv)
+        except Exception:
+          pass
+      self._log(f"[LR] factor levels: {factor_levels}")
+    except Exception as e:
+      self._log(f"[LR] could not pull factor levels: {e}")
+    self._log(f"[LR/timing] factor levels: {_time.perf_counter() - _tphase:.2f}s")
 
     # ---- NEW: cache covariate ranges for numeric sliders ----
     cov_stats = {}
-    try:
-      cov_stats["Size"] = {
+    def _add_numeric_stats(name, vals):
+      vals = _np.asarray(vals, dtype=float)
+      finite = vals[_np.isfinite(vals)]
+      if finite.size == 0:
+        return
+      entry = {
         "is_numeric": True,
-        "min": float(_np.nanmin(size_vec)),
-        "max": float(_np.nanmax(size_vec)),
-        "mean": float(_np.nanmean(size_vec)),
+        "min": float(finite.min()),
+        "max": float(finite.max()),
+        "mean": float(finite.mean()),
       }
+      # Geometric-mean center for log(x): only defined when x > 0 everywhere.
+      pos = finite[finite > 0]
+      if pos.size == finite.size and pos.size > 0:
+        entry["log_mean"] = float(_np.mean(_np.log(pos)))
+      # Quadratic-mean center for sqrt(x): need x >= 0 everywhere.
+      nonneg = finite[finite >= 0]
+      if nonneg.size == finite.size:
+        entry["sqrt_mean"] = float(_np.mean(_np.sqrt(nonneg)))
+      cov_stats[str(name)] = entry
+
+    try:
+      _add_numeric_stats("Size", size_vec)
       if cov_df is not None:
         import pandas as pd
         for col in cov_df.columns:
@@ -1114,28 +1416,12 @@ class GeomorphLR:
             except Exception:
               is_num = False
           if is_num:
-            vals = _np.asarray(series, dtype=float)
-            cov_stats[str(col)] = {
-              "is_numeric": True,
-              "min": float(_np.nanmin(vals)),
-              "max": float(_np.nanmax(vals)),
-              "mean": float(_np.nanmean(vals)),
-            }
+            _add_numeric_stats(col, _np.asarray(series, dtype=float))
     except Exception:
       pass
     # ----------------------------------------------
 
-    if not step(conn, "Summarize model", 'sumtxt <- paste(utils::capture.output(summary(outlm)), collapse="\\n")'):
-      self._lr_setSummaryText("Failed to build summary(outlm).")
-      summary_text = ""
-    else:
-      try:
-        summary_text = str(conn.eval('sumtxt'))
-      except Exception as e:
-        summary_text = f"Could not read summary from R: {repr(e)}"
-      self._lr_setSummaryText(summary_text)
-
-    # cache for coefficient viz (+ covariate stats)
+    # cache for coefficient viz (+ covariate stats + factor levels)
     self._lr_last_fit = {
       "formula": fml,
       "coef_mat": coef_mat,
@@ -1144,14 +1430,25 @@ class GeomorphLR:
       "p_landmarks": p,
       "covariate_path": cov_path,
       "summary_text": summary_text,
-      "covariate_stats": cov_stats,  # <--- NEW
+      "covariate_stats": cov_stats,
+      "factor_levels": factor_levels,
     }
 
     self._log(f"[LR] geomorph::procD.lm OK: coef_mat {coef_mat.shape}, terms={len(coef_names)}")
     _set_label(self._lr_fitStatus, "Fit complete")
 
+    # --- PHASE: build coefficient warp infra (TPS source landmarks etc.) ---
+    self._lr_progressLabel(f"Setting up coefficient warps for {p} landmarks…")
     try:
+      _t0 = _time.perf_counter()
       self._coef_refreshFromFit()
+      self._log(f"[LR/timing] _coef_refreshFromFit: {_time.perf_counter() - _t0:.2f}s")
+    except Exception as e:
+      self._log(f"[LR] _coef_refreshFromFit error: {repr(e)}")
+    # Now that this formula has been fit, disable the Fit button until the
+    # user edits the formula (refreshFitButton checks _lr_last_fit.formula).
+    try:
+      self.refreshFitButton()
     except Exception:
       pass
 
@@ -1249,6 +1546,30 @@ class GeomorphLR:
       self._coef_clearChoices()
       return
 
+    # Re-entrance guard: while we are in this function, suppress the cascade
+    # of slider/combobox callbacks that would otherwise re-run
+    # _coef_applyTPS / _coef_set_slider_domain_for_current /
+    # _coef_attachTargets several times for the same fit. We do all those
+    # ourselves at the end of this function, exactly once.
+    self._coef_in_refresh = True
+    # Pause the 3D renderer for the entire post-fit setup so the 1000-fid
+    # markup display only re-evaluates the TPS once at the end, instead of
+    # re-rendering after every TPS / transform-parent change.
+    _paused = False
+    try:
+      slicer.app.pauseRender()
+      _paused = True
+    except Exception:
+      _paused = False
+    try:
+      self._coef_refreshFromFit_body(last)
+    finally:
+      self._coef_in_refresh = False
+      if _paused:
+        try: slicer.app.resumeRender()
+        except Exception: pass
+
+  def _coef_refreshFromFit_body(self, last):
     import numpy as _np
     coef_mat = _np.asarray(last.get("coef_mat", []))
     coef_names = list(last.get("coef_names", []))
@@ -1256,34 +1577,78 @@ class GeomorphLR:
       self._coef_clearChoices()
       return
 
+    # New fit -> drop any cached per-coefficient displacement grids.
+    try:
+      if hasattr(self, "_coef_grid_cache"):
+        self._coef_grid_cache.clear()
+    except Exception:
+      pass
+
     self._coef_vectors = [_np.asarray(coef_mat[i, :]).reshape(-1).copy() for i in range(coef_mat.shape[0])]
     self._coef_names = [str(n) for n in coef_names]
 
-    # default to first non-intercept
-    first_term = 0
-    for i, nm in enumerate(self._coef_names):
-      if nm.strip() != "(Intercept)":
-        first_term = i
-        break
+    # Cache the intercept's predicted shape (p,3) as the WARP BASE.
+    # All coefficient contributions are predicted shape DEVIATIONS from this point;
+    # the intercept is the model's prediction at all-zero / reference predictors.
+    self._coef_intercept_shape = None
+    try:
+      p = int(self.w.rawMeanLandmarks.shape[0]) if getattr(self.w, "rawMeanLandmarks", None) is not None else 0
+      for i, nm in enumerate(self._coef_names):
+        if nm.strip() == "(Intercept)" and p > 0 and self._coef_vectors[i].size == 3 * p:
+          row = self._coef_vectors[i]
+          base = _np.zeros((p, 3), dtype=float)
+          base[:, 0] = row[0:p]
+          base[:, 1] = row[p:2 * p]
+          base[:, 2] = row[2 * p:3 * p]
+          self._coef_intercept_shape = base
+          break
+    except Exception as e:
+      self._log(f"[LR/COEF] intercept-shape capture failed: {e}")
+
+    # Build the visible (combobox) index -> underlying coef index mapping.
+    # The intercept is hidden from the slider UI: it is not a 'direction' you can
+    # slide along, it is the absolute base shape.
+    self._coef_visible_indices = [
+      i for i, nm in enumerate(self._coef_names) if nm.strip() != "(Intercept)"
+    ]
+
+    # default to first visible coef (first non-intercept term)
+    first_term = self._coef_visible_indices[0] if self._coef_visible_indices else 0
     self._coef_current = int(first_term)
 
     if self.coefController:
-      self.coefController.populateComboBox(self._coef_names)
+      visible_names = [self._coef_names[i] for i in self._coef_visible_indices]
+      import time as _time
+      _t0 = _time.perf_counter()
+      self.coefController.populateComboBox(visible_names)
+      self._log(f"[LR/COEF/timing] populateComboBox ({len(visible_names)} terms): {_time.perf_counter() - _t0:.2f}s")
       try:
-        self.ui.coefComboBox.setCurrentIndex(self._coef_current)
+        # combobox index 0 corresponds to the first visible coef (which is
+        # self._coef_visible_indices[0] in the underlying arrays)
+        _t0 = _time.perf_counter()
+        self.ui.coefComboBox.setCurrentIndex(0)
+        self._log(f"[LR/COEF/timing] coefComboBox.setCurrentIndex(0): {_time.perf_counter() - _t0:.2f}s")
       except Exception:
         pass
 
     # Domains for numeric mode
+    import time as _time
+    _t0 = _time.perf_counter()
     try:
       self._coef_build_domains()
     except Exception as e:
       self._log(f"[LR/COEF] domain build warning: {e}")
+    self._log(f"[LR/COEF/timing] _coef_build_domains: {_time.perf_counter() - _t0:.2f}s")
 
     # Ensure infra + identity warp at neutral
+    _t0 = _time.perf_counter()
     self._lr_prepareWarpInfra()
-    self._ensureLRTPSNode()
+    self._log(f"[LR/COEF/timing] _lr_prepareWarpInfra: {_time.perf_counter() - _t0:.2f}s")
+    _t0 = _time.perf_counter()
+    self._ensureLRGridNode()
+    self._log(f"[LR/COEF/timing] _ensureLRGridNode: {_time.perf_counter() - _t0:.2f}s")
 
+    _t0 = _time.perf_counter()
     try:
       self._coef_set_slider_domain_for_current()
     except Exception as e:
@@ -1291,23 +1656,55 @@ class GeomorphLR:
       if self.coefController:
         self.coefController.setRange(-1.0, 1.0)
         self.coefController.setValue(0.0)
+    self._log(f"[LR/COEF/timing] _coef_set_slider_domain_for_current: {_time.perf_counter() - _t0:.2f}s")
 
     # Build initial numeric TPS
+    _t0 = _time.perf_counter()
     try:
       self._coef_applyTPS()
     except Exception as e:
       self._log(f"[LR/COEF] initial TPS build failed: {e}")
+    self._log(f"[LR/COEF/timing] _coef_applyTPS (initial): {_time.perf_counter() - _t0:.2f}s")
 
+    _t0 = _time.perf_counter()
     self._coef_attachTargets(enabled=True)
+    self._log(f"[LR/COEF/timing] _coef_attachTargets: {_time.perf_counter() - _t0:.2f}s")
+
+    # If the user jumped straight to the LR tab without first hitting Apply
+    # on the 3D Visualization tab, the shared clone landmark/model nodes
+    # don't exist yet — so the slider has nothing visible to drive. Nudge
+    # them with a one-shot popup (per session).
+    #
+    # Defer via QTimer.singleShot so the modal popup does NOT block (and
+    # inflate) the surrounding timing logs / progress dialog teardown.
+    try:
+      lm = getattr(self.w, "cloneLandmarkNode", None)
+      have_lm = bool(lm is not None and slicer.mrmlScene.IsNodePresent(lm))
+      if (not have_lm) and (not getattr(self, "_lr_applyHintShown", False)):
+        self._lr_applyHintShown = True
+        def _showApplyHint():
+          try:
+            slicer.util.infoDisplay(
+              "Regression fit complete, but no warped landmarks are visible yet.\n\n"
+              "Go to the '3D Visualization' tab and click 'Apply' to create the "
+              "warped landmark / model display, then return here.",
+              windowTitle="Geomorph LR")
+          except Exception:
+            pass
+        qt.QTimer.singleShot(0, _showApplyHint)
+    except Exception:
+      pass
 
   def _coef_onSelectCoefficient(self):
     if not self._coef_enabled: return
+    if getattr(self, "_coef_in_refresh", False): return
     try:
-      idx = int(self.coefController.comboBoxIndex())
+      vis_idx = int(self.coefController.comboBoxIndex())
     except Exception:
-      idx = -1
-    if idx < 0 or idx >= len(self._coef_vectors): return
-    self._coef_current = idx
+      vis_idx = -1
+    visible = getattr(self, "_coef_visible_indices", []) or []
+    if vis_idx < 0 or vis_idx >= len(visible): return
+    self._coef_current = int(visible[vis_idx])
 
     # Set slider range & neutral for this coefficient
     try:
@@ -1326,6 +1723,12 @@ class GeomorphLR:
 
   def _coef_setMagnification(self):
     if not self._coef_enabled: return
+    # Magnification rescales the per-coef shift, invalidating every cached grid.
+    try:
+      if hasattr(self, "_coef_grid_cache"):
+        self._coef_grid_cache.clear()
+    except Exception:
+      pass
     try:
       self._coef_applyTPS()
     except Exception as e:
@@ -1334,6 +1737,16 @@ class GeomorphLR:
   def _coef_updateScaling(self):
     if not self._coef_enabled:
       return
+    if getattr(self, "_coef_in_refresh", False):
+      return
+    # User is interacting with an LR coefficient → claim ownership of the
+    # shared warped-landmark/model clones for the LR pipeline. Auto-switches
+    # the warp-mode toggle if PCA had previously claimed them.
+    try:
+      if getattr(self.w, "activeWarpMode", "pca") != "lr":
+        self.w._setWarpMode("lr")
+    except Exception:
+      pass
     try:
       self._coef_applyTPS()
     except Exception as e:
@@ -1349,12 +1762,31 @@ class GeomorphLR:
       neutral = float(dom.get("ref", 0.0)) if dom.get("mode") == "real" else 0.0
       self.coefController.setValue(neutral)
 
-    # Identity TPS
-    node = self._ensureLRTPSNode()
+    # Reset magnification to 1.0. This is the *explicit* user-driven reset
+    # path (Init / Reset Coefficient View button); coef switches deliberately
+    # preserve the user's magnification (see _coef_set_slider_domain_for_current).
     try:
-      id_tps = vtk.vtkThinPlateSplineTransform();
-      id_tps.SetBasisToR()
-      node.SetAndObserveTransformToParent(id_tps);
+      mag_spin = getattr(self.ui, "coefMagnificationSpin", None)
+      if mag_spin is not None:
+        mag_spin.blockSignals(True)
+        try:
+          mag_spin.setValue(1.0)
+        finally:
+          mag_spin.blockSignals(False)
+    except Exception:
+      pass
+    # Cached grids were sized for the previous magnification; drop them.
+    try:
+      if hasattr(self, "_coef_grid_cache") and self._coef_grid_cache:
+        self._coef_grid_cache.clear()
+    except Exception:
+      pass
+
+    # Identity transform on the grid node (no displacement).
+    node = self._ensureLRGridNode()
+    try:
+      ident = vtk.vtkTransform()
+      node.SetAndObserveTransformToParent(ident)
       node.Modified()
     except Exception:
       pass
@@ -1388,18 +1820,33 @@ class GeomorphLR:
     self._coef_debugPipeline(tag="init/reset", sample_scale=0.0)
 
   def _coef_attachTargets(self, enabled: bool):
-    node = getattr(self, "lrTPSTransformNode", None)
+    node = getattr(self, "lrGridTransformNode", None)
     if not node:
-      self._log("[LR/COEF] lrTPSTransformNode missing in _coef_attachTargets"); return
-    lm = getattr(self, "lrWarpNode", None)
-    if lm is not None and slicer.mrmlScene.IsNodePresent(lm):
-      try: lm.SetAndObserveTransformNodeID(node.GetID() if enabled else None)
-      except Exception: pass
-    try: modelChecked = bool(self.w.ui.modelVisualizationType.isChecked())
-    except Exception: modelChecked = False
-    if modelChecked and getattr(self.w, "cloneModelNode", None):
-      try: self.w.cloneModelNode.SetAndObserveTransformNodeID(node.GetID() if enabled else None)
-      except Exception: pass
+      self._log("[LR/COEF] lrGridTransformNode missing in _coef_attachTargets"); return
+    import time as _time
+    # Route attachment through the widget's warp-mode toggle so PCA/LR
+    # ownership of the shared clones stays consistent and the radio buttons
+    # in Setup Interactive Visualization reflect reality.
+    try:
+      if enabled:
+        _t = _time.perf_counter()
+        self.w._setWarpMode("lr")
+        self._log(f"[LR/COEF/timing]   _setWarpMode('lr'): {_time.perf_counter() - _t:.2f}s")
+      else:
+        # Detach by switching back to PCA (or, if no PCA grid yet, clear).
+        if getattr(self.w, "gridTransformNode", None) is not None:
+          self.w._setWarpMode("pca")
+        else:
+          lm = getattr(self.w, "cloneLandmarkNode", None) or getattr(self.w, "copyLandmarkNode", None)
+          if lm is not None and slicer.mrmlScene.IsNodePresent(lm):
+            try: lm.SetAndObserveTransformNodeID(None)
+            except Exception: pass
+          cm = getattr(self.w, "cloneModelNode", None)
+          if cm is not None and slicer.mrmlScene.IsNodePresent(cm):
+            try: cm.SetAndObserveTransformNodeID(None)
+            except Exception: pass
+    except Exception as e:
+      self._log(f"[LR/COEF] attach via warp-mode toggle failed: {e}")
     self._coef_debugPipeline(tag=f"attachTargets(enabled={enabled})", sample_scale=None)
 
   def _coef_clearChoices(self):
@@ -1429,9 +1876,19 @@ class GeomorphLR:
     """
     Prepare LR warp infra:
       - Ensure mean landmarks are available
-      - Create/reuse 'LR Warped Landmarks' shown in View 2
-      - Color ONLY these glyphs (orange)
-      - Create/reuse LR TPS transform and attach targets
+      - Create/reuse the LR TPS transform
+      - Attach the SHARED Interactive-Visualization clones (cloneLandmarkNode
+        and, if model viz is enabled, cloneModelNode) under the LR transform.
+
+    NOTE: Earlier revisions of this file created a dedicated 'LR Warped
+    Landmarks' fiducial node (`lrWarpNode`) as a separate green/purple set
+    in viewer 2. That has been removed: the LR tab now drives the same
+    `cloneLandmarkNode` (and `cloneModelNode`) that the PCA tab drives, so
+    viewer 2 only ever shows ONE warped landmark/model pair. A separate LR
+    glyph node duplicated geometry in the same view, was easy to drag (the
+    bug we just fixed), and required parallel color/scale/visibility
+    bookkeeping. Single shared clone is simpler and avoids the confusion
+    seen in the screenshot of two overlapping landmark sets.
     """
     # Ensure we have mean landmarks
     if getattr(self.w, "rawMeanLandmarks", None) is None:
@@ -1446,56 +1903,34 @@ class GeomorphLR:
         self._log("[LR] Cannot initialize: no mean landmarks available yet.")
         return
 
-    p = int(self.w.rawMeanLandmarks.shape[0])
+    # Ensure the LR grid transform node exists.
+    node = self._ensureLRGridNode()
 
-    # Create or reuse the LR warp fiducials (these are the ones that will be ORANGE)
-    try:
-        create_new = not (getattr(self, "lrWarpNode", None) and slicer.mrmlScene.IsNodePresent(self.lrWarpNode))
-        if create_new:
-            self.lrWarpNode = slicer.vtkMRMLMarkupsFiducialNode()
-            self.lrWarpNode.SetName("LR Warped Landmarks")
-            slicer.mrmlScene.AddNode(self.lrWarpNode)
-            self.nodes.AddItem(self.lrWarpNode)
-            self._log(f"[LR] Created LR warp node: {self.lrWarpNode.GetID()}")
-
-        # Populate/refresh points
+    # Attach the shared Interactive-Visualization clones under the LR
+    # transform. If the user has not yet clicked Apply in Setup Interactive
+    # Visualization, no clone exists; the slider will still update the
+    # transform but viewer 2 will appear empty until Apply is clicked.
+    #
+    # PERF: SKIP the attach if we're inside _coef_refreshFromFit. In that
+    # context _coef_attachTargets / _setWarpMode will perform the attach
+    # AFTER the TPS has been set on the (still-unparented) transform node,
+    # so the markups display does the expensive TPS evaluation exactly once
+    # at attach time instead of twice (once now while the transform is
+    # identity, then again after _coef_applyTPS swaps the TPS in).
+    if getattr(self, "_coef_in_refresh", False):
         try:
-            self.lrWarpNode.RemoveAllControlPoints()
+            tid = node.GetID() if node else "(none)"
+            self._log(f"[LR] Infra ready (grid, deferred attach). transform={tid}")
         except Exception:
             pass
-        for i in range(p):
-            self.lrWarpNode.AddControlPoint(self.w.rawMeanLandmarks[i, :], str(i + 1))
-
-        # Display config (View 2 + scales + ORANGE color)
-        self.lrWarpNode.CreateDefaultDisplayNodes()
-        d = self.lrWarpNode.GetDisplayNode()
-        if d:
-            d.SetPointLabelsVisibility(1)
-            d.SetTextScale(3)
-            # Match glyph scale to the UI (won't affect color)
-            try:
-                d.SetGlyphScale(float(self.w.ui.scaleMeanShapeSlider.value))
-            except Exception:
-                pass
-            # Show only in View 2
-            v2 = _view_node_by_name("View2")
-            if v2:
-                d.SetViewNodeIDs([v2.GetID()])
-
-        # Color ONLY these LR-warped glyphs (purple)
-        self._lr_setWarpGlyphColor(rgb=(51, 128, 15))  # green
-
-        self.lrWarpNode.SetDisplayVisibility(1)
-    except Exception as e:
-        self._log(f"[LR] Warp node setup failed: {e}")
         return
 
-    # Ensure the LR TPS transform exists and attach it to the warp node (and model, if selected)
-    node = self._ensureLRTPSNode()
-    try:
-        self.lrWarpNode.SetAndObserveTransformNodeID(node.GetID())
-    except Exception:
-        pass
+    lm = getattr(self.w, "cloneLandmarkNode", None) or getattr(self.w, "copyLandmarkNode", None)
+    if lm is not None and slicer.mrmlScene.IsNodePresent(lm):
+        try:
+            lm.SetAndObserveTransformNodeID(node.GetID())
+        except Exception:
+            pass
 
     try:
         modelChecked = bool(self.w.ui.modelVisualizationType.isChecked())
@@ -1509,8 +1944,8 @@ class GeomorphLR:
 
     try:
         tid = node.GetID() if node else "(none)"
-        lid = self.lrWarpNode.GetID() if getattr(self, "lrWarpNode", None) else "(none)"
-        self._log(f"[LR] Infra ready (TPS). transform={tid}, lrWarpNode={lid}")
+        lid = lm.GetID() if (lm is not None and slicer.mrmlScene.IsNodePresent(lm)) else "(none)"
+        self._log(f"[LR] Infra ready (TPS). transform={tid}, sharedLandmarkNode={lid}")
     except Exception:
         pass
 
@@ -1540,14 +1975,148 @@ class GeomorphLR:
     return shift
 
   def _ensureLRTPSNode(self):
+    # Back-compat shim: older code paths called this; the warp pipeline now
+    # uses a vtkMRMLGridTransformNode (see _ensureLRGridNode) so this just
+    # returns the grid node.
+    return self._ensureLRGridNode()
+
+  def _coef_max_abs_delta_for_domain(self, dom):
+    """Return the maximum |delta| reachable by the slider for the current
+    domain. Used to pre-build the displacement grid at full deflection so
+    SetDisplacementScale can interpolate linearly between identity and the
+    full warp."""
+    import math as _math
+    mode = dom.get("mode")
     try:
-      if getattr(self, 'lrTPSTransformNode', None) and slicer.mrmlScene.IsNodePresent(self.lrTPSTransformNode):
-        return self.lrTPSTransformNode
-    except Exception: pass
-    self.lrTPSTransformNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', 'LRTPS_Transform')
-    self.nodes.AddItem(self.lrTPSTransformNode)
-    self._log(f"[LR] Created LRTPS_Transform: {self.lrTPSTransformNode.GetID()}")
-    return self.lrTPSTransformNode
+      lo = float(dom.get("min", 0.0))
+      hi = float(dom.get("max", 0.0))
+      ref = float(dom.get("ref", 0.0))
+    except Exception:
+      return 1.0
+    if mode == "real":
+      return max(abs(lo - ref), abs(hi - ref), 1e-12)
+    if mode == "log":
+      if ref <= 0.0:
+        return 1.0
+      a = abs(_math.log(lo / ref)) if lo > 0.0 else 0.0
+      b = abs(_math.log(hi / ref)) if hi > 0.0 else 0.0
+      return max(a, b, 1e-12)
+    if mode == "sqrt":
+      if ref < 0.0:
+        return 1.0
+      a = abs(_math.sqrt(lo) - _math.sqrt(ref)) if lo >= 0.0 else 0.0
+      b = abs(_math.sqrt(hi) - _math.sqrt(ref)) if hi >= 0.0 else 0.0
+      return max(a, b, 1e-12)
+    if mode == "cat":
+      return 1.0
+    # unit
+    return 1.0
+
+  def _coef_buildGridForCurrent(self, max_delta: float):
+    """Build a vtkGridTransform that represents the per-coefficient TPS at
+    full slider deflection (delta == max_delta). At runtime we just call
+    SetDisplacementScale(delta / max_delta) -- O(1) -- to get any other
+    deflection. The expensive O(p^3) TPS solve is paid exactly once per
+    (coefficient, magnification) pair instead of on every slider tick.
+    """
+    import time as _time
+    if self._coef_current is None or self._coef_current < 0:
+      return None
+    if not (self._coef_vectors and len(self._coef_vectors) > self._coef_current):
+      return None
+    if getattr(self.w, "rawMeanLandmarks", None) is None:
+      return None
+
+    base_shape = getattr(self, "_coef_intercept_shape", None)
+    if base_shape is None or base_shape.shape != self.w.rawMeanLandmarks.shape:
+      base_shape = self.w.rawMeanLandmarks
+
+    row = np.asarray(self._coef_vectors[self._coef_current]).reshape(-1)
+    base_shift = self._coef_row_to_shift(row)
+    target_max = base_shape + float(max_delta) * base_shift
+
+    # Source = mean shape (where the unwarped clones live), Target = warped.
+    # vtkGridTransform.SetDisplacementScale(s) then yields:
+    #     warped(x) = x + s * (TPS(x) - x)
+    # so s in [-1, 1] interpolates between identity and full warp.
+
+    # Bounds for the displacement grid: cover where the unwarped clones
+    # live (cloneLandmarkNode / cloneModelNode if present) plus padding so
+    # the displacement field extrapolates safely at the slider extremes.
+    bounds = self._coef_gridBounds()
+    if bounds is None:
+      self._log("[LR/COEF] cannot build grid: no bounds available")
+      return None
+
+    origin = (bounds[0], bounds[2], bounds[4])
+    size = (bounds[1] - bounds[0], bounds[3] - bounds[2], bounds[5] - bounds[4])
+    dimension = 50
+    extent = [0, dimension - 1, 0, dimension - 1, 0, dimension - 1]
+    spacing = (size[0] / dimension, size[1] / dimension, size[2] / dimension)
+
+    _t = _time.perf_counter()
+    # Direct NumPy/SciPy TPS path -- bypasses vtkTPS entirely. Solve is via
+    # scipy.linalg.solve (LAPACK / multi-threaded BLAS), eval is chunked GEMM.
+    # Output matches the old vtkTransformToGrid displacement field within
+    # float32 epsilon (verified at p=500). Speedup over vtkTPS at p=1440: ~50x.
+    from Support import vtk_lib as _vtk_lib
+    grid_image = _vtk_lib.buildDisplacementGridFromTPS(
+      sourceLM=base_shape,
+      targetLM=target_max,
+      origin=origin,
+      spacing=spacing,
+      extent=extent,
+    )
+    self._log(f"[LR/COEF/timing]   solve TPS + sample {dimension}^3 grid (numpy/scipy): {_time.perf_counter() - _t:.2f}s")
+
+    grid_xform = vtk.vtkGridTransform()
+    grid_xform.SetDisplacementGridData(grid_image)
+    grid_xform.SetInterpolationModeToCubic()
+    return grid_xform
+
+  def _coef_gridBounds(self, paddingFactor: float = 0.30):
+    """Bounds covering the warped clones (landmarks +/- model) with padding."""
+    nodes = []
+    lm = getattr(self.w, "cloneLandmarkNode", None) or getattr(self.w, "copyLandmarkNode", None)
+    if lm is not None and slicer.mrmlScene.IsNodePresent(lm):
+      nodes.append(lm)
+    cm = getattr(self.w, "cloneModelNode", None)
+    if cm is not None and slicer.mrmlScene.IsNodePresent(cm):
+      try:
+        if bool(self.w.ui.modelVisualizationType.isChecked()):
+          nodes.append(cm)
+      except Exception:
+        pass
+    if not nodes:
+      # Fall back to mean-landmark bounding box if clones aren't built yet.
+      try:
+        ml = np.asarray(self.w.rawMeanLandmarks)
+        b = [float(ml[:, 0].min()), float(ml[:, 0].max()),
+             float(ml[:, 1].min()), float(ml[:, 1].max()),
+             float(ml[:, 2].min()), float(ml[:, 2].max())]
+      except Exception:
+        return None
+    else:
+      b = [+1e30, -1e30, +1e30, -1e30, +1e30, -1e30]
+      tmp = [0.0] * 6
+      for n in nodes:
+        try:
+          n.GetRASBounds(tmp)
+          if tmp[0] < b[0]: b[0] = tmp[0]
+          if tmp[1] > b[1]: b[1] = tmp[1]
+          if tmp[2] < b[2]: b[2] = tmp[2]
+          if tmp[3] > b[3]: b[3] = tmp[3]
+          if tmp[4] < b[4]: b[4] = tmp[4]
+          if tmp[5] > b[5]: b[5] = tmp[5]
+        except Exception:
+          continue
+      if b[0] > b[1]:
+        return None
+    xr = b[1] - b[0]; yr = b[3] - b[2]; zr = b[5] - b[4]
+    b[0] -= xr * paddingFactor; b[1] += xr * paddingFactor
+    b[2] -= yr * paddingFactor; b[3] += yr * paddingFactor
+    b[4] -= zr * paddingFactor; b[5] += zr * paddingFactor
+    return b
 
   def _coef_applyTPS(self, scale: float | None = None):
     if self._coef_current is None or self._coef_current < 0:
@@ -1568,8 +2137,52 @@ class GeomorphLR:
       value = float(scale)
 
     if dom.get("mode") == "real":
-      # Real units: slider shows the actual covariate value; neutral at mean
+      # Real units: slider shows the actual covariate value. Center on the
+      # covariate mean (`ref`) so the midpoint of the slider is the zero-shift
+      # reference shape; moving away from the mean adds value*beta deformation,
+      # and the magnification factor only scales that offset (not the baseline).
       delta = value - float(dom.get("ref", 0.0))
+    elif dom.get("mode") == "log":
+      # Slider shows raw covariate; the regressor is log(value).
+      # Center on the geometric mean so doubling/halving are mirror-image shifts.
+      import math as _math
+      ref = float(dom.get("ref", 1.0))
+      v = float(value)
+      if v <= 0.0 or ref <= 0.0:
+        delta = 0.0
+      else:
+        delta = _math.log(v) - _math.log(ref)
+    elif dom.get("mode") == "sqrt":
+      import math as _math
+      ref = float(dom.get("ref", 0.0))
+      v = float(value)
+      if v < 0.0 or ref < 0.0:
+        delta = 0.0
+      else:
+        delta = _math.sqrt(v) - _math.sqrt(ref)
+    elif dom.get("mode") == "cat":
+      # Categorical: snap to nearest integer level index.
+      # The coef row encodes (active_level - ref_level); contribute it only when
+      # the slider lands on this coef's active_level.
+      idx = int(round(value))
+      idx = max(0, min(int(dom.get("max", 1)), idx))
+      active_index = int(dom.get("active_index", 1))
+      delta = 1.0 if (idx == active_index) else 0.0
+      # Update spinbox suffix to reflect the currently-selected level name
+      try:
+        levels = list(dom.get("levels", []))
+        if 0 <= idx < len(levels):
+          spin = getattr(self.coefController, "spinBox", None)
+          if spin is not None:
+            spin.setSuffix(f"  ({levels[idx]})")
+          # also snap the spinbox value to the integer
+          if abs(value - idx) > 1e-9:
+            try:
+              self.coefController.setValue(float(idx))
+            except Exception:
+              pass
+      except Exception:
+        pass
     else:
       # Unit domain: keep legacy behavior in [-1, 1]
       if value > 1.0: value = 1.0
@@ -1578,22 +2191,135 @@ class GeomorphLR:
 
     row = np.asarray(self._coef_vectors[self._coef_current]).reshape(-1)
     base_shift = self._coef_row_to_shift(row)  # includes magnification & sample-size scaling
-    shift = float(delta) * base_shift
-    target = self.w.rawMeanLandmarks + shift
+    # base_shift / target only used directly here for the delta=0 fast path.
 
-    tps = vtk.vtkThinPlateSplineTransform()
-    tps.SetSourceLandmarks(_convert_numpy_to_vtk_points(self.w.rawMeanLandmarks))
-    tps.SetTargetLandmarks(_convert_numpy_to_vtk_points(target))
-    tps.SetBasisToR()
+    import time as _time
+    node = self._ensureLRGridNode()
 
-    node = self._ensureLRTPSNode()
-    node.SetAndObserveTransformToParent(tps)
+    # Magnification factors into the cached grid (because base_shift scales
+    # with it). Bake it into the cache key so a magnification change forces
+    # a rebuild on the next non-zero deflection.
+    try:
+      mag = float(self.ui.coefMagnificationSpin.value)
+    except Exception:
+      mag = 1.0
+
+    # Lazy init the per-fit grid cache.
+    if not hasattr(self, "_coef_grid_cache") or self._coef_grid_cache is None:
+      self._coef_grid_cache = {}
+
+    # PERF + CORRECTNESS: at neutral (delta ~ 0) the warp is identity.
+    # Always attach a vtkTransform identity here, even if a grid is already
+    # cached for this (coef, mag). Two reasons:
+    #   * If no cache yet, this skips a ~14s grid build for a slider that
+    #     settled at the reference value.
+    #   * If a cache exists, falling through to SetDisplacementScale(delta /
+    #     max_delta) gives a TINY non-zero scale due to spinbox-precision
+    #     noise around `ref`. That tiny scale is invisible at mag=1 but
+    #     visible at high magnification (the cached grid amplitude scales
+    #     with mag, so visible_warp = delta * mag * row). The user expects
+    #     "neutral cs" to look identical regardless of magnification.
+    #
+    # Threshold: relative to max_delta. For a Csize covariate whose ref is
+    # ~123.456 and slider precision quantizes to ~0.01, the slider can
+    # settle 1e-3..1e-2 of max_delta off ref. Treat all of that as neutral.
+    max_delta_for_zero = self._coef_max_abs_delta_for_domain(dom)
+    rel = abs(float(delta)) / max(float(max_delta_for_zero), 1e-12)
+    if rel < 1e-3:
+      _t = _time.perf_counter()
+      ident = vtk.vtkTransform()
+      node.SetAndObserveTransformToParent(ident)
+      try: node.Modified()
+      except Exception: pass
+      self._log(f"[LR/COEF/timing]   identity transform (rel={rel:.1e}, neutral): {_time.perf_counter() - _t:.2f}s")
+      self._coef_debugPipeline(tag=f"GRID val={value} (delta~0, identity)", sample_scale=None)
+      return
+
+    # Cache key per (coefficient, magnification, sample-size scale).
+    try:
+      ssf = float(getattr(self.w, "sampleSizeScaleFactor", 1.0))
+    except Exception:
+      ssf = 1.0
+    max_delta = self._coef_max_abs_delta_for_domain(dom)
+    cache_key = (int(self._coef_current), float(mag), float(ssf), float(max_delta))
+
+    grid_xform = self._coef_grid_cache.get(cache_key)
+    if grid_xform is None:
+      # Building the 50x50x50 displacement grid evaluates an O(p^3) TPS
+      # weight solve plus 125k * p kernel evaluations. At p=1000 this is
+      # ~14s on the UI thread; at p=1440 it's ~80s. Show a modal progress
+      # dialog so the user knows the app is working rather than hung. Same
+      # pattern PCA uses in setupPCTransform / getGridTransform.
+      coef_label = "(unknown)"
+      try:
+        if 0 <= int(self._coef_current) < len(self._coef_names):
+          coef_label = str(self._coef_names[self._coef_current])
+      except Exception:
+        pass
+      progressDialog = None
+      restoreCursor = False
+      try:
+        try:
+          progressDialog = slicer.util.createProgressDialog(
+            windowTitle="Caching deformation grid",
+            labelText=f"Caching deformation grid for coefficient '{coef_label}' "
+                      f"(magnification {mag:g})...\n"
+                      f"This is a one-time cost per coefficient; subsequent "
+                      f"slider moves on this coefficient will be instant.",
+            maximum=0,
+          )
+          progressDialog.setModal(True)
+          progressDialog.show()
+          progressDialog.raise_()
+          progressDialog.repaint()
+        except Exception:
+          progressDialog = None
+        try:
+          slicer.app.setOverrideCursor(qt.Qt.WaitCursor)
+          restoreCursor = True
+        except Exception:
+          pass
+        for _ in range(5):
+          try: slicer.app.processEvents()
+          except Exception: pass
+
+        _t = _time.perf_counter()
+        grid_xform = self._coef_buildGridForCurrent(max_delta)
+        if grid_xform is None:
+          self._log("[LR/COEF] grid build returned None; aborting apply")
+          return
+        self._coef_grid_cache[cache_key] = grid_xform
+        self._log(f"[LR/COEF/timing]   build+cache grid: {_time.perf_counter() - _t:.2f}s")
+      finally:
+        if progressDialog is not None:
+          try: progressDialog.close()
+          except Exception: pass
+        if restoreCursor:
+          try: slicer.app.restoreOverrideCursor()
+          except Exception: pass
+    else:
+      self._log("[LR/COEF/timing]   grid cache hit")
+
+    # Attach grid to node (cheap; just swaps the transform pointer if it
+    # changed) and set the displacement scale for the current delta. This
+    # is O(1); per-tick slider drags pay essentially nothing.
+    _t = _time.perf_counter()
+    if node.GetTransformToParent() is not grid_xform:
+      node.SetAndObserveTransformToParent(grid_xform)
+    sf = float(delta) / float(max_delta)
+    if sf > 1.0: sf = 1.0
+    if sf < -1.0: sf = -1.0
+    try:
+      grid_xform.SetDisplacementScale(sf)
+    except Exception as e:
+      self._log(f"[LR/COEF] SetDisplacementScale failed: {e}")
     try:
       node.Modified()
     except Exception:
       pass
+    self._log(f"[LR/COEF/timing]   attach+scale (sf={sf:.3f}): {_time.perf_counter() - _t:.2f}s")
 
-    self._coef_debugPipeline(tag=f"TPS val={value} (delta={delta})", sample_scale=None)
+    self._coef_debugPipeline(tag=f"GRID val={value} (delta={delta}, sf={sf:.3f})", sample_scale=None)
 
   # ------------------------------ Misc UI helpers -----------------------------
 
@@ -1619,37 +2345,22 @@ class GeomorphLR:
     except Exception:
       print(s)
 
-  def _lr_setWarpGlyphColor(self, rgb=(1.0, 0.5, 0.0)):
-    """
-    Set the glyph color for the LR Warped Landmarks (only).
-    rgb: tuple/list in [0..1].
-    """
-    node = getattr(self, "lrWarpNode", None)
-    if not node or not slicer.mrmlScene.IsNodePresent(node):
-      return
-    d = node.GetDisplayNode()
-    if not d:
-      return
-    # Markups use SelectedColor/Color for picked/unpicked; set both to the same orange.
-    try:
-      d.SetSelectedColor(rgb)
-    except Exception:
-      pass
-    try:
-      d.SetColor(rgb)
-    except Exception:
-      pass
-
   def _coef_build_domains(self):
     """
     Build per-coefficient slider domains:
-      - For numeric covariates (e.g., Size, Age): mode='real', range=[min,max], ref=mean
+      - Numeric (e.g., Size, Age): mode='real', range=[min,max], ref=mean
+      - Categorical (e.g., SexM with levels=[F,M]): mode='cat',
+          range=[0, k-1], levels=['F','M',...], ref_level, active_level, active_index
       - Otherwise: mode='unit', range=[-1,1], ref=0
-    Saves into self._coef_domains: {coef_name: {mode,min,max,ref}}
+    Saves into self._coef_domains: {coef_name: dict}
     """
     self._coef_domains = {}
     last = getattr(self, "_lr_last_fit", {}) or {}
     stats = last.get("covariate_stats", {}) or {}
+    factor_levels = last.get("factor_levels", {}) or {}
+
+    import math, re
+    _TRANSFORM_RE = re.compile(r"^\s*(log|sqrt)\s*\(\s*([A-Za-z_][\w.]*)\s*\)\s*$")
 
     def numeric_domain_for(var_name: str):
       s = stats.get(var_name)
@@ -1657,25 +2368,101 @@ class GeomorphLR:
         return {"mode": "real", "min": float(s["min"]), "max": float(s["max"]), "ref": float(s["mean"])}
       return None
 
+    def transformed_domain_for(token: str):
+      """Detect tokens like 'log(Size)' or 'sqrt(Age)'. Slider stays in raw
+      units; the apply step takes log/sqrt of the slider value, so the user
+      thinks in mm even though the regression is on log(mm)."""
+      m = _TRANSFORM_RE.match(token)
+      if not m:
+        return None
+      fn, var = m.group(1), m.group(2)
+      s = stats.get(var)
+      if not s or not s.get("is_numeric"):
+        return None
+      if fn == "log":
+        if "log_mean" not in s or s["min"] <= 0:
+          return None  # log undefined on this column
+        return {
+          "mode": "log", "var": var,
+          "min": float(s["min"]), "max": float(s["max"]),
+          "ref": float(math.exp(s["log_mean"])),  # geometric mean
+        }
+      if fn == "sqrt":
+        if "sqrt_mean" not in s or s["min"] < 0:
+          return None
+        return {
+          "mode": "sqrt", "var": var,
+          "min": float(s["min"]), "max": float(s["max"]),
+          "ref": float(s["sqrt_mean"] ** 2),  # quadratic-mean center
+        }
+      return None
+
+    def categorical_domain_for(coef_token: str):
+      # coef_token looks like "SexM", "CrossDirectionFB", "GenotypeAA" etc.
+      # Match the longest factor name that is a prefix of coef_token,
+      # such that the remaining suffix is one of that factor's levels.
+      best = None
+      for fname, levels in factor_levels.items():
+        if not fname or not levels:
+          continue
+        if coef_token.startswith(fname):
+          suffix = coef_token[len(fname):]
+          if suffix in levels:
+            if (best is None) or (len(fname) > len(best[0])):
+              best = (fname, suffix, list(levels))
+      if best is None:
+        return None
+      fname, level, levels = best
+      try:
+        ref_level = levels[0]
+        active_index = int(levels.index(level))
+      except Exception:
+        return None
+      return {
+        "mode": "cat",
+        "min": 0.0,
+        "max": float(max(1, len(levels) - 1)),
+        "ref": 0.0,
+        "factor": fname,
+        "levels": levels,
+        "ref_level": ref_level,
+        "active_level": level,
+        "active_index": active_index,
+      }
+
     for nm in (self._coef_names or []):
       nm_str = str(nm).strip()
       dom = None
 
-      # Exact match first (e.g., "Size")
-      dom = numeric_domain_for(nm_str)
+      # 1) Transformed numeric (e.g., "log(Size)", "sqrt(Age)")
+      dom = transformed_domain_for(nm_str)
 
-      # If interaction (e.g., "Size:SexFemale" or "Age:TreatmentB"), try each side
+      # 2) Plain numeric (e.g., "Size")
+      if dom is None:
+        dom = numeric_domain_for(nm_str)
+
+      # 3) Categorical (e.g., "SexM")
+      if dom is None:
+        dom = categorical_domain_for(nm_str)
+
+      # 4) Interaction term: prefer numeric/transformed side; otherwise pick first categorical side
       if dom is None and ":" in nm_str:
         parts = [p.strip() for p in nm_str.split(":") if p.strip()]
         for p in parts:
-          cand = numeric_domain_for(p)
+          cand = transformed_domain_for(p) or numeric_domain_for(p)
           if cand is not None:
             dom = cand
-            # annotate which side is numeric if useful later
             dom["interaction_numeric"] = p
             break
+        if dom is None:
+          for p in parts:
+            cand = categorical_domain_for(p)
+            if cand is not None:
+              dom = cand
+              dom["interaction_categorical"] = p
+              break
 
-      # Default unit domain
+      # 4) Default unit domain
       if dom is None:
         dom = {"mode": "unit", "min": -1.0, "max": 1.0, "ref": 0.0}
 
@@ -1697,21 +2484,49 @@ class GeomorphLR:
   def _coef_set_slider_domain_for_current(self):
     """
     Apply domain to the slider/spinbox:
-      - Numeric: range=[min,max], set value=mean (neutral)
-      - Unit:    range=[-1,1],   set value=0.0  (neutral)
+      - Numeric:     range=[min,max], set value=mean (neutral), free movement
+      - Categorical: range=[0,k-1],   set value=0 (reference level), integer snap,
+                     spinbox suffix shows current level name (e.g. " (F)")
+      - Unit:        range=[-1,1],    set value=0.0 (neutral)
     """
     if not self.coefController:
       return
     dom = self._coef_current_domain()
     self.coefController.setRange(float(dom["min"]), float(dom["max"]))
-    neutral = float(dom.get("ref", 0.0)) if dom.get("mode") == "real" else 0.0
-    self.coefController.setValue(neutral)
 
-    if dom.get("mode") == "real":
+    mode = dom.get("mode")
+    # configure spinbox precision/step + suffix per mode
+    spin = getattr(self.coefController, "spinBox", None)
+    if spin is not None:
       try:
-        self.ui.coefMagnificationSpin.setValue(1.0)
+        if mode == "cat":
+          spin.setDecimals(0)
+          spin.setSingleStep(1.0)
+          spin.setSuffix(f"  ({dom['levels'][0]})")
+        elif mode in ("log", "sqrt"):
+          spin.setDecimals(3)
+          spin.setSingleStep(0.01)
+          spin.setSuffix(f"  ({mode})")
+        else:
+          spin.setDecimals(3)
+          spin.setSingleStep(0.01)
+          spin.setSuffix("")
       except Exception:
         pass
+
+    if mode in ("real", "log", "sqrt"):
+      neutral = float(dom.get("ref", 0.0))
+    else:
+      # cat and unit both start at 0 (reference / neutral)
+      neutral = 0.0
+    self.coefController.setValue(neutral)
+
+    # Intentionally DO NOT reset coefMagnificationSpin here. Switching
+    # coefficients used to snap magnification back to 1.0, which (a)
+    # silently overwrote a user-set value and (b) invalidated the grid
+    # cache for the coefficient they just left, forcing another ~14s
+    # rebuild on return. The user owns the magnification value; we keep
+    # whatever they last set across coef switches.
 
   def _py_to_str_list(self, obj):
     """
@@ -1731,4 +2546,5 @@ class GeomorphLR:
       except Exception:
         return [str(obj)]
     # scalar (incl. Python str) -> wrap
+    return [str(obj)]
     return [str(obj)]
