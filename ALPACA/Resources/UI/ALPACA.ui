@@ -660,7 +660,7 @@
              <double>10.000000000000000</double>
             </property>
             <property name="value" stdset="0">
-             <double>1.000000000000000</double>
+             <double>0.020000000000000</double>
             </property>
            </widget>
           </item>
@@ -912,7 +912,7 @@
              <double>0.010000000000000</double>
             </property>
             <property name="maximum" stdset="0">
-             <double>20.000000000000000</double>
+             <double>100.000000000000000</double>
             </property>
             <property name="singleStep" stdset="0">
              <double>0.050000000000000</double>
@@ -1023,7 +1023,7 @@
           <bool>false</bool>
          </property>
          <layout class="QFormLayout" name="outputFormatWidgetLayout">
-          <item row="0" column="0">
+          <item row="0" column="0" colspan="2">
            <widget class="QRadioButton" name="JSONFileFormatSelector">
             <property name="enabled">
              <bool>true</bool>
@@ -1036,22 +1036,6 @@
             </property>
             <property name="checked">
              <bool>true</bool>
-            </property>
-           </widget>
-          </item>
-          <item row="0" column="1">
-           <widget class="QRadioButton" name="FCSVFileFormatSelector">
-            <property name="enabled">
-             <bool>true</bool>
-            </property>
-            <property name="toolTip">
-             <string>Select the file format for the output landmarks.</string>
-            </property>
-            <property name="text">
-             <string>FCSV format(legacy)</string>
-            </property>
-            <property name="checked">
-             <bool>false</bool>
             </property>
            </widget>
           </item>
@@ -1094,28 +1078,28 @@
           <item row="1" column="0">
            <widget class="QLabel" name="selectRefCheckBoxLabel">
             <property name="text">
-             <string>Enabling reference selection</string>
+             <string>Enable Reference Model</string>
             </property>
            </widget>
           </item>
           <item row="1" column="1">
            <widget class="QCheckBox" name="selectRefCheckBox">
             <property name="toolTip">
-             <string>Check to enable selecting a model as the reference. Unchecked = default</string>
+             <string>Check to enable selecting a model as the reference for consensus atlas construction. Unchecked = use first model in directory.</string>
             </property>
            </widget>
           </item>
           <item row="2" column="0">
            <widget class="QLabel" name="referenceSelectorLabel">
             <property name="text">
-             <string>User-selected reference (optional):</string>
+             <string>Reference for consensus (optional):</string>
             </property>
            </widget>
           </item>
           <item row="2" column="1">
            <widget class="ctkPathLineEdit" name="referenceSelector" native="true">
             <property name="toolTip">
-             <string>The default reference model for downsampling point clouds with matching points will be the first specimen. Users can also manually select a reference model here </string>
+             <string>Optional reference model used as the bootstrap starting point for consensus atlas construction. Has no effect when "Use existing atlas" is checked.</string>
             </property>
             <property name="filters">
              <set>ctkPathLineEdit::Files</set>
@@ -1131,19 +1115,247 @@
            </widget>
           </item>
           <item row="3" column="0">
+           <widget class="QCheckBox" name="smoothReferenceCheckBox">
+            <property name="toolTip">
+             <string>Apply Taubin (volume-preserving) smoothing once to the bootstrap reference before iteration 0. Reduces high-frequency surface noise that would otherwise bias the initial atlas shape. Final consensus is never post-smoothed (empirically that reverses the RBF warp).</string>
+            </property>
+            <property name="text">
+             <string>Smooth Reference Model</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="1">
+           <widget class="ctkSliderWidget" name="smoothReferenceIterations" native="true">
+            <property name="toolTip">
+             <string>Taubin smoothing iterations applied to the reference model. Higher = more smoothing.</string>
+            </property>
+            <property name="decimals" stdset="0">
+             <number>0</number>
+            </property>
+            <property name="singleStep" stdset="0">
+             <double>1.000000000000000</double>
+            </property>
+            <property name="minimum" stdset="0">
+             <double>0.000000000000000</double>
+            </property>
+            <property name="maximum" stdset="0">
+             <double>100.000000000000000</double>
+            </property>
+            <property name="value" stdset="0">
+             <double>50.000000000000000</double>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="0">
+           <widget class="QLabel" name="smoothReferencePassBandLabel">
+            <property name="text">
+             <string>PassBand:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="1">
+           <widget class="ctkSliderWidget" name="smoothReferencePassBand" native="true">
+            <property name="toolTip">
+             <string>Pass-band parameter of the Taubin (vtkWindowedSincPolyDataFilter) smoother applied to the reference model. Lower = stronger low-pass filtering (more aggressive noise removal). Default 0.1.</string>
+            </property>
+            <property name="decimals" stdset="0">
+             <number>2</number>
+            </property>
+            <property name="singleStep" stdset="0">
+             <double>0.010000000000000</double>
+            </property>
+            <property name="minimum" stdset="0">
+             <double>0.000000000000000</double>
+            </property>
+            <property name="maximum" stdset="0">
+             <double>2.000000000000000</double>
+            </property>
+            <property name="value" stdset="0">
+             <double>0.100000000000000</double>
+            </property>
+           </widget>
+          </item>
+          <item row="5" column="0">
            <widget class="QLabel" name="kmeansOutputSelectorLabel">
             <property name="text">
              <string>Select output directory:</string>
             </property>
            </widget>
           </item>
-          <item row="3" column="1">
+          <item row="5" column="1">
            <widget class="ctkPathLineEdit" name="kmeansOutputSelector" native="true">
             <property name="toolTip">
              <string>Specify the output directory for the kmeans multi-template selection output</string>
             </property>
             <property name="filters">
              <set>ctkPathLineEdit::Dirs</set>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="ctkCollapsibleButton" name="consensusAtlasWidget" native="true">
+         <property name="text" stdset="0">
+          <string>Consensus Atlas Construction (bias-free)</string>
+         </property>
+         <property name="collapsed" stdset="0">
+          <bool>false</bool>
+         </property>
+         <layout class="QFormLayout" name="consensusAtlasWidgetLayout">
+          <item row="0" column="0" colspan="2">
+           <widget class="QLabel" name="consensusInfoLabel">
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+            <property name="text">
+             <string>Synthesizes a consensus atlas mesh from the input models without privileging any single specimen. Each iteration: align every specimen to the current atlas via similarity transform, find sparse correspondences in each specimen's original coordinate frame, run partial Procrustes GPA on those correspondences, then RBF-warp the atlas to the Procrustes mean. Spacing factor controls the sparse correspondence density (lower = denser, slower).&#xa;&#xa;You can also use a pre-existing atlas and skip the construction.</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="0">
+           <widget class="QLabel" name="consensusIterationsLabel">
+            <property name="text">
+             <string>Iterations:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="1">
+           <widget class="ctkDoubleSpinBox" name="consensusIterations" native="true">
+            <property name="toolTip">
+             <string>Number of atlas warp iterations. Each iteration aligns all specimens, runs partial Procrustes GPA, and RBF-warps the atlas. One additional final pass is always applied after the loop.</string>
+            </property>
+            <property name="decimals" stdset="0">
+             <number>0</number>
+            </property>
+            <property name="minimum" stdset="0">
+             <double>1.000000000000000</double>
+            </property>
+            <property name="maximum" stdset="0">
+             <double>10.000000000000000</double>
+            </property>
+            <property name="value" stdset="0">
+             <double>3.000000000000000</double>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="0">
+           <widget class="QLabel" name="consensusScalingLabel">
+            <property name="text">
+             <string>Allow scaling in Procrustes:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="1">
+           <widget class="QCheckBox" name="consensusScalingCheckBox">
+            <property name="toolTip">
+             <string>Normalize each configuration to unit centroid size during Procrustes alignment. Recommended unless absolute scale is biologically meaningful.</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="0" colspan="2">
+           <widget class="QPushButton" name="previewDensityButton">
+            <property name="enabled">
+             <bool>false</bool>
+            </property>
+            <property name="toolTip">
+             <string>Subsample the selected reference (or first input model if none chosen) at the current Spacing factor and report the resulting point count, without changing any state.</string>
+            </property>
+            <property name="text">
+             <string>Preview Sparse Point Count</string>
+            </property>
+           </widget>
+          </item>
+          <item row="5" column="0" colspan="2">
+           <widget class="QPushButton" name="buildConsensusAtlasButton">
+            <property name="enabled">
+             <bool>false</bool>
+            </property>
+            <property name="toolTip">
+             <string>Build a bias-free consensus atlas mesh from the input models. Output is written to the selected output directory as consensus_atlas.ply.</string>
+            </property>
+            <property name="text">
+             <string>Build Consensus Atlas</string>
+            </property>
+           </widget>
+          </item>
+          <item row="6" column="0" colspan="2">
+           <widget class="QPlainTextEdit" name="consensusInfo">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Preferred" vsizetype="MinimumExpanding">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>16777215</width>
+              <height>120</height>
+             </size>
+            </property>
+            <property name="readOnly">
+             <bool>true</bool>
+            </property>
+            <property name="placeholderText">
+             <string>Consensus atlas progress</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="ctkCollapsibleButton" name="existingAtlasWidget" native="true">
+         <property name="text" stdset="0">
+          <string>Use Existing Atlas</string>
+         </property>
+         <property name="collapsed" stdset="0">
+          <bool>false</bool>
+         </property>
+         <layout class="QFormLayout" name="existingAtlasWidgetLayout">
+          <item row="0" column="0">
+           <widget class="QLabel" name="useExistingAtlasLabel">
+            <property name="text">
+             <string>Use existing atlas:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QCheckBox" name="useExistingAtlasCheckBox">
+            <property name="toolTip">
+             <string>Check to load a pre-built consensus atlas (or any reference mesh) and skip directly to Point Cloud Generation, without re-running atlas construction.</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="existingAtlasSelectorLabel">
+            <property name="text">
+             <string>Existing atlas path:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="ctkPathLineEdit" name="existingAtlasSelector" native="true">
+            <property name="toolTip">
+             <string>Path to a pre-built consensus atlas or any reference mesh (.ply, .obj, .stl, .vtk). When "Use existing atlas" is checked this is used as the reference for Point Cloud Generation, bypassing the Consensus Atlas Construction step.</string>
+            </property>
+            <property name="filters">
+             <set>ctkPathLineEdit::Files</set>
+            </property>
+            <property name="nameFilters" stdset="0">
+             <stringlist>
+              <string>*.ply</string>
+              <string>*.obj</string>
+              <string>*.stl</string>
+              <string>*.vtk</string>
+             </stringlist>
             </property>
            </widget>
           </item>
@@ -1160,7 +1372,7 @@
          </property>
          <layout class="QFormLayout" name="downMatchingPCDWidgetLayout">
           <item row="0" column="0">
-           <widget class="QLabel" name="spacingFactorLabel">
+           <widget class="QLabel" name="consensusSpacingLabel">
             <property name="text">
              <string>Spacing factor:</string>
             </property>
@@ -1169,7 +1381,7 @@
           <item row="0" column="1">
            <widget class="ctkSliderWidget" name="spacingFactorSlider" native="true">
             <property name="toolTip">
-             <string>Setting up spacing factor for downsampling the original pointclouds. Moving right (decreasing spacing factor) will result in sparser point clouds. Moving left (increasing spacing factor) will result in denser point clouds.</string>
+             <string>Controls density of the sparse correspondence cloud used by both consensus atlas construction and Point Cloud Generation. Lower values = denser sampling = more correspondences = slower but better local alignment. Set BEFORE clicking Step 1 (or Build Consensus Atlas).</string>
             </property>
             <property name="decimals" stdset="0">
              <number>3</number>
@@ -1185,7 +1397,41 @@
             </property>
            </widget>
           </item>
-          <item row="1" column="0" colspan="2">
+          <item row="1" column="0">
+           <widget class="QLabel" name="useExistingPCDsLabel">
+            <property name="text">
+             <string>Use existing matched PCDs:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="QCheckBox" name="useExistingPCDsCheckBox">
+            <property name="toolTip">
+             <string>Skip Steps 1 and 2 by loading a previously generated 'matching_point_clouds' folder. Use this to re-run k-means with different cluster counts or grouping without redoing point cloud matching.</string>
+            </property>
+            <property name="text">
+             <string></string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="0">
+           <widget class="QLabel" name="existingPCDsSelectorLabel">
+            <property name="text">
+             <string>Existing PCDs folder:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="1">
+           <widget class="ctkPathLineEdit" name="existingPCDsSelector" native="true">
+            <property name="toolTip">
+             <string>Folder containing previously generated matched point cloud files (.mrk.json or .fcsv). Typically the 'matching_point_clouds' subfolder of a prior k-means output directory.</string>
+            </property>
+            <property name="filters">
+             <set>ctkPathLineEdit::Dirs</set>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="0" colspan="2">
            <widget class="QPushButton" name="downReferenceButton">
             <property name="enabled">
              <bool>false</bool>
@@ -1198,7 +1444,7 @@
             </property>
            </widget>
           </item>
-          <item row="2" column="0" colspan="2">
+          <item row="4" column="0" colspan="2">
            <widget class="QPushButton" name="matchingPointsButton">
             <property name="enabled">
              <bool>false</bool>
@@ -1211,7 +1457,7 @@
             </property>
            </widget>
           </item>
-          <item row="3" column="0" colspan="2">
+          <item row="5" column="0" colspan="2">
            <widget class="QPlainTextEdit" name="subsampleInfo2">
             <property name="sizePolicy">
              <sizepolicy hsizetype="Preferred" vsizetype="MinimumExpanding">
@@ -1338,7 +1584,24 @@
             </property>
            </widget>
           </item>
-          <item row="6" column="0" colspan="2">
+          <item row="6" column="0">
+           <widget class="QLabel" name="includeAtlasLabel">
+            <property name="text">
+             <string>Include Atlas:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="6" column="1">
+           <widget class="QCheckBox" name="includeAtlasCheckBox">
+            <property name="toolTip">
+             <string>Include the atlas (reference template) point cloud in the GPA, PCA, and k-means analysis. When unchecked the atlas is excluded so template selection reflects the specimen space only.</string>
+            </property>
+            <property name="checked">
+             <bool>false</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="7" column="0" colspan="2">
            <widget class="QPushButton" name="kmeansTemplatesButton">
             <property name="enabled">
              <bool>false</bool>
@@ -1351,7 +1614,7 @@
             </property>
            </widget>
           </item>
-          <item row="7" column="0" colspan="2">
+          <item row="8" column="0" colspan="2">
            <widget class="QPlainTextEdit" name="templatesInfo">
             <property name="sizePolicy">
              <sizepolicy hsizetype="Preferred" vsizetype="MinimumExpanding">
