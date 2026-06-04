@@ -12,7 +12,7 @@ SlicerMorph streamlines digital morphology research by enabling effortless data 
 Official method of obtaining SlicerMorph is through extension mechanism of 3D Slicer. To obtain SlicerMorph, please first install the latest **stable release** of [3D Slicer](https://download.slicer.org/) and use the [Extensions Manager module](https://www.slicer.org/wiki/Documentation/Nightly/SlicerApplication/ExtensionsManager) to search for and install the SlicerMorph extension. After restarting 3D Slicer, all SlicerMorph modules will be available in the application.
 
 ### Use SlicerMorph on the cloud:
-Your data does not fit into your laptop, or do not have a powerful computer to run 3D Slicer and SlicerMorph, or your institution does not give you permission to install software on their devices? You can now run 3D Slicer and SlicerMorph inside a web browser without having to install anything through our **MorphoCloud On-Demand Instances**. All you need is GitHub account and a public ORCID profile. Please see http://instances.morpho.cloud for details and get started.
+The fastest and easiest way to get started with 3D Slicer and SlicerMorph is running on them on the cloud. It only take a few minutes and quick online registration. Please see http://morphocloud.org for more details.  
 
 <img src="https://raw.githubusercontent.com/SlicerMorph/Spr_2021/main/TechCheckin/exten_manager.png">
 
@@ -92,16 +92,8 @@ SlicerMorph project also maintains other extensions that offer complementary fun
 - [**Mouse Embryo Multi-Organ Segmentations (MEMOS):**](https://github.com/SlicerMorph/SlicerMEMOS)  An extension for automated segmentation 50 anatomical structures from diceCT scans of E15 fetal mice using deep-learning.
 - [**Dense Correspondence Analysis (DeCA):**](https://github.com/SlicerMorph/SlicerDenseCorrespondenceAnalysis) is an extension for Dense Correspondence Analysis and to generate template-based semiLMs.
 - [**Photogrammetry:**](https://github.com/SlicerMorph/SlicerPhotogrammetry) is an extension that integrates Segment Anything Model (SAM) and OpenDroneMap software to mask foreground in large collection of photographs with the purpose of building 3D textured models.
-- [**MorphoDepot:**](https://github.com/MorphoCloud/SlicerMorphoDepot) is an extension that allows creating 3D specimen repositories on Github with focus on digital morphology classroom assignments or remote collaborative segmentation. It implements the `fork and pull` workflow for remote collaborations. (WIP)
+- [**MorphoDepot:**](https://github.com/SlicerMorph/SlicerMorphoDepot) is an extension that allows creating 3D specimen repositories on Github with focus on digital morphology classroom assignments or remote collaborative segmentation. It implements the `fork and pull` workflow for remote collaborations. (WIP)
 - [**SlicerMorphR:**](https://github.com/SlicerMorph/SlicerMorphR) R library to read output from SlicerMorph's GPA module into R. It also supports reading/writing mrk.json files from Slicer.
-
-
-## Other recommended extensions
-Slicer extension catalog has over 100 extensions. We  recommend the following extensions that provide useful convenience functions:
-- [**SlicerIGT:** Provides landmark driven registration (affine and deformable) of volumes and models.](https://github.com/SlicerIGT/SlicerIGT)
-- [**RawImageGuess:** A module that enables the user to import proprietary imaging formats by specifying data type, image dimensions and endianness.](https://github.com/acetylsalicyl/SlicerRawImageGuess)
-- [**Model To Model Distance:**]()This extension computes the distance between two 3D models. This is useful to generate heatmaps on models from PCA.
-
 
 ## SlicerMorph Tutorials
 [We have step-by-step module specific tutorials that is useful to get started with Slicer and SlicerMorph.](https://github.com/SlicerMorph/Tutorials)
