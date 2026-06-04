@@ -6,13 +6,13 @@ Our project aims to enhance the open-source 3D Slicer platform with cutting-edge
 
 SlicerMorph streamlines digital morphology research by enabling effortless data import, visualization, measurement, annotation, and geometric morphometric analysis on 3D data, including volumetric scans (CTs and MRs) and 3D surface scans, all within the 3D Slicer application. Say goodbye to multiple programs, different file formats, and workflows!
 
-[SlicerMorph: An open and extensible platform to retrieve, visualize and analyze 3D morphology](https://besjournals.onlinelibrary.wiley.com/doi/10.1111/2041-210X.13669) is available in Methods in Ecology and Evolution as an open-access paper.
+[SlicerMorph: An open and extensible platform to retrieve, visualize and analyze 3D morphology](https://besjournals.onlinelibrary.wiley.com/doi/10.1111/2041-210X.13669) is now available in Methods in Ecology and Evolution as an open-access paper. A more detailed version of this manuscript that explains all digital anatomy workflows in Slicer is also [available as a preprint on Biorxiv](https://www.biorxiv.org/content/10.1101/2020.11.09.374926v1).
 
 ## Installation
 Official method of obtaining SlicerMorph is through extension mechanism of 3D Slicer. To obtain SlicerMorph, please first install the latest **stable release** of [3D Slicer](https://download.slicer.org/) and use the [Extensions Manager module](https://www.slicer.org/wiki/Documentation/Nightly/SlicerApplication/ExtensionsManager) to search for and install the SlicerMorph extension. After restarting 3D Slicer, all SlicerMorph modules will be available in the application.
 
 ### Use SlicerMorph on the cloud:
-The fastest and easiest way to get started with 3D Slicer and SlicerMorph is running on them on the cloud. It only take a few minutes and quick online registration. Please see http://morphocloud.org for more details.  
+The fastest and easiest way to get started with 3D Slicer and SlicerMorph is running on them on the cloud. It only take a few minutes and quick online registration. Please see https://morphocloud.org for more details.
 
 <img src="https://raw.githubusercontent.com/SlicerMorph/Spr_2021/main/TechCheckin/exten_manager.png">
 
@@ -48,42 +48,38 @@ Modules in SlicerMorph are organized in three broad categories:
 - [**MorphoSourceImport:**](https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/MorphoSourceImport) A utility to query and download open-access data from MorphoSource. An important distinction from the web based search of MorphoSource, queries primarily on keywords (e.g., Skull, femur or M2) which can be alternatively constrained by taxonomy. Requires an API key from MorphoSource to be able to download datasets.
 
 ### Geometric Morphometrics Related Modules
-- [**GPA:**](https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/GPA) Performs Generalized Procrustes Analysis (GPA) with conducts principle component analysis (PCA) of GPA aligned shape coordinates, provides graphical output of GPA results and real-time 3D visualization of PC warps either using the landmarks of mean shape, or using a reference model that is transformed into the mean shape. Visualization of 3D shape deformation of the reference model can be exported as video clips. The input into the module is a folder path containing a number of landmark files stored in Slicer’s fcsv format and optionally a 3D model and accompanying set of landmarks to be used as reference model in 3D visualization of PCA results.
+- [**GPA:**](https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/GPA) Performs Generalized Procrustes Analysis (GPA) and conducts principal component analysis (PCA) of GPA aligned shape coordinates, provides graphical output of GPA results and real-time 3D visualization of PC warps either using the landmarks of mean shape, or using a reference model that is transformed into the mean shape. Visualization of 3D shape deformation of the reference model can be exported as video clips. The input into the module is a folder path containing a number of landmark files stored in Slicer’s fcsv format and optionally a 3D model and accompanying set of landmarks to be used as reference model in 3D visualization of PCA results.
 - [**CreateSemiLMPatches:**](https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/CreateSemiLMPatches) Provides triangular patches of semi-landmarks that are constrained by three fixed anatomical landmarks. The input into the module is a 3D model and its accompanying set of fixed landmarks, and users generate and visualize the patches by specifying triplets of fixed landmarks that form a triangle.
 - [**PseudoLMGenerator:**](https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/PseudoLMGenerator) This module uses the 3D model’s geometry to create a dense template of pseudo-landmarks. The landmark placement is constrained to the external surface of the mesh. Points sampled on the template are projected to the mesh surface along the surface normals of the template and then filtered to remove those within the sample spacing distance, improving regularity of sampling. This module can be used to generate a large number of points on a 3D model that can serve as a landmark template for additional samples in the dataset.
 - [**ALPACA:**](https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/ALPACA) Automated Landmarking through Pointcloud Alignment and Correspondence Analysis. ALPACA provides fast landmark transfer from a 3D model and its associated landmark set to target 3D model(s) through pointcloud alignment and deformable model registration. Unlike the two semi-landmarking methods above, it does not require presence of fixed landmarks. Optimal set of parameters that gives the best correspondence can be investigated (and outcome can be visualized) in single alignment mode, and then applied to a number of 3D models in batch mode. Invoked first time, ALPACA needs your permission to download necessary libraries. Depending on the internet speed, download may take sometime but it is a one-time event.
-- [**MarkupEditor:**](https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/MarkupEditor) A plugin that enables to select and edit subsets of dense semi-landmarks by drawing an arbitrary closedcurve in the 3D viewer using right-click context menus in 3D viewer. Selected landmarks can be removed from the current node or copied into a new fiducial node. Useful to quickly identify and remove outliers from spherical sampling procedure, or group landmarks into anatomical regions for downstream analyses.
-- [**PlaceLandmarkGrid:**]() Allows user to place a grid of semi landmarks that were constrained by 4 landmarks. Once placed, user can adjust the placement of the grid, and then resample semi-landmarks from them (WIP). Multiple grids can be created and then merged via the MergeMarkups module.
+- [**MarkupEditor:**](https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/MarkupEditor) A plugin that enables to select and edit subsets of dense semi-landmarks by drawing an arbitrary closed curve in the 3D viewer using right-click context menus in 3D viewer. Selected landmarks can be removed from the current node or copied into a new fiducial node. Useful to quickly identify and remove outliers from spherical sampling procedure, or group landmarks into anatomical regions for downstream analyses.
+- [**PlaceLandmarkGrid:**](https://github.com/SlicerMorph/Tutorials/tree/main/GridBasedLandmarking) Allows user to place a grid of semi landmarks that were constrained by 4 landmarks. Once placed, user can adjust the placement of the grid, and then resample semi-landmarks from them (WIP). Multiple grids can be created and then merged via the MergeMarkups module.
 
 
 ### Utility Modules
 
-- [**ImportFromURL:**](https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/ImportFromURL) A simple utility that will download the data from the provided URL into the current Slicer scene.
 - [**Animator:**](https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/Animator) A basic keyframe-based animation of 3D volumes. Supports interpolation of regions of interests, rotations, and transfer functions for volume rendering. Output can be either as an image sequence of frames or can be compiled into mp4 format.
 - [**PlaceSemiLMPatches:**](https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/PlaceSemiLMPatches) A utility to apply the generated connectivity table from the **CreateSemiLMPatches** module to other 3D models with the same set of anatomical landmarks. A new set of semiLandmarks are sampled directly from the new models using the specified connectivity map. Inputs: The connectivity table from CreateSemiLMPatches, a directory with the list of 3D models that semi-landmarks will be placed on, and associated anatomical landmark files (in fcsv format). Both model and its corresponding fcsv file should have the same filename prefix.
 - [**ProjectSemiLM:**](https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/ProjectSemiLM) A utility to transfer a template of semilandmarks to new 3D models using Thin Plate Splines (TPS) warp. Requires existence a set of corresponding anatomical landmarks in the template and target models. Inputs: a base 3D model with its anatomical landmark and the semi-landmark template sets used as reference; a directory with the list of 3D models that semi-landmarks will be projected on and their associated anatomical landmark files (in fcsv format). Both model and its corresponding fcsv file should have the same filename prefix.
 - [**MergeMarkups:**](https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/MergeMarkups). A utility to tag and consolidate fixed and semiLM files into a single merged file.
-- [**MorphologikaLMConverter:**](https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/MorphologikaLMConverter) Imports a Morphologika formatted landmark file that may contain multiple subjects and exports a Slicer .FCSV landmark file for each individual to a directory specified by the user.
-- [**IDAVLMConverter:**](https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/IDAVLMConverter) Imports IDAV landmark editor files with header length specified by the user.
 - **ImportSurfaceToSegment:** Imports a 3D surface model as a segmentation and prompts the user to edit it using the Segment Editor module.
-- **SegmentEndoCranium:** Automatically segments the endocranial space in a 3D volume of a vertebrate skull. A detailed description of the module and how it works can be found [in this tutorial under the automated method](https://slicermorph.github.io/Endocast_creation.html).
+- **Segment Endocranium:** Automatically segments the endocranial space in a 3D volume of a vertebrate skull. A detailed description of the module and how it works can be found [in this tutorial under the automated method](https://slicermorph.github.io/Endocast_creation.html).
 - [**SlicerMorph Preferences:**](https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/MorphPreferences/) Users can choose to enable specific customizations that include keyboard shortcuts, and optimized settings for working with large 3D datasets using the Application Settings menu of 3D Slicer. See the documentation link for list of SlicerMorph specific keyboard shortcuts and modified settings.
 - [**FastModelAlign:**](https://github.com/SlicerMorph/Tutorials/tree/main/FastModelAlign) Allows users to register a 3D model (source) to a target. Support scaling, rigid and affine transforms.
 - [**QuickAlign:**](https://github.com/SlicerMorph/Tutorials/blob/main/QuickAlign/README.md) Allows users to approximately align two objects in two different 3D viewers, and then link the views. Useful to compare models, landmarks and volume that were scanned in different orientations.
 - [**HiResScreenCapture:**](https://github.com/SlicerMorph/Tutorials/blob/main/HiResScreenCapture/readme.md) Allows the user to create high-resolution off-screen rendering of what's visible in the 3D viewer. Useful to create high-DPI rendering for posters and publications. (Only available for Slicer 5.7 or later).
+- **VRPresetHub:** Exports the active volume-rendering preset to a `.vp.json` file along with a 3D screenshot, lets you browse community-contributed presets, and opens a pre-filled GitHub issue so you can share your preset with the SlicerMorph community via a simple drag-and-drop.
+- [**SlicerMorph Tutorials:**](https://github.com/SlicerMorph/Tutorials) Provides direct, in-application links to the step-by-step SlicerMorph Tutorials repository, rendered inside Slicer for quick access to documentation.
 
 ## Dependencies
 ## Automatically installed extensions
-The following extension is installed automatically with SlicerMorph. Although it is not directly relied on by the modules, it is necessary for many workflows supoorted by SlicerMorph:
+The following extensions are installed automatically with SlicerMorph. Although they are not directly relied on by the modules, they are necessary for many workflows supported by SlicerMorph:
 - [**SegmentEditorExtraEffects:**](https://github.com/lassoan/SlicerSegmentEditorExtraEffects) Provides additional segmentation effects and utilities, such as our SplitSegment function that allows saving the 3D volume  into multiple smaller, individual volumes using the provided segmentation.
 - [**Sandbox:**](https://github.com/lassoan/SlicerSandbox) Provides the `ColorizeVolume` module and other additional utilities that are functional, but not fully tested and not ready to be incorporated to Slicer's core.
 - [**SurfaceMarkups:**](https://github.com/SlicerHeart/SlicerSurfaceMarkup) Provides the Surface Markup type needed by the 'PlaceLandmarkGrid' module.
 
-## Manually installed extensions
-The following extension is required for using the SegmentEndocranium. Installation is prompted on opening this module.
-- [**SurfaceWrapSolidy:** A segment editor effect useful to extract endocasts of cranial and other spaces.](https://github.com/sebastianandress/Slicer-SurfaceWrapSolidify)
 
-## Related Extensions by the SlicerMorph team
+## Related Extensions from the SlicerMorph Ecosystem
 <img src="https://github.com/SlicerMorph/SlicerMorph.github.io/blob/master/all_logos.png?raw=true">
 <p></p>
 SlicerMorph project also maintains other extensions that offer complementary functionality:
@@ -92,7 +88,7 @@ SlicerMorph project also maintains other extensions that offer complementary fun
 - [**Mouse Embryo Multi-Organ Segmentations (MEMOS):**](https://github.com/SlicerMorph/SlicerMEMOS)  An extension for automated segmentation 50 anatomical structures from diceCT scans of E15 fetal mice using deep-learning.
 - [**Dense Correspondence Analysis (DeCA):**](https://github.com/SlicerMorph/SlicerDenseCorrespondenceAnalysis) is an extension for Dense Correspondence Analysis and to generate template-based semiLMs.
 - [**Photogrammetry:**](https://github.com/SlicerMorph/SlicerPhotogrammetry) is an extension that integrates Segment Anything Model (SAM) and OpenDroneMap software to mask foreground in large collection of photographs with the purpose of building 3D textured models.
-- [**MorphoDepot:**](https://github.com/SlicerMorph/SlicerMorphoDepot) is an extension that allows creating 3D specimen repositories on Github with focus on digital morphology classroom assignments or remote collaborative segmentation. It implements the `fork and pull` workflow for remote collaborations. (WIP)
+- [**MorphoDepot:**](https://github.com/MorphoCloud/SlicerMorphoDepot) is an extension that allows creating 3D specimen repositories on Github with focus on digital morphology classroom assignments or remote collaborative segmentation. It implements the `fork and pull` workflow for remote collaborations. (WIP)
 - [**SlicerMorphR:**](https://github.com/SlicerMorph/SlicerMorphR) R library to read output from SlicerMorph's GPA module into R. It also supports reading/writing mrk.json files from Slicer.
 
 ## SlicerMorph Tutorials
@@ -116,6 +112,3 @@ This project is supported by NSF Advances in Biological Informatics (1759883) an
 
 ## License
 See License.md
-
-## Repo Traffic
-[See the traffic on repository (collection started on 9/1/2025)](https://muratmaga.github.io/repoStats/slicermorph_views.svg)
