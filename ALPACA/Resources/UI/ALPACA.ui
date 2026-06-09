@@ -1266,10 +1266,10 @@
              <bool>false</bool>
             </property>
             <property name="toolTip">
-             <string>Subsample the selected reference (or first input model if none chosen) at the current Spacing factor and report the resulting point count, without changing any state.</string>
+             <string>Subsample the reference at the current Spacing factor and display the resulting sparse point cloud in the 3D view, reporting the point count. The reference is the existing atlas (if "Use existing atlas" is checked), otherwise a consensus atlas built this session, an explicit reference model, or the first input model.</string>
             </property>
             <property name="text">
-             <string>Preview Sparse Point Count</string>
+             <string>Preview Sparse Point Cloud</string>
             </property>
            </widget>
           </item>

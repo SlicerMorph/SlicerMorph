@@ -139,11 +139,37 @@ class _ALPACATemplatesWidget:
                 referencePath = os.path.join(
                     self.ui.modelsMultiSelector.currentPath, referenceFile
                 )
+        # Clean up nodes created by a previous click so repeated runs do not
+        # pile up hidden atlas copies (KK_1, KK_2, ...) or stale clouds. The
+        # atlas (referenceNode) is loaded hidden and kept only because Step 2
+        # needs it as the matching target; we keep just the latest one.
+        for attr in ("referenceNode", "_referenceCloudNode"):
+            prevNode = getattr(self, attr, None)
+            if prevNode is not None and slicer.mrmlScene.IsNodePresent(prevNode):
+                slicer.mrmlScene.RemoveNode(prevNode)
+            setattr(self, attr, None)
+
+        spacing = self.ui.spacingFactorSlider.value
         self.sparseTemplate, template_density, self.referenceNode = logic.downReference(
-            referencePath, self.ui.spacingFactorSlider.value
+            referencePath, spacing
         )
         self.refName = os.path.basename(referencePath)
         self.refName = os.path.splitext(self.refName)[0]
+
+        # Display the generated sparse point cloud so the user gets visual
+        # feedback (this is the whole point of the step). Glyph radius scales
+        # with the model so it is visible at any scale.
+        diagonal = self.sparseTemplate.GetLength()
+        pointRadius = max(spacing * diagonal * 0.3, diagonal * 0.001)
+        self._referenceCloudNode = logic.displayPointCloud(
+            self.sparseTemplate, pointRadius, "Reference Point Cloud", [0.2, 0.8, 0.2]
+        )
+        threeDWidget = slicer.app.layoutManager().threeDWidget(0)
+        if threeDWidget:
+            view = threeDWidget.threeDView()
+            view.resetFocalPoint()
+            view.resetCamera()
+
         self.ui.subsampleInfo2.clear()
         self.ui.subsampleInfo2.insertPlainText(f"The reference is {self.refName} \n")
         self.ui.subsampleInfo2.insertPlainText(
@@ -486,34 +512,110 @@ class _ALPACATemplatesWidget:
             templatesIndices,
         )
 
+    def _resolvePreviewReferencePath(self):
+        """Resolve the reference mesh to preview using the same priority as
+        onDownReferenceButton (existing atlas > consensus atlas built this
+        session > explicit reference model > first model in the input dir), so
+        the preview reflects exactly what Step 1 would downsample. Returns the
+        path, or None (after showing an error) if nothing usable is selected."""
+        if (self.ui.useExistingAtlasCheckBox.isChecked()
+                and self.ui.existingAtlasSelector.currentPath):
+            return self.ui.existingAtlasSelector.currentPath
+        consensusPath = getattr(self, "consensusAtlasPath", None)
+        if consensusPath and os.path.isfile(consensusPath):
+            return consensusPath
+        if self.ui.referenceSelector.currentPath:
+            return self.ui.referenceSelector.currentPath
+        modelsDir = self.ui.modelsMultiSelector.currentPath
+        if not modelsDir or not os.path.isdir(modelsDir):
+            slicer.util.errorDisplay(
+                "Select an existing atlas, a reference model, or an input "
+                "models directory before previewing."
+            )
+            return None
+        files = sorted(
+            f for f in os.listdir(modelsDir)
+            if f.endswith((".ply", ".stl", ".obj", ".vtk", ".vtp"))
+        )
+        if not files:
+            slicer.util.errorDisplay("No mesh files found in input directory.")
+            return None
+        return os.path.join(modelsDir, files[0])
+
+    def _readPolyData(self, path):
+        """Read a surface mesh into vtkPolyData WITHOUT adding it to the MRML
+        scene. No model node, no display node, nothing to flicker or leak --
+        this is what makes the preview safe to click repeatedly. Returns the
+        polydata, or None if the extension is unsupported or the read fails."""
+        import vtk
+        ext = os.path.splitext(path)[1].lower()
+        readerClass = {
+            ".ply": vtk.vtkPLYReader,
+            ".stl": vtk.vtkSTLReader,
+            ".obj": vtk.vtkOBJReader,
+            ".vtk": vtk.vtkPolyDataReader,
+            ".vtp": vtk.vtkXMLPolyDataReader,
+        }.get(ext)
+        if readerClass is None:
+            return None
+        reader = readerClass()
+        reader.SetFileName(path)
+        reader.Update()
+        return reader.GetOutput()
+
     def onPreviewDensity(self):
         """Subsample the chosen reference at the current spacing factor and
-        report the resulting sparse point count, without altering any state."""
-        if self.ui.selectRefCheckBox.isChecked() and self.ui.referenceSelector.currentPath:
-            refPath = self.ui.referenceSelector.currentPath
-        else:
-            modelsDir = self.ui.modelsMultiSelector.currentPath
-            files = sorted(
-                f for f in os.listdir(modelsDir)
-                if f.endswith((".ply", ".stl", ".obj", ".vtk", ".vtp"))
-            )
-            if not files:
-                slicer.util.errorDisplay("No mesh files found in input directory.")
-                return
-            refPath = os.path.join(modelsDir, files[0])
+        display the resulting sparse point cloud in the 3D view, reporting the
+        point count. Uses the same reference the build step would, so the
+        existing-atlas selection is honored.
 
-        node = slicer.util.loadModel(refPath)
-        try:
-            sparse = _logic().DownsampleTemplate(
-                node.GetPolyData(), self.ui.spacingFactorSlider.value
-            )
-            count = sparse.GetNumberOfPoints()
-            self.ui.consensusInfo.insertPlainText(
-                f"Preview: spacing={self.ui.spacingFactorSlider.value:.3f} -> "
-                f"{count} points (ref: {os.path.basename(refPath)})\n"
-            )
-        finally:
-            slicer.mrmlScene.RemoveNode(node)
+        The reference mesh is read straight into polydata and is never added to
+        the scene, so clicking this never adds an atlas node and never flickers
+        -- only the sparse cloud is created."""
+        refPath = self._resolvePreviewReferencePath()
+        if not refPath:
+            return
+
+        spacing = self.ui.spacingFactorSlider.value
+        polydata = self._readPolyData(refPath)
+        if polydata is None or polydata.GetNumberOfPoints() == 0:
+            slicer.util.errorDisplay(f"Could not read reference mesh:\n{refPath}")
+            return
+
+        sparse = _logic().DownsampleTemplate(polydata, spacing)
+        count = sparse.GetNumberOfPoints()
+
+        # Replace any previous preview so repeated clicks don't accumulate clouds.
+        prev = getattr(self, "_previewCloudNode", None)
+        if prev is not None and slicer.mrmlScene.IsNodePresent(prev):
+            slicer.mrmlScene.RemoveNode(prev)
+
+        # Size the glyph spheres relative to the model so the cloud is visible
+        # at any scale. vtkCleanPolyData merges points within
+        # spacing * (bounding-box diagonal), so that product approximates the
+        # inter-point spacing; a fraction of it keeps spheres separated.
+        diagonal = sparse.GetLength()
+        pointRadius = max(spacing * diagonal * 0.3, diagonal * 0.001)
+        self._previewCloudNode = _logic().displayPointCloud(
+            sparse, pointRadius, "Sparse Point Cloud Preview", [0.2, 0.8, 0.2]
+        )
+
+        message = (
+            f"Preview: spacing={spacing:.3f} -> {count} points "
+            f"(ref: {os.path.basename(refPath)})"
+        )
+        self.ui.consensusInfo.insertPlainText(message + "\n")
+        # consensusInfo lives in the consensus section, which is collapsed in
+        # the use-existing-atlas flow; mirror the count to the status bar so it
+        # is visible regardless.
+        slicer.util.showStatusMessage(message, 5000)
+
+        # Frame the new cloud so it is actually visible, not just present.
+        threeDWidget = slicer.app.layoutManager().threeDWidget(0)
+        if threeDWidget:
+            view = threeDWidget.threeDView()
+            view.resetFocalPoint()
+            view.resetCamera()
 
     def onBuildConsensusAtlasButton(self):
         """Build a bias-free consensus atlas from the input models folder."""
