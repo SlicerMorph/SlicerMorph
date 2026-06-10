@@ -486,5 +486,24 @@ def hardenWarpedModel(modelNode, sourceLM, targetLM):
     new_pts = vtk.vtkPoints()
     new_pts.SetData(new_arr)
     poly.SetPoints(new_pts)
+
+    # Drop the stored vertex normals. The warp moves the vertices but not the
+    # normals, so any file-supplied normals would now describe the pre-warp
+    # surface; under Slicer 5.11 / VTK 9.6 two-sided lighting (which decides
+    # front/back faces from polygon winding) those stale normals render parts of
+    # the model black at certain view angles. With no stored normals VTK derives
+    # a geometric normal per fragment from the warped triangles at draw time,
+    # which is always consistent with what is shown -- this is why models loaded
+    # without normals (e.g. the GPA self-test mesh) never exhibit the problem.
+    # Trade-off: flat per-face shading instead of smooth, negligible on these
+    # high-density meshes.
+    pointData = poly.GetPointData()
+    if pointData.GetNormals() is not None:
+        pointData.SetNormals(None)
+    for arrayIndex in range(pointData.GetNumberOfArrays() - 1, -1, -1):
+        arrayName = pointData.GetArrayName(arrayIndex)
+        if arrayName and "normal" in arrayName.lower():
+            pointData.RemoveArray(arrayIndex)
+
     poly.Modified()
     modelNode.Modified()
