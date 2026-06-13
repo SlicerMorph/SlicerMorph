@@ -78,28 +78,28 @@ class OBJFileFileReader:
           with open(mtl_path) as f:
             lines = f.read().splitlines()
 
-        lines = [i for i in lines if i!='']
+          lines = [i for i in lines if i!='']
 
-        texture_filename = lines[len(lines)-1].split(" ")[1]
-        texture_path = os.path.join(obj_dir, texture_filename)
+          texture_filename = lines[len(lines)-1].split(" ")[1]
+          texture_path = os.path.join(obj_dir, texture_filename)
 
-        import ImageStacks
-        logic = ImageStacks.ImageStacksLogic()
-        vectorVolNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLVectorVolumeNode")
-        # logic._init_
-        logic.outputQuality = 'full'
-        logic.outputGrayscale = False
-        logic.filePaths = [texture_path]
-        logic.loadVolume(outputNode=vectorVolNode, progressCallback = None)
+          import ImageStacks
+          logic = ImageStacks.ImageStacksLogic()
+          vectorVolNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLVectorVolumeNode")
+          # logic._init_
+          logic.outputQuality = 'full'
+          logic.outputGrayscale = False
+          logic.filePaths = [texture_path]
+          logic.loadVolume(outputNode=vectorVolNode, progressCallback = None)
 
-        #Map texture to the imported OBJ file
-        modelDisplayNode = obj_node.GetDisplayNode()
-        modelDisplayNode.SetBackfaceCulling(0)
-        textureImageFlipVert = vtk.vtkImageFlip()
-        textureImageFlipVert.SetFilteredAxis(1)
-        textureImageFlipVert.SetInputConnection(vectorVolNode.GetImageDataConnection())
-        modelDisplayNode.SetTextureImageDataConnection(textureImageFlipVert.GetOutputPort())
-        slicer.mrmlScene.RemoveNode(vectorVolNode)
+          #Map texture to the imported OBJ file
+          modelDisplayNode = obj_node.GetDisplayNode()
+          modelDisplayNode.SetBackfaceCulling(0)
+          textureImageFlipVert = vtk.vtkImageFlip()
+          textureImageFlipVert.SetFilteredAxis(1)
+          textureImageFlipVert.SetInputConnection(vectorVolNode.GetImageDataConnection())
+          modelDisplayNode.SetTextureImageDataConnection(textureImageFlipVert.GetOutputPort())
+          slicer.mrmlScene.RemoveNode(vectorVolNode)
 
     except Exception as e:
       logging.error('Failed to load file: '+str(e))

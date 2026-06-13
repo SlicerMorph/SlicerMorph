@@ -44,7 +44,8 @@ class MorphPreferences(ScriptedLoadableModule):
     @staticmethod
     def loadRCFile(rcPath):
       try:
-        exec(open(rcPath).read(), globals())
+        with open(rcPath) as f:
+          exec(f.read(), globals())
       except Exception as e:
         import traceback
         traceback.print_exc()
@@ -59,11 +60,12 @@ class MorphPreferences(ScriptedLoadableModule):
     @staticmethod
     def loadPresetFile(vrPresetPath):
       try:
-        exec(open(vrPresetPath).read(), globals())
+        with open(vrPresetPath) as f:
+          exec(f.read(), globals())
       except Exception as e:
         import traceback
         traceback.print_exc()
-        errorMessage = "Error loading SlicerMorphRC.py\n\n" + str(e) + "\n\nSee Python Console for Stack Trace"
+        errorMessage = "Error loading volume preset file\n\n" + str(e) + "\n\nSee Python Console for Stack Trace"
         slicer.util.errorDisplay(errorMessage)
 
 class _ui_MorphPreferencesSettingsPanel:
@@ -76,7 +78,7 @@ class _ui_MorphPreferencesSettingsPanel:
 
     self.loadMorphPreferencesCheckBox = qt.QCheckBox()
     self.loadMorphPreferencesCheckBox.toolTip = ("Customize SlicerMorph features such as hotkeys at startup"
-      " (file can be customized in python for advanced users).",
+      " (file can be customized in python for advanced users)."
       " Restart the app for changes to take effect.")
     toBool = slicer.util.toBool
     key = "MorphPreferences/customize"
