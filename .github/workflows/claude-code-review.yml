@@ -1,6 +1,9 @@
 name: Claude Code Review
 
 # Automatically review every pull request with Claude (Max-subscription OAuth token).
+# No github_token override -> posts as the Claude GitHub App ("Claude"), not github-actions[bot].
+# NOTE: in app mode the action only runs when this file matches the default branch, so it does
+# NOT review PRs that modify the workflow itself; it reviews normal PRs after this is merged.
 on:
   pull_request:
     types: [opened, synchronize]
@@ -8,7 +11,6 @@ on:
 permissions:
   contents: read
   pull-requests: write
-  issues: write
   id-token: write
 
 jobs:
@@ -21,8 +23,8 @@ jobs:
 
       - uses: anthropics/claude-code-action@v1
         with:
-          github_token: ${{ github.token }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          track_progress: true
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
@@ -30,10 +32,6 @@ jobs:
             Review this pull request for correctness bugs, security issues,
             edge cases, and regressions. Prefer a few high-confidence findings
             over many speculative ones. Follow the conventions in CLAUDE.md if present.
-
-            Use the `mcp__github_inline_comment__create_inline_comment` tool (with
-            confirmed: true) for specific line-level issues, and `gh pr comment` to post
-            a brief summary. Only post GitHub comments - do not return the review as chat
-            text. If you find no issues, post a short summary comment saying so.
+            Use inline comments for specific lines and a top-level comment for a brief summary.
           claude_args: |
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
