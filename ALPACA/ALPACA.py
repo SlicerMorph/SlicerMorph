@@ -1118,7 +1118,7 @@ class ALPACALogic(_ALPACATemplatesLogic, ScriptedLoadableModuleLogic):
             fileName = os.path.basename(modelPath) if os.path.sep in modelPath else modelPath
             baseName = os.path.splitext(fileName)[0]
             modelBaseNames.add(baseName)
-        
+
         landmarkBaseNames = set()
         for lmPath in sourceLMList:
             # Handle both full paths and filenames
@@ -1133,7 +1133,7 @@ class ALPACALogic(_ALPACATemplatesLogic, ScriptedLoadableModuleLogic):
             else:
                 baseName = os.path.splitext(fileName)[0]
             landmarkBaseNames.add(baseName)
-        
+
         # Check if counts match
         if len(modelBaseNames) != len(landmarkBaseNames):
             error_msg = f"\n🛑 ERROR: Mismatch in file counts!\n"
@@ -1143,35 +1143,35 @@ class ALPACALogic(_ALPACATemplatesLogic, ScriptedLoadableModuleLogic):
             error_msg += f"   Number of source landmarks: {len(landmarkBaseNames)}\n"
             error_msg += f"\n   The number of source model files and landmark files must match.\n"
             return False, error_msg
-        
+
         # Check if all models have corresponding landmarks
         models_without_landmarks = modelBaseNames - landmarkBaseNames
         landmarks_without_models = landmarkBaseNames - modelBaseNames
-        
+
         if models_without_landmarks or landmarks_without_models:
             error_msg = f"\n🛑 ERROR: File name mismatch detected!\n"
             error_msg += f"   Source models directory: {sourceModelPath}\n"
             error_msg += f"   Source landmarks directory: {sourceLandmarkPath}\n\n"
-            
+
             if models_without_landmarks:
                 error_msg += f"   Source models WITHOUT matching landmarks ({len(models_without_landmarks)}):  \n"
                 for name in sorted(models_without_landmarks):
                     error_msg += f"      - {name}\n"
                 error_msg += "\n"
-            
+
             if landmarks_without_models:
                 error_msg += f"   Source landmarks WITHOUT matching models ({len(landmarks_without_models)}):\n"
                 for name in sorted(landmarks_without_models):
                     error_msg += f"      - {name}\n"
                 error_msg += "\n"
-            
+
             error_msg += "   Please ensure that each source model has a corresponding landmark file\n"
             error_msg += "   with the same base name (excluding file extensions).\n"
             error_msg += "\n   Example: 'specimen_01.ply' should match with 'specimen_01.fcsv' or 'specimen_01.mrk.json'\n"
             return False, error_msg
-        
+
         return True, ""
-    
+
     def runLandmarkMultiprocess(
         self,
         sourceModelPath,
@@ -1209,7 +1209,7 @@ class ALPACALogic(_ALPACATemplatesLogic, ScriptedLoadableModuleLogic):
                     sourceLMList.append(sourceFilePath)
         else:
             sourceLMList.append(sourceLandmarkPath)
-        
+
         # Validate that source models and landmarks match (only for multi-template mode)
         if os.path.isdir(sourceModelPath) and os.path.isdir(sourceLandmarkPath):
             is_valid, error_message = self.validateSourceFilesMatch(
@@ -1223,7 +1223,7 @@ class ALPACALogic(_ALPACATemplatesLogic, ScriptedLoadableModuleLogic):
                     error_message
                 )
                 return  # Stop processing
-        
+
         # Iterate through target models
         for targetFileName in os.listdir(targetModelDirectory):
             if targetFileName.endswith((".ply", ".obj", ".vtk", ".vtp")):
@@ -1252,11 +1252,11 @@ class ALPACALogic(_ALPACATemplatesLogic, ScriptedLoadableModuleLogic):
                                     lmBaseName = lmFileName[:-5]
                                 else:
                                     lmBaseName = os.path.splitext(lmFileName)[0]
-                                
+
                                 if baseName == lmBaseName:  # Exact match
                                     sourceLandmarkFile = lmFilePath  # Already full path
                                     break
-                            
+
                             if sourceLandmarkFile is None:
                                 error_msg = f"ERROR: Could not find matching landmark file for model: {os.path.basename(sourceFilePath)} (basename: {baseName})"
                                 print(error_msg)

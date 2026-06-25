@@ -76,7 +76,7 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
             shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
             if shNode:
                 shNode.RemoveObserver(self.observerTagDeleteGrid)
-    
+
     def setup(self):
         """
         Called when the user opens the module the first time and the widget is initialized.
@@ -255,7 +255,7 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         self.updatingGUI = False
         shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
         self.observerTagDeleteGrid = shNode.AddObserver(shNode.SubjectHierarchyItemAboutToBeRemovedEvent, self.deleteObservers)
-        
+
         # Add observer for scene close events
         self.sceneCloseObserver = slicer.mrmlScene.AddObserver(slicer.mrmlScene.StartCloseEvent, self.onSceneClose)
 
@@ -472,7 +472,7 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
           return  # User cancelled
 
         # Load template file data
-        with open(jsonFilePath, 'r') as jsonFile:
+        with open(jsonFilePath) as jsonFile:
           data = json.load(jsonFile)
         requiredKeys = ["number_of_landmarks", "properties", "patches"]
         for key in requiredKeys:
@@ -621,7 +621,7 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
       """
       # Prevent GUI updates from triggering during cleanup
       self.updatingGUI = True
-      
+
       # Clean up observers from all patches before clearing
       for patch in self.patchList:
         try:
@@ -643,31 +643,31 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
             patch.midPoint3.RemoveObserver(patch.tag_M3)
         except:
           pass  # Node may already be deleted
-      
+
       # Clear the patch list
       self.patchList = []
-      
+
       # Reset counter
       self.patchCounter = -1
-      
+
       # Clear current patch reference
       if hasattr(self, 'patch'):
         self.patch = None
-      
+
       # Clear logic's active outline
       if self.logic:
         self.logic.activeOutline = None
-      
+
       # Clear the dropdown (keep only "None")
       while self.gridSelector.count > 1:
         self.gridSelector.removeItem(1)
-      
+
       # Reset to "None"
       self.gridSelector.setCurrentIndex(0)
-      
+
       # Re-enable GUI updates
       self.updatingGUI = False
-    
+
     @vtk.calldata_type(vtk.VTK_INT)
     def deleteObservers(self, caller, event, removedItem):
       shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
