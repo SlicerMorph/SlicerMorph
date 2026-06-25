@@ -107,20 +107,20 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
         # Undock/Redock buttons in vertical layout, left-aligned
         buttonVBox = qt.QVBoxLayout()
         buttonVBox.setAlignment(qt.Qt.AlignLeft)
-        
+
         self.undockViewerButton = qt.QPushButton("Undock 3D Viewer")
         self.undockViewerButton.toolTip = "Undocks the 3D viewer for the user to adjust correct aspect ratios for their visualization."
         self.undockViewerButton.clicked.connect(self.onUndockViewer)
         self.undockViewerButton.setMaximumWidth(150)
         buttonVBox.addWidget(self.undockViewerButton)
-        
+
         self.redockViewerButton = qt.QPushButton("Redock 3D Viewer")
         self.redockViewerButton.toolTip = "Redock the 3D viewer back to its original layout"
         self.redockViewerButton.clicked.connect(self.onRedockViewer)
         self.redockViewerButton.enabled = False
         self.redockViewerButton.setMaximumWidth(150)
         buttonVBox.addWidget(self.redockViewerButton)
-        
+
         parametersFormLayout.addRow("", buttonVBox)
 
         # Separator
@@ -194,7 +194,7 @@ class HiResScreenCaptureWidget(ScriptedLoadableModuleWidget):
                         width = view.width
                         height = view.height
                         self.resolutionDisplayLabel.setText(f"{width} x {height}")
-                        
+
             # Calculate final output resolution
             if self.logic and self.logic.customViewerWidth and self.logic.customViewerHeight:
                 width = self.logic.customViewerWidth
@@ -441,10 +441,10 @@ class HiResScreenCaptureLogic(ScriptedLoadableModuleLogic):
             viewNode = threeDWidget.mrmlViewNode()
             originalScaleFactor = viewNode.GetScreenScaleFactor()
             print("Original Screen Scale Factor:", originalScaleFactor)
-            
+
             # Scale BOTH the widget size AND the screen scale factor for true high-res rendering
             viewNode.SetScreenScaleFactor(originalScaleFactor * self.currentScaleFactor)
-            
+
             scaledWidth = int(originalSize.width() * self.currentScaleFactor)
             scaledHeight = int(originalSize.height() * self.currentScaleFactor)
             threeDWidget.size = qt.QSize(scaledWidth, scaledHeight)

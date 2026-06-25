@@ -1345,7 +1345,7 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
             slicer.app.processEvents()
 
             # Install the required packages
-            # we install the contourpy to support installation of pygbif package, it is temporary until transition to manylinux 2.27 is completed. 
+            # we install the contourpy to support installation of pygbif package, it is temporary until transition to manylinux 2.27 is completed.
             slicer.util.pip_install("contourpy==1.3.2")
             slicer.util.pip_install('morphosource==' + morphosourceVersion)
 
