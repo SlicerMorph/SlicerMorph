@@ -181,7 +181,7 @@ class ImportSurfaceToSegmentLogic(ScriptedLoadableModuleLogic):
     # Convert to segmentation
     segmentName = modelNode.GetName() + '-segmentation'
     segmentNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLSegmentationNode', segmentName)
-    
+
     # Set oversampling factor
     segmentNode.GetSegmentation().SetConversionParameter('Oversampling factor', str(oversamplingFactor))
     slicer.modules.segmentations.logic().ImportModelToSegmentationNode(modelNode, segmentNode)

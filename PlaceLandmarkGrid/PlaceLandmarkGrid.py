@@ -455,7 +455,7 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
           return  # User cancelled
 
         # Load template file data
-        with open(jsonFilePath, 'r') as jsonFile:
+        with open(jsonFilePath) as jsonFile:
           data = json.load(jsonFile)
         requiredKeys = ["number_of_landmarks", "properties", "patches"]
         for key in requiredKeys:
