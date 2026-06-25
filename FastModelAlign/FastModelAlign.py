@@ -123,14 +123,14 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.targetModelSelector.setMRMLScene( slicer.mrmlScene)
         self.ui.outputSelector.setMRMLScene( slicer.mrmlScene)
         self.ui.outputSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onSelect)
-        
+
         # Run subsampling
         self.ui.pointDensitySlider.connect('valueChanged(double)', self.onChangeDensitySingle)
         self.ui.subsampleButton.connect('clicked(bool)', self.onSubsampleButton)
-        
+
         # Main registration button
         self.ui.runRegistrationButton.connect('clicked(bool)', self.onRunRegistrationButton)
-        
+
         # Registration step checkboxes
         self.ui.scalingCheckBox.connect("toggled(bool)", self.onSelect)
         self.ui.rigidCheckBox.connect("toggled(bool)", self.onSelect)
@@ -170,7 +170,7 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             "CPDTolerance": self.ui.cpdToleranceSlider.value,
             "gridSpacingMultiplier": self.ui.gridSpacingSlider.value
             }
-        
+
         # Store voxel size for grid transform estimation
         self.voxelSize = None
 
@@ -178,14 +178,14 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     def onSelect(self):
         # Check if source and target are selected
         hasInputs = bool(self.ui.sourceModelSelector.currentNode() and self.ui.targetModelSelector.currentNode())
-        
+
         # Check if at least one registration step is selected
-        hasSteps = (self.ui.scalingCheckBox.checked or self.ui.rigidCheckBox.checked or 
+        hasSteps = (self.ui.scalingCheckBox.checked or self.ui.rigidCheckBox.checked or
                     self.ui.affineCheckBox.checked or self.ui.deformableCheckBox.checked)
-        
+
         # Enable subsampling preview button
         self.ui.subsampleButton.enabled = hasInputs
-        
+
         # Enable run registration button only if we have inputs, output, and at least one step
         self.ui.runRegistrationButton.enabled = hasInputs and hasSteps
 
@@ -363,9 +363,9 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.sourceModelNode_orig.GetDisplayNode().SetVisibility(False)
         self.sourceModelName = self.sourceModelNode_orig.GetName()
         self.targetModelNode = self.ui.targetModelSelector.currentNode()
-        
+
         logic = FastModelAlignLogic()
-        
+
         # Clone the source model for registration
         shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
         itemIDToClone = shNode.GetItemByDataNode(self.sourceModelNode_orig)
@@ -373,29 +373,29 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.sourceModelNode = shNode.GetItemDataNode(clonedItemID)
         self.sourceModelNode.GetDisplayNode().SetVisibility(False)
         self.sourceModelNode.SetName("Source_working_copy")
-        
+
         # Determine which steps to run
         doScaling = self.ui.scalingCheckBox.checked
         doRigid = self.ui.rigidCheckBox.checked
         doAffine = self.ui.affineCheckBox.checked
         doDeformable = self.ui.deformableCheckBox.checked
-        
+
         # Initialize transform nodes
         self.scalingTransformNode = None
         self.ICPTransformNode = None
         affineTransformNode = None
-        
+
         # ============ RIGID REGISTRATION (with optional scaling) ============
         if doRigid or doScaling:
             # Run full rigid registration with FPFH features
             self.sourcePoints, self.targetPoints, self.scalingTransformNode, self.ICPTransformNode, self.voxelSize = logic.ITKRegistration(
-                self.sourceModelNode, 
-                self.targetModelNode, 
+                self.sourceModelNode,
+                self.targetModelNode,
                 doScaling,
-                self.parameterDictionary, 
+                self.parameterDictionary,
                 self.ui.poissonSubsampleCheckBox.checked
             )
-            
+
             # Name and handle transform nodes based on what user requested
             if doScaling:
                 scalingNodeName = self.sourceModelName + "_scaling"
@@ -404,7 +404,7 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 # Remove scaling transform if not explicitly requested
                 slicer.mrmlScene.RemoveNode(self.scalingTransformNode)
                 self.scalingTransformNode = None
-            
+
             if doRigid:
                 rigidNodeName = self.sourceModelName + "_rigid"
                 self.ICPTransformNode.SetName(rigidNodeName)
@@ -431,17 +431,17 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self.parameterDictionary,
                 self.ui.poissonSubsampleCheckBox.checked,
             )
-        
+
         # ============ AFFINE REGISTRATION ============
         if doAffine:
             # CPDAffineTransform modifies the model vertices directly AND returns the transform
             # It also returns transformed source points for use in subsequent steps
             transformation, translation, self.sourcePoints = logic.CPDAffineTransform(
-                self.sourceModelNode, 
-                self.sourcePoints, 
+                self.sourceModelNode,
+                self.sourcePoints,
                 self.targetPoints
             )
-            
+
             # Create affine transform node for reference (model already transformed)
             matrix_vtk = vtk.vtkMatrix4x4()
             for i in range(3):
@@ -453,21 +453,21 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             affineTransform.SetMatrix(matrix_vtk)
             affineTransformNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', "Affine_transform")
             affineTransformNode.SetAndObserveTransformToParent(affineTransform)
-            
+
             affineNodeName = self.sourceModelName + "_affine"
             affineTransformNode.SetName(affineNodeName)
-            
+
             # Chain transforms for reference: put rigid under affine
             if self.ICPTransformNode:
                 self.ICPTransformNode.SetAndObserveTransformNodeID(affineTransformNode.GetID())
-        
+
         # ============ DEFORMABLE REGISTRATION ============
         if doDeformable:
             useFastMode = self.ui.fastModeCheckBox.checked
-            
+
             with slicer.util.WaitCursor():
                 slicer.app.processEvents()
-                
+
                 if useFastMode:
                     # Fast mode: directly deform vertices
                     deformedModelNode = logic.CPDDeformableTransformDirect(
@@ -478,7 +478,7 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     )
                     deformedNodeName = self.sourceModelName + "_deformed"
                     deformedModelNode.SetName(deformedNodeName)
-                    
+
                     # Display the deformed model
                     green = [0, 1, 0]
                     deformedModelNode.GetDisplayNode().SetColor(green)
@@ -492,17 +492,17 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                         self.voxelSize,
                         self.parameterDictionary
                     )
-                    
+
                     deformableNodeName = self.sourceModelName + "_deformable"
                     deformableTransformNode.SetName(deformableNodeName)
                     deformedNodeName = self.sourceModelName + "_deformed"
                     deformedModelNode.SetName(deformedNodeName)
-                    
+
                     # Display the deformed model
                     green = [0, 1, 0]
                     deformedModelNode.GetDisplayNode().SetColor(green)
                     deformedModelNode.GetDisplayNode().SetVisibility(True)
-        
+
         # ============ OUTPUT MODEL ============
         red = [1, 0, 0]
         green = [0, 1, 0]
@@ -534,7 +534,7 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 slicer.mrmlScene.RemoveNode(deformedModelNode)
             # Clean up working copy
             slicer.mrmlScene.RemoveNode(self.sourceModelNode)
-        
+
         # Make sure target is visible
         self.targetModelNode.GetDisplayNode().SetVisibility(True)
 
@@ -577,11 +577,11 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
 class ProgressHelper:
     """Helper class for showing progress during long operations."""
-    
+
     def __init__(self, title="Processing"):
         self.progressDialog = None
         self.title = title
-        
+
     def start(self, message="Starting...", maxValue=100):
         """Start showing progress dialog."""
         self.progressDialog = slicer.util.createProgressDialog(
@@ -591,7 +591,7 @@ class ProgressHelper:
         )
         self.progressDialog.setCancelButton(None)  # Disable cancel for now
         slicer.app.processEvents()
-        
+
     def update(self, value, message=None):
         """Update progress value and optionally the message."""
         if self.progressDialog:
@@ -599,7 +599,7 @@ class ProgressHelper:
             if message:
                 self.progressDialog.setLabelText(message)
             slicer.app.processEvents()
-            
+
     def finish(self):
         """Close the progress dialog."""
         if self.progressDialog:
@@ -628,11 +628,11 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
 
     def ITKRegistration(self, sourceModelNode, targetModelNode, scalingOption, parameterDictionary, usePoisson):
         import ALPACA
-        
+
         titleText = "Rigid Registration" + (" with Scaling" if scalingOption else "")
         self.progress = ProgressHelper(titleText)
         self.progress.start("Subsampling point clouds...", 100)
-        
+
         logic = ALPACA.ALPACALogic()
         (
             sourcePoints,
@@ -648,7 +648,7 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
             parameterDictionary,
             usePoisson,
         )
-        
+
         if scalingOption:
             self.progress.update(30, f"Creating scaling transform (factor: {scaling:.4f})...")
         else:
@@ -708,7 +708,7 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
 
     def CPDAffineTransform(self, sourceModelNode, sourcePoints, targetPoints):
        from cpdalp import AffineRegistration
-       
+
        self.progress = ProgressHelper("Affine Registration")
        self.progress.start("Running CPD affine registration...", 100)
 
@@ -719,7 +719,7 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
        self.progress.update(20, "Optimizing affine parameters...")
        reg = AffineRegistration(**{'X': targetPoints, 'Y': sourcePoints, 'low_rank':True})
        reg.register()
-       
+
        self.progress.update(70, "Transforming model vertices...")
        TY = reg.transform_point_cloud(numpyModel)
        vtkArray = vtk_np.numpy_to_vtk(TY)
@@ -730,7 +730,7 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
        transformedSourcePoints = reg.transform_point_cloud(sourcePoints)
 
        affine_matrix, translation = reg.get_registration_parameters()
-       
+
        self.progress.update(100, "Affine registration complete.")
        self.progress.finish()
 
@@ -753,13 +753,13 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
         cloudMin = np.min(allPoints, axis=0)
         cloudMax = np.max(allPoints, axis=0)
         cloudSize = cloudMax - cloudMin
-        
+
         # Normalize to [0, 25] range
         targetNorm = (targetPoints - cloudMin) * 25 / cloudSize
         sourceNorm = (sourcePoints - cloudMin) * 25 / cloudSize
 
         self.progress.update(10, f"Running CPD on {len(sourcePoints)} source points...")
-        
+
         reg = DeformableRegistration(
             **{
                 'X': targetNorm,
@@ -772,12 +772,12 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
             beta=parameters["beta"]
         )
         reg.register()
-        
+
         self.progress.update(50, "Building RBF interpolator...")
 
         # Get the deformed source points from CPD (in normalized space)
         deformedSourceNorm = reg.TY  # CPD stores deformed Y points here
-        
+
         # Compute displacements at source landmark locations (in normalized space)
         displacementsNorm = deformedSourceNorm - sourceNorm
 
@@ -795,20 +795,20 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
         points = polyData.GetPoints()
         numpyModel = vtk_np.vtk_to_numpy(points.GetData()).copy()
         numVertices = len(numpyModel)
-        
+
         self.progress.update(60, f"Interpolating displacements for {numVertices:,} vertices...")
-        
+
         # Normalize mesh vertices using the SAME normalization as source pointcloud
         numpyModelNorm = (numpyModel - cloudMin) * 25 / cloudSize
 
         # Interpolate displacements to mesh vertices using RBF
         interpDisplacements = rbf(numpyModelNorm)
-        
+
         self.progress.update(85, "Applying displacements...")
-        
+
         # Apply displacements in normalized space
         deformedModelNorm = numpyModelNorm + interpDisplacements
-        
+
         # Denormalize back to original coordinate space
         deformedModel = (deformedModelNorm * cloudSize / 25) + cloudMin
 
@@ -825,7 +825,7 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
 
         self.progress.update(100, "Deformable registration complete.")
         self.progress.finish()
-        
+
         return deformedModelNode
 
     def CPDDeformableTransformGrid(self, sourceModelNode, sourcePoints, targetPoints, voxelSize, parameters):
@@ -844,13 +844,13 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
         cloudMin = np.min(allPoints, axis=0)
         cloudMax = np.max(allPoints, axis=0)
         cloudSize = cloudMax - cloudMin
-        
+
         # Normalize to [0, 25] range
         targetNorm = (targetPoints - cloudMin) * 25 / cloudSize
         sourceNorm = (sourcePoints - cloudMin) * 25 / cloudSize
 
         self.progress.update(10, f"Running CPD on {len(sourcePoints)} source points...")
-        
+
         reg = DeformableRegistration(
             **{
                 'X': targetNorm,
@@ -863,12 +863,12 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
             beta=parameters["beta"]
         )
         reg.register()
-        
+
         self.progress.update(40, "Building RBF interpolator...")
-        
+
         # Get the deformed source points from CPD (in normalized space)
         deformedSourceNorm = reg.TY
-        
+
         # Compute displacements at source landmark locations (in normalized space)
         displacementsNorm = deformedSourceNorm - sourceNorm
         rbf = RBFInterpolator(
@@ -886,14 +886,14 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
             bounds[5] - bounds[4]
         ]
         maxModelDim = max(modelSize)
-        
+
         # Calculate grid spacing based on model size and desired grid density
         # Slider controls grid density: 1 = finest (256 pts), 10 = coarsest (64 pts)
         # This gives grids from 64³ to 256³ depending on slider
         targetGridPoints = int(256 / parameters["gridSpacingMultiplier"])
         targetGridPoints = max(64, min(256, targetGridPoints))  # Clamp to 64-256
         gridSpacing = maxModelDim / targetGridPoints
-        
+
         print(f"Grid: {targetGridPoints} points across {maxModelDim:.1f}mm, spacing={gridSpacing:.2f}mm")
 
         # Add padding around the model
@@ -906,20 +906,20 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
         ]
 
         self.progress.update(60, "Creating grid transform...")
-        
+
         # Create the grid transform using RBF interpolation
         gridTransformNode = self.createGridTransformFromRBF(
             rbf, cloudMin, cloudSize, origin, size, gridSpacing
         )
 
         self.progress.update(85, "Creating hardened deformed model...")
-        
+
         # Create hardened deformed model
         deformedModelNode = self.createHardenedModel(sourceModelNode, gridTransformNode)
 
         self.progress.update(100, "Deformable registration complete.")
         self.progress.finish()
-        
+
         return gridTransformNode, deformedModelNode
 
     def createGridTransformFromRBF(self, rbf, cloudMin, cloudSize, origin, size, spacing):
@@ -934,7 +934,7 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
             min(int(np.ceil(size[1] / spacing)) + 1, maxGridDim),
             min(int(np.ceil(size[2] / spacing)) + 1, maxGridDim)
         ]
-        
+
         print(f"Grid dimensions: {dims[0]}x{dims[1]}x{dims[2]}")
         totalGridPoints = dims[0] * dims[1] * dims[2]
         print(f"Total grid points: {totalGridPoints:,}")
@@ -943,7 +943,7 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
         x = np.linspace(origin[0], origin[0] + size[0], dims[0])
         y = np.linspace(origin[1], origin[1] + size[1], dims[1])
         z = np.linspace(origin[2], origin[2] + size[2], dims[2])
-        
+
         # Create meshgrid for all grid points
         X, Y, Z = np.meshgrid(x, y, z, indexing='ij')
         gridPoints = np.column_stack([X.ravel(), Y.ravel(), Z.ravel()])
@@ -955,7 +955,7 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
         if self.progress:
             self.progress.update(70, f"Interpolating displacements to {totalGridPoints:,} grid points...")
         displacementsNorm = rbf(gridPointsNorm)
-        
+
         # Convert displacements back to original scale
         displacements = displacementsNorm * cloudSize / 25
 
@@ -971,12 +971,12 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
         spacingX = size[0] / max(dims[0] - 1, 1) if dims[0] > 1 else size[0]
         spacingY = size[1] / max(dims[1] - 1, 1) if dims[1] > 1 else size[1]
         spacingZ = size[2] / max(dims[2] - 1, 1) if dims[2] > 1 else size[2]
-        
+
         displImage = vtk.vtkImageData()
         displImage.SetDimensions(dims[0], dims[1], dims[2])
         displImage.SetOrigin(origin[0], origin[1], origin[2])
         displImage.SetSpacing(spacingX, spacingY, spacingZ)
-        
+
         print(f"Displacement field created: dims={dims}, spacing=({spacingX:.2f}, {spacingY:.2f}, {spacingZ:.2f})")
 
         # Convert displacement array to VTK
@@ -1008,11 +1008,11 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
         # Apply and harden transform
         deformedModelNode.SetAndObserveTransformNodeID(transformNode.GetID())
         slicer.vtkSlicerTransformLogic().hardenTransform(deformedModelNode)
-        
+
         # Ensure display node exists and copy properties from source
         if not deformedModelNode.GetDisplayNode():
             deformedModelNode.CreateDefaultDisplayNodes()
-        
+
         # Copy display properties from source if available
         sourceDisplayNode = sourceModelNode.GetDisplayNode()
         deformedDisplayNode = deformedModelNode.GetDisplayNode()

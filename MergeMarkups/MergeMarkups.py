@@ -295,7 +295,7 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     self.outputDirectorySelector.connect('validInputChanged(bool)', self.onSelectDirectory)
     self.batchMergeButton.connect('clicked(bool)', self.onBatchMergeButton)
     self.clearButton.connect('clicked(bool)', self.onClearButton)
-    
+
     # Initialize file path lists
     self.fixedFilePaths = []
     self.semiFilePaths = []
@@ -362,11 +362,11 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
 
   def onBatchMergeButton(self):
     logic = MergeMarkupsLogic()
-    
+
     # Read file paths from the text widgets (allows manual editing)
     fixedFilePaths = [p.strip() for p in self.fixedFileTable.plainText.split('\n') if p.strip()]
     semiFilePaths = [p.strip() for p in self.semiFileTable.plainText.split('\n') if p.strip()]
-    
+
     if len(fixedFilePaths) == 0 or len(semiFilePaths)==0:
       warning = "Error: There are 0 files selected to merge."
       logging.debug(warning)
