@@ -48,16 +48,14 @@ class HiResScreenCapture(ScriptedLoadableModule):
         self.parent.title = "HiRes Screen Capture"  # TODO: make this more human readable by adding spaces
         self.parent.categories = ["SlicerMorph.Utilities"]
         self.parent.dependencies = []  # TODO: add here list of module names that this module requires
-        self.parent.contributors = ["Murat Maga (UW), Oshane Thomas(SCRI)"]  # TODO: replace with "Firstname Lastname
+        self.parent.contributors = ["Oshane Thomas (SCRI), Murat Maga (UW)"]  # TODO: replace with "Firstname Lastname
         # (Organization)"
         # TODO: update with short description of the module and a link to online module documentation
         self.parent.helpText = """
 The "High Resolution Screen Capture" module allows users to capture and save high-quality screenshots from the Slicer application. Decorate the 3D viewer in exactly how you would like the screenshot. Then, specify the filename, output folder, and a scaling factor to give the desired output resolution.
 """
         # TODO: replace with organization, grant and thanks
-        self.parent.acknowledgementText = """This file was originally developed by Jean-Christophe Fillion-Robin,
-        Kitware Inc., Andras Lasso, PerkLab, and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant
-        3P41RR013218-12S1. We would also like to thank Steve Pieper for developing the export function used here."""
+        self.parent.acknowledgementText = """The development of the module was supported by NSF/OAC grant, "HDR Institute: Imageomics: A New Frontier of Biological Information Powered by Knowledge-Guided Machine Learnings" (Award #2118240)."""
 
 
 #

@@ -24,7 +24,7 @@ class PlaceLandmarkGrid(ScriptedLoadableModule):
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
         self.parent.title = "PlaceLandmarkGrid"
-        self.parent.categories = ["SlicerMorph.Utilities"]
+        self.parent.categories = ["SlicerMorph.Geometric Morphometrics"]
         self.parent.dependencies = []
         self.parent.contributors = ["Sara Rolfe (SCRI), Murat Maga (SCRI, UW)"]
         self.parent.helpText = """
@@ -32,9 +32,7 @@ class PlaceLandmarkGrid(ScriptedLoadableModule):
         """
         # TODO: replace with organization, grant and thanks
         self.parent.acknowledgementText = """
-        This module was developed by Sara Rolfe and Murat Maga for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections"
-        awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839).
-        https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
+        This module was developed by Sara Rolfe and Murat Maga for SlicerMorph. Development of SlicerMorph is supported by NSF grants 1759883 and 2301405 to Murat Maga.
         """
 
 #
