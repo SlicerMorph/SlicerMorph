@@ -73,6 +73,26 @@
             </item>
 
             <item row="5" column="0" colspan="3">
+              <widget class="QCheckBox" name="semiSlidingCheckBox">
+                <property name="text"><string>Slide surface semi-landmarks</string></property>
+                <property name="toolTip"><string>If checked, points marked as semi-landmarks are slid within their local surface tangent planes during GPA, using the criterion selected below.</string></property>
+              </widget>
+            </item>
+
+            <item row="6" column="0">
+              <widget class="QLabel" name="slidingMethodLabel">
+                <property name="text"><string>Sliding criterion:</string></property>
+              </widget>
+            </item>
+            <item row="6" column="1" colspan="2">
+              <widget class="QComboBox" name="slidingMethodComboBox">
+                <property name="toolTip"><string>Criterion used to slide semi-landmarks (matches geomorph::gpagen). Bending energy minimizes thin-plate-spline bending energy to the mean (geomorph ProcD=FALSE, the default); Procrustes distance slides points to minimize Procrustes distance to the mean (geomorph ProcD=TRUE).</string></property>
+                <item><property name="text"><string>Bending energy</string></property></item>
+                <item><property name="text"><string>Procrustes distance</string></property></item>
+              </widget>
+            </item>
+
+            <item row="7" column="0" colspan="3">
               <widget class="ctkCollapsibleGroupBox" name="loadCovariatesCollapsibleButton">
                 <property name="collapsed"><bool>true</bool></property>
                 <property name="title"><string>Covariate options</string></property>
@@ -122,7 +142,7 @@
               </widget>
             </item>
 
-            <item row="6" column="0" colspan="3">
+            <item row="8" column="0" colspan="3">
               <widget class="QPushButton" name="loadButton">
                 <property name="text"><string>Execute GPA + PCA</string></property>
                 <property name="enabled"><bool>false</bool></property>
@@ -130,7 +150,7 @@
               </widget>
             </item>
 
-            <item row="7" column="0" colspan="3">
+            <item row="9" column="0" colspan="3">
               <widget class="QPushButton" name="openResultsButton">
                 <property name="text"><string>View output files</string></property>
                 <property name="enabled"><bool>false</bool></property>

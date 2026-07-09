@@ -341,15 +341,15 @@ class LMData:
       varianceMat = SampleScaleFactor*np.sqrt(varianceMat/(k-1))
     return varianceMat
 
-  def doGpa(self,BoasOption):
+  def doGpa(self,BoasOption, semiLandmarkIndices=None, slidingMethod='BE'):
     i,j,k=self.lmOrig.shape
     self.centriodSize=np.zeros(k)
     for subjectNum in range(k):
       self.centriodSize[subjectNum]=np.linalg.norm(self.lmOrig[:,:,subjectNum]-self.lmOrig[:,:,subjectNum].mean(axis=0))
     if not BoasOption:
-      self.lm, self.mShape=gpa_lib.runGPA(self.lmOrig)
+      self.lm, self.mShape=gpa_lib.runGPA(self.lmOrig, semiLandmarkIndices=semiLandmarkIndices, slidingMethod=slidingMethod)
     else:
-      self.lm, self.mShape=gpa_lib.runGPANoScale(self.lmOrig)
+      self.lm, self.mShape=gpa_lib.runGPANoScale(self.lmOrig, semiLandmarkIndices=semiLandmarkIndices, slidingMethod=slidingMethod)
     self.procdist = gpa_lib.procDist(self.lm, self.mShape)
 
   def calcEigen(self):
@@ -653,6 +653,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.ui.openResultsButton.connect('clicked(bool)', self.onOpenResults)
     self.ui.resultsButton.connect('clicked(bool)', self.onSelectResultsDirectory)
     self.ui.loadResultsButton.connect('clicked(bool)', self.onLoadFromFile)
+    # Sliding criterion selector is only meaningful when semi-landmark sliding is on.
+    if getattr(self.ui, 'slidingMethodComboBox', None) and getattr(self.ui, 'semiSlidingCheckBox', None):
+      self.ui.slidingMethodComboBox.enabled = self.ui.semiSlidingCheckBox.isChecked()
+      self.ui.semiSlidingCheckBox.connect('toggled(bool)', self.ui.slidingMethodComboBox.setEnabled)
 
     ################################### Explore tab connections
     self.ui.plotMeanButton3D.connect('clicked(bool)', self.toggleMeanPlot)
@@ -1675,6 +1679,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         logData = json.load(json_file)
       self.BoasOption = logData['GPALog'][0]['Boas']
       self.LMExclusionList = logData['GPALog'][0]['ExcludedLM']
+      self.landmarkTypeArray = logData['GPALog'][0].get('SemiLandmarks', [])
     except:
       logging.debug('Log import failed: Cannot read the log file')
       self.ui.GPALogTextbox.insertPlainText("logging.debug('Log import failed: Cannot read the log file\n")
@@ -1825,7 +1830,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     else:
       self.LMExclusionList=[]
     try:
-      self.LM.lmOrig, self.landmarkTypeArray = logic.loadLandmarks(self.inputFilePaths, self.LMExclusionList, self.extension)
+      self.LM.lmOrig, self.landmarkTypeArray, self.landmarkTypeIncludedIndices = logic.loadLandmarks(self.inputFilePaths, self.LMExclusionList, self.extension)
     except:
       logging.debug('Load landmark data failed: Could not create an array from landmark files')
       self.ui.GPALogTextbox.insertPlainText(f"Load landmark data failed: Could not create an array from landmark files\n")
@@ -1836,7 +1841,17 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     # Do GPA
     self.BoasOption=self.ui.BoasOptionCheckBox.isChecked()
-    self.LM.doGpa(self.BoasOption)
+    semiIndices = getattr(self, 'landmarkTypeIncludedIndices', []) or []
+    if getattr(self.ui, 'semiSlidingCheckBox', None) and self.ui.semiSlidingCheckBox.isChecked():
+      slidingMethod = 'BE'
+      methodCombo = getattr(self.ui, 'slidingMethodComboBox', None)
+      if methodCombo is not None and 'rocrustes' in methodCombo.currentText:
+        slidingMethod = 'ProcD'
+      methodLabel = 'Procrustes distance' if slidingMethod == 'ProcD' else 'bending energy'
+      self.LM.doGpa(self.BoasOption, semiLandmarkIndices=semiIndices, slidingMethod=slidingMethod)
+      self.ui.GPALogTextbox.insertPlainText(f"Semi-landmark sliding enabled for {len(semiIndices)} points (criterion: {methodLabel}).\n")
+    else:
+      self.LM.doGpa(self.BoasOption)
     self.LM.calcEigen()
     self.pcNumber=10
     self.updateList()
@@ -3680,14 +3695,14 @@ class GPALogic(ScriptedLoadableModuleLogic):
       import pandas
       tempTable = pandas.DataFrame.from_dict(pandas.read_json(filePathList[0])['markups'][0]['controlPoints'])
       landmarkNumber = len(tempTable)
-      landmarkTypeArray=[]
+      rawSemiIndices = [i for i in range(landmarkNumber) if tempTable['description'][i] == 'Semi']
+      landmarkTypeArray = [str(i + 1) for i in rawSemiIndices if i not in lmToRemove]
       errorString = ""
       subjectErrorArray = []
       landmarkErrorArray = []
-      for i in range(landmarkNumber):
-        if tempTable['description'][i] =='Semi':
-          landmarkTypeArray.append(str(i+1))
-      landmarks=np.zeros(shape=(landmarkNumber-len(lmToRemove),3,len(filePathList)))
+      included_indices = [j for j in range(landmarkNumber) if j not in lmToRemove]
+      includedSemiIndices = [included_indices.index(i) for i in rawSemiIndices if i not in lmToRemove]
+      landmarks=np.zeros(shape=(len(included_indices),3,len(filePathList)))
       for i in range(len(filePathList)):
         try:
           tmp1=pandas.DataFrame.from_dict(pandas.read_json(filePathList[i])['markups'][0]['controlPoints'])
@@ -3736,8 +3751,11 @@ class GPALogic(ScriptedLoadableModuleLogic):
           warning = f"Error: Load file {filePathList[i]} failed. There are {len(tmp1)} landmarks instead of the expected {landmarkNumber}."
           slicer.util.messageBox(warning)
           return
+      included_indices = [j for j in range(landmarkNumber) if j not in lmToRemove]
+      originalSemiIndices = [int(x) - 1 for x in landmarkTypeArray]
+      includedSemiIndices = [included_indices.index(i) for i in originalSemiIndices if i in included_indices]
       landmarks = np.delete(landmarks, lmToRemove, axis=0)
-    return landmarks, landmarkTypeArray
+    return landmarks, landmarkTypeArray, includedSemiIndices
 
   def importLandMarks(self, filePath):
     """Imports the landmarks from file. Does not import sample if a  landmark is -1000
