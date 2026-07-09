@@ -299,12 +299,23 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         #
         # Advanced menu
         #
-        advancedCollapsibleButton = ctk.ctkCollapsibleButton()
-        advancedCollapsibleButton.text = "Advanced"
-        advancedCollapsibleButton.collapsed = True
-        parametersGridFormLayout.addRow(advancedCollapsibleButton)
+        mergeAdvancedCollapsibleButton = ctk.ctkCollapsibleButton()
+        mergeAdvancedCollapsibleButton.text = "Advanced"
+        mergeAdvancedCollapsibleButton.collapsed = True
+        parametersGridFormLayout.addRow(mergeAdvancedCollapsibleButton)
         # Layout within the dummy collapsible button
-        advancedFormLayout = qt.QFormLayout(advancedCollapsibleButton)
+        mergeAdvancedFormLayout = qt.QFormLayout(mergeAdvancedCollapsibleButton)
+
+        #
+        # Merge tolerance slider
+        #
+        self.mergeToleranceSlider = ctk.ctkSliderWidget()
+        self.mergeToleranceSlider.singleStep = 0.05
+        self.mergeToleranceSlider.minimum = 0
+        self.mergeToleranceSlider.maximum = 1
+        self.mergeToleranceSlider.value = 0.25
+        self.mergeToleranceSlider.setToolTip("Points from different grids are merged when they are closer than this fraction of the grid point spacing. Increase to remove more overlapping points; decrease to keep more.")
+        mergeAdvancedFormLayout.addRow("Merge tolerance (fraction of grid spacing): ", self.mergeToleranceSlider)
 
         #
         # Merge Button
@@ -682,7 +693,7 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
 
     def onMergeGridButton(self):
       logic =  PlaceLandmarkGridLogic()
-      toleranceValue = self.projectionDistanceSlider.value/100
+      toleranceValue = self.mergeToleranceSlider.value
       logic.mergeGrids(self.gridView, self.markupsGridView, toleranceValue)
 
     def updateMergeGridButton(self):
@@ -1149,11 +1160,13 @@ class PlaceLandmarkGridLogic(ScriptedLoadableModuleLogic):
       return True
 
     def getGridMinResolutionSize(self, grid):
+       # Smallest spacing (in world units) between adjacent grid points,
+       # measured along the two grid directions.
        p1 = grid.GetNthControlPointPosition(0)
        p2 = grid.GetNthControlPointPosition(1)
        p3 = grid.GetNthControlPointPosition(grid.GetGridResolution()[0])
-       length = vtk.vtkMath().Distance2BetweenPoints(p1, p2)
-       width = vtk.vtkMath().Distance2BetweenPoints(p1, p3)
+       length = math.sqrt(vtk.vtkMath().Distance2BetweenPoints(p1, p2))
+       width = math.sqrt(vtk.vtkMath().Distance2BetweenPoints(p1, p3))
        return(min(length, width))
 
     def mergePointsAndGrids(self, gridList, markupList, mergedNode, tolerance):
@@ -1174,7 +1187,7 @@ class PlaceLandmarkGridLogic(ScriptedLoadableModuleLogic):
           closestPointIndex = mergedNode.GetClosestControlPointIndexToPositionWorld(currentPoint)
           if closestPointIndex>=0:
             closestPoint = mergedNode.GetNthControlPointPosition(closestPointIndex)
-            distance = vtk.vtkMath().Distance2BetweenPoints(currentPoint, closestPoint)
+            distance = math.sqrt(vtk.vtkMath().Distance2BetweenPoints(currentPoint, closestPoint))
             if distance > resolution * tolerance:
               mergedNode.AddControlPoint(currentPoint)
               currentPointIndex = mergedNode.GetNumberOfControlPoints()-1
@@ -1187,7 +1200,7 @@ class PlaceLandmarkGridLogic(ScriptedLoadableModuleLogic):
           closestPointIndex = mergedNode.GetClosestControlPointIndexToPositionWorld(currentPoint)
           if closestPointIndex>=0:
             closestPoint = mergedNode.GetNthControlPointPosition(closestPointIndex)
-            distance = vtk.vtkMath().Distance2BetweenPoints(currentPoint, closestPoint)
+            distance = math.sqrt(vtk.vtkMath().Distance2BetweenPoints(currentPoint, closestPoint))
             if distance < overallSpatialConstraint:
               if mergedNode.GetNthControlPointDescription(closestPointIndex) != "Fixed":
                 mergedNode.RemoveNthControlPoint(closestPointIndex)
