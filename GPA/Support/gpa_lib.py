@@ -413,7 +413,16 @@ def runGPAWithSliders(allLandmarkSets, surfaceIndices=None, curves=None,
         coords = _gm_orp(coords)
     meanShapeOut = _gm_sum_list(coords) / n
     outCoords = np.stack(coords, axis=2)   # (p, k, n)
-    return outCoords, meanShapeOut
+    # Write the aligned coordinates back into the caller's array, mirroring the
+    # in-place behavior of the fixed-landmark runGPA / runGPANoScale paths. This
+    # keeps a reused reference (e.g. LMData.lmOrig) on the same unit-centroid-size
+    # scale as the returned coords / mean, so downstream code such as
+    # calcLMVariation() does not mix raw and scaled units.
+    try:
+        allLandmarkSets[...] = outCoords
+        return allLandmarkSets, meanShapeOut
+    except (TypeError, ValueError, AttributeError):
+        return outCoords, meanShapeOut
 
 
 def runGPA(allLandmarkSets, semiLandmarkIndices=None, slidingMethod='BE', curves=None):
@@ -433,7 +442,6 @@ def runGPA(allLandmarkSets, semiLandmarkIndices=None, slidingMethod='BE', curves
   while diff>0.0001 and tries<5:
     allLandmarkSets = procrustesAlign(initialMeanShape,allLandmarkSets)
     currentMeanShape=meanShape(allLandmarkSets)
-    currentMeanShape = scaleShape(currentMeanShape)
     diff=np.linalg.norm(initialMeanShape-currentMeanShape)
     initialMeanShape=currentMeanShape
     tries=tries+1

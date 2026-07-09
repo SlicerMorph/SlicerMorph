@@ -1843,9 +1843,18 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.BoasOption=self.ui.BoasOptionCheckBox.isChecked()
     semiIndices = getattr(self, 'landmarkTypeIncludedIndices', []) or []
     if getattr(self.ui, 'semiSlidingCheckBox', None) and self.ui.semiSlidingCheckBox.isChecked():
+      # Sliding semi-landmarks are only defined on centroid-size-scaled
+      # configurations (as in geomorph). Boas / no-scale coordinates are
+      # therefore incompatible with sliding: override to scaled GPA and tell
+      # the user, so downstream Boas-gated code (e.g. calcLMVariation) stays
+      # consistent with the scaled output.
+      if self.BoasOption:
+        self.BoasOption = False
+        self.ui.GPALogTextbox.insertPlainText("Boas coordinates are not compatible with semi-landmark sliding (sliding requires centroid-size scaling); using standard scaled GPA for this run.\n")
+        print("Boas coordinates overridden: semi-landmark sliding requires centroid-size scaling.")
       slidingMethod = 'BE'
       methodCombo = getattr(self.ui, 'slidingMethodComboBox', None)
-      if methodCombo is not None and 'rocrustes' in methodCombo.currentText:
+      if methodCombo is not None and str(methodCombo.currentText).strip().lower().startswith('proc'):
         slidingMethod = 'ProcD'
       methodLabel = 'Procrustes distance' if slidingMethod == 'ProcD' else 'bending energy'
       self.LM.doGpa(self.BoasOption, semiLandmarkIndices=semiIndices, slidingMethod=slidingMethod)
