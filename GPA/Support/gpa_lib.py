@@ -206,7 +206,7 @@ def _gm_getSurfPCs(y, surf):
     Vt = np.linalg.svd(_gm_center(y), full_matrices=True)[2]
     d = _gm_pairwise_dist(y)
     pc_dir = [np.zeros((k, k)) for _ in range(p)]
-    surf_set = set(int(s) for s in surf)
+    surf_set = {int(s) for s in surf}
     for j in range(p):
         if j not in surf_set:
             continue
