@@ -3226,11 +3226,15 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     if not disp:
       return
     color = self.ui.meanShapeColor.color
-    disp.SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
+    fixed_rgb = [color.red()/255,color.green()/255,color.blue()/255]
+    disp.SetSelectedColor(fixed_rgb)
     # Semi-landmarks are the "unselected" control points; give them a fixed
     # contrasting hue so fixed vs semi stays legible within the single node.
-    # Harmless when there are no semi points (every point is "selected").
-    disp.SetColor(list(getattr(self, 'SEMI_COLOR', (1.0, 0.84, 0.0))))
+    # Gate this on sliding actually being in play (matching _setWarpMode) so a
+    # point deselected elsewhere (e.g. the Markups control-point table) in a
+    # non-sliding analysis is not mistakenly rendered as a semi-landmark.
+    semi_present = bool(getattr(self, '_slidingApplied', False)) and bool(self._semiControlPointIndices())
+    disp.SetColor(list(getattr(self, 'SEMI_COLOR', (1.0, 0.84, 0.0))) if semi_present else fixed_rgb)
     # Note: do NOT propagate to cloneLandmarkNode. The viewer-2 clone color is
     # owned by the active warp source (PCA = dark red, LR = light pink) via
     # _setWarpMode and overriding it here would break that visual convention.
@@ -3306,13 +3310,18 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     if node is None:
       return
     semiSet = set(semiIndices or [])
+    # StartModify outside the try, EndModify in finally, so a raised exception
+    # can never leave the node's modify-block counter unbalanced (which would
+    # stop it emitting Modified/render events). Matches the pattern used in
+    # onLoad's control-point population loop.
+    _wasMod = node.StartModify()
     try:
-      _wasMod = node.StartModify()
       for i in range(node.GetNumberOfControlPoints()):
         node.SetNthControlPointSelected(i, i not in semiSet)
-      node.EndModify(_wasMod)
     except Exception:
       pass
+    finally:
+      node.EndModify(_wasMod)
 
   def _applySemiLandmarkStyling(self):
     """When semi-landmark sliding was used and a semi/fixed designation exists,
