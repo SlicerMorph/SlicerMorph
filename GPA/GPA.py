@@ -759,6 +759,14 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.meanLandmarkNode = None
     self.cloneLandmarkNode = None
     self.copyLandmarkNode = None
+    # Semi-landmark differentiation (only when semi-landmark sliding is used).
+    # Everything must stay in ONE markups node so it warps / records / saves as
+    # a single unit, so fixed vs semi is encoded by the per-control-point
+    # "selected" state: fixed points are selected (mean-shape color), semi
+    # points are unselected (a fixed contrasting hue). Glyph size is uniform
+    # (Slicer markups use one glyph size per node). See _applySemiLandmarkStyling().
+    self._slidingApplied = False
+    self.SEMI_COLOR = (1.0, 0.84, 0.0)  # gold: contrasting hue for semi-landmarks
     self.cloneModelNode = None
     self.modelDisplayNode = None
     self.cloneModelDisplayNode = None
@@ -1680,6 +1688,9 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.BoasOption = logData['GPALog'][0]['Boas']
       self.LMExclusionList = logData['GPALog'][0]['ExcludedLM']
       self.landmarkTypeArray = logData['GPALog'][0].get('SemiLandmarks', [])
+      # Whether semi-landmark sliding was used in the run that produced these
+      # results (absent in results saved before this field existed -> False).
+      self._slidingApplied = bool(logData['GPALog'][0].get('Sliding', False))
     except:
       logging.debug('Log import failed: Cannot read the log file')
       self.ui.GPALogTextbox.insertPlainText("logging.debug('Log import failed: Cannot read the log file\n")
@@ -1767,6 +1778,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.copyLandmarkNode.SetName('Warped Landmarks')
     self.copyLandmarkNode.SetDisplayVisibility(0)
 
+    # If semi-landmark sliding was used, show fixed vs semi landmarks in two
+    # shades of red (semi smaller). Done AFTER the clone above so the viewer-2
+    # warped clone keeps all points visible.
+    self._applySemiLandmarkStyling()
+
     #set up procrustes distance plot
     filename=self.LM.closestSample(self.files)
     self.populateDistanceTable(self.files)
@@ -1842,6 +1858,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     # Do GPA
     self.BoasOption=self.ui.BoasOptionCheckBox.isChecked()
     semiIndices = getattr(self, 'landmarkTypeIncludedIndices', []) or []
+    self._slidingApplied = False
     if getattr(self.ui, 'semiSlidingCheckBox', None) and self.ui.semiSlidingCheckBox.isChecked():
       # Sliding semi-landmarks are only defined on centroid-size-scaled
       # configurations (as in geomorph). Boas / no-scale coordinates are
@@ -1858,6 +1875,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         slidingMethod = 'ProcD'
       methodLabel = 'Procrustes distance' if slidingMethod == 'ProcD' else 'bending energy'
       self.LM.doGpa(self.BoasOption, semiLandmarkIndices=semiIndices, slidingMethod=slidingMethod)
+      self._slidingApplied = True
       self.ui.GPALogTextbox.insertPlainText(f"Semi-landmark sliding enabled for {len(semiIndices)} points (criterion: {methodLabel}).\n")
     else:
       self.LM.doGpa(self.BoasOption)
@@ -1939,6 +1957,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     GPANodeCollection.AddItem(self.copyLandmarkNode)
     self.copyLandmarkNode.SetName('Warped Landmarks')
     self.copyLandmarkNode.SetDisplayVisibility(0)
+
+    # If semi-landmark sliding was used, show fixed vs semi landmarks in two
+    # shades of red (semi smaller). Done AFTER the clone above so the viewer-2
+    # warped clone keeps all points visible.
+    self._applySemiLandmarkStyling()
 
     # Set up output
     dateTimeStamp = datetime.now().strftime('%Y-%m-%d_%H_%M_%S')
@@ -2027,6 +2050,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     self.nodeCleanUp()
 
+    # Reset semi-landmark differentiation state; both load paths repopulate it.
+    self._slidingApplied = False
+    self.landmarkTypeIncludedIndices = []
+    self.landmarkTypeArray = []
+
     # Reset zoom
     if self.widgetZoomFactor > 0:
       cameras=slicer.mrmlScene.GetNodesByClass('vtkMRMLCameraNode')
@@ -2060,6 +2088,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         "OutputData": "outputData.csv",
         "PCScores": "pcScores.csv",
         "SemiLandmarks": self.landmarkTypeArray,
+        "Sliding": bool(getattr(self, '_slidingApplied', False)),
         "CovariatesFile": covariatePath
         }
       ]
@@ -2129,9 +2158,14 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       try:
         d = lm.GetDisplayNode()
         if d is not None:
+          # Fixed (selected) points show the warp-source color. Semi
+          # (unselected) points keep the contrasting SEMI_COLOR so fixed vs
+          # semi stays visible in viewer 2 too. When there are no semi points
+          # every point is selected, so Color is unused -> mirror glyph_rgb.
+          semi_present = bool(getattr(self, '_slidingApplied', False)) and bool(self._semiControlPointIndices())
           try: d.SetSelectedColor(glyph_rgb)
           except Exception: pass
-          try: d.SetColor(glyph_rgb)
+          try: d.SetColor(list(self.SEMI_COLOR) if semi_present else glyph_rgb)
           except Exception: pass
       except Exception:
         pass
@@ -3193,6 +3227,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       return
     color = self.ui.meanShapeColor.color
     disp.SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
+    # Semi-landmarks are the "unselected" control points; give them a fixed
+    # contrasting hue so fixed vs semi stays legible within the single node.
+    # Harmless when there are no semi points (every point is "selected").
+    disp.SetColor(list(getattr(self, 'SEMI_COLOR', (1.0, 0.84, 0.0))))
     # Note: do NOT propagate to cloneLandmarkNode. The viewer-2 clone color is
     # owned by the active warp source (PCA = dark red, LR = light pink) via
     # _setWarpMode and overriding it here would break that visual convention.
@@ -3210,6 +3248,101 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       cdisp = self._display(clone)
       if cdisp:
         cdisp.SetGlyphScale(self.ui.scaleMeanShapeSlider.value)
+
+  # ------------------------------------------------------------------
+  # Semi-landmark differentiation (only when semi-landmark sliding is used)
+  # ------------------------------------------------------------------
+  # Fixed and semi landmarks are drawn in two colors within the SINGLE mean
+  # landmark node so it warps / records / saves as one unit and stays
+  # distinguishable in both viewers. Slicer markups use one glyph size per
+  # node (so size can't vary), but the renderer draws "selected" control
+  # points in SelectedColor and "unselected" ones in Color -- so fixed points
+  # are marked selected (mean-shape color) and semi points unselected
+  # (SEMI_COLOR). Gated on sliding actually being used AND a semi/fixed
+  # designation being present; otherwise every point stays selected and the
+  # display is uniform as before.
+
+  def _semiControlPointIndices(self):
+    """Return the 0-based control-point indices in meanLandmarkNode that are
+    semi-landmarks. Prefers the post-exclusion indices computed during onLoad;
+    otherwise reconstructs them from the saved 1-based original indices plus
+    the exclusion list (the load-from-results path). Returns [] when there is
+    no semi designation."""
+    node = self._node('meanLandmarkNode')
+    n = node.GetNumberOfControlPoints() if node else 0
+    if n == 0:
+      return []
+    # onLoad path: authoritative 0-based indices already in control-point order.
+    inc = getattr(self, 'landmarkTypeIncludedIndices', None)
+    if inc:
+      return sorted({int(i) for i in inc if 0 <= int(i) < n})
+    # onLoadFromFile path: reconstruct from 1-based original semi indices.
+    semiOrig = getattr(self, 'landmarkTypeArray', None) or []
+    if not semiOrig:
+      return []
+    try:
+      excluded0 = {int(x) - 1 for x in (getattr(self, 'LMExclusionList', None) or [])}
+    except (ValueError, TypeError):
+      excluded0 = set()
+    originalCount = n + len(excluded0)
+    included = [j for j in range(originalCount) if j not in excluded0]
+    posOf = {orig: idx for idx, orig in enumerate(included)}
+    out = []
+    for s in semiOrig:
+      try:
+        o = int(s) - 1
+      except (ValueError, TypeError):
+        continue
+      if o in posOf:
+        out.append(posOf[o])
+    return sorted(set(out))
+
+  def _markSemiUnselected(self, node, semiIndices):
+    """Set per-control-point 'selected' state on `node`: fixed points selected
+    (mean-shape color), semi points unselected (SEMI_COLOR). The markups
+    renderer draws the two states in SelectedColor vs Color, so a single node
+    shows both types. With no semi points every point stays selected (uniform).
+    """
+    if node is None:
+      return
+    semiSet = set(semiIndices or [])
+    try:
+      _wasMod = node.StartModify()
+      for i in range(node.GetNumberOfControlPoints()):
+        node.SetNthControlPointSelected(i, i not in semiSet)
+      node.EndModify(_wasMod)
+    except Exception:
+      pass
+
+  def _applySemiLandmarkStyling(self):
+    """When semi-landmark sliding was used and a semi/fixed designation exists,
+    render fixed and semi landmarks in two colors within the SINGLE mean
+    landmark node (and its warp clone, so viewer 2 stays distinguishable too):
+    fixed points are 'selected' (mean-shape color) and semi points are
+    'unselected' (SEMI_COLOR). Everything stays in one node so it warps,
+    records, and saves as a unit. When sliding was not used (or there are no
+    semi points) every point is 'selected' and the display is uniform as before.
+    """
+    node = self._node('meanLandmarkNode')
+    if node is None:
+      return
+    semi = self._semiControlPointIndices() if getattr(self, '_slidingApplied', False) else []
+    # Mark the mean node and its (hidden) warp clone identically so the clone
+    # shown in viewer 2 carries the same fixed/semi coloring after warping.
+    self._markSemiUnselected(node, semi)
+    clone = getattr(self, 'copyLandmarkNode', None)
+    if clone is not None and slicer.mrmlScene.IsNodePresent(clone):
+      self._markSemiUnselected(clone, semi)
+    # Apply the fixed (selected) + semi (unselected) colors to the mean node.
+    self.toggleMeanColor()
+    self.scaleMeanGlyph()
+    if semi:
+      try:
+        self.ui.GPALogTextbox.insertPlainText(
+          f"{len(semi)} semi-landmarks shown in a contrasting color; fixed "
+          f"landmarks use the mean-shape color.\n")
+      except Exception:
+        pass
 
   def onModelSelected(self):
     self.ui.selectorButton.enabled = bool( self.ui.grayscaleSelector.currentPath and self.ui.FudSelect.currentPath)
