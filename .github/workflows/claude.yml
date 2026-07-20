@@ -16,7 +16,9 @@ on:
   pull_request_review:
     types: [submitted]
   issues:
-    types: [opened, assigned]
+    # Only 'opened' (not 'assigned'): assignment can't target a GitHub App and would just
+    # re-fire the job on every reassignment of an issue whose body already contains @claude.
+    types: [opened]
 
 jobs:
   claude:
