@@ -115,18 +115,12 @@ class PseudoLMGeneratorWidget(ScriptedLoadableModuleWidget):
     templateFormLayout.addRow("Sphere", self.SphereType)
 
     #
-    # Specify plane of symmetry
+    # Symmetrize the template
     #
-    self.planeSelector = slicer.qMRMLNodeComboBox()
-    self.planeSelector.nodeTypes = ( ("vtkMRMLMarkupsPlaneNode"), "" )
-    self.planeSelector.enabled = True
-    self.planeSelector.selectNodeUponCreation = False
-    self.planeSelector.addEnabled = False
-    self.planeSelector.removeEnabled = False
-    self.planeSelector.noneEnabled = True
-    self.planeSelector.showHidden = False
-    self.planeSelector.setMRMLScene( slicer.mrmlScene )
-    templateFormLayout.addRow("Symmetry plane: ", self.planeSelector)
+    self.symmetrizeCheckBox = qt.QCheckBox()
+    self.symmetrizeCheckBox.checked = False
+    self.symmetrizeCheckBox.setToolTip("If checked, the mid-sagittal plane is estimated automatically from the model and the template is made bilaterally symmetric, output as matched normal / inverse / midline landmark sets. Leave unchecked for structures that are not bilaterally symmetric.")
+    templateFormLayout.addRow("Symmetrize the template", self.symmetrizeCheckBox)
 
     #
     # Set template scale factor
@@ -260,7 +254,7 @@ class PseudoLMGeneratorWidget(ScriptedLoadableModuleWidget):
     else:
       projectionTemplate = self.templateNode.GetPolyData()
 
-    self.projectedLM = logic.runPointProjection(projectionTemplate, projectionModel, self.templateNode.GetPolyData().GetPoints(), maxProjection, isOriginalGeometry, self.planeSelector.currentNode())
+    self.projectedLM = logic.runPointProjection(projectionTemplate, projectionModel, self.templateNode.GetPolyData().GetPoints(), maxProjection, isOriginalGeometry, None)
 
     # update visualization
     self.templateNode.SetDisplayVisibility(False)
@@ -291,10 +285,29 @@ class PseudoLMGeneratorWidget(ScriptedLoadableModuleWidget):
     #confirm number of cleaned points is in the expected range
     self.subsampleInfo.insertPlainText(f'After filtering there are {self.sphericalSemiLandmarks.GetNumberOfControlPoints()} semi-landmark points. \n')
 
-    if self.planeSelector.currentNode() is not None:
-      print("Symmetrizing points")
-      logic.symmetrizeLandmarks(self.modelSelector.currentNode(), self.sphericalSemiLandmarks, self.planeSelector.currentNode(), spacingPercentage)
+    if self.symmetrizeCheckBox.checked:
+      planeNode = logic.detectSymmetryPlane(self.modelSelector.currentNode())
+      normalNode, inverseNode, midlineNode, symmetricNode = logic.symmetrizeTemplate(self.modelSelector.currentNode(), self.sphericalSemiLandmarks, planeNode, spacingPercentage)
       self.sphericalSemiLandmarks.SetDisplayVisibility(False)
+      # group the matched sides + midline in a folder named after the joint landmark set
+      folderName = symmetricNode.GetName().replace("SymmetricPseudoLandmarks", "SymmetricPseudoLMs")
+      self.nestNodesInFolder([normalNode, inverseNode, midlineNode], folderName)
+      # show only the combined symmetric landmark set by default; hide the rest
+      for node in [self.templateNode, planeNode, normalNode, inverseNode, midlineNode]:
+        node.SetDisplayVisibility(False)
+      symmetricNode.SetDisplayVisibility(True)
+      self.subsampleInfo.insertPlainText(f'Symmetrized about the auto-detected plane: {normalNode.GetNumberOfControlPoints()} normal + {inverseNode.GetNumberOfControlPoints()} inverse (matched pairs) + {midlineNode.GetNumberOfControlPoints()} midline points. \n')
+
+  def nestNodesInFolder(self, nodes, folderName):
+    # Group the given nodes under a new subject-hierarchy folder. folderName is
+    # expected to be unique (the combined node's name), so repeated runs get
+    # their own distinct folder. Per-node visibility is set by the caller; the
+    # folder's own visibility is left on so the shown node stays visible.
+    shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
+    folderItemID = shNode.CreateFolderItem(shNode.GetSceneItemID(), folderName)
+    for node in nodes:
+      shNode.SetItemParent(shNode.GetItemByDataNode(node), folderItemID)
+    return folderItemID
 #
 # PseudoLMGeneratorLogic
 #
@@ -314,6 +327,141 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
       landmarkDescription = "Fixed"
     for controlPointIndex in range(landmarkNode.GetNumberOfControlPoints()):
       landmarkNode.SetNthControlPointDescription(controlPointIndex, landmarkDescription)
+
+  def _pointsToPolyData(self, points):
+    # Wrap an Nx3 numpy array as a vtkPolyData vertex cloud (for ICP / locators).
+    from vtk.util import numpy_support
+    polyData = vtk.vtkPolyData()
+    vtkPoints = vtk.vtkPoints()
+    vtkPoints.SetData(numpy_support.numpy_to_vtk(np.ascontiguousarray(points, dtype=np.float64)))
+    polyData.SetPoints(vtkPoints)
+    vertexFilter = vtk.vtkVertexGlyphFilter()
+    vertexFilter.SetInputData(polyData)
+    vertexFilter.Update()
+    return vertexFilter.GetOutput()
+
+  def detectSymmetryPlane(self, modelNode, sampleSize=40000):
+    # Estimate the bilateral (mid-sagittal) symmetry plane automatically, with no
+    # manually drawn plane and no assumption about surface orientation. The model
+    # is reflected across an initial guess plane and the reflection is rigidly
+    # registered back onto the original (reflective ICP); the composed improper
+    # transform is the mirror operator, whose eigenvector for eigenvalue -1 is the
+    # plane normal. Returns a vtkMRMLMarkupsPlaneNode.
+    points = slicer.util.arrayFromModelPoints(modelNode).astype(float)
+    points = points[np.isfinite(points).all(axis=1)]
+    center = points.mean(axis=0)
+    if len(points) > sampleSize:
+      generator = np.random.default_rng(0)
+      points = points[generator.choice(len(points), sampleSize, replace=False)]
+
+    # Initial guess: reflect across the plane normal to the shortest bounding-box axis.
+    extent = points.max(axis=0) - points.min(axis=0)
+    guessNormal = np.zeros(3)
+    guessNormal[int(np.argmin(extent))] = 1.0
+    reflectionMatrix = np.eye(4)
+    reflectionMatrix[:3, :3] = np.eye(3) - 2.0 * np.outer(guessNormal, guessNormal)
+    reflectionMatrix[:3, 3] = 2.0 * float(center @ guessNormal) * guessNormal
+    reflected = (reflectionMatrix[:3, :3] @ points.T).T + reflectionMatrix[:3, 3]
+
+    # Rigid ICP: reflected cloud -> original cloud.
+    icp = vtk.vtkIterativeClosestPointTransform()
+    icp.SetSource(self._pointsToPolyData(reflected))
+    icp.SetTarget(self._pointsToPolyData(points))
+    icp.GetLandmarkTransform().SetModeToRigidBody()
+    icp.SetMaximumNumberOfIterations(60)
+    icp.Update()
+    icpMatrix = np.array([[icp.GetMatrix().GetElement(i, j) for j in range(4)] for i in range(4)])
+
+    mirror = icpMatrix @ reflectionMatrix
+    eigenvalues, eigenvectors = np.linalg.eig(mirror[:3, :3])
+    normal = np.real(eigenvectors[:, int(np.argmin(eigenvalues.real))])
+    normal = normal / np.linalg.norm(normal)
+    offset = float(normal @ mirror[:3, 3]) / 2.0
+    origin = center - (float(center @ normal) - offset) * normal
+
+    tilt = np.degrees(np.arccos(min(1.0, abs(float(normal @ guessNormal)))))
+    logging.info("PseudoLMGenerator: auto symmetry plane tilt %.2f deg from initial axis" % tilt)
+
+    planeNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsPlaneNode', slicer.mrmlScene.GenerateUniqueName('SymmetryPlane'))
+    planeNode.SetNormalWorld(normal.tolist())
+    planeNode.SetOriginWorld(origin.tolist())
+    return planeNode
+
+  def symmetrizeTemplate(self, modelNode, landmarkNode, plane, samplingPercentage):
+    # Build a bilaterally symmetric template from the generated landmarks and
+    # return it as distinct, index-matched markups nodes: the kept ("normal")
+    # side, its exact mirror ("inverse", in the same order so index i is the
+    # left/right partner across the two nodes), the midline (snapped onto the
+    # plane), and a combined node. One side is kept and reflected so the two
+    # sides correspond exactly, which is what makes the pairs usable for
+    # asymmetry analysis.
+    normal = [0.0, 0.0, 0.0]
+    origin = [0.0, 0.0, 0.0]
+    plane.GetNormalWorld(normal)
+    plane.GetOriginWorld(origin)
+    normal = np.array(normal, dtype=float)
+    normal = normal / np.linalg.norm(normal)
+    offset = float(np.array(origin, dtype=float) @ normal)
+
+    points = slicer.util.arrayFromMarkupsControlPoints(landmarkNode, world=True).astype(float)
+    signed = points @ normal - offset
+
+    def reflectAcrossPlane(pointArray):
+      return pointArray - 2.0 * (pointArray @ normal - offset)[:, None] * normal[None]
+
+    midlineTolerance = 0.5 * samplingPercentage * modelNode.GetPolyData().GetLength()
+    isMidline = np.abs(signed) < midlineTolerance
+
+    # Keep whichever side of the plane carries more points as the reference side.
+    positiveSide = signed >= midlineTolerance
+    negativeSide = signed <= -midlineTolerance
+    normalMask = positiveSide if int(np.count_nonzero(positiveSide)) >= int(np.count_nonzero(negativeSide)) else negativeSide
+
+    normalPoints = points[normalMask]
+    inversePoints = reflectAcrossPlane(normalPoints)
+    midlinePoints = points[isMidline] - signed[isMidline][:, None] * normal[None]
+    midlinePoints = self._mergeClosePoints(midlinePoints, midlineTolerance)
+
+    blocks = [normalPoints, inversePoints]
+    if len(midlinePoints):
+      blocks.append(midlinePoints)
+    combinedPoints = np.vstack(blocks)
+
+    normalNode = self._makeLandmarkNode(normalPoints, 'PseudoLandmarks_normal', [0.0, 0.6, 1.0], 'n')
+    inverseNode = self._makeLandmarkNode(inversePoints, 'PseudoLandmarks_inverse', [1.0, 0.4, 0.0], 'i')
+    midlineNode = self._makeLandmarkNode(midlinePoints, 'PseudoLandmarks_midline', [0.0, 1.0, 0.0], 'm')
+    combinedNode = self._makeLandmarkNode(combinedPoints, 'SymmetricPseudoLandmarks', [1.0, 0.0, 1.0], None)
+    return normalNode, inverseNode, midlineNode, combinedNode
+
+  def _makeLandmarkNode(self, pointsArray, name, color, labelPrefix):
+    # Create a semi-landmark markups node from an Nx3 world-coordinate array.
+    node = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode', slicer.mrmlScene.GenerateUniqueName(name))
+    node.CreateDefaultDisplayNodes()
+    if len(pointsArray):
+      slicer.util.updateMarkupsControlPointsFromArray(node, np.ascontiguousarray(pointsArray, dtype=np.float64), world=True)
+    self.setAllLandmarksType(node, True)
+    if labelPrefix is not None:
+      for controlPointIndex in range(node.GetNumberOfControlPoints()):
+        node.SetNthControlPointLabel(controlPointIndex, "%s_%d" % (labelPrefix, controlPointIndex))
+    node.GetDisplayNode().SetPointLabelsVisibility(False)
+    node.GetDisplayNode().SetSelectedColor(color)
+    return node
+
+  def _mergeClosePoints(self, pointsArray, tolerance):
+    # Merge points closer than tolerance, used to collapse near-duplicate midline
+    # points that straddle the plane. Returns the deduplicated Nx3 array.
+    if len(pointsArray) == 0:
+      return pointsArray
+    from vtk.util import numpy_support
+    cleaner = vtk.vtkCleanPolyData()
+    cleaner.SetInputData(self._pointsToPolyData(pointsArray))
+    cleaner.SetToleranceIsAbsolute(True)
+    cleaner.SetAbsoluteTolerance(tolerance)
+    cleaner.Update()
+    mergedPoints = cleaner.GetOutput().GetPoints()
+    if mergedPoints is None or mergedPoints.GetNumberOfPoints() == 0:
+      return pointsArray
+    return numpy_support.vtk_to_numpy(mergedPoints.GetData()).astype(float)
 
   def runCleaningPointCloud(self, projectedLM, sphere, spacingPercentage):
     # Convert projected surface points to a VTK array for transform
@@ -337,7 +485,7 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
     cleanFilter.Update()
     outputPoints = cleanFilter.GetOutput()
 
-    sphereSampleLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"PseudoLandmarks")
+    sphereSampleLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',slicer.mrmlScene.GenerateUniqueName("PseudoLandmarks"))
     sphereSampleLMNode.CreateDefaultDisplayNodes()
     for i in range(outputPoints.GetNumberOfPoints()):
       point = outputPoints.GetPoint(i)
@@ -367,7 +515,7 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
     cleanPolyData=filter.GetOutput()
 
     # Create a landmark node from the cleaned polyData
-    sphereSampleLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"PseudoLandmarks")
+    sphereSampleLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',slicer.mrmlScene.GenerateUniqueName("PseudoLandmarks"))
     sphereSampleLMNode.CreateDefaultDisplayNodes()
     for i in range(cleanPolyData.GetNumberOfPoints()):
       point = cleanPolyData.GetPoint(i)
@@ -406,7 +554,7 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
     cleanPolyData=filter.GetOutput()
 
     # Create a landmark node from the cleaned polyData
-    sphereSampleLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"PseudoLandmarks")
+    sphereSampleLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',slicer.mrmlScene.GenerateUniqueName("PseudoLandmarks"))
     sphereSampleLMNode.CreateDefaultDisplayNodes()
     for i in range(cleanPolyData.GetNumberOfPoints()):
       point = cleanPolyData.GetPoint(i)
@@ -421,7 +569,7 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
     print('max projection: ', maxProjection)
     # project landmarks from template to model
     projectedPoints = self.projectPointsPolydata(sphere, model, spherePoints, maxProjection)
-    projectedLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"projectedLM")
+    projectedLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',slicer.mrmlScene.GenerateUniqueName("projectedLM"))
     projectedLMNode.CreateDefaultDisplayNodes()
     if(isOriginalGeometry):
       for i in range(projectedPoints.GetNumberOfPoints()):
@@ -502,7 +650,7 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
     return projectedPointData
 
   def getTemplateLandmarks(self, spherePolyData):
-    semiLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"templatePoints")
+    semiLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',slicer.mrmlScene.GenerateUniqueName("templatePoints"))
     semiLMNode.CreateDefaultDisplayNodes()
     for i in range(spherePolyData.GetNumberOfPoints()):
       point = spherePolyData.GetPoint(i)
@@ -511,7 +659,7 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
     return semiLMNode
 
   def addTemplateToScene(self, spherePolyData):
-    sphereNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode',"templateModel")
+    sphereNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode',slicer.mrmlScene.GenerateUniqueName("templateModel"))
     sphereNode.CreateDefaultDisplayNodes()
     sphereNode.SetAndObservePolyData(spherePolyData)
     sphereNode.CreateDefaultDisplayNodes()
