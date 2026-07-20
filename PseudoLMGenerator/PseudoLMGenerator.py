@@ -225,10 +225,6 @@ class PseudoLMGeneratorWidget(ScriptedLoadableModuleWidget):
     else:
       template = logic.generateOriginalGeometryTemplate(self.modelSelector.currentNode(), spacingPercentage)
 
-    #if (self.planeSelector.currentNode() is not None):
-      #self.templatePolyData = logic.cropWithPlane(template, self.planeSelector.currentNode())
-    #else:
-
     self.templatePolyData = template
 
     self.subsampleInfo.insertPlainText(f'The subsampled template has a total of {self.templatePolyData.GetNumberOfPoints()} points. \n')
@@ -254,7 +250,7 @@ class PseudoLMGeneratorWidget(ScriptedLoadableModuleWidget):
     else:
       projectionTemplate = self.templateNode.GetPolyData()
 
-    self.projectedLM = logic.runPointProjection(projectionTemplate, projectionModel, self.templateNode.GetPolyData().GetPoints(), maxProjection, isOriginalGeometry, None)
+    self.projectedLM = logic.runPointProjection(projectionTemplate, projectionModel, self.templateNode.GetPolyData().GetPoints(), maxProjection, isOriginalGeometry)
 
     # update visualization
     self.templateNode.SetDisplayVisibility(False)
@@ -293,9 +289,10 @@ class PseudoLMGeneratorWidget(ScriptedLoadableModuleWidget):
       folderName = symmetricNode.GetName().replace("SymmetricPseudoLandmarks", "SymmetricPseudoLMs")
       self.nestNodesInFolder([normalNode, inverseNode, midlineNode], folderName)
       # show only the combined symmetric landmark set by default; hide the rest
-      for node in [self.templateNode, planeNode, normalNode, inverseNode, midlineNode]:
+      for node in [self.templateNode, normalNode, inverseNode, midlineNode]:
         node.SetDisplayVisibility(False)
       symmetricNode.SetDisplayVisibility(True)
+      slicer.mrmlScene.RemoveNode(planeNode)  # transient: only used to define the reflection
       self.subsampleInfo.insertPlainText(f'Symmetrized about the auto-detected plane: {normalNode.GetNumberOfControlPoints()} normal + {inverseNode.GetNumberOfControlPoints()} inverse (matched pairs) + {midlineNode.GetNumberOfControlPoints()} midline points. \n')
 
   def nestNodesInFolder(self, nodes, folderName):
@@ -418,6 +415,11 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
     normalMask = positiveSide if int(np.count_nonzero(positiveSide)) >= int(np.count_nonzero(negativeSide)) else negativeSide
 
     normalPoints = points[normalMask]
+    # inverse is the exact analytic mirror of the kept side and is intentionally
+    # NOT re-projected onto the model surface: exact left/right correspondence is
+    # required for a symmetric template, and re-projecting would reintroduce
+    # asymmetry. On a near-symmetric reference the mirror lands essentially on the
+    # surface anyway; on a strongly asymmetric one it may sit slightly off it.
     inversePoints = reflectAcrossPlane(normalPoints)
     midlinePoints = points[isMidline] - signed[isMidline][:, None] * normal[None]
     midlinePoints = self._mergeClosePoints(midlinePoints, midlineTolerance)
@@ -564,7 +566,7 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
     self.setAllLandmarksType(sphereSampleLMNode, landmarkTypeSemi)
     return sphereSampleLMNode
 
-  def runPointProjection(self, sphere, model, spherePoints, maxProjectionFactor, isOriginalGeometry, symmetryPlane=None):
+  def runPointProjection(self, sphere, model, spherePoints, maxProjectionFactor, isOriginalGeometry):
     maxProjection = (model.GetLength()) * maxProjectionFactor
     print('max projection: ', maxProjection)
     # project landmarks from template to model
@@ -738,207 +740,6 @@ class PseudoLMGeneratorLogic(ScriptedLoadableModuleLogic):
     cleanFilter.Update()
 
     return cleanFilter.GetOutput()
-
-  def cropWithPlane(self, inputData, plane, insideOutOption=False):
-    normal=[0,0,0]
-    origin=[0,0,0]
-    plane.GetNormalWorld(normal)
-    plane.GetOriginWorld(origin)
-
-    vtkPlane = vtk.vtkPlane()
-    vtkPlane.SetOrigin(origin)
-    vtkPlane.SetNormal(normal)
-    clipper = vtk.vtkClipPolyData()
-    clipper.SetClipFunction(vtkPlane)
-    clipper.SetInputData(inputData)
-    clipper.SetInsideOut(insideOutOption)
-    clipper.Update()
-    return clipper.GetOutput()
-
-  def createSymmetry(self, inputData, plane):
-    normal=[0,0,0]
-    origin=[0,0,0]
-    plane.GetNormalWorld(normal)
-    plane.GetOriginWorld(origin)
-
-    vtkPlane = vtk.vtkPlane()
-    vtkPlane.SetOrigin(origin)
-    vtkPlane.SetNormal(normal)
-    clipper = vtk.vtkClipPolyData()
-    clipper.SetClipFunction(vtkPlane)
-    clipper.SetInputData(inputData)
-    clipper.Update()
-    return cleanFilter.GetOutput()
-
-    mirrorMatrix = vtk.vtkMatrix4x4()
-    mirrorMatrix.SetElement(0, 0, 1 - 2 * normal[0] * normal[0])
-    mirrorMatrix.SetElement(0, 1, - 2 * normal[0] * normal[1])
-    mirrorMatrix.SetElement(0, 2, - 2 * normal[0] * normal[2])
-    mirrorMatrix.SetElement(1, 0, - 2 * normal[0] * normal[1])
-    mirrorMatrix.SetElement(1, 1, 1 - 2 * normal[1] * normal[1])
-    mirrorMatrix.SetElement(1, 2, - 2 * normal[1] * normal[2])
-    mirrorMatrix.SetElement(2, 0, - 2 * normal[0] * normal[2])
-    mirrorMatrix.SetElement(2, 1, - 2 * normal[1] * normal[2])
-    mirrorMatrix.SetElement(2, 2, 1 - 2 * normal[2] * normal[2])
-
-    translateWorldToPlane = [0,0,0]
-    vtk.vtkMath.Add(translateWorldToPlane, origin, translateWorldToPlane)
-    translatePlaneOToWorld = [0,0,0]
-    vtk.vtkMath.Add(translatePlaneOToWorld, origin, translatePlaneOToWorld)
-    vtk.vtkMath.MultiplyScalar(translatePlaneOToWorld ,-1)
-
-    mirrorTransform = vtk.vtkTransform()
-    mirrorTransform.SetMatrix(mirrorMatrix)
-    mirrorTransform.PostMultiply()
-    mirrorTransform.Identity()
-    mirrorTransform.Translate(translatePlaneOToWorld)
-    mirrorTransform.Concatenate(mirrorMatrix)
-    mirrorTransform.Translate(translateWorldToPlane)
-    mirrorFilter = vtk.vtkTransformFilter()
-    mirrorFilter.SetTransform(mirrorTransform)
-    mirrorFilter.SetInputConnection(clipper.GetOutputPort())
-
-    reverseNormalFilter = vtk.vtkReverseSense()
-    reverseNormalFilter.SetInputConnection(mirrorFilter.GetOutputPort())
-    reverseNormalFilter.Update()
-
-    appendFilter = vtk.vtkAppendPolyData()
-    appendFilter.AddInputData(clipper.GetOutput())
-    appendFilter.AddInputData(reverseNormalFilter.GetOutput())
-
-    cleanFilter = vtk.vtkCleanPolyData()
-    cleanFilter.SetInputConnection(appendFilter.GetOutputPort())
-    cleanFilter.Update()
-    return cleanFilter.GetOutput()
-
-  def clipAndMirrorWithPlane(self, inputData, plane):
-    normal=[0,0,0]
-    origin=[0,0,0]
-    plane.GetNormalWorld(normal)
-    plane.GetOriginWorld(origin)
-
-    vtkPlane = vtk.vtkPlane()
-    vtkPlane.SetOrigin(origin)
-    vtkPlane.SetNormal(normal)
-    clipper = vtk.vtkClipPolyData()
-    clipper.SetClipFunction(vtkPlane)
-    clipper.SetInputData(inputData)
-    clipper.Update()
-
-    mirrorMatrix = vtk.vtkMatrix4x4()
-    mirrorMatrix.SetElement(0, 0, 1 - 2 * normal[0] * normal[0])
-    mirrorMatrix.SetElement(0, 1, - 2 * normal[0] * normal[1])
-    mirrorMatrix.SetElement(0, 2, - 2 * normal[0] * normal[2])
-    mirrorMatrix.SetElement(1, 0, - 2 * normal[0] * normal[1])
-    mirrorMatrix.SetElement(1, 1, 1 - 2 * normal[1] * normal[1])
-    mirrorMatrix.SetElement(1, 2, - 2 * normal[1] * normal[2])
-    mirrorMatrix.SetElement(2, 0, - 2 * normal[0] * normal[2])
-    mirrorMatrix.SetElement(2, 1, - 2 * normal[1] * normal[2])
-    mirrorMatrix.SetElement(2, 2, 1 - 2 * normal[2] * normal[2])
-
-    translateWorldToPlane = [0,0,0]
-    vtk.vtkMath.Add(translateWorldToPlane, origin, translateWorldToPlane)
-    translatePlaneOToWorld = [0,0,0]
-    vtk.vtkMath.Add(translatePlaneOToWorld, origin, translatePlaneOToWorld)
-    vtk.vtkMath.MultiplyScalar(translatePlaneOToWorld ,-1)
-
-    mirrorTransform = vtk.vtkTransform()
-    mirrorTransform.SetMatrix(mirrorMatrix)
-    mirrorTransform.PostMultiply()
-    mirrorTransform.Identity()
-    mirrorTransform.Translate(translatePlaneOToWorld)
-    mirrorTransform.Concatenate(mirrorMatrix)
-    mirrorTransform.Translate(translateWorldToPlane)
-    mirrorFilter = vtk.vtkTransformFilter()
-    mirrorFilter.SetTransform(mirrorTransform)
-    mirrorFilter.SetInputConnection(clipper.GetOutputPort())
-
-    reverseNormalFilter = vtk.vtkReverseSense()
-    reverseNormalFilter.SetInputConnection(mirrorFilter.GetOutputPort())
-    reverseNormalFilter.Update()
-
-    return reverseNormalFilter.GetOutput()
-
-  def symmetrizeLandmarks(self, modelNode, landmarkNode, plane, samplingPercentage):
-    # clip and mirror model and points
-    pointsVTK = vtk.vtkPoints()
-    pointPolyData = vtk.vtkPolyData()
-    pointPolyData.SetPoints(pointsVTK)
-    model = modelNode.GetPolyData()
-    for i in range(landmarkNode.GetNumberOfControlPoints()):
-      pointsVTK.InsertNextPoint(landmarkNode.GetNthControlPointPositionVector(i))
-    geometryFilter = vtk.vtkVertexGlyphFilter()
-    geometryFilter.SetInputData(pointPolyData)
-    geometryFilter.Update()
-    vertPolyData = geometryFilter.GetOutput()
-    mirrorPoints = self.clipAndMirrorWithPlane(vertPolyData, plane)
-    mirrorMesh = self.clipAndMirrorWithPlane(model, plane)
-    # get clipped point set
-    clippedPoints = self.cropWithPlane(vertPolyData, plane)
-    insideOutOption = True
-    clippedMesh = self.cropWithPlane(model, plane, insideOutOption)
-
-    # project mirrored points onto model
-    maxProjection = model.GetLength()*.3
-    projectedPoints = self.projectPointsPolydata(mirrorMesh, clippedMesh, mirrorPoints, maxProjection)
-
-    # convert symmetric points to landmark node
-    clippedLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"LM_normal")
-    clippedLMNode.CreateDefaultDisplayNodes()
-    clippedLMNode.SetDisplayVisibility(False)
-    clippedLMNode.GetDisplayNode().SetPointLabelsVisibility(False)
-    pink=[1,0,1]
-    clippedLMNode.GetDisplayNode().SetSelectedColor(pink)
-
-    projectedLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"LM_inverse")
-    projectedLMNode.CreateDefaultDisplayNodes()
-    projectedLMNode.SetDisplayVisibility(False)
-    projectedLMNode.GetDisplayNode().SetPointLabelsVisibility(False)
-    teal=[0,1,1]
-    projectedLMNode.GetDisplayNode().SetSelectedColor(teal)
-
-    midlineLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"LM_merged")
-    midlineLMNode.CreateDefaultDisplayNodes()
-    midlineLMNode.SetDisplayVisibility(False)
-    midlineLMNode.GetDisplayNode().SetPointLabelsVisibility(False)
-    orange=[1,.5,0]
-    midlineLMNode.GetDisplayNode().SetSelectedColor(orange)
-
-    totalLMNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"SymmetricPseudoLandmarks")
-    totalLMNode.CreateDefaultDisplayNodes()
-    totalLMNode.GetDisplayNode().SetPointLabelsVisibility(False)
-    green=[0,1,0]
-    purple=[1,0,1]
-    totalLMNode.GetDisplayNode().SetSelectedColor(green)
-    totalLMNode.GetDisplayNode().SetColor(purple)
-
-    samplingDistance = model.GetLength()*samplingPercentage
-    spatialConstraint = samplingDistance*samplingDistance
-    mergedPoint = [0,0,0]
-    for i in range(projectedPoints.GetNumberOfPoints()):
-      clippedPoint = clippedPoints.GetPoint(i)
-      projectedPoint = projectedPoints.GetPoint(i)
-      distance = vtk.vtkMath().Distance2BetweenPoints(clippedPoint, projectedPoint)
-      if distance > spatialConstraint:
-        clippedLMNode.AddControlPoint(clippedPoint, 'n_'+str(i))
-        projectedLMNode.AddControlPoint(projectedPoint, 'i_'+str(i))
-        totalLMNode.AddControlPoint(clippedPoint, 'n_'+str(i))
-        totalLMNode.AddControlPoint(projectedPoint, 'i_'+str(i))
-      else:
-        mergedPoint[0] = (clippedPoint[0]+projectedPoint[0])/2
-        mergedPoint[1] = (clippedPoint[1]+projectedPoint[1])/2
-        mergedPoint[2] = (clippedPoint[2]+projectedPoint[2])/2
-        totalLMNode.AddControlPoint(mergedPoint, 'm_'+str(i))
-        midlineLMNode.AddControlPoint(mergedPoint, 'm_'+str(i))
-
-    # set pseudo landmarks created to type II
-    landmarkTypeSemi=True
-    self.setAllLandmarksType(totalLMNode, landmarkTypeSemi)
-    self.setAllLandmarksType(midlineLMNode, landmarkTypeSemi)
-    self.setAllLandmarksType(projectedLMNode, landmarkTypeSemi)
-    self.setAllLandmarksType(clippedLMNode, landmarkTypeSemi)
-
-    return projectedLMNode
 
   def process(self, inputVolume, outputVolume, imageThreshold, invert=False, showResult=True):
     """
