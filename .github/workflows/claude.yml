@@ -43,8 +43,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Read the dev branch, not the default (master) this workflow fires from.
-          ref: geomorphTab
+          # Issue/diagnosis runs read the dev branch (not the 'master' default this workflow
+          # fires from). PR-review mentions instead check out the PR's own head, so the review
+          # sees the PR's code rather than geomorphTab.
+          ref: ${{ (github.event_name == 'pull_request_review' || github.event_name == 'pull_request_review_comment') && github.event.pull_request.head.sha || 'geomorphTab' }}
           fetch-depth: 1
 
       - uses: anthropics/claude-code-action@v1
