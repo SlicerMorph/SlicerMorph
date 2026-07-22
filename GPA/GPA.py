@@ -1845,12 +1845,41 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       lmNP=np.asarray(self.LMExclusionList)
     else:
       self.LMExclusionList=[]
+    # Determine which landmarks are Fixed vs Semi from the (optional) description
+    # field, scanning ALL subjects. The description field is NOT required: when it
+    # is absent, every landmark is treated as Fixed (standard GPA). Only genuinely
+    # inconsistent tagging across subjects is surfaced to the user.
     try:
-      self.LM.lmOrig, self.landmarkTypeArray, self.landmarkTypeIncludedIndices = logic.loadLandmarks(self.inputFilePaths, self.LMExclusionList, self.extension)
-    except:
-      logging.debug('Load landmark data failed: Could not create an array from landmark files')
-      self.ui.GPALogTextbox.insertPlainText(f"Load landmark data failed: Could not create an array from landmark files\n")
+      landmarkTypeState, semiLandmarkIndices = logic.classifyLandmarkTypes(self.inputFilePaths, self.extension)
+    except Exception as error:
+      logging.debug(f'Could not read landmark type (description) field: {error}')
+      self.ui.GPALogTextbox.insertPlainText(f"Load landmark data failed: could not read landmark files ({error}).\n")
       return
+    if landmarkTypeState == 'inconsistent':
+      messageBox = qt.QMessageBox()
+      messageBox.setIcon(qt.QMessageBox.Warning)
+      messageBox.setWindowTitle("Inconsistent landmark types")
+      messageBox.setText("The Fixed/Semi landmark designations (description field) are not consistent across all subjects.")
+      messageBox.setInformativeText("Go back and fix the data so every subject agrees, or treat all landmarks as fixed and continue?")
+      fixDataButton = messageBox.addButton("Go back and fix data", qt.QMessageBox.RejectRole)
+      messageBox.addButton("Treat all as fixed", qt.QMessageBox.AcceptRole)
+      messageBox.exec_()
+      if messageBox.clickedButton() == fixDataButton:
+        self.ui.GPALogTextbox.insertPlainText("Load cancelled: inconsistent Fixed/Semi designations across subjects. Correct the description field, then reload.\n")
+        return
+      semiLandmarkIndices = []
+      self.ui.GPALogTextbox.insertPlainText("Inconsistent landmark types ignored: treating all landmarks as fixed.\n")
+
+    try:
+      loadResult = logic.loadLandmarks(self.inputFilePaths, self.LMExclusionList, self.extension, semiIndices=semiLandmarkIndices)
+    except Exception as error:
+      logging.debug(f'Load landmark data failed: {error}')
+      self.ui.GPALogTextbox.insertPlainText(f"Load landmark data failed: {error}\n")
+      return
+    if not loadResult:
+      # loadLandmarks already displayed a specific error dialog and returned.
+      return
+    self.LM.lmOrig, self.landmarkTypeArray, self.landmarkTypeIncludedIndices = loadResult
     shape = self.LM.lmOrig.shape
     print('Loaded ' + str(shape[2]) + ' subjects with ' + str(shape[0]) + ' landmark points.')
     self.ui.GPALogTextbox.insertPlainText(f"Loaded {shape[2]} subjects with {shape[0]} landmark points.\n")
@@ -1860,6 +1889,16 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     semiIndices = getattr(self, 'landmarkTypeIncludedIndices', []) or []
     self._slidingApplied = False
     if getattr(self.ui, 'semiSlidingCheckBox', None) and self.ui.semiSlidingCheckBox.isChecked():
+      # Sliding is requested but nothing is designated 'Semi' (no description
+      # field, or all excluded). Sliding 0 points silently reduces to standard
+      # GPA, which hides the user's intent -- stop and explain instead.
+      if not semiIndices:
+        slicer.util.messageBox(
+          "Semi-landmark sliding is enabled, but no landmarks are designated 'Semi'.\n\n"
+          "Mark the sliding landmarks with the description 'Semi' in every subject's landmark "
+          "file to enable sliding, or uncheck 'Slide semi-landmarks' to run standard GPA.")
+        self.ui.GPALogTextbox.insertPlainText("Analysis stopped: sliding is enabled but no 'Semi' landmarks are defined.\n")
+        return
       # Sliding semi-landmarks are only defined on centroid-size-scaled
       # configurations (as in geomorph). Boas / no-scale coordinates are
       # therefore incompatible with sliding: override to scaled GPA and tell
@@ -3839,14 +3878,57 @@ class GPALogic(ScriptedLoadableModuleLogic):
     annotationLogic = slicer.modules.annotations.logic()
     annotationLogic.CreateSnapShot(name, description, type, 1, imageData)
 
-  def loadLandmarks(self, filePathList, lmToRemove, extension):
+  def semiLandmarkIndicesForFile(self, filePath, extension):
+    """Return the set of 0-based landmark indices designated 'Semi' in one
+    subject file. The description field is optional: a missing description
+    field/column is treated as all-Fixed and never raises."""
+    descriptions = []
+    if 'json' in extension:
+      import pandas
+      table = pandas.DataFrame.from_dict(pandas.read_json(filePath)['markups'][0]['controlPoints'])
+      if 'description' not in table.columns:
+        return set()
+      descriptions = list(table['description'])
+    else:
+      with open(filePath) as datafile:
+        for row in datafile:
+          if fnmatch.fnmatch(row[0], "#*"):
+            continue
+          cols = row.strip().split(',')
+          descriptions.append(cols[12] if len(cols) > 12 else "")
+    return {i for i, d in enumerate(descriptions) if isinstance(d, str) and d == 'Semi'}
+
+  def classifyLandmarkTypes(self, filePathList, extension):
+    """Scan the Fixed/Semi designation (markups 'description' field, or fcsv
+    column 13) across ALL subject files and classify the dataset:
+      'none'         -- no subject designates any landmark 'Semi' (all Fixed)
+      'consistent'   -- every subject designates the SAME set of indices 'Semi'
+      'inconsistent' -- subjects disagree on which indices are 'Semi'
+    Returns (state, semiIndices) where semiIndices is the shared, sorted list of
+    0-based Semi indices when 'consistent', and [] otherwise. Missing tagging is
+    treated as Fixed, so this never raises when the description field is absent."""
+    perSubjectSemi = [self.semiLandmarkIndicesForFile(f, extension) for f in filePathList]
+    if all(len(s) == 0 for s in perSubjectSemi):
+      return 'none', []
+    first = perSubjectSemi[0]
+    if all(s == first for s in perSubjectSemi):
+      return 'consistent', sorted(first)
+    return 'inconsistent', []
+
+  def loadLandmarks(self, filePathList, lmToRemove, extension, semiIndices=None):
     # initial data array
     lmToRemove = [x - 1 for x in lmToRemove]
+    if semiIndices is None:
+      # No pre-resolved designation supplied (e.g. a programmatic/test caller):
+      # classify across all subjects, defaulting to all-Fixed when tagging is
+      # absent or inconsistent. The widget resolves ambiguity via a dialog and
+      # passes an explicit list.
+      _state, semiIndices = self.classifyLandmarkTypes(filePathList, extension)
     if 'json' in extension:
       import pandas
       tempTable = pandas.DataFrame.from_dict(pandas.read_json(filePathList[0])['markups'][0]['controlPoints'])
       landmarkNumber = len(tempTable)
-      rawSemiIndices = [i for i in range(landmarkNumber) if tempTable['description'][i] == 'Semi']
+      rawSemiIndices = [i for i in semiIndices if i < landmarkNumber]
       landmarkTypeArray = [str(i + 1) for i in rawSemiIndices if i not in lmToRemove]
       errorString = ""
       subjectErrorArray = []
@@ -3892,7 +3974,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
         slicer.util.messageBox(warning)
         return
     else:
-      landmarks, landmarkTypeArray = self.initDataArray(filePathList)
+      landmarks, _ = self.initDataArray(filePathList)
       landmarkNumber = landmarks.shape[0]
       for i in range(len(filePathList)):
         tmp1=self.importLandMarks(filePathList[i])
@@ -3903,8 +3985,9 @@ class GPALogic(ScriptedLoadableModuleLogic):
           slicer.util.messageBox(warning)
           return
       included_indices = [j for j in range(landmarkNumber) if j not in lmToRemove]
-      originalSemiIndices = [int(x) - 1 for x in landmarkTypeArray]
-      includedSemiIndices = [included_indices.index(i) for i in originalSemiIndices if i in included_indices]
+      rawSemiIndices = [i for i in semiIndices if i < landmarkNumber]
+      landmarkTypeArray = [str(i + 1) for i in rawSemiIndices if i not in lmToRemove]
+      includedSemiIndices = [included_indices.index(i) for i in rawSemiIndices if i not in lmToRemove]
       landmarks = np.delete(landmarks, lmToRemove, axis=0)
     return landmarks, landmarkTypeArray, includedSemiIndices
 
@@ -3945,7 +4028,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
       if not fnmatch.fnmatch(row[0],"#*"):
         rowNumber+=1
         tmp=(row.strip().split(','))
-        if tmp[12] == 'Semi':
+        if len(tmp) > 12 and tmp[12] == 'Semi':
           landmarkType.append(str(rowNumber))
     i = rowNumber
     landmarks=np.zeros(shape=(rowNumber,dim,subjectNumber))
