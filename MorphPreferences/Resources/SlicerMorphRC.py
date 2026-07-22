@@ -239,14 +239,29 @@ def disableMarkupMiddleButtonDrag():
             if widget:
                 widget.SetEventTranslation(onWidget, middleButtonPress, noModifier, noAction)
 
-def onMarkupNodeAddedDisableMiddleDrag(caller, event):
-    # A markup's widget is created on the next render, not at NodeAddedEvent time,
-    # so re-apply after short delays to catch the newly created widget.
+def scheduleDisableMarkupMiddleButtonDrag():
+    # A markups widget is created by its view's displayable manager on the next
+    # render -- when a markup is added, or when a new view/layout is created --
+    # not synchronously with the triggering event, so re-apply after short delays
+    # to catch the newly created widget.
     for delayMs in (0, 200, 500):
         qt.QTimer.singleShot(delayMs, disableMarkupMiddleButtonDrag)
 
+@vtk.calldata_type(vtk.VTK_OBJECT)
+def onNodeAddedDisableMiddleDrag(caller, event, calldata):
+    # Only react to markups nodes (and their display nodes); skip the many
+    # non-markup nodes in a typical specimen scene.
+    if isinstance(calldata, (slicer.vtkMRMLMarkupsNode, slicer.vtkMRMLMarkupsDisplayNode)):
+        scheduleDisableMarkupMiddleButtonDrag()
+
+def onLayoutChangedDisableMiddleDrag(layoutId):
+    # A layout change creates fresh views whose markups widgets start with the
+    # default mapping, so re-apply even when no markup node was added.
+    scheduleDisableMarkupMiddleButtonDrag()
+
 disableMarkupMiddleButtonDrag()
-slicer.mrmlScene.AddObserver(slicer.vtkMRMLScene.NodeAddedEvent, onMarkupNodeAddedDisableMiddleDrag)
+slicer.mrmlScene.AddObserver(slicer.vtkMRMLScene.NodeAddedEvent, onNodeAddedDisableMiddleDrag)
+slicer.app.layoutManager().connect("layoutChanged(int)", onLayoutChangedDisableMiddleDrag)
 
 logging.info("Done customizing with SlicerMorphRC.py")
 logging.info("On first load of customization, restart Slicer to take effect.")
