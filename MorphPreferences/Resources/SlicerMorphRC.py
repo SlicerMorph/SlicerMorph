@@ -261,7 +261,9 @@ def onLayoutChangedDisableMiddleDrag(layoutId):
 
 disableMarkupMiddleButtonDrag()
 slicer.mrmlScene.AddObserver(slicer.vtkMRMLScene.NodeAddedEvent, onNodeAddedDisableMiddleDrag)
-slicer.app.layoutManager().connect("layoutChanged(int)", onLayoutChangedDisableMiddleDrag)
+layoutManager = slicer.app.layoutManager()
+if layoutManager is not None:
+    layoutManager.connect("layoutChanged(int)", onLayoutChangedDisableMiddleDrag)
 
 logging.info("Done customizing with SlicerMorphRC.py")
 logging.info("On first load of customization, restart Slicer to take effect.")
