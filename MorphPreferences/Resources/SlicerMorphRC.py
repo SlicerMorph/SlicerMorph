@@ -208,6 +208,46 @@ toolBar.addAction(qt.QIcon(":/Icons/Medium/SlicerUndo.png"), "Undo", onUndo)
 toolBar.addAction(qt.QIcon(":/Icons/Medium/SlicerRedo.png"), "Redo", onRedo)
 slicer.util.mainWindow().addToolBar(toolBar)
 
+#
+# Prevent a middle-button drag over a markup from translating the whole node.
+# By default the markups widget maps a middle-button press while the cursor is
+# over a markup (WidgetStateOnWidget) to a whole-widget translate, so an
+# ordinary camera/slice pan that happens to start on a landmark drags every
+# control point instead. Remapping that event to "no action" on each markups
+# widget lets the middle button fall through to the normal camera/slice pan.
+# Left-click control-point editing, handles, and the context menu are unaffected.
+#
+def disableMarkupMiddleButtonDrag():
+    onWidget = slicer.vtkSlicerMarkupsWidget.WidgetStateOnWidget
+    noAction = slicer.vtkSlicerMarkupsWidget.WidgetEventNone
+    middleButtonPress = vtk.vtkCommand.MiddleButtonPressEvent
+    noModifier = vtk.vtkEvent.NoModifier
+    layoutManager = slicer.app.layoutManager()
+    if layoutManager is None:
+        return
+    views = [layoutManager.threeDWidget(i).threeDView()
+             for i in range(layoutManager.threeDViewCount)]
+    views += [layoutManager.sliceWidget(name).sliceView()
+              for name in layoutManager.sliceViewNames()]
+    displayNodes = slicer.util.getNodesByClass("vtkMRMLMarkupsDisplayNode")
+    for view in views:
+        manager = view.displayableManagerByClassName("vtkMRMLMarkupsDisplayableManager")
+        if not manager:
+            continue
+        for displayNode in displayNodes:
+            widget = manager.GetWidget(displayNode)
+            if widget:
+                widget.SetEventTranslation(onWidget, middleButtonPress, noModifier, noAction)
+
+def onMarkupNodeAddedDisableMiddleDrag(caller, event):
+    # A markup's widget is created on the next render, not at NodeAddedEvent time,
+    # so re-apply after short delays to catch the newly created widget.
+    for delayMs in (0, 200, 500):
+        qt.QTimer.singleShot(delayMs, disableMarkupMiddleButtonDrag)
+
+disableMarkupMiddleButtonDrag()
+slicer.mrmlScene.AddObserver(slicer.vtkMRMLScene.NodeAddedEvent, onMarkupNodeAddedDisableMiddleDrag)
+
 logging.info("Done customizing with SlicerMorphRC.py")
 logging.info("On first load of customization, restart Slicer to take effect.")
 
