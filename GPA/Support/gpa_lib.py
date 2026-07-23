@@ -132,6 +132,11 @@ def procDist(monsters,mshape):
 # planes to minimize either bending energy (BE, geomorph ProcD=FALSE, the
 # geomorph default) or Procrustes distance (ProcD, geomorph ProcD=TRUE).
 #
+# SCOPE: the GPA module deliberately exposes SURFACE sliding only.  The curves=
+# argument below is part of the faithful port and is fully implemented, but
+# GPA.py never passes it.  That is a design decision, not an oversight -- do not
+# "finish" it by wiring curve sliders into the module UI.
+#
 # Convention: landmark arrays are (p, k, n) = (landmarks, dims, specimens);
 # each specimen is a (p, k) matrix.  This block is self-contained and does not
 # alter the fixed-landmark GPA path (runGPA / runGPANoScale) when no

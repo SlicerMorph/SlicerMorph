@@ -105,9 +105,9 @@ method references (Bookstein 1997; Gunz et al. 2005; Rohlf 2010) are documented 
 SlicerMorph if you use this option.
 
 ### LIMITATIONS
-Only *surface* semi-landmarks can be slid. Curve semi-landmarks are not yet exposed in the
-interface, although the underlying curve-tangent machinery is implemented. If you need sliding
-along curves, we advise using the R/geomorph package for the superimposition.
+By design, this module slides *surface* semi-landmarks only. Sliding along curves is a deliberate
+non-goal and is not offered; if your analysis requires curve sliders, use the R/geomorph package
+for the superimposition.
 
 ### TUTORIAL
 For more information how to use the module, please see:
