@@ -435,25 +435,33 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
     # if there are no landmark descriptions, these will be set according to the
     # fixed/semiLM box they were entered in
     mergedNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode')
-    for index in range(fixedLM.GetNumberOfControlPoints()):
-      pt = fixedLM.GetNthControlPointPositionVector(index)
-      fiducialLabel = fixedLM.GetNthControlPointLabel(index)
-      fiducialDescription = fixedLM.GetNthControlPointDescription(index)
-      if fiducialDescription == "":
-        fiducialDescription = "Fixed"
-      mergedNode.AddControlPoint(pt,fiducialLabel)
-      mergedNode.SetNthControlPointDescription(index,"Fixed")
+    # The node is in the scene with a display node, so each AddControlPoint would
+    # otherwise fire an event that rebuilds every glyph, making the loop O(n^2).
+    # StartModify/EndModify batches the additions into a single rebuild; try/finally
+    # guarantees events are re-enabled even if the loop raises.
+    wasModifying = mergedNode.StartModify()
+    try:
+      for index in range(fixedLM.GetNumberOfControlPoints()):
+        pt = fixedLM.GetNthControlPointPositionVector(index)
+        fiducialLabel = fixedLM.GetNthControlPointLabel(index)
+        fiducialDescription = fixedLM.GetNthControlPointDescription(index)
+        if fiducialDescription == "":
+          fiducialDescription = "Fixed"
+        mergedNode.AddControlPoint(pt,fiducialLabel)
+        mergedNode.SetNthControlPointDescription(index,"Fixed")
 
-    for index in range(semiLM.GetNumberOfControlPoints()):
-      pt = semiLM.GetNthControlPointPositionVector(index)
-      fiducialLabel = semiLM.GetNthControlPointLabel(index)
-      fiducialDescription = semiLM.GetNthControlPointDescription(index)
-      mergedNode.AddControlPoint(pt,fiducialLabel)
-      mergedIndex = mergedNode.GetNumberOfControlPoints()-1
-      if fiducialDescription == "":
-        mergedNode.SetNthControlPointDescription(mergedIndex,"Semi")
-      else:
-        mergedNode.SetNthControlPointDescription(mergedIndex,fiducialDescription)
+      for index in range(semiLM.GetNumberOfControlPoints()):
+        pt = semiLM.GetNthControlPointPositionVector(index)
+        fiducialLabel = semiLM.GetNthControlPointLabel(index)
+        fiducialDescription = semiLM.GetNthControlPointDescription(index)
+        mergedNode.AddControlPoint(pt,fiducialLabel)
+        mergedIndex = mergedNode.GetNumberOfControlPoints()-1
+        if fiducialDescription == "":
+          mergedNode.SetNthControlPointDescription(mergedIndex,"Semi")
+        else:
+          mergedNode.SetNthControlPointDescription(mergedIndex,fiducialDescription)
+    finally:
+      mergedNode.EndModify(wasModifying)
     return mergedNode
 
   def runApplyLandmarksType(self, markupsTreeView, label):

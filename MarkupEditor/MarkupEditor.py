@@ -89,6 +89,14 @@ class MarkupEditorSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin)
         self.selectAllPointsAction.objectName = 'SelectAllPointsAction'
         self.selectAllPointsAction.connect("triggered()", self.onSelectAllPointsAction)
 
+        self.toggleVisibilityPointsAction = qt.QAction(f"Toggle visibility of selected points", scriptedPlugin)
+        self.toggleVisibilityPointsAction.objectName = 'ToggleVisibilityPointsAction'
+        self.toggleVisibilityPointsAction.connect("triggered()", self.onToggleVisibilityPointsAction)
+
+        self.resetVisibilityPointsAction = qt.QAction(f"Reset visibility of all control points", scriptedPlugin)
+        self.resetVisibilityPointsAction.objectName = 'ResetVisibilityPointsAction'
+        self.resetVisibilityPointsAction.connect("triggered()", self.onResetVisibilityPointsAction)
+
         self.addToGridAction = qt.QAction(f"Add point to grid", scriptedPlugin)
         self.addToGridAction.objectName = 'AddToGridAction'
         self.addToGridAction.connect("triggered()", self.onAddToGridAction)
@@ -163,6 +171,19 @@ class MarkupEditorSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin)
         for index in range(fiducialsNode.GetNumberOfControlPoints()):
           fiducialsNode.SetNthControlPointSelected(index, True)
 
+    def onToggleVisibilityPointsAction(self):
+        fiducialsNode = self.fiducialNodeFromEvent
+        with slicer.util.NodeModify(fiducialsNode):
+          for index in range(fiducialsNode.GetNumberOfControlPoints()):
+            if fiducialsNode.GetNthControlPointSelected(index):
+              fiducialsNode.SetNthControlPointVisibility(index, not fiducialsNode.GetNthControlPointVisibility(index))
+
+    def onResetVisibilityPointsAction(self):
+        fiducialsNode = self.fiducialNodeFromEvent
+        with slicer.util.NodeModify(fiducialsNode):
+          for index in range(fiducialsNode.GetNumberOfControlPoints()):
+            fiducialsNode.SetNthControlPointVisibility(index, True)
+
     def onAddToGridAction(self):
         fiducialsNode = self.fiducialNodeFromEvent
         fiducialIndex = self.fiducialIndexFromEvent
@@ -184,7 +205,7 @@ class MarkupEditorSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin)
     def viewContextMenuActions(self):
         #return [self.selectViewAction, self.editViewAction, self.deleteViewAction, self.addToGridAction]
         return [self.selectViewAction, self.editViewAction, self.deleteViewAction, self.toggleSelectedPointsAction,
-        self.selectAllPointsAction, self.addToGridAction]
+        self.selectAllPointsAction, self.toggleVisibilityPointsAction, self.resetVisibilityPointsAction, self.addToGridAction]
 
     def showViewContextMenuActionsForItem(self, itemID, eventData=None):
         pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler.instance()
@@ -205,6 +226,8 @@ class MarkupEditorSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin)
             menuActions.append('DeleteViewAction')
             menuActions.append('ToggleSelectedPointsAction')
             menuActions.append('SelectAllPointsAction')
+            menuActions.append('ToggleVisibilityPointsAction')
+            menuActions.append('ResetVisibilityPointsAction')
             menuActions.append('AddToGridAction')
             if int(slicer.app.revision)>=30033:
               pluginLogic.setAllowedViewContextMenuActionNamesForItem(itemID, menuActions)
@@ -215,6 +238,8 @@ class MarkupEditorSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin)
             self.deleteViewAction.visible = True
             self.toggleSelectedPointsAction.visible = True
             self.selectAllPointsAction.visible = True
+            self.toggleVisibilityPointsAction.visible = True
+            self.resetVisibilityPointsAction.visible = True
             self.addToGridAction.visible = True
             self.viewNodeFromEvent = viewNode
             self.fiducialNodeFromEvent = associatedNode
