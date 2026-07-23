@@ -341,15 +341,15 @@ class LMData:
       varianceMat = SampleScaleFactor*np.sqrt(varianceMat/(k-1))
     return varianceMat
 
-  def doGpa(self,BoasOption):
+  def doGpa(self,BoasOption, semiLandmarkIndices=None, slidingMethod='BE'):
     i,j,k=self.lmOrig.shape
     self.centriodSize=np.zeros(k)
     for subjectNum in range(k):
       self.centriodSize[subjectNum]=np.linalg.norm(self.lmOrig[:,:,subjectNum]-self.lmOrig[:,:,subjectNum].mean(axis=0))
     if not BoasOption:
-      self.lm, self.mShape=gpa_lib.runGPA(self.lmOrig)
+      self.lm, self.mShape=gpa_lib.runGPA(self.lmOrig, semiLandmarkIndices=semiLandmarkIndices, slidingMethod=slidingMethod)
     else:
-      self.lm, self.mShape=gpa_lib.runGPANoScale(self.lmOrig)
+      self.lm, self.mShape=gpa_lib.runGPANoScale(self.lmOrig, semiLandmarkIndices=semiLandmarkIndices, slidingMethod=slidingMethod)
     self.procdist = gpa_lib.procDist(self.lm, self.mShape)
 
   def calcEigen(self):
@@ -653,6 +653,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.ui.openResultsButton.connect('clicked(bool)', self.onOpenResults)
     self.ui.resultsButton.connect('clicked(bool)', self.onSelectResultsDirectory)
     self.ui.loadResultsButton.connect('clicked(bool)', self.onLoadFromFile)
+    # Sliding criterion selector is only meaningful when semi-landmark sliding is on.
+    if getattr(self.ui, 'slidingMethodComboBox', None) and getattr(self.ui, 'semiSlidingCheckBox', None):
+      self.ui.slidingMethodComboBox.enabled = self.ui.semiSlidingCheckBox.isChecked()
+      self.ui.semiSlidingCheckBox.connect('toggled(bool)', self.ui.slidingMethodComboBox.setEnabled)
 
     ################################### Explore tab connections
     self.ui.plotMeanButton3D.connect('clicked(bool)', self.toggleMeanPlot)
@@ -755,6 +759,14 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.meanLandmarkNode = None
     self.cloneLandmarkNode = None
     self.copyLandmarkNode = None
+    # Semi-landmark differentiation (only when semi-landmark sliding is used).
+    # Everything must stay in ONE markups node so it warps / records / saves as
+    # a single unit, so fixed vs semi is encoded by the per-control-point
+    # "selected" state: fixed points are selected (mean-shape color), semi
+    # points are unselected (a fixed contrasting hue). Glyph size is uniform
+    # (Slicer markups use one glyph size per node). See _applySemiLandmarkStyling().
+    self._slidingApplied = False
+    self.SEMI_COLOR = (1.0, 0.84, 0.0)  # gold: contrasting hue for semi-landmarks
     self.cloneModelNode = None
     self.modelDisplayNode = None
     self.cloneModelDisplayNode = None
@@ -1675,6 +1687,10 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         logData = json.load(json_file)
       self.BoasOption = logData['GPALog'][0]['Boas']
       self.LMExclusionList = logData['GPALog'][0]['ExcludedLM']
+      self.landmarkTypeArray = logData['GPALog'][0].get('SemiLandmarks', [])
+      # Whether semi-landmark sliding was used in the run that produced these
+      # results (absent in results saved before this field existed -> False).
+      self._slidingApplied = bool(logData['GPALog'][0].get('Sliding', False))
     except:
       logging.debug('Log import failed: Cannot read the log file')
       self.ui.GPALogTextbox.insertPlainText("logging.debug('Log import failed: Cannot read the log file\n")
@@ -1762,6 +1778,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.copyLandmarkNode.SetName('Warped Landmarks')
     self.copyLandmarkNode.SetDisplayVisibility(0)
 
+    # If semi-landmark sliding was used, show fixed vs semi landmarks in two
+    # shades of red (semi smaller). Done AFTER the clone above so the viewer-2
+    # warped clone keeps all points visible.
+    self._applySemiLandmarkStyling()
+
     #set up procrustes distance plot
     filename=self.LM.closestSample(self.files)
     self.populateDistanceTable(self.files)
@@ -1824,19 +1845,79 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       lmNP=np.asarray(self.LMExclusionList)
     else:
       self.LMExclusionList=[]
+    # Determine which landmarks are Fixed vs Semi from the (optional) description
+    # field, scanning ALL subjects. The description field is NOT required: when it
+    # is absent, every landmark is treated as Fixed (standard GPA). Only genuinely
+    # inconsistent tagging across subjects is surfaced to the user.
     try:
-      self.LM.lmOrig, self.landmarkTypeArray = logic.loadLandmarks(self.inputFilePaths, self.LMExclusionList, self.extension)
-    except:
-      logging.debug('Load landmark data failed: Could not create an array from landmark files')
-      self.ui.GPALogTextbox.insertPlainText(f"Load landmark data failed: Could not create an array from landmark files\n")
+      landmarkTypeState, semiLandmarkIndices = logic.classifyLandmarkTypes(self.inputFilePaths, self.extension)
+    except Exception as error:
+      logging.debug(f'Could not read landmark type (description) field: {error}')
+      self.ui.GPALogTextbox.insertPlainText(f"Load landmark data failed: could not read landmark files ({error}).\n")
       return
+    if landmarkTypeState == 'inconsistent':
+      messageBox = qt.QMessageBox()
+      messageBox.setIcon(qt.QMessageBox.Warning)
+      messageBox.setWindowTitle("Inconsistent landmark types")
+      messageBox.setText("The Fixed/Semi landmark designations (description field) are not consistent across all subjects.")
+      messageBox.setInformativeText("Go back and fix the data so every subject agrees, or treat all landmarks as fixed and continue?")
+      fixDataButton = messageBox.addButton("Go back and fix data", qt.QMessageBox.RejectRole)
+      messageBox.addButton("Treat all as fixed", qt.QMessageBox.AcceptRole)
+      messageBox.exec_()
+      if messageBox.clickedButton() == fixDataButton:
+        self.ui.GPALogTextbox.insertPlainText("Load cancelled: inconsistent Fixed/Semi designations across subjects. Correct the description field, then reload.\n")
+        return
+      semiLandmarkIndices = []
+      self.ui.GPALogTextbox.insertPlainText("Inconsistent landmark types ignored: treating all landmarks as fixed.\n")
+
+    try:
+      loadResult = logic.loadLandmarks(self.inputFilePaths, self.LMExclusionList, self.extension, semiIndices=semiLandmarkIndices)
+    except Exception as error:
+      logging.debug(f'Load landmark data failed: {error}')
+      self.ui.GPALogTextbox.insertPlainText(f"Load landmark data failed: {error}\n")
+      return
+    if not loadResult:
+      # loadLandmarks already displayed a specific error dialog and returned.
+      return
+    self.LM.lmOrig, self.landmarkTypeArray, self.landmarkTypeIncludedIndices = loadResult
     shape = self.LM.lmOrig.shape
     print('Loaded ' + str(shape[2]) + ' subjects with ' + str(shape[0]) + ' landmark points.')
     self.ui.GPALogTextbox.insertPlainText(f"Loaded {shape[2]} subjects with {shape[0]} landmark points.\n")
 
     # Do GPA
     self.BoasOption=self.ui.BoasOptionCheckBox.isChecked()
-    self.LM.doGpa(self.BoasOption)
+    semiIndices = getattr(self, 'landmarkTypeIncludedIndices', []) or []
+    self._slidingApplied = False
+    if getattr(self.ui, 'semiSlidingCheckBox', None) and self.ui.semiSlidingCheckBox.isChecked():
+      # Sliding is requested but nothing is designated 'Semi' (no description
+      # field, or all excluded). Sliding 0 points silently reduces to standard
+      # GPA, which hides the user's intent -- stop and explain instead.
+      if not semiIndices:
+        slicer.util.messageBox(
+          "Semi-landmark sliding is enabled, but no landmarks are designated 'Semi'.\n\n"
+          "Mark the sliding landmarks with the description 'Semi' in every subject's landmark "
+          "file to enable sliding, or uncheck 'Slide semi-landmarks' to run standard GPA.")
+        self.ui.GPALogTextbox.insertPlainText("Analysis stopped: sliding is enabled but no 'Semi' landmarks are defined.\n")
+        return
+      # Sliding semi-landmarks are only defined on centroid-size-scaled
+      # configurations (as in geomorph). Boas / no-scale coordinates are
+      # therefore incompatible with sliding: override to scaled GPA and tell
+      # the user, so downstream Boas-gated code (e.g. calcLMVariation) stays
+      # consistent with the scaled output.
+      if self.BoasOption:
+        self.BoasOption = False
+        self.ui.GPALogTextbox.insertPlainText("Boas coordinates are not compatible with semi-landmark sliding (sliding requires centroid-size scaling); using standard scaled GPA for this run.\n")
+        print("Boas coordinates overridden: semi-landmark sliding requires centroid-size scaling.")
+      slidingMethod = 'BE'
+      methodCombo = getattr(self.ui, 'slidingMethodComboBox', None)
+      if methodCombo is not None and str(methodCombo.currentText).strip().lower().startswith('proc'):
+        slidingMethod = 'ProcD'
+      methodLabel = 'Procrustes distance' if slidingMethod == 'ProcD' else 'bending energy'
+      self.LM.doGpa(self.BoasOption, semiLandmarkIndices=semiIndices, slidingMethod=slidingMethod)
+      self._slidingApplied = True
+      self.ui.GPALogTextbox.insertPlainText(f"Semi-landmark sliding enabled for {len(semiIndices)} points (criterion: {methodLabel}).\n")
+    else:
+      self.LM.doGpa(self.BoasOption)
     self.LM.calcEigen()
     self.pcNumber=10
     self.updateList()
@@ -1915,6 +1996,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     GPANodeCollection.AddItem(self.copyLandmarkNode)
     self.copyLandmarkNode.SetName('Warped Landmarks')
     self.copyLandmarkNode.SetDisplayVisibility(0)
+
+    # If semi-landmark sliding was used, show fixed vs semi landmarks in two
+    # shades of red (semi smaller). Done AFTER the clone above so the viewer-2
+    # warped clone keeps all points visible.
+    self._applySemiLandmarkStyling()
 
     # Set up output
     dateTimeStamp = datetime.now().strftime('%Y-%m-%d_%H_%M_%S')
@@ -2003,6 +2089,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
     self.nodeCleanUp()
 
+    # Reset semi-landmark differentiation state; both load paths repopulate it.
+    self._slidingApplied = False
+    self.landmarkTypeIncludedIndices = []
+    self.landmarkTypeArray = []
+
     # Reset zoom
     if self.widgetZoomFactor > 0:
       cameras=slicer.mrmlScene.GetNodesByClass('vtkMRMLCameraNode')
@@ -2036,6 +2127,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         "OutputData": "outputData.csv",
         "PCScores": "pcScores.csv",
         "SemiLandmarks": self.landmarkTypeArray,
+        "Sliding": bool(getattr(self, '_slidingApplied', False)),
         "CovariatesFile": covariatePath
         }
       ]
@@ -2105,9 +2197,14 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       try:
         d = lm.GetDisplayNode()
         if d is not None:
+          # Fixed (selected) points show the warp-source color. Semi
+          # (unselected) points keep the contrasting SEMI_COLOR so fixed vs
+          # semi stays visible in viewer 2 too. When there are no semi points
+          # every point is selected, so Color is unused -> mirror glyph_rgb.
+          semi_present = bool(getattr(self, '_slidingApplied', False)) and bool(self._semiControlPointIndices())
           try: d.SetSelectedColor(glyph_rgb)
           except Exception: pass
-          try: d.SetColor(glyph_rgb)
+          try: d.SetColor(list(self.SEMI_COLOR) if semi_present else glyph_rgb)
           except Exception: pass
       except Exception:
         pass
@@ -3168,7 +3265,15 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     if not disp:
       return
     color = self.ui.meanShapeColor.color
-    disp.SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
+    fixed_rgb = [color.red()/255,color.green()/255,color.blue()/255]
+    disp.SetSelectedColor(fixed_rgb)
+    # Semi-landmarks are the "unselected" control points; give them a fixed
+    # contrasting hue so fixed vs semi stays legible within the single node.
+    # Gate this on sliding actually being in play (matching _setWarpMode) so a
+    # point deselected elsewhere (e.g. the Markups control-point table) in a
+    # non-sliding analysis is not mistakenly rendered as a semi-landmark.
+    semi_present = bool(getattr(self, '_slidingApplied', False)) and bool(self._semiControlPointIndices())
+    disp.SetColor(list(getattr(self, 'SEMI_COLOR', (1.0, 0.84, 0.0))) if semi_present else fixed_rgb)
     # Note: do NOT propagate to cloneLandmarkNode. The viewer-2 clone color is
     # owned by the active warp source (PCA = dark red, LR = light pink) via
     # _setWarpMode and overriding it here would break that visual convention.
@@ -3186,6 +3291,106 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       cdisp = self._display(clone)
       if cdisp:
         cdisp.SetGlyphScale(self.ui.scaleMeanShapeSlider.value)
+
+  # ------------------------------------------------------------------
+  # Semi-landmark differentiation (only when semi-landmark sliding is used)
+  # ------------------------------------------------------------------
+  # Fixed and semi landmarks are drawn in two colors within the SINGLE mean
+  # landmark node so it warps / records / saves as one unit and stays
+  # distinguishable in both viewers. Slicer markups use one glyph size per
+  # node (so size can't vary), but the renderer draws "selected" control
+  # points in SelectedColor and "unselected" ones in Color -- so fixed points
+  # are marked selected (mean-shape color) and semi points unselected
+  # (SEMI_COLOR). Gated on sliding actually being used AND a semi/fixed
+  # designation being present; otherwise every point stays selected and the
+  # display is uniform as before.
+
+  def _semiControlPointIndices(self):
+    """Return the 0-based control-point indices in meanLandmarkNode that are
+    semi-landmarks. Prefers the post-exclusion indices computed during onLoad;
+    otherwise reconstructs them from the saved 1-based original indices plus
+    the exclusion list (the load-from-results path). Returns [] when there is
+    no semi designation."""
+    node = self._node('meanLandmarkNode')
+    n = node.GetNumberOfControlPoints() if node else 0
+    if n == 0:
+      return []
+    # onLoad path: authoritative 0-based indices already in control-point order.
+    inc = getattr(self, 'landmarkTypeIncludedIndices', None)
+    if inc:
+      return sorted({int(i) for i in inc if 0 <= int(i) < n})
+    # onLoadFromFile path: reconstruct from 1-based original semi indices.
+    semiOrig = getattr(self, 'landmarkTypeArray', None) or []
+    if not semiOrig:
+      return []
+    try:
+      excluded0 = {int(x) - 1 for x in (getattr(self, 'LMExclusionList', None) or [])}
+    except (ValueError, TypeError):
+      excluded0 = set()
+    originalCount = n + len(excluded0)
+    included = [j for j in range(originalCount) if j not in excluded0]
+    posOf = {orig: idx for idx, orig in enumerate(included)}
+    out = []
+    for s in semiOrig:
+      try:
+        o = int(s) - 1
+      except (ValueError, TypeError):
+        continue
+      if o in posOf:
+        out.append(posOf[o])
+    return sorted(set(out))
+
+  def _markSemiUnselected(self, node, semiIndices):
+    """Set per-control-point 'selected' state on `node`: fixed points selected
+    (mean-shape color), semi points unselected (SEMI_COLOR). The markups
+    renderer draws the two states in SelectedColor vs Color, so a single node
+    shows both types. With no semi points every point stays selected (uniform).
+    """
+    if node is None:
+      return
+    semiSet = set(semiIndices or [])
+    # StartModify outside the try, EndModify in finally, so a raised exception
+    # can never leave the node's modify-block counter unbalanced (which would
+    # stop it emitting Modified/render events). Matches the pattern used in
+    # onLoad's control-point population loop.
+    _wasMod = node.StartModify()
+    try:
+      for i in range(node.GetNumberOfControlPoints()):
+        node.SetNthControlPointSelected(i, i not in semiSet)
+    except Exception:
+      pass
+    finally:
+      node.EndModify(_wasMod)
+
+  def _applySemiLandmarkStyling(self):
+    """When semi-landmark sliding was used and a semi/fixed designation exists,
+    render fixed and semi landmarks in two colors within the SINGLE mean
+    landmark node (and its warp clone, so viewer 2 stays distinguishable too):
+    fixed points are 'selected' (mean-shape color) and semi points are
+    'unselected' (SEMI_COLOR). Everything stays in one node so it warps,
+    records, and saves as a unit. When sliding was not used (or there are no
+    semi points) every point is 'selected' and the display is uniform as before.
+    """
+    node = self._node('meanLandmarkNode')
+    if node is None:
+      return
+    semi = self._semiControlPointIndices() if getattr(self, '_slidingApplied', False) else []
+    # Mark the mean node and its (hidden) warp clone identically so the clone
+    # shown in viewer 2 carries the same fixed/semi coloring after warping.
+    self._markSemiUnselected(node, semi)
+    clone = getattr(self, 'copyLandmarkNode', None)
+    if clone is not None and slicer.mrmlScene.IsNodePresent(clone):
+      self._markSemiUnselected(clone, semi)
+    # Apply the fixed (selected) + semi (unselected) colors to the mean node.
+    self.toggleMeanColor()
+    self.scaleMeanGlyph()
+    if semi:
+      try:
+        self.ui.GPALogTextbox.insertPlainText(
+          f"{len(semi)} semi-landmarks shown in a contrasting color; fixed "
+          f"landmarks use the mean-shape color.\n")
+      except Exception:
+        pass
 
   def onModelSelected(self):
     self.ui.selectorButton.enabled = bool( self.ui.grayscaleSelector.currentPath and self.ui.FudSelect.currentPath)
@@ -3673,21 +3878,64 @@ class GPALogic(ScriptedLoadableModuleLogic):
     annotationLogic = slicer.modules.annotations.logic()
     annotationLogic.CreateSnapShot(name, description, type, 1, imageData)
 
-  def loadLandmarks(self, filePathList, lmToRemove, extension):
+  def semiLandmarkIndicesForFile(self, filePath, extension):
+    """Return the set of 0-based landmark indices designated 'Semi' in one
+    subject file. The description field is optional: a missing description
+    field/column is treated as all-Fixed and never raises."""
+    descriptions = []
+    if 'json' in extension:
+      import pandas
+      table = pandas.DataFrame.from_dict(pandas.read_json(filePath)['markups'][0]['controlPoints'])
+      if 'description' not in table.columns:
+        return set()
+      descriptions = list(table['description'])
+    else:
+      with open(filePath) as datafile:
+        for row in datafile:
+          if fnmatch.fnmatch(row[0], "#*"):
+            continue
+          cols = row.strip().split(',')
+          descriptions.append(cols[12] if len(cols) > 12 else "")
+    return {i for i, d in enumerate(descriptions) if isinstance(d, str) and d == 'Semi'}
+
+  def classifyLandmarkTypes(self, filePathList, extension):
+    """Scan the Fixed/Semi designation (markups 'description' field, or fcsv
+    column 13) across ALL subject files and classify the dataset:
+      'none'         -- no subject designates any landmark 'Semi' (all Fixed)
+      'consistent'   -- every subject designates the SAME set of indices 'Semi'
+      'inconsistent' -- subjects disagree on which indices are 'Semi'
+    Returns (state, semiIndices) where semiIndices is the shared, sorted list of
+    0-based Semi indices when 'consistent', and [] otherwise. Missing tagging is
+    treated as Fixed, so this never raises when the description field is absent."""
+    perSubjectSemi = [self.semiLandmarkIndicesForFile(f, extension) for f in filePathList]
+    if all(len(s) == 0 for s in perSubjectSemi):
+      return 'none', []
+    first = perSubjectSemi[0]
+    if all(s == first for s in perSubjectSemi):
+      return 'consistent', sorted(first)
+    return 'inconsistent', []
+
+  def loadLandmarks(self, filePathList, lmToRemove, extension, semiIndices=None):
     # initial data array
     lmToRemove = [x - 1 for x in lmToRemove]
+    if semiIndices is None:
+      # No pre-resolved designation supplied (e.g. a programmatic/test caller):
+      # classify across all subjects, defaulting to all-Fixed when tagging is
+      # absent or inconsistent. The widget resolves ambiguity via a dialog and
+      # passes an explicit list.
+      _state, semiIndices = self.classifyLandmarkTypes(filePathList, extension)
     if 'json' in extension:
       import pandas
       tempTable = pandas.DataFrame.from_dict(pandas.read_json(filePathList[0])['markups'][0]['controlPoints'])
       landmarkNumber = len(tempTable)
-      landmarkTypeArray=[]
+      rawSemiIndices = [i for i in semiIndices if i < landmarkNumber]
+      landmarkTypeArray = [str(i + 1) for i in rawSemiIndices if i not in lmToRemove]
       errorString = ""
       subjectErrorArray = []
       landmarkErrorArray = []
-      for i in range(landmarkNumber):
-        if tempTable['description'][i] =='Semi':
-          landmarkTypeArray.append(str(i+1))
-      landmarks=np.zeros(shape=(landmarkNumber-len(lmToRemove),3,len(filePathList)))
+      included_indices = [j for j in range(landmarkNumber) if j not in lmToRemove]
+      includedSemiIndices = [included_indices.index(i) for i in rawSemiIndices if i not in lmToRemove]
+      landmarks=np.zeros(shape=(len(included_indices),3,len(filePathList)))
       for i in range(len(filePathList)):
         try:
           tmp1=pandas.DataFrame.from_dict(pandas.read_json(filePathList[i])['markups'][0]['controlPoints'])
@@ -3726,7 +3974,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
         slicer.util.messageBox(warning)
         return
     else:
-      landmarks, landmarkTypeArray = self.initDataArray(filePathList)
+      landmarks, _ = self.initDataArray(filePathList)
       landmarkNumber = landmarks.shape[0]
       for i in range(len(filePathList)):
         tmp1=self.importLandMarks(filePathList[i])
@@ -3736,8 +3984,12 @@ class GPALogic(ScriptedLoadableModuleLogic):
           warning = f"Error: Load file {filePathList[i]} failed. There are {len(tmp1)} landmarks instead of the expected {landmarkNumber}."
           slicer.util.messageBox(warning)
           return
+      included_indices = [j for j in range(landmarkNumber) if j not in lmToRemove]
+      rawSemiIndices = [i for i in semiIndices if i < landmarkNumber]
+      landmarkTypeArray = [str(i + 1) for i in rawSemiIndices if i not in lmToRemove]
+      includedSemiIndices = [included_indices.index(i) for i in rawSemiIndices if i not in lmToRemove]
       landmarks = np.delete(landmarks, lmToRemove, axis=0)
-    return landmarks, landmarkTypeArray
+    return landmarks, landmarkTypeArray, includedSemiIndices
 
   def importLandMarks(self, filePath):
     """Imports the landmarks from file. Does not import sample if a  landmark is -1000
@@ -3776,7 +4028,7 @@ class GPALogic(ScriptedLoadableModuleLogic):
       if not fnmatch.fnmatch(row[0],"#*"):
         rowNumber+=1
         tmp=(row.strip().split(','))
-        if tmp[12] == 'Semi':
+        if len(tmp) > 12 and tmp[12] == 'Semi':
           landmarkType.append(str(rowNumber))
     i = rowNumber
     landmarks=np.zeros(shape=(rowNumber,dim,subjectNumber))
