@@ -271,7 +271,16 @@ def _gm_slide_BE(y, tans, surf, ref, Lk, appBE, BEp):
     tULk = U.T @ Lk
     mid = tULk @ U
     mid = 0.5 * (mid + mid.T)
-    coef = np.linalg.solve(mid, tULk @ yvec)
+    # mid is PSD but can be exactly singular for legitimate configurations:
+    # the bending-energy operator has a (k+1)-per-axis null space (the affine
+    # part), so it goes singular whenever the sliding directions span into it
+    # (coincident semilandmarks, near-coplanar points, or too many sliders for
+    # the landmark count).  geomorph falls back to a generalized inverse here
+    # for the same reason; mirror that instead of raising out of Execute GPA.
+    try:
+        coef = np.linalg.solve(mid, tULk @ yvec)
+    except np.linalg.LinAlgError:
+        coef = np.linalg.pinv(mid) @ (tULk @ yvec)
     res = (U @ coef).reshape(m, k, order='F')
     if appBE:
         temp = np.zeros((p, k))
