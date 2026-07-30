@@ -141,6 +141,43 @@
             </property>
            </widget>
           </item>
+          <item row="3" column="0">
+           <widget class="QLabel" name="outputTransformOptionalLabel">
+            <property name="text">
+             <string>Output transform (optional): </string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="1">
+           <widget class="qMRMLNodeComboBox" name="outputTransformSelector">
+            <property name="enabled">
+             <bool>true</bool>
+            </property>
+            <property name="toolTip">
+             <string>Optional. If set, the complete source-to-target transform (all selected registration steps combined) is stored in this node, so it can be applied to other nodes or saved to file.</string>
+            </property>
+            <property name="nodeTypes">
+             <stringlist>
+              <string>vtkMRMLTransformNode</string>
+             </stringlist>
+            </property>
+            <property name="noneEnabled">
+             <bool>true</bool>
+            </property>
+            <property name="addEnabled">
+             <bool>true</bool>
+            </property>
+            <property name="removeEnabled">
+             <bool>true</bool>
+            </property>
+            <property name="renameEnabled">
+             <bool>true</bool>
+            </property>
+            <property name="noneDisplay">
+             <string>(None)</string>
+            </property>
+           </widget>
+          </item>
          </layout>
         </widget>
        </item>
@@ -184,7 +221,7 @@
             <item>
              <widget class="QCheckBox" name="affineCheckBox">
               <property name="toolTip">
-               <string>Apply affine registration (adds shear)</string>
+               <string>Apply affine registration (adds shear). Usually unnecessary when deformable registration is enabled: it roughly doubles the run time without improving the final accuracy.</string>
               </property>
               <property name="text">
                <string>Affine</string>
@@ -412,14 +449,14 @@
           <item row="4" column="0">
            <widget class="QLabel" name="fastModeLabel">
             <property name="text">
-             <string>Fast mode (no grid transform):</string>
+             <string>Fast mode (warp vertices directly):</string>
             </property>
            </widget>
           </item>
           <item row="4" column="1">
            <widget class="QCheckBox" name="fastModeCheckBox">
             <property name="toolTip">
-             <string>If checked, directly deform model vertices without creating a grid transform node. Faster but no reusable transform.</string>
+             <string>If checked, the deformed model is produced by warping its vertices directly instead of resampling them through the displacement grid. The deformable transform node is created either way.</string>
             </property>
             <property name="checked">
              <bool>true</bool>
@@ -429,26 +466,29 @@
           <item row="5" column="0">
            <widget class="QLabel" name="gridSpacingLabel">
             <property name="text">
-             <string>Grid density (if not fast):</string>
+             <string>Grid spacing (mm):</string>
             </property>
            </widget>
           </item>
           <item row="5" column="1">
            <widget class="ctkSliderWidget" name="gridSpacingSlider">
             <property name="toolTip">
-             <string>Grid density control. Lower = finer grid (more accurate, slower). Higher = coarser grid (faster).</string>
+             <string>Sample spacing of the deformable displacement grid, in millimeters. The deformation field is smooth, so 1 mm is normally enough; smaller values only increase memory and computation time. The spacing is automatically coarsened if the requested value would produce an excessively large grid.</string>
+            </property>
+            <property name="decimals">
+             <number>2</number>
             </property>
             <property name="singleStep">
-             <double>0.500000000000000</double>
+             <double>0.100000000000000</double>
             </property>
             <property name="minimum">
-             <double>1.000000000000000</double>
+             <double>0.100000000000000</double>
             </property>
             <property name="maximum">
              <double>10.000000000000000</double>
             </property>
             <property name="value">
-             <double>2.000000000000000</double>
+             <double>1.000000000000000</double>
             </property>
            </widget>
           </item>
@@ -702,6 +742,58 @@
         </widget>
        </item>
        <item>
+        <widget class="ctkCollapsibleButton" name="deformableRegistrationAdvancedWidget">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="text">
+          <string>Deformable registration</string>
+         </property>
+         <property name="collapsed">
+          <bool>false</bool>
+         </property>
+         <layout class="QFormLayout" name="deformableRegistrationAdvancedLayout">
+          <item row="0" column="0">
+           <widget class="QLabel" name="accelerationLabel">
+            <property name="text">
+             <string>Acceleration (BCPD):</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QCheckBox" name="accelerationCheckBox">
+            <property name="toolTip">
+             <string>If checked, the deformable step is computed with the external BCPD binary instead of the built-in cpdalp implementation. This is typically two orders of magnitude faster at equivalent accuracy. Requires the BCPD directory below.</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="BCPDFolderLabel">
+            <property name="text">
+             <string>BCPD directory:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="ctkPathLineEdit" name="BCPDFolder" native="true">
+            <property name="enabled">
+             <bool>false</bool>
+            </property>
+            <property name="toolTip">
+             <string>Select the directory containing the compiled BCPD executable. This setting is shared with ALPACA, so it only has to be set once.</string>
+            </property>
+            <property name="filters">
+             <set>ctkPathLineEdit::Dirs</set>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
         <spacer name="advancedVerticalSpacer">
          <property name="orientation">
           <enum>Qt::Vertical</enum>
@@ -731,6 +823,11 @@
    <class>ctkDoubleSpinBox</class>
    <extends>QWidget</extends>
    <header>ctkDoubleSpinBox.h</header>
+  </customwidget>
+  <customwidget>
+   <class>ctkPathLineEdit</class>
+   <extends>QWidget</extends>
+   <header>ctkPathLineEdit.h</header>
   </customwidget>
   <customwidget>
    <class>ctkSliderWidget</class>
