@@ -540,22 +540,34 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         leafTransformNode = (self.scalingTransformNode or self.ICPTransformNode
                              or affineTransformNode or deformableTransformNode)
         if leafTransformNode is not None:
-            leafTransformNode.SetName(leafTransformNode.GetName() + " (source-to-target)")
+            # Describe, but do not rename: the existing node names are part of the
+            # module's established behaviour and may be relied on by scripts.
             leafTransformNode.SetDescription(
                 _("Complete transform from the original source model to the target model."))
+            logging.info("FastModelAlign: complete source-to-target transform is "
+                         f"'{leafTransformNode.GetName()}'")
 
             outputTransformNode = self.ui.outputTransformSelector.currentNode()
             if outputTransformNode is not None:
-                if deformableTransformNode is not None and outputTransformNode.IsA("vtkMRMLLinearTransformNode"):
+                # Flatten the whole chain so that a single node holds the complete
+                # source -> target transform.
+                compositeTransform = vtk.vtkGeneralTransform()
+                leafTransformNode.GetTransformToWorld(compositeTransform)
+                # A chain of purely linear steps still arrives here as a
+                # vtkGeneralTransform, which vtkMRMLLinearTransformNode refuses (it
+                # requires a vtkLinearTransform) - silently, via vtkErrorMacro. So
+                # extract the matrix whenever the composite is in fact linear.
+                concatenatedLinear = vtk.vtkTransform()
+                isLinear = slicer.vtkMRMLTransformNode.IsGeneralTransformLinear(
+                    compositeTransform, concatenatedLinear)
+                if isLinear:
+                    outputTransformNode.SetMatrixTransformToParent(concatenatedLinear.GetMatrix())
+                elif outputTransformNode.IsA("vtkMRMLLinearTransformNode"):
                     slicer.util.warningDisplay(
                         _("The selected output transform node can only hold linear transforms, "
                           "so the deformable result was not copied into it. Use the transform "
                           "chain in the scene instead, or select a generic transform node."))
                 else:
-                    # Flatten the whole chain into the user-selected node so that a single
-                    # node holds the complete source -> target transform.
-                    compositeTransform = vtk.vtkGeneralTransform()
-                    leafTransformNode.GetTransformToWorld(compositeTransform)
                     outputTransformNode.SetAndObserveTransformToParent(compositeTransform)
 
         # ============ OUTPUT MODEL ============
@@ -808,6 +820,11 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
     # than the CPD iteration/tolerance sliders, which only drive the cpdalp path.
     BCPD_FIXED_ARGUMENTS = ["-w0.1", "-g0.1", "-ux", "-n200", "-c1e-6", "-A"]
 
+    # The registration runs on the main thread, so a wedged external binary would
+    # otherwise hang the application with no way to cancel. Timing out raises, and
+    # the caller treats any BCPD failure as a signal to fall back to cpdalp.
+    BCPD_TIMEOUT_SECONDS = 600
+
     def runDeformableRegistration(self, sourceModelNode, sourcePoints, targetPoints,
                                   parameters, fastMode=True):
         """Run the deformable step and return (gridTransformNode, deformedModelNode).
@@ -959,10 +976,15 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
             logging.info("FastModelAlign: running " + " ".join(command))
             try:
                 completed = subprocess.run(command, check=True, text=True,
-                                           capture_output=True, cwd=workingDirectory)
+                                           capture_output=True, cwd=workingDirectory,
+                                           timeout=self.BCPD_TIMEOUT_SECONDS)
             except subprocess.CalledProcessError as e:
                 raise RuntimeError(
                     f"BCPD exited with code {e.returncode}: {(e.stderr or '').strip()}")
+            except subprocess.TimeoutExpired:
+                # subprocess.run kills the child before re-raising.
+                raise RuntimeError(
+                    f"BCPD did not finish within {self.BCPD_TIMEOUT_SECONDS} s and was terminated")
             if completed.stderr:
                 logging.info(f"BCPD stderr: {completed.stderr.strip()}")
 
