@@ -174,10 +174,14 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.landmarksSelector1.enabled = False
         self.ui.landmarksSelector2.enabled = False
 
+    def isSynced(self):
+        """True between Link and Unlink, i.e. while the module is driving the scene."""
+        return bool(self.ui.unlinkButton.enabled)
+
     def onLandmarkChanged(self):
         """Called when landmark selection changes - update visibility and transforms immediately"""
-        # Only process if we're in synced state (the link button is disabled while synced)
-        if not hasattr(self, 'viewNode1') or self.ui.linkButton.enabled:
+        # Only process if we're in synced state
+        if not hasattr(self, 'viewNode1') or not self.isSynced():
             return
 
         # Validate that selected landmarks are not the same as objects
@@ -227,7 +231,12 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._updatingJointEditing = True
         try:
             editNode1, editNode2 = self.jointEditingNodes()
-            wanted = bool(self.ui.jointEditCheckBox.enabled
+            # Gated on the sync being active, so that merely picking two point lists
+            # in the object selectors never locks them or attaches observers before
+            # Link. The gate lives here rather than in each caller so no future call
+            # site can start joint editing outside a sync.
+            wanted = bool(self.isSynced()
+                          and self.ui.jointEditCheckBox.enabled
                           and self.ui.jointEditCheckBox.checked
                           and editNode1 and editNode2)
 
@@ -361,6 +370,7 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.updateJointEditingAvailability()
         # The object selectors stay live during a sync, so re-target (or drop)
         # joint editing rather than leaving observers on the previous node.
+        # updateJointEditing() is a no-op outside a sync.
         self.updateJointEditing()
 
 
