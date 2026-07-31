@@ -803,7 +803,7 @@
              <bool>false</bool>
             </property>
             <property name="toolTip">
-             <string>Select the directory containing the compiled BCPD executable. This setting is shared with ALPACA, so it only has to be set once.</string>
+             <string>Select the directory containing the compiled BCPD executable. BCPD (Bayesian Coherent Point Drift) is a separate MIT-licensed program by Osamu Hirose, https://github.com/ohirose/bcpd - it is not bundled with SlicerMorph and you install it yourself. This setting is shared with ALPACA, so it only has to be set once.</string>
             </property>
             <property name="filters">
              <set>ctkPathLineEdit::Dirs</set>
@@ -823,7 +823,7 @@
              <bool>false</bool>
             </property>
             <property name="toolTip">
-             <string>Measure distance along the surface instead of through space when smoothing the deformation (GBCPD). The Gaussian kernel couples points that are close in space, so a thin structure lying beside a larger one - a zygomatic arch beside the braincase - is dragged along with its neighbour rather than deforming independently. The geodesic kernel treats them as far apart because the path between them runs along the surface. Only available with BCPD acceleration; the built-in cpdalp backend has no geodesic kernel.</string>
+             <string>Measure distance along the surface instead of through space when smoothing the deformation (GBCPD). The Gaussian kernel couples points that are close in space, so a thin structure lying beside a larger one - a zygomatic arch beside the braincase - is dragged along with its neighbour rather than deforming independently. The geodesic kernel treats them as far apart because the path between them runs along the surface. Only available with BCPD acceleration; the built-in cpdalp backend has no geodesic kernel. Implements GBCPD (Hirose, IEEE TPAMI 2022); please cite it if you use this option.</string>
             </property>
             <property name="text">
              <string>Use geodesic kernel (GBCPD)</string>

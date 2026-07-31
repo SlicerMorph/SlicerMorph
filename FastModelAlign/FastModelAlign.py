@@ -33,9 +33,26 @@ class FastModelAlign(ScriptedLoadableModule):
         self.parent.contributors = ["Chi Zhang (SCRI), Murat Maga (UW)"]  # TODO: replace with "Firstname Lastname (Organization)"
         # TODO: update with short description of the module and a link to online module documentation
         self.parent.helpText = """This module uses ALPACA libraries to do rigid and affine transforms of 3D Models quickly via pointcloud registration.
-See the usage tutorial at <a href="https://github.com/SlicerMorph/Tutorials/tree/master/FastModelAlign">module documentation</a>."""
+See the usage tutorial at <a href="https://github.com/SlicerMorph/Tutorials/tree/master/FastModelAlign">module documentation</a>.
+<p>The deformable step can optionally be accelerated with <a href="https://github.com/ohirose/bcpd">BCPD</a>
+(Bayesian Coherent Point Drift) by Osamu Hirose, which also provides the geodesic
+kernel. BCPD is a separate program that you install yourself; point the module at
+it under Advanced Settings. Please cite the papers listed in the acknowledgements
+if you use it."""
         # TODO: replace with organization, grant and thanks
-        self.parent.acknowledgementText = """The development of the module was supported by NSF/OAC grant, HDR Institute: Imageomics: A New Frontier of Biological Information Powered by Knowledge-Guided Machine Learnings" (Award #2118240)."""
+        self.parent.acknowledgementText = """The development of the module was supported by NSF/OAC grant, HDR Institute: Imageomics: A New Frontier of Biological Information Powered by Knowledge-Guided Machine Learnings" (Award #2118240).
+<p>The optional accelerated deformable registration is performed by
+<a href="https://github.com/ohirose/bcpd">BCPD</a>, written by Osamu Hirose and
+distributed under the MIT license (Copyright (c) 2019-2023 Osamu Hirose). BCPD is
+not bundled with this module; it is installed separately by the user. If you use
+it, please cite:
+<ul>
+<li>O. Hirose, "A Bayesian formulation of coherent point drift," IEEE TPAMI, Feb 2020.</li>
+<li>O. Hirose, "Acceleration of non-rigid point set registration with downsampling
+and Gaussian process regression," IEEE TPAMI, Dec 2020.</li>
+<li>O. Hirose, "Geodesic-Based Bayesian Coherent Point Drift," IEEE TPAMI, Oct 2022
+(used when the geodesic kernel is enabled).</li>
+</ul>"""
 
         # Additional initialization step after application startup is complete
         slicer.app.connect("startupCompleted()", registerSampleData)
@@ -868,6 +885,11 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
     # same mapping ALPACA uses. The rest are the values validated on real specimen
     # data; in particular BCPD's own convergence settings (-n/-c) are used rather
     # than the CPD iteration/tolerance sliders, which only drive the cpdalp path.
+    # BCPD (Bayesian Coherent Point Drift) is an external program by Osamu Hirose,
+    # MIT licensed, https://github.com/ohirose/bcpd - not bundled here, the user
+    # installs it and points the module at it. See the module acknowledgements for
+    # the papers to cite: BCPD (TPAMI 2020), the downsampling/GP acceleration used
+    # by -A (TPAMI 2020), and GBCPD for the geodesic kernel (TPAMI 2022).
     BCPD_FIXED_ARGUMENTS = ["-w0.1", "-g0.1", "-ux", "-n200", "-c1e-6", "-A"]
 
     # Geodesic kernel (GBCPD). The Gaussian kernel measures distance through space,
