@@ -33,9 +33,26 @@ class FastModelAlign(ScriptedLoadableModule):
         self.parent.contributors = ["Chi Zhang (SCRI), Murat Maga (UW)"]  # TODO: replace with "Firstname Lastname (Organization)"
         # TODO: update with short description of the module and a link to online module documentation
         self.parent.helpText = """This module uses ALPACA libraries to do rigid and affine transforms of 3D Models quickly via pointcloud registration.
-See the usage tutorial at <a href="https://github.com/SlicerMorph/Tutorials/tree/master/FastModelAlign">module documentation</a>."""
+See the usage tutorial at <a href="https://github.com/SlicerMorph/Tutorials/tree/master/FastModelAlign">module documentation</a>.
+<p>The deformable step can optionally be accelerated with <a href="https://github.com/ohirose/bcpd">BCPD</a>
+(Bayesian Coherent Point Drift) by Osamu Hirose, which also provides the geodesic
+kernel. BCPD is a separate program that you install yourself; point the module at
+it under Advanced Settings. Please cite the papers listed in the acknowledgements
+if you use it."""
         # TODO: replace with organization, grant and thanks
-        self.parent.acknowledgementText = """The development of the module was supported by NSF/OAC grant, HDR Institute: Imageomics: A New Frontier of Biological Information Powered by Knowledge-Guided Machine Learnings" (Award #2118240)."""
+        self.parent.acknowledgementText = """The development of the module was supported by NSF/OAC grant, HDR Institute: Imageomics: A New Frontier of Biological Information Powered by Knowledge-Guided Machine Learnings" (Award #2118240).
+<p>The optional accelerated deformable registration is performed by
+<a href="https://github.com/ohirose/bcpd">BCPD</a>, written by Osamu Hirose and
+distributed under the MIT license (Copyright (c) 2019-2023 Osamu Hirose). BCPD is
+not bundled with this module; it is installed separately by the user. If you use
+it, please cite:
+<ul>
+<li>O. Hirose, "A Bayesian formulation of coherent point drift," IEEE TPAMI, Feb 2020.</li>
+<li>O. Hirose, "Acceleration of non-rigid point set registration with downsampling
+and Gaussian process regression," IEEE TPAMI, Dec 2020.</li>
+<li>O. Hirose, "Geodesic-Based Bayesian Coherent Point Drift," IEEE TPAMI, Oct 2022
+(used when the geodesic kernel is enabled).</li>
+</ul>"""
 
         # Additional initialization step after application startup is complete
         slicer.app.connect("startupCompleted()", registerSampleData)
@@ -168,6 +185,8 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # BCPD acceleration of the deformable step (optional external binary)
         self.ui.accelerationCheckBox.connect("toggled(bool)", self.onAccelerationToggled)
         self.ui.BCPDFolder.connect("validInputChanged(bool)", self.onChangeBCPDPath)
+        self.ui.geodesicKernelCheckBox.connect("toggled(bool)", self.onGeodesicKernelToggled)
+        self.ui.geodesicTauSlider.connect("valueChanged(double)", self.onChangeAdvanced)
 
         # Restore the persisted BCPD path (shared with ALPACA) and acceleration state.
         savedBCPDPath = self.logic.getBCPDPath()
@@ -193,6 +212,8 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             "gridSpacing": self.ui.gridSpacingSlider.value,
             "gridSpacingAuto": self.ui.gridSpacingAutoCheckBox.checked,
             "Acceleration": self.ui.accelerationCheckBox.checked,
+            "GeodesicKernel": self.ui.geodesicKernelCheckBox.checked,
+            "GeodesicTau": self.ui.geodesicTauSlider.value,
             "BCPDFolder": self.ui.BCPDFolder.currentPath,
             }
 
@@ -242,7 +263,20 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     def onAccelerationToggled(self, checked):
         """Enable/disable the BCPD path entry and persist the checkbox state."""
         self.ui.BCPDFolder.enabled = bool(checked)
+        # The geodesic kernel is a BCPD feature; cpdalp has only a Gaussian kernel,
+        # so it cannot be offered on the built-in path.
+        self.ui.geodesicKernelCheckBox.enabled = bool(checked)
+        if not checked:
+            self.ui.geodesicKernelCheckBox.checked = False
+        self.onGeodesicKernelToggled(self.ui.geodesicKernelCheckBox.checked)
         self.logic.saveAccelerationEnabled(bool(checked))
+        self.updateParameterDictionary()
+
+    def onGeodesicKernelToggled(self, checked):
+        """Tau only means anything while the geodesic kernel is in use."""
+        usable = bool(checked) and self.ui.accelerationCheckBox.checked
+        self.ui.geodesicTauSlider.enabled = usable
+        self.ui.geodesicTauLabel.enabled = usable
         self.updateParameterDictionary()
 
     def onChangeBCPDPath(self):
@@ -267,6 +301,8 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.parameterDictionary["gridSpacing"] = self.ui.gridSpacingSlider.value
             self.parameterDictionary["gridSpacingAuto"] = self.ui.gridSpacingAutoCheckBox.checked
             self.parameterDictionary["Acceleration"] = self.ui.accelerationCheckBox.checked
+            self.parameterDictionary["GeodesicKernel"] = self.ui.geodesicKernelCheckBox.checked
+            self.parameterDictionary["GeodesicTau"] = self.ui.geodesicTauSlider.value
             self.parameterDictionary["BCPDFolder"] = self.ui.BCPDFolder.currentPath
 
 
@@ -849,7 +885,27 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
     # same mapping ALPACA uses. The rest are the values validated on real specimen
     # data; in particular BCPD's own convergence settings (-n/-c) are used rather
     # than the CPD iteration/tolerance sliders, which only drive the cpdalp path.
+    # BCPD (Bayesian Coherent Point Drift) is an external program by Osamu Hirose,
+    # MIT licensed, https://github.com/ohirose/bcpd - not bundled here, the user
+    # installs it and points the module at it. See the module acknowledgements for
+    # the papers to cite: BCPD (TPAMI 2020), the downsampling/GP acceleration used
+    # by -A (TPAMI 2020), and GBCPD for the geodesic kernel (TPAMI 2022).
     BCPD_FIXED_ARGUMENTS = ["-w0.1", "-g0.1", "-ux", "-n200", "-c1e-6", "-A"]
+
+    # Geodesic kernel (GBCPD). The Gaussian kernel measures distance through space,
+    # so a thin structure lying beside a larger one is coupled to it and gets dragged
+    # along instead of deforming on its own: on a mouse -> tree shrew pair the
+    # deformable step left the zygomatic arches 2.31 mm short of the target, worse
+    # than the 1.74 mm they were at before it ran. Measuring along the surface
+    # decouples them - the same pair reached 1.05 mm at tau 0.2.
+    #
+    # bcpd builds the surface graph itself from the point cloud
+    # (-G'geo,<tau>,<neighbours>,<radius>'), so no mesh has to be supplied. The
+    # radius is derived from the control-point spacing rather than fixed, for the
+    # same reason the grid spacing is: a constant in normalized units is only right
+    # for one point density.
+    BCPD_GEODESIC_NEIGHBOURS = 8
+    BCPD_GEODESIC_RADIUS_FACTOR = 2.0
 
     # The registration runs on the main thread, so a wedged external binary would
     # otherwise hang the application with no way to cancel. Timing out raises, and
@@ -1009,6 +1065,8 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
                         f"-l{float(parameters['alpha']):g}",
                         f"-b{float(parameters['beta']):g}"]
                        + list(self.BCPD_FIXED_ARGUMENTS))
+            if parameters.get("GeodesicKernel", False):
+                command.append(self.geodesicKernelArgument(sourceNorm, parameters))
             logging.info("FastModelAlign: running " + " ".join(command))
             try:
                 completed = subprocess.run(command, check=True, text=True,
@@ -1045,6 +1103,42 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
         upper = np.max(pointsArray, axis=0)
         return (lower[0], upper[0], lower[1], upper[1], lower[2], upper[2])
 
+    @staticmethod
+    def medianNearestNeighborDistance(points):
+        """Median distance from each point to its nearest neighbour, or None.
+
+        The characteristic spacing of a point cloud. Both the displacement-grid
+        spacing and BCPD's geodesic graph radius are scaled to it rather than fixed,
+        so they follow the point density instead of assuming one. Returns None for
+        inputs where it is undefined (fewer than two points, or coincident points).
+        """
+        pointsArray = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+        if len(pointsArray) < 2:
+            return None
+        from scipy.spatial import cKDTree
+        distances, _ = cKDTree(pointsArray).query(pointsArray, k=2)
+        spacing = float(np.median(distances[:, 1]))
+        if not np.isfinite(spacing) or spacing <= 0.0:
+            return None
+        return spacing
+
+    def geodesicKernelArgument(self, controlPoints, parameters):
+        """Build bcpd's -G geodesic-kernel argument for this point cloud.
+
+        The neighbour radius is scaled to the control-point spacing so the surface
+        graph connects neighbours regardless of how densely the clouds were
+        subsampled; a fixed radius would silently disconnect the graph at low point
+        density and over-connect at high density.
+        """
+        tau = float(parameters.get("GeodesicTau", 0.2))
+        tau = min(max(tau, 0.01), 1.0)
+        spacing = self.medianNearestNeighborDistance(controlPoints)
+        radius = 1.0 if spacing is None else spacing * self.BCPD_GEODESIC_RADIUS_FACTOR
+        argument = f"-Ggeo,{tau:g},{self.BCPD_GEODESIC_NEIGHBOURS:d},{radius:g}"
+        logging.info(f"FastModelAlign: geodesic kernel {argument} "
+                     f"(control-point spacing {spacing if spacing is not None else float('nan'):.3f})")
+        return argument
+
     def recommendGridSpacing(self, controlPoints):
         """Grid spacing implied by the control-point distribution, in millimeters.
 
@@ -1057,15 +1151,11 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
 
         See GRID_SPACING_FRACTION_OF_CONTROL_SPACING for the measured basis.
         """
-        pointsArray = np.asarray(controlPoints, dtype=np.float64).reshape(-1, 3)
-        if len(pointsArray) < 2:
-            return 1.0
-        from scipy.spatial import cKDTree
-        distances, _ = cKDTree(pointsArray).query(pointsArray, k=2)
-        controlSpacing = float(np.median(distances[:, 1]))
-        if not np.isfinite(controlSpacing) or controlSpacing <= 0.0:
+        controlSpacing = self.medianNearestNeighborDistance(controlPoints)
+        if controlSpacing is None:
             logging.warning("FastModelAlign: degenerate control-point spacing, using 1 mm grid")
             return 1.0
+        pointsArray = np.asarray(controlPoints, dtype=np.float64).reshape(-1, 3)
         spacing = controlSpacing * self.GRID_SPACING_FRACTION_OF_CONTROL_SPACING
         logging.info(f"FastModelAlign: control-point spacing {controlSpacing:.3f} mm (median "
                      f"nearest neighbour of {len(pointsArray)} points) -> automatic grid "
