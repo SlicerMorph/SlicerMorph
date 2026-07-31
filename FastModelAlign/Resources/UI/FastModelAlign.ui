@@ -464,16 +464,36 @@
            </widget>
           </item>
           <item row="5" column="0">
-           <widget class="QLabel" name="gridSpacingLabel">
+           <widget class="QLabel" name="gridSpacingAutoLabel">
             <property name="text">
-             <string>Grid spacing (mm):</string>
+             <string>Grid spacing:</string>
             </property>
            </widget>
           </item>
           <item row="5" column="1">
+           <widget class="QCheckBox" name="gridSpacingAutoCheckBox">
+            <property name="toolTip">
+             <string>Derive the displacement-grid spacing from the point cloud instead of fixing it in millimeters. The deformation is a spline through the subsampled control points, so it cannot carry structure finer than their spacing; the grid only has to resolve that. Half the median nearest-neighbour distance keeps the discretisation error near 2% of the control spacing, well below the registration residual. Because the point density slider changes the control spacing, a fixed value in millimeters is only meaningful for one specimen scale and one density.</string>
+            </property>
+            <property name="text">
+             <string>Obtain automatically from the selected parameters</string>
+            </property>
+            <property name="checked">
+             <bool>false</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="6" column="0">
+           <widget class="QLabel" name="gridSpacingLabel">
+            <property name="text">
+             <string>Manual spacing (mm):</string>
+            </property>
+           </widget>
+          </item>
+          <item row="6" column="1">
            <widget class="ctkSliderWidget" name="gridSpacingSlider">
             <property name="toolTip">
-             <string>Sample spacing of the deformable displacement grid, in millimeters. The deformation field is smooth, so 1 mm is normally enough; smaller values only increase memory and computation time. The spacing is automatically coarsened if the requested value would produce an excessively large grid.</string>
+             <string>Sample spacing of the deformable displacement grid, in millimeters. Only used when the automatic setting above is off. Choose a value at or below half the spacing of the subsampled control points; larger values under-sample the deformation. The spacing is coarsened automatically if the request would produce an excessively large grid.</string>
             </property>
             <property name="decimals">
              <number>2</number>

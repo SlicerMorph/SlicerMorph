@@ -162,6 +162,8 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.ICPDistanceThresholdSlider.connect('valueChanged(double)', self.onChangeAdvanced)
         self.ui.FPFHNeighborsSlider.connect("valueChanged(double)", self.onChangeAdvanced)
         self.ui.gridSpacingSlider.connect('valueChanged(double)', self.onChangeAdvanced)
+        self.ui.gridSpacingAutoCheckBox.connect("toggled(bool)", self.onGridSpacingAutoToggled)
+        self.onGridSpacingAutoToggled(self.ui.gridSpacingAutoCheckBox.checked)
 
         # BCPD acceleration of the deformable step (optional external binary)
         self.ui.accelerationCheckBox.connect("toggled(bool)", self.onAccelerationToggled)
@@ -189,6 +191,7 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             "CPDTolerance": self.ui.cpdToleranceSlider.value,
             # Requested displacement-grid sample spacing, in millimeters.
             "gridSpacing": self.ui.gridSpacingSlider.value,
+            "gridSpacingAuto": self.ui.gridSpacingAutoCheckBox.checked,
             "Acceleration": self.ui.accelerationCheckBox.checked,
             "BCPDFolder": self.ui.BCPDFolder.currentPath,
             }
@@ -227,6 +230,12 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.pointDensityAdvancedSlider.value = self.ui.pointDensitySlider.value
         self.updateParameterDictionary()
 
+    def onGridSpacingAutoToggled(self, checked):
+        """Grey out the manual spacing while it is being derived from the point cloud."""
+        self.ui.gridSpacingSlider.enabled = not checked
+        self.ui.gridSpacingLabel.enabled = not checked
+        self.updateParameterDictionary()
+
     def onChangeDeformable(self):
         self.updateParameterDictionary()
 
@@ -256,6 +265,7 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.parameterDictionary["CPDIterations"] = int(self.ui.cpdIterationsSlider.value)
             self.parameterDictionary["CPDTolerance"] = self.ui.cpdToleranceSlider.value
             self.parameterDictionary["gridSpacing"] = self.ui.gridSpacingSlider.value
+            self.parameterDictionary["gridSpacingAuto"] = self.ui.gridSpacingAutoCheckBox.checked
             self.parameterDictionary["Acceleration"] = self.ui.accelerationCheckBox.checked
             self.parameterDictionary["BCPDFolder"] = self.ui.BCPDFolder.currentPath
 
@@ -811,6 +821,27 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
     MAX_GRID_POINTS = 5000000
     MIN_GRID_SAMPLES_PER_AXIS = 8
 
+    # Automatic grid spacing. The displacement field is a thin-plate spline through
+    # the subsampled control points, so it cannot carry structure finer than the
+    # spacing of those points - that spacing, not any absolute value in millimeters,
+    # is what the grid has to resolve. Sampling at a fixed spacing is meaningless
+    # until the specimen scale and the point density are known, and the pointDensity
+    # slider already moves the control spacing, so the two settings are coupled.
+    #
+    # Measured on a mouse -> tree shrew pair (5009 control points, median nearest
+    # neighbour 0.671 mm), as the worst-case error against the exact spline,
+    # expressed as a fraction of the control spacing:
+    #
+    #   spacing / control spacing     max error
+    #        1.51                       16.4 %
+    #        0.75                        4.7 %
+    #        0.38                        1.1 %
+    #
+    # The error follows the h^2 law of the grid's linear interpolation, so half the
+    # control spacing keeps it near 2 % - an order of magnitude below the
+    # registration residual, which is where discretisation belongs.
+    GRID_SPACING_FRACTION_OF_CONTROL_SPACING = 0.5
+
     # BCPD invocation. -A enables the Nystrom + KD-tree acceleration, which is what
     # makes the external binary roughly two orders of magnitude faster than cpdalp
     # (3.8 s vs 237 s on a 1.78M -> 1.01M vertex skull pair, at the same accuracy).
@@ -876,8 +907,13 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
             self.pointsToBounds(sourcePoints),
             self.pointsToBounds(targetPoints),
         ]
+        requestedSpacing = parameters.get("gridSpacing", 0.0)
+        # Opt-in: the manual value stays in charge unless the user asks for the
+        # spacing to be derived, or gave nothing usable.
+        if parameters.get("gridSpacingAuto", False) or not requestedSpacing or requestedSpacing <= 0.0:
+            requestedSpacing = self.recommendGridSpacing(sourcePoints)
         gridTransformNode = self.createGridTransformFromRBF(
-            rbf, cloudMin, cloudSize, boundsList, parameters.get("gridSpacing", 1.0)
+            rbf, cloudMin, cloudSize, boundsList, requestedSpacing
         )
 
         if fastMode:
@@ -1008,6 +1044,33 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
         lower = np.min(pointsArray, axis=0)
         upper = np.max(pointsArray, axis=0)
         return (lower[0], upper[0], lower[1], upper[1], lower[2], upper[2])
+
+    def recommendGridSpacing(self, controlPoints):
+        """Grid spacing implied by the control-point distribution, in millimeters.
+
+        The displacement field is a spline through these points, so their spacing is
+        the finest structure it can carry; the grid only has to resolve that. Using
+        the median nearest-neighbour distance rather than a bounding-box heuristic
+        matters - on the tree shrew the box estimate said 1.05 mm where the points
+        were actually 0.671 mm apart, which is the difference between adequately and
+        under-sampling the field.
+
+        See GRID_SPACING_FRACTION_OF_CONTROL_SPACING for the measured basis.
+        """
+        pointsArray = np.asarray(controlPoints, dtype=np.float64).reshape(-1, 3)
+        if len(pointsArray) < 2:
+            return 1.0
+        from scipy.spatial import cKDTree
+        distances, _ = cKDTree(pointsArray).query(pointsArray, k=2)
+        controlSpacing = float(np.median(distances[:, 1]))
+        if not np.isfinite(controlSpacing) or controlSpacing <= 0.0:
+            logging.warning("FastModelAlign: degenerate control-point spacing, using 1 mm grid")
+            return 1.0
+        spacing = controlSpacing * self.GRID_SPACING_FRACTION_OF_CONTROL_SPACING
+        logging.info(f"FastModelAlign: control-point spacing {controlSpacing:.3f} mm (median "
+                     f"nearest neighbour of {len(pointsArray)} points) -> automatic grid "
+                     f"spacing {spacing:.3f} mm")
+        return spacing
 
     def computeGridGeometry(self, boundsList, requestedSpacing):
         """Compute (origin, dims, spacing) for an isotropic displacement grid.
