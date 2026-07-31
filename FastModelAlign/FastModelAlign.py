@@ -1103,6 +1103,25 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
         upper = np.max(pointsArray, axis=0)
         return (lower[0], upper[0], lower[1], upper[1], lower[2], upper[2])
 
+    @staticmethod
+    def medianNearestNeighborDistance(points):
+        """Median distance from each point to its nearest neighbour, or None.
+
+        The characteristic spacing of a point cloud. Both the displacement-grid
+        spacing and BCPD's geodesic graph radius are scaled to it rather than fixed,
+        so they follow the point density instead of assuming one. Returns None for
+        inputs where it is undefined (fewer than two points, or coincident points).
+        """
+        pointsArray = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+        if len(pointsArray) < 2:
+            return None
+        from scipy.spatial import cKDTree
+        distances, _ = cKDTree(pointsArray).query(pointsArray, k=2)
+        spacing = float(np.median(distances[:, 1]))
+        if not np.isfinite(spacing) or spacing <= 0.0:
+            return None
+        return spacing
+
     def geodesicKernelArgument(self, controlPoints, parameters):
         """Build bcpd's -G geodesic-kernel argument for this point cloud.
 
@@ -1113,17 +1132,11 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
         """
         tau = float(parameters.get("GeodesicTau", 0.2))
         tau = min(max(tau, 0.01), 1.0)
-        pointsArray = np.asarray(controlPoints, dtype=np.float64).reshape(-1, 3)
-        radius = 1.0
-        if len(pointsArray) > 1:
-            from scipy.spatial import cKDTree
-            distances, _ = cKDTree(pointsArray).query(pointsArray, k=2)
-            spacing = float(np.median(distances[:, 1]))
-            if np.isfinite(spacing) and spacing > 0.0:
-                radius = spacing * self.BCPD_GEODESIC_RADIUS_FACTOR
+        spacing = self.medianNearestNeighborDistance(controlPoints)
+        radius = 1.0 if spacing is None else spacing * self.BCPD_GEODESIC_RADIUS_FACTOR
         argument = f"-Ggeo,{tau:g},{self.BCPD_GEODESIC_NEIGHBOURS:d},{radius:g}"
         logging.info(f"FastModelAlign: geodesic kernel {argument} "
-                     f"(control-point spacing {radius / self.BCPD_GEODESIC_RADIUS_FACTOR:.3f})")
+                     f"(control-point spacing {spacing if spacing is not None else float('nan'):.3f})")
         return argument
 
     def recommendGridSpacing(self, controlPoints):
@@ -1138,15 +1151,11 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
 
         See GRID_SPACING_FRACTION_OF_CONTROL_SPACING for the measured basis.
         """
-        pointsArray = np.asarray(controlPoints, dtype=np.float64).reshape(-1, 3)
-        if len(pointsArray) < 2:
-            return 1.0
-        from scipy.spatial import cKDTree
-        distances, _ = cKDTree(pointsArray).query(pointsArray, k=2)
-        controlSpacing = float(np.median(distances[:, 1]))
-        if not np.isfinite(controlSpacing) or controlSpacing <= 0.0:
+        controlSpacing = self.medianNearestNeighborDistance(controlPoints)
+        if controlSpacing is None:
             logging.warning("FastModelAlign: degenerate control-point spacing, using 1 mm grid")
             return 1.0
+        pointsArray = np.asarray(controlPoints, dtype=np.float64).reshape(-1, 3)
         spacing = controlSpacing * self.GRID_SPACING_FRACTION_OF_CONTROL_SPACING
         logging.info(f"FastModelAlign: control-point spacing {controlSpacing:.3f} mm (median "
                      f"nearest neighbour of {len(pointsArray)} points) -> automatic grid "
