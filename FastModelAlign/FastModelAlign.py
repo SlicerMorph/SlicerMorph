@@ -865,7 +865,7 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
     # slider already moves the control spacing, so the two settings are coupled.
     #
     # Measured on a mouse -> tree shrew pair (5009 control points, median nearest
-    # neighbour 0.664 mm), as the worst-case error against the exact spline,
+    # neighbour 0.671 mm), as the worst-case error against the exact spline,
     # expressed as a fraction of the control spacing:
     #
     #   spacing / control spacing     max error
@@ -1146,7 +1146,7 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
         the finest structure it can carry; the grid only has to resolve that. Using
         the median nearest-neighbour distance rather than a bounding-box heuristic
         matters - on the tree shrew the box estimate said 1.05 mm where the points
-        were actually 0.664 mm apart, which is the difference between adequately and
+        were actually 0.671 mm apart, which is the difference between adequately and
         under-sampling the field.
 
         See GRID_SPACING_FRACTION_OF_CONTROL_SPACING for the measured basis.
