@@ -191,6 +191,10 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         Filtering is done by node ID through the combo box's sort/filter proxy model.
         Note that qMRMLNodeComboBox.baseName is *not* a filter -- it only supplies the
         default name for nodes created from the combo box -- so it cannot be used here.
+
+        hiddenNodeIDs must be assigned as a property: setHiddenNodeIDs() is a plain
+        public C++ method, neither a slot nor Q_INVOKABLE, so it is not callable
+        from Python.
         """
         node1 = self.ui.inputSelector1.currentNode()
         node2 = self.ui.inputSelector2.currentNode()
@@ -209,7 +213,7 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         for selector in [self.ui.landmarksSelector1, self.ui.landmarksSelector2]:
             proxyModel = selector.sortFilterProxyModel()
             if proxyModel:
-                proxyModel.setHiddenNodeIDs(sorted(excludeIDs))
+                proxyModel.hiddenNodeIDs = sorted(excludeIDs)
 
     def updateLandmarkDisplay(self):
         """Apply transforms and view restrictions to currently selected landmarks"""
@@ -239,7 +243,7 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         for selector in [self.ui.landmarksSelector1, self.ui.landmarksSelector2]:
             proxyModel = selector.sortFilterProxyModel()
             if proxyModel:
-                proxyModel.setHiddenNodeIDs([])
+                proxyModel.hiddenNodeIDs = []
 
     def hasFourViewNodes(self):
         """True when all four QuickAlign view nodes have been resolved."""
@@ -373,6 +377,13 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if node2:
             self.setDisplayViewNodeIDs(node2.GetDisplayNode(), [self.viewNode2.GetID()])
 
+        # The scene has now been changed, so Unlink must be reachable from here on.
+        # Enable it before the optional landmark / joint editing work below, so that
+        # a failure there still leaves the user a way back to the original scene.
+        self.ui.unlinkButton.enabled = True
+        self.ui.linkButton.enabled = False
+        self.ui.initializeViewButton.enabled = False
+
         # Enable landmark selectors now that sync has started
         self.ui.landmarksSelector1.enabled = True
         self.ui.landmarksSelector2.enabled = True
@@ -390,8 +401,6 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # If joint editing checkbox is enabled and checked, start joint editing
         if self.ui.jointEditCheckBox.enabled and self.ui.jointEditCheckBox.checked:
-            node1 = self.ui.inputSelector1.currentNode()
-            node2 = self.ui.inputSelector2.currentNode()
             landmarks1 = self.ui.landmarksSelector1.currentNode()
             landmarks2 = self.ui.landmarksSelector2.currentNode()
 
@@ -407,10 +416,7 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                         "Joint editing was not enabled: the two point lists must have "
                         "the same number of points.")
 
-        #set up for unlink action
-        self.ui.unlinkButton.enabled = True
-        self.ui.linkButton.enabled = False
-        self.ui.initializeViewButton.enabled = False
+        # The checkbox is locked in for the duration of the sync
         self.ui.jointEditCheckBox.enabled = False
 
     def onUnlinkButton(self):
