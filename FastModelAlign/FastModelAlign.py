@@ -168,6 +168,8 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # BCPD acceleration of the deformable step (optional external binary)
         self.ui.accelerationCheckBox.connect("toggled(bool)", self.onAccelerationToggled)
         self.ui.BCPDFolder.connect("validInputChanged(bool)", self.onChangeBCPDPath)
+        self.ui.geodesicKernelCheckBox.connect("toggled(bool)", self.onGeodesicKernelToggled)
+        self.ui.geodesicTauSlider.connect("valueChanged(double)", self.onChangeAdvanced)
 
         # Restore the persisted BCPD path (shared with ALPACA) and acceleration state.
         savedBCPDPath = self.logic.getBCPDPath()
@@ -193,6 +195,8 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             "gridSpacing": self.ui.gridSpacingSlider.value,
             "gridSpacingAuto": self.ui.gridSpacingAutoCheckBox.checked,
             "Acceleration": self.ui.accelerationCheckBox.checked,
+            "GeodesicKernel": self.ui.geodesicKernelCheckBox.checked,
+            "GeodesicTau": self.ui.geodesicTauSlider.value,
             "BCPDFolder": self.ui.BCPDFolder.currentPath,
             }
 
@@ -242,7 +246,20 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     def onAccelerationToggled(self, checked):
         """Enable/disable the BCPD path entry and persist the checkbox state."""
         self.ui.BCPDFolder.enabled = bool(checked)
+        # The geodesic kernel is a BCPD feature; cpdalp has only a Gaussian kernel,
+        # so it cannot be offered on the built-in path.
+        self.ui.geodesicKernelCheckBox.enabled = bool(checked)
+        if not checked:
+            self.ui.geodesicKernelCheckBox.checked = False
+        self.onGeodesicKernelToggled(self.ui.geodesicKernelCheckBox.checked)
         self.logic.saveAccelerationEnabled(bool(checked))
+        self.updateParameterDictionary()
+
+    def onGeodesicKernelToggled(self, checked):
+        """Tau only means anything while the geodesic kernel is in use."""
+        usable = bool(checked) and self.ui.accelerationCheckBox.checked
+        self.ui.geodesicTauSlider.enabled = usable
+        self.ui.geodesicTauLabel.enabled = usable
         self.updateParameterDictionary()
 
     def onChangeBCPDPath(self):
@@ -267,6 +284,8 @@ class FastModelAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.parameterDictionary["gridSpacing"] = self.ui.gridSpacingSlider.value
             self.parameterDictionary["gridSpacingAuto"] = self.ui.gridSpacingAutoCheckBox.checked
             self.parameterDictionary["Acceleration"] = self.ui.accelerationCheckBox.checked
+            self.parameterDictionary["GeodesicKernel"] = self.ui.geodesicKernelCheckBox.checked
+            self.parameterDictionary["GeodesicTau"] = self.ui.geodesicTauSlider.value
             self.parameterDictionary["BCPDFolder"] = self.ui.BCPDFolder.currentPath
 
 
@@ -851,6 +870,21 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
     # than the CPD iteration/tolerance sliders, which only drive the cpdalp path.
     BCPD_FIXED_ARGUMENTS = ["-w0.1", "-g0.1", "-ux", "-n200", "-c1e-6", "-A"]
 
+    # Geodesic kernel (GBCPD). The Gaussian kernel measures distance through space,
+    # so a thin structure lying beside a larger one is coupled to it and gets dragged
+    # along instead of deforming on its own: on a mouse -> tree shrew pair the
+    # deformable step left the zygomatic arches 2.31 mm short of the target, worse
+    # than the 1.74 mm they were at before it ran. Measuring along the surface
+    # decouples them - the same pair reached 1.05 mm at tau 0.2.
+    #
+    # bcpd builds the surface graph itself from the point cloud
+    # (-G'geo,<tau>,<neighbours>,<radius>'), so no mesh has to be supplied. The
+    # radius is derived from the control-point spacing rather than fixed, for the
+    # same reason the grid spacing is: a constant in normalized units is only right
+    # for one point density.
+    BCPD_GEODESIC_NEIGHBOURS = 8
+    BCPD_GEODESIC_RADIUS_FACTOR = 2.0
+
     # The registration runs on the main thread, so a wedged external binary would
     # otherwise hang the application with no way to cancel. Timing out raises, and
     # the caller treats any BCPD failure as a signal to fall back to cpdalp.
@@ -1009,6 +1043,8 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
                         f"-l{float(parameters['alpha']):g}",
                         f"-b{float(parameters['beta']):g}"]
                        + list(self.BCPD_FIXED_ARGUMENTS))
+            if parameters.get("GeodesicKernel", False):
+                command.append(self.geodesicKernelArgument(sourceNorm, parameters))
             logging.info("FastModelAlign: running " + " ".join(command))
             try:
                 completed = subprocess.run(command, check=True, text=True,
@@ -1044,6 +1080,29 @@ class FastModelAlignLogic(ScriptedLoadableModuleLogic):
         lower = np.min(pointsArray, axis=0)
         upper = np.max(pointsArray, axis=0)
         return (lower[0], upper[0], lower[1], upper[1], lower[2], upper[2])
+
+    def geodesicKernelArgument(self, controlPoints, parameters):
+        """Build bcpd's -G geodesic-kernel argument for this point cloud.
+
+        The neighbour radius is scaled to the control-point spacing so the surface
+        graph connects neighbours regardless of how densely the clouds were
+        subsampled; a fixed radius would silently disconnect the graph at low point
+        density and over-connect at high density.
+        """
+        tau = float(parameters.get("GeodesicTau", 0.2))
+        tau = min(max(tau, 0.01), 1.0)
+        pointsArray = np.asarray(controlPoints, dtype=np.float64).reshape(-1, 3)
+        radius = 1.0
+        if len(pointsArray) > 1:
+            from scipy.spatial import cKDTree
+            distances, _ = cKDTree(pointsArray).query(pointsArray, k=2)
+            spacing = float(np.median(distances[:, 1]))
+            if np.isfinite(spacing) and spacing > 0.0:
+                radius = spacing * self.BCPD_GEODESIC_RADIUS_FACTOR
+        argument = f"-Ggeo,{tau:g},{self.BCPD_GEODESIC_NEIGHBOURS:d},{radius:g}"
+        logging.info(f"FastModelAlign: geodesic kernel {argument} "
+                     f"(control-point spacing {radius / self.BCPD_GEODESIC_RADIUS_FACTOR:.3f})")
+        return argument
 
     def recommendGridSpacing(self, controlPoints):
         """Grid spacing implied by the control-point distribution, in millimeters.
