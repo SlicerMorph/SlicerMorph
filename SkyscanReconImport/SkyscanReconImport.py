@@ -195,8 +195,8 @@ class SkyscanReconImportWidget(ScriptedLoadableModuleWidget):
                 # Fetch file metadata
                 creation_time = os.path.getctime(logFile)
                 modification_time = os.path.getmtime(logFile)
-                creation_date = qt.QDateTime.fromSecsSinceEpoch(creation_time)
-                modification_date = qt.QDateTime.fromSecsSinceEpoch(modification_time)
+                creation_date = qt.QDateTime.fromSecsSinceEpoch(int(creation_time))
+                modification_date = qt.QDateTime.fromSecsSinceEpoch(int(modification_time))
 
                 # Create tree item with metadata and add a checkbox
                 item = qt.QTreeWidgetItem([
@@ -333,7 +333,7 @@ class SkyscanReconImportWidget(ScriptedLoadableModuleWidget):
                 # Assuming 'logic.run' processes the log and 'logic.saveVolumes' saves the volumes
                 # Update these calls as necessary according to your actual logic's methods and parameters
                 logic.run(logFile, 'utf8')  # Placeholder for your processing logic
-                logic.saveVolumes(logic.prefix_list[i], fullResOutputPath,
+                logic.saveVolumes(logic.prefix_list[-1], fullResOutputPath,
                                   downsampledOutputPath, downsampleRatio)  # Placeholder for saving logic
 
             except Exception as e:
@@ -342,8 +342,8 @@ class SkyscanReconImportWidget(ScriptedLoadableModuleWidget):
             finally:
                 progress.setValue(i + 1)  # Update the progress value regardless of success or failure
 
-                if progress.wasCanceled:
-                    break  # Allow the user to cancel the operation
+            if progress.wasCanceled:
+                break  # Allow the user to cancel the operation
 
         progress.close()  # Close the progress dialog once processing is complete
 
@@ -618,7 +618,7 @@ class SkyscanReconImportLogic(ScriptedLoadableModuleLogic):
 
             # Set the cropping parameters
             cropVolumeLogic = slicer.modules.cropvolume.logic()
-            cropVolumeParameterNode = slicer.vtkMRMLCropVolumeParametersNode()
+            cropVolumeParameterNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLCropVolumeParametersNode")
             cropVolumeParameterNode.SetIsotropicResampling(True)
             cropVolumeParameterNode.SetSpacingScalingConst(downsampleRatio)
             cropVolumeParameterNode.SetROINodeID(roiNode.GetID())
@@ -640,6 +640,7 @@ class SkyscanReconImportLogic(ScriptedLoadableModuleLogic):
             slicer.util.exportNode(croppedVolume, dsPath, {"useCompression": 0})
 
             # Cleanup: Remove temporary nodes
+            slicer.mrmlScene.RemoveNode(cropVolumeParameterNode)
             slicer.mrmlScene.RemoveNode(croppedVolume)
             slicer.mrmlScene.RemoveNode(roiNode)
 

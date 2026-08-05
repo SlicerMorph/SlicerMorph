@@ -101,7 +101,7 @@ class FormatMarkupsSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin
     for i in range(siblingIDList.GetNumberOfIds()):
       siblingID = siblingIDList.GetId(i)
       if(itemID == siblingID):
-        next
+        continue
       siblingNode = self.subjectHierarchyNode.GetItemDataNode(siblingID)
       if(itemDataNode.GetNumberOfControlPoints() != siblingNode.GetNumberOfControlPoints()):
         logging.debug("Cannot apply control point visibility to sibling with unequal point number: %s" % siblingNode.GetName())
