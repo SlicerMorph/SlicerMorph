@@ -39,9 +39,12 @@ class FormatMarkupsSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin
 
     pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler.instance()
     self.subjectHierarchyNode = pluginHandlerSingleton.subjectHierarchyNode()
-    self.formatMarkupsAction = qt.QAction(f"Apply formatting to siblings", scriptedPlugin)
+    # Use the menu's own action rather than QAction.setMenu(): in Qt6 QAction moved to
+    # QtGui, which cannot depend on QtWidgets' QMenu, so setMenu() is not exposed.
+    # QMenu.menuAction() gives the same submenu entry and works on both Qt5 and Qt6.
     self.menu = qt.QMenu("Plugin Menu")
-    self.formatMarkupsAction.setMenu(self.menu)
+    self.formatMarkupsAction = self.menu.menuAction()
+    self.formatMarkupsAction.setText("Apply formatting to siblings")
 
   #
   # item context menus are what happens when you right click on a selected line
