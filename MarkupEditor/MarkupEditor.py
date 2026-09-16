@@ -61,12 +61,14 @@ class MarkupEditorSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin)
           "unset": "Remove from selection"
         }
 
-        self.selectViewAction = qt.QAction(f"Pick points with curve...", scriptedPlugin)
+        # Use the menu's own action rather than QAction.setMenu(): in Qt6 QAction moved to
+        # QtGui, which cannot depend on QtWidgets' QMenu, so setMenu() is not exposed.
+        # QMenu.menuAction() gives the same submenu entry and works on both Qt5 and Qt6.
+        self.selectMenu = qt.QMenu("Select Menu")
+        self.selectViewAction = self.selectMenu.menuAction()
+        self.selectViewAction.setText("Pick points with curve...")
         self.selectViewAction.objectName = 'SelectViewAction'
         self.selectViewAction.connect("triggered()", self.onSelectViewAction)
-
-        self.selectMenu = qt.QMenu("Select Menu")
-        self.selectViewAction.setMenu(self.selectMenu)
 
         for selectOption in self.selectOptions.keys():
           action = self.selectMenu.addAction(self.selectOptions[selectOption])
