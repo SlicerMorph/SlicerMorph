@@ -939,10 +939,25 @@ class ALPACAWidget(_ALPACATemplatesWidget, ScriptedLoadableModuleWidget):
         except:
             self.ui.showManualLMCheckBox.enabled = False
 
+    def updateBatchProgress(self, message):
+        """Update the batch progress text box with a new message"""
+        if hasattr(self.ui, 'batchProgressInfo'):
+            self.ui.batchProgressInfo.appendPlainText(message)
+            # Ensure the UI updates immediately
+            slicer.app.processEvents()
+        # Also print to console as backup
+        print(message)
+
     def onApplyLandmarkMulti(self):
         if not self._ensureDependencies():
             return
+        # Clear previous progress messages
+        if hasattr(self.ui, 'batchProgressInfo'):
+            self.ui.batchProgressInfo.clear()
+
         logic = ALPACALogic()
+        # Pass the widget reference to logic for progress updates
+        logic.setProgressCallback(self.updateBatchProgress)
         if self.ui.projectionCheckBoxMulti.checked is False:
             projectionFactor = 0
         else:
@@ -1169,6 +1184,21 @@ class ALPACALogic(_ALPACATemplatesLogic, ScriptedLoadableModuleLogic):
             return False, error_msg
 
         return True, ""
+
+    # Set per run by the widget (see setProgressCallback); a class attribute rather
+    # than an __init__ so the mixin/base-class construction chain is left alone.
+    progressCallback = None
+
+    def setProgressCallback(self, callback):
+        """Set callback function for progress updates"""
+        self.progressCallback = callback
+    
+    def updateProgress(self, message):
+        """Update progress using callback or print as fallback"""
+        if self.progressCallback:
+            self.progressCallback(message)
+        else:
+            print(message)
 
     def runLandmarkMultiprocess(
         self,
