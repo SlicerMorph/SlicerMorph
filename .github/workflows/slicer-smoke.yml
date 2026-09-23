@@ -1,0 +1,87 @@
+name: Slicer smoke test
+
+# Opens every SlicerMorph module in a real Slicer on Linux, macOS and Windows, against
+# both the current stable release and the preview build, on every pull request.
+#
+# What it is for: the modules are Python, so nothing is compiled and nothing here checks
+# that they still WORK -- it checks that they still OPEN.  That is the failure that is
+# hard to chase, because it depends on the operating system and on the Slicer version:
+# a renamed Slicer/VTK/Qt API, a Qt widget that exists in one platform's build and not
+# another's, a resource file renamed on a case-insensitive filesystem.
+#
+# The preview jobs are advisory (continue-on-error): they are the early warning that the
+# NEXT Slicer release will break us, and a broken preview build should not block a PR.
+#
+# Slicer runs WITH its main window here.  Several modules use the layout manager in
+# setup(), and under --no-main-window slicer.app.layoutManager() is None, so they raise
+# and look broken when only the window is missing.
+#
+# Nothing here uses the network beyond downloading Slicer, so a PyPI outage cannot red
+# out a pull request.
+
+on:
+  pull_request:
+  push:
+    branches: [geomorphTab, stable-5.10]
+  workflow_dispatch:
+
+concurrency:
+  # A new push to a PR makes the in-flight run obsolete; don't pay for both.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Fast, Slicer-free check that the CMakeLists.txt manifests still match the source
+  # tree.  Runs on one platform only: the answer is the same everywhere, and a missing
+  # manifest entry would otherwise be invisible until the extension ships.
+  manifest:
+    name: CMakeLists manifest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python Testing/check_module_manifest.py
+
+  load:
+    name: ${{ matrix.name }} / Slicer ${{ matrix.stability }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    # Advisory only for preview: report the failure, do not fail the check suite.
+    continue-on-error: ${{ matrix.stability == 'preview' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        stability: [release, preview]
+        os: [ubuntu-24.04, macos-latest, windows-latest]   # ubuntu pinned: the apt
+        # package names in the action are the 24.04 ones (libasound2t64).
+        include:
+          - os: ubuntu-24.04
+            name: Linux
+          - os: macos-latest
+            name: macOS
+          - os: windows-latest
+            name: Windows
+    steps:
+      - uses: actions/checkout@v4
+
+      # Derived from the CMakeLists rather than listed here, so adding or removing a
+      # module does not need a matching edit to this file.
+      - name: Collect module directories
+        id: modules
+        shell: bash
+        run: |
+          {
+            echo 'paths<<MODULE_PATHS_EOF'
+            bash Testing/module_paths.sh
+            echo 'MODULE_PATHS_EOF'
+          } >> "$GITHUB_OUTPUT"
+          echo "Modules: $(bash Testing/module_paths.sh | tr '\n' ' ')"
+
+      - uses: ./.github/actions/slicer
+        with:
+          stability: ${{ matrix.stability }}
+          script: Testing/ci_load.py
+          module-paths: ${{ steps.modules.outputs.paths }}
+          main-window: "true"
