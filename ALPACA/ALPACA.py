@@ -246,9 +246,6 @@ class ALPACAWidget(_ALPACATemplatesWidget, ScriptedLoadableModuleWidget):
         self.ui.replicateAnalysisCheckBox.connect(
             "toggled(bool)", self.onSelectReplicateAnalysis
         )
-        self.ui.meshQCCheckBox.connect(
-            "toggled(bool)", self.onSelectMultiProcess
-        )
         self.ui.applyLandmarkMultiButton.connect(
             "clicked(bool)", self.onApplyLandmarkMulti
         )
@@ -961,7 +958,7 @@ class ALPACAWidget(_ALPACATemplatesWidget, ScriptedLoadableModuleWidget):
         logic = ALPACALogic()
         # Pass the widget reference to logic for progress updates
         logic.setProgressCallback(self.updateBatchProgress)
-        
+
         # Perform mesh QC ONCE before any processing if enabled
         if self.ui.meshQCCheckBox.checked:
             qc_passed = logic.performBatchMeshQC(
@@ -970,7 +967,7 @@ class ALPACAWidget(_ALPACATemplatesWidget, ScriptedLoadableModuleWidget):
             )
             if not qc_passed:
                 return  # Stop if QC failed
-        
+
         if self.ui.projectionCheckBoxMulti.checked is False:
             projectionFactor = 0
         else:
@@ -1205,14 +1202,14 @@ class ALPACALogic(_ALPACATemplatesLogic, ScriptedLoadableModuleLogic):
     def setProgressCallback(self, callback):
         """Set callback function for progress updates"""
         self.progressCallback = callback
-    
+
     def updateProgress(self, message):
         """Update progress using callback or print as fallback"""
         if self.progressCallback:
             self.progressCallback(message)
         else:
             print(message)
-    
+
     def performMeshQC(self, meshPath):
         """Perform quality control checks on a mesh file
         Returns: (is_valid, error_message)
@@ -1222,50 +1219,50 @@ class ALPACALogic(_ALPACATemplatesLogic, ScriptedLoadableModuleLogic):
             tempNode = slicer.util.loadModel(meshPath)
             if tempNode is None:
                 return False, f"Failed to load mesh: {os.path.basename(meshPath)}"
-            
+
             polydata = tempNode.GetPolyData()
             if polydata is None:
                 slicer.mrmlScene.RemoveNode(tempNode)
                 return False, f"Mesh has no polydata: {os.path.basename(meshPath)}"
-            
+
             # Check for points
             points = polydata.GetPoints()
             if points is None or points.GetNumberOfPoints() == 0:
                 slicer.mrmlScene.RemoveNode(tempNode)
                 return False, f"Mesh has no points: {os.path.basename(meshPath)}"
-            
+
             # Check for NaN values in points
             import vtk.util.numpy_support as vtk_np
             points_array = vtk_np.vtk_to_numpy(points.GetData())
-            
+
             if np.any(np.isnan(points_array)):
                 slicer.mrmlScene.RemoveNode(tempNode)
                 return False, f"Mesh contains NaN values in points: {os.path.basename(meshPath)}"
-            
+
             # Check for infinite values
             if np.any(np.isinf(points_array)):
                 slicer.mrmlScene.RemoveNode(tempNode)
                 return False, f"Mesh contains infinite values in points: {os.path.basename(meshPath)}"
-            
+
             # Check for cells/faces
             if polydata.GetNumberOfCells() == 0:
                 slicer.mrmlScene.RemoveNode(tempNode)
                 return False, f"Mesh has no faces/cells: {os.path.basename(meshPath)}"
-            
+
             # Clean up temporary node
             slicer.mrmlScene.RemoveNode(tempNode)
             return True, ""
-            
+
         except Exception as e:
             return False, f"QC check failed for {os.path.basename(meshPath)}: {str(e)}"
-    
+
     def performBatchMeshQC(self, sourceModelPath, targetModelDirectory):
         """Perform quality control checks on all meshes before batch processing
         Returns: True if all meshes pass QC, False otherwise
         """
         self.updateProgress("Performing mesh quality control checks...")
         qc_failed_models = []
-        
+
         # Check source model(s)
         if os.path.isdir(sourceModelPath):
             sourceFiles = [f for f in os.listdir(sourceModelPath) if f.endswith((".ply", ".obj", ".vtk", ".vtp"))]
@@ -1274,13 +1271,13 @@ class ALPACALogic(_ALPACATemplatesLogic, ScriptedLoadableModuleLogic):
                 is_valid, error_msg = self.performMeshQC(sourcePath)
                 if not is_valid:
                     qc_failed_models.append(f"SOURCE: {error_msg}")
-                    self.updateProgress(f"  ⚠️  QC FAILED - SOURCE: {error_msg}")
+                    self.updateProgress(f"  !! QC FAILED - SOURCE: {error_msg}")
         else:
             is_valid, error_msg = self.performMeshQC(sourceModelPath)
             if not is_valid:
                 qc_failed_models.append(f"SOURCE: {error_msg}")
-                self.updateProgress(f"  ⚠️  QC FAILED - SOURCE: {error_msg}")
-        
+                self.updateProgress(f"  !! QC FAILED - SOURCE: {error_msg}")
+
         # Check target models
         targetModelFiles = [f for f in os.listdir(targetModelDirectory) if f.endswith((".ply", ".obj", ".vtk", ".vtp"))]
         for targetFile in targetModelFiles:
@@ -1288,23 +1285,23 @@ class ALPACALogic(_ALPACATemplatesLogic, ScriptedLoadableModuleLogic):
             is_valid, error_msg = self.performMeshQC(targetPath)
             if not is_valid:
                 qc_failed_models.append(f"TARGET: {error_msg}")
-                self.updateProgress(f"  ⚠️  QC FAILED - TARGET: {error_msg}")
-        
+                self.updateProgress(f"  !! QC FAILED - TARGET: {error_msg}")
+
         if qc_failed_models:
             self.updateProgress(f"")
-            self.updateProgress(f"🛑 BATCH PROCESSING STOPPED: {len(qc_failed_models)} mesh(es) failed QC checks")
+            self.updateProgress(f"BATCH PROCESSING STOPPED: {len(qc_failed_models)} mesh(es) failed QC checks")
             self.updateProgress(f"Please fix the following issues before proceeding:")
             for failed_model in qc_failed_models:
                 self.updateProgress(f"  - {failed_model}")
             self.updateProgress(f"")
-            self.updateProgress(f"💡 Tip: You can disable mesh QC to proceed anyway (not recommended)")
+            self.updateProgress(f"Tip: You can disable mesh QC to proceed anyway (not recommended)")
             return False
         else:
             num_source_models = len([f for f in os.listdir(sourceModelPath) if f.endswith((".ply", ".obj", ".vtk", ".vtp"))]) if os.path.isdir(sourceModelPath) else 1
-            self.updateProgress(f"✅ All {len(targetModelFiles) + num_source_models} meshes passed QC checks")
+            self.updateProgress(f"OK: All {len(targetModelFiles) + num_source_models} meshes passed QC checks")
             self.updateProgress(f"")
             return True
-    
+
     def calculateGeometricMedian(self, landmarkList):
         """Calculate geometric median of landmark arrays using scipy optimization"""
         try:
@@ -1312,27 +1309,27 @@ class ALPACALogic(_ALPACATemplatesLogic, ScriptedLoadableModuleLogic):
         except ImportError:
             self.updateProgress("Warning: scipy not available, falling back to arithmetic median")
             return np.median(landmarkList, axis=0)
-        
+
         # Convert list to numpy array for easier handling
         landmarks = np.array(landmarkList)  # Shape: (n_templates, n_landmarks, 3)
         n_templates, n_landmarks, n_dims = landmarks.shape
-        
+
         # Initialize result with arithmetic median
         result = np.median(landmarks, axis=0)
-        
+
         # Objective function: sum of Euclidean distances to all points
         def objective(x, points):
             x_reshaped = x.reshape(-1, n_dims)
             distances = np.sqrt(np.sum((points - x_reshaped[np.newaxis, :, :])**2, axis=2))
             return np.sum(distances)
-        
+
         # Optimize for each landmark separately for better convergence
         for i in range(n_landmarks):
             landmark_coords = landmarks[:, i, :]  # Shape: (n_templates, 3)
-            
+
             # Initial guess is the arithmetic median for this landmark
             x0 = result[i, :].flatten()
-            
+
             # Minimize sum of distances
             try:
                 res = minimize(objective, x0, args=(landmark_coords,), method='BFGS')
@@ -1345,7 +1342,7 @@ class ALPACALogic(_ALPACATemplatesLogic, ScriptedLoadableModuleLogic):
                 self.updateProgress(f"Warning: Error in geometric median calculation for landmark {i+1}: {str(e)}")
                 # Keep arithmetic median for this landmark
                 pass
-        
+
         return result
 
     def runLandmarkMultiprocess(
