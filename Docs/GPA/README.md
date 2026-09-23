@@ -13,6 +13,10 @@ This section of the module runs the GPA and PCA analysis on a directory of landm
 
 * __Skip Scaling:__ Option to skip the scaling step in the GPA. Useful to keep the physical scale of the data.
 
+* __Slide surface semi-landmarks:__ If checked, points marked as semi-landmarks are slid within their local surface tangent planes during the superimposition. Points are designated by the `description` field of the control point: `Semi` marks a sliding semi-landmark, anything else (including an empty description) is treated as a fixed landmark. The designation must be consistent across all subjects; if it is not, the module will ask you how to proceed. If no point is marked `Semi`, sliding cannot run and the analysis stops with a message rather than silently running a standard GPA. Sliding requires centroid-size scaling, so it cannot be combined with __Use Boas coordinates__ — if both are selected, the module falls back to scaled GPA and notes this in the log.
+
+* __Sliding criterion:__ Enabled only when sliding is on. Selects what the sliding step minimizes: __Bending energy__ minimizes the thin-plate-spline bending energy relative to the mean shape (this is the default, and corresponds to `ProcD = FALSE` in geomorph), or __Procrustes distance__ slides points to minimize the Procrustes distance to the mean shape (`ProcD = TRUE`).
+
 * __Execute GPA + PCA:__ Initiates the GPA and also calculates the major axis of shape variaiton using PCA decomposition. PCA may take up to few minutes for large datasets.
 
 * __View Output Folder:__ Pops up a file browser and shows the contents of specified output folder.
@@ -89,8 +93,21 @@ This section allows the user to capture a PC deformation as an animation. The an
 
 * __Stop recording__  Ends recording the warping applied to the mean shape landamrks or reference model.
 
+### SEMI-LANDMARK SLIDING AND ACKNOWLEDGMENT OF GEOMORPH
+Sliding of surface semi-landmarks during superimposition is a faithful Python port of the sliding
+algorithm in the R package [**geomorph**](https://github.com/geomorphR/geomorph) (Adams, Collyer,
+Kaliontzopoulou & Baken), which is the reference implementation it was ported from — specifically
+`gpagen()` and its supporting routines. Both of geomorph's sliding criteria are provided, and the
+implementation has been validated to reproduce geomorph 4.0.10 to machine precision (~1e-15) on
+test data, for both criteria. Full attribution, the list of ported routines, and the underlying
+method references (Bookstein 1997; Gunz et al. 2005; Rohlf 2010) are documented in the header of
+`GPA/Support/gpa_lib.py`. geomorph is distributed under the GPL; please cite geomorph alongside
+SlicerMorph if you use this option.
+
 ### LIMITATIONS
-As implemented, GPA module does not allow sliding of the semi or pseudoLMs during superimposition. If sliding is required, we advise using the R/geomorph package for GPA superimposition.
+By design, this module slides *surface* semi-landmarks only. Sliding along curves is a deliberate
+non-goal and is not offered; if your analysis requires curve sliders, use the R/geomorph package
+for the superimposition.
 
 ### TUTORIAL
 For more information how to use the module, please see:

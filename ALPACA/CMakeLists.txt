@@ -4,6 +4,9 @@ set(MODULE_NAME ALPACA)
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}.py
+  Templates/__init__.py
+  Templates/widget_mixin.py
+  Templates/logic_mixin.py
   )
 
 set(MODULE_PYTHON_RESOURCES
@@ -11,6 +14,7 @@ set(MODULE_PYTHON_RESOURCES
   Resources/Icons/switch_off.png
   Resources/Icons/switch_on.png
   Resources/UI/${MODULE_NAME}.ui
+  Resources/requirements_ALPACA.txt
   )
 
 #-----------------------------------------------------------------------------

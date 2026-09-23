@@ -105,7 +105,7 @@ class DownloadMSRecords:
         search_results_df.index = range(start_index, start_index + len(search_results_df))
 
         # Apply the unlist_cell function to each cell in the DataFrame
-        search_results_df = search_results_df.applymap(unlist_cell)
+        search_results_df = search_results_df.map(unlist_cell)
 
         return search_results_df
 

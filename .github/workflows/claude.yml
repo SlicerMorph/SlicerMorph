@@ -2,11 +2,10 @@ name: Claude
 
 # On-demand REVIEW / DESIGN responder for SlicerMorph: runs when a trusted user @-mentions
 # Claude in an issue or PR. It READS the code and posts review/design comments — it does NOT
-# implement changes (implementation + testing stay local). Two SlicerMorph specifics:
-#   * This file must live on the DEFAULT branch (master) for GitHub to fire it on issue events.
-#   * But development happens on geomorphTab, so the checkout below pulls `geomorphTab` — the
-#     diagnosis reflects the code that actually ships, not stale master. Update that ref if the
-#     dev branch changes.
+# implement changes (implementation + testing stay local).  This file must live on the
+# DEFAULT branch for GitHub to fire it on issue events; the checkout below pulls that same
+# branch (master, which is also the development branch) so the diagnosis reflects the code
+# that ships.
 # Complements claude-code-review.yml, which auto-reviews every PR.
 on:
   issue_comment:
@@ -45,8 +44,8 @@ jobs:
         with:
           # Issue/diagnosis runs read the dev branch (not the 'master' default this workflow
           # fires from). PR-review mentions instead check out the PR's own head, so the review
-          # sees the PR's code rather than geomorphTab.
-          ref: ${{ (github.event_name == 'pull_request_review' || github.event_name == 'pull_request_review_comment') && github.event.pull_request.head.sha || 'geomorphTab' }}
+          # sees the PR's code rather than master.
+          ref: ${{ (github.event_name == 'pull_request_review' || github.event_name == 'pull_request_review_comment') && github.event.pull_request.head.sha || 'master' }}
           fetch-depth: 1
 
       - uses: anthropics/claude-code-action@v1

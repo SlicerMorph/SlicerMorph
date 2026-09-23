@@ -31,9 +31,7 @@ A tool to manipulate Markups using the Segment Editor as a geometry backend
 """
     self.parent.helpText += self.getDefaultModuleDocumentationLink()
     self.parent.acknowledgementText = """
-      This module was developed by Steve Pieper for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections"
-      awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839).
-      https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
+      This module was developed by Steve Pieper for SlicerMorph. Development of SlicerMorph is supported by NSF grants 1759883 and 2301405 to Murat Maga.
 """
 
     #
@@ -63,12 +61,14 @@ class MarkupEditorSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin)
           "unset": "Remove from selection"
         }
 
-        self.selectViewAction = qt.QAction(f"Pick points with curve...", scriptedPlugin)
+        # Use the menu's own action rather than QAction.setMenu(): in Qt6 QAction moved to
+        # QtGui, which cannot depend on QtWidgets' QMenu, so setMenu() is not exposed.
+        # QMenu.menuAction() gives the same submenu entry and works on both Qt5 and Qt6.
+        self.selectMenu = qt.QMenu("Select Menu")
+        self.selectViewAction = self.selectMenu.menuAction()
+        self.selectViewAction.setText("Pick points with curve...")
         self.selectViewAction.objectName = 'SelectViewAction'
         self.selectViewAction.connect("triggered()", self.onSelectViewAction)
-
-        self.selectMenu = qt.QMenu("Select Menu")
-        self.selectViewAction.setMenu(self.selectMenu)
 
         for selectOption in self.selectOptions.keys():
           action = self.selectMenu.addAction(self.selectOptions[selectOption])
@@ -90,6 +90,14 @@ class MarkupEditorSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin)
         self.selectAllPointsAction = qt.QAction(f"Select all control points", scriptedPlugin)
         self.selectAllPointsAction.objectName = 'SelectAllPointsAction'
         self.selectAllPointsAction.connect("triggered()", self.onSelectAllPointsAction)
+
+        self.toggleVisibilityPointsAction = qt.QAction(f"Toggle visibility of selected points", scriptedPlugin)
+        self.toggleVisibilityPointsAction.objectName = 'ToggleVisibilityPointsAction'
+        self.toggleVisibilityPointsAction.connect("triggered()", self.onToggleVisibilityPointsAction)
+
+        self.resetVisibilityPointsAction = qt.QAction(f"Reset visibility of all control points", scriptedPlugin)
+        self.resetVisibilityPointsAction.objectName = 'ResetVisibilityPointsAction'
+        self.resetVisibilityPointsAction.connect("triggered()", self.onResetVisibilityPointsAction)
 
         self.addToGridAction = qt.QAction(f"Add point to grid", scriptedPlugin)
         self.addToGridAction.objectName = 'AddToGridAction'
@@ -165,6 +173,19 @@ class MarkupEditorSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin)
         for index in range(fiducialsNode.GetNumberOfControlPoints()):
           fiducialsNode.SetNthControlPointSelected(index, True)
 
+    def onToggleVisibilityPointsAction(self):
+        fiducialsNode = self.fiducialNodeFromEvent
+        with slicer.util.NodeModify(fiducialsNode):
+          for index in range(fiducialsNode.GetNumberOfControlPoints()):
+            if fiducialsNode.GetNthControlPointSelected(index):
+              fiducialsNode.SetNthControlPointVisibility(index, not fiducialsNode.GetNthControlPointVisibility(index))
+
+    def onResetVisibilityPointsAction(self):
+        fiducialsNode = self.fiducialNodeFromEvent
+        with slicer.util.NodeModify(fiducialsNode):
+          for index in range(fiducialsNode.GetNumberOfControlPoints()):
+            fiducialsNode.SetNthControlPointVisibility(index, True)
+
     def onAddToGridAction(self):
         fiducialsNode = self.fiducialNodeFromEvent
         fiducialIndex = self.fiducialIndexFromEvent
@@ -186,7 +207,7 @@ class MarkupEditorSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin)
     def viewContextMenuActions(self):
         #return [self.selectViewAction, self.editViewAction, self.deleteViewAction, self.addToGridAction]
         return [self.selectViewAction, self.editViewAction, self.deleteViewAction, self.toggleSelectedPointsAction,
-        self.selectAllPointsAction, self.addToGridAction]
+        self.selectAllPointsAction, self.toggleVisibilityPointsAction, self.resetVisibilityPointsAction, self.addToGridAction]
 
     def showViewContextMenuActionsForItem(self, itemID, eventData=None):
         pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler.instance()
@@ -207,6 +228,8 @@ class MarkupEditorSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin)
             menuActions.append('DeleteViewAction')
             menuActions.append('ToggleSelectedPointsAction')
             menuActions.append('SelectAllPointsAction')
+            menuActions.append('ToggleVisibilityPointsAction')
+            menuActions.append('ResetVisibilityPointsAction')
             menuActions.append('AddToGridAction')
             if int(slicer.app.revision)>=30033:
               pluginLogic.setAllowedViewContextMenuActionNamesForItem(itemID, menuActions)
@@ -217,6 +240,8 @@ class MarkupEditorSubjectHierarchyPlugin(AbstractScriptedSubjectHierarchyPlugin)
             self.deleteViewAction.visible = True
             self.toggleSelectedPointsAction.visible = True
             self.selectAllPointsAction.visible = True
+            self.toggleVisibilityPointsAction.visible = True
+            self.resetVisibilityPointsAction.visible = True
             self.addToGridAction.visible = True
             self.viewNodeFromEvent = viewNode
             self.fiducialNodeFromEvent = associatedNode

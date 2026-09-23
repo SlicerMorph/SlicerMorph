@@ -24,7 +24,7 @@ class PlaceLandmarkGrid(ScriptedLoadableModule):
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
         self.parent.title = "PlaceLandmarkGrid"
-        self.parent.categories = ["SlicerMorph.SlicerMorph Utilities"]
+        self.parent.categories = ["SlicerMorph.Geometric Morphometrics"]
         self.parent.dependencies = []
         self.parent.contributors = ["Sara Rolfe (SCRI), Murat Maga (SCRI, UW)"]
         self.parent.helpText = """
@@ -32,9 +32,7 @@ class PlaceLandmarkGrid(ScriptedLoadableModule):
         """
         # TODO: replace with organization, grant and thanks
         self.parent.acknowledgementText = """
-        This module was developed by Sara Rolfe and Murat Maga for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections"
-        awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839).
-        https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
+        This module was developed by Sara Rolfe and Murat Maga for SlicerMorph. Development of SlicerMorph is supported by NSF grants 1759883 and 2301405 to Murat Maga.
         """
 
 #
@@ -53,16 +51,29 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         ScriptedLoadableModuleWidget.__init__(self, parent)
         VTKObservationMixin.__init__(self)  # needed for parameter node observation
         self.logic = None
-        if not hasattr(slicer.modules, 'gridsurfacemarkups'):
+        extensionName = 'SurfaceMarkup'
+        em = slicer.app.extensionsManagerModel()
+        if not em.isExtensionInstalled(extensionName):
           if slicer.util.confirmOkCancelDisplay("PlaceLandmarkGrid requires installation of the SurfaceMarkup extension.\nClick OK to install and restart the application."):
-            extensionName = 'SurfaceMarkup'
-            em = slicer.app.extensionsManagerModel()
             em.interactive = False  # prevent display of popups
             em.updateExtensionsMetadataFromServer(True, True)  # update extension metadata from server
             if not em.downloadAndInstallExtensionByName(extensionName, True, True):
               raise ValueError(f"Failed to install {extensionName} extension")
             else:
               slicer.util.restart()
+
+    def cleanup(self):
+        """
+        Called when the widget is destroyed.
+        """
+        # Remove scene observer
+        if hasattr(self, 'sceneCloseObserver'):
+            slicer.mrmlScene.RemoveObserver(self.sceneCloseObserver)
+        # Remove subject hierarchy observer
+        if hasattr(self, 'observerTagDeleteGrid'):
+            shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
+            if shNode:
+                shNode.RemoveObserver(self.observerTagDeleteGrid)
 
     def setup(self):
         """
@@ -114,7 +125,7 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         self.fiducialSelector.noneEnabled = True
         self.fiducialSelector.showHidden = False
         self.fiducialSelector.setMRMLScene( slicer.mrmlScene )
-        parametersFormLayout.addRow("Fiducial list: ", self.fiducialSelector)
+        parametersFormLayout.addRow("Point list: ", self.fiducialSelector)
 
         #
         # Select active patch
@@ -243,6 +254,9 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
         self.observerTagDeleteGrid = shNode.AddObserver(shNode.SubjectHierarchyItemAboutToBeRemovedEvent, self.deleteObservers)
 
+        # Add observer for scene close events
+        self.sceneCloseObserver = slicer.mrmlScene.AddObserver(slicer.mrmlScene.StartCloseEvent, self.onSceneClose)
+
         ################## Grid Tab
         #
         # Parameters Area
@@ -285,12 +299,23 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         #
         # Advanced menu
         #
-        advancedCollapsibleButton = ctk.ctkCollapsibleButton()
-        advancedCollapsibleButton.text = "Advanced"
-        advancedCollapsibleButton.collapsed = True
-        parametersGridFormLayout.addRow(advancedCollapsibleButton)
+        mergeAdvancedCollapsibleButton = ctk.ctkCollapsibleButton()
+        mergeAdvancedCollapsibleButton.text = "Advanced"
+        mergeAdvancedCollapsibleButton.collapsed = True
+        parametersGridFormLayout.addRow(mergeAdvancedCollapsibleButton)
         # Layout within the dummy collapsible button
-        advancedFormLayout = qt.QFormLayout(advancedCollapsibleButton)
+        mergeAdvancedFormLayout = qt.QFormLayout(mergeAdvancedCollapsibleButton)
+
+        #
+        # Merge tolerance slider
+        #
+        self.mergeToleranceSlider = ctk.ctkSliderWidget()
+        self.mergeToleranceSlider.singleStep = 0.05
+        self.mergeToleranceSlider.minimum = 0
+        self.mergeToleranceSlider.maximum = 1
+        self.mergeToleranceSlider.value = 0.25
+        self.mergeToleranceSlider.setToolTip("Points from different grids are merged when they are closer than this fraction of the grid point spacing. Increase to remove more overlapping points; decrease to keep more.")
+        mergeAdvancedFormLayout.addRow("Merge tolerance (fraction of grid spacing): ", self.mergeToleranceSlider)
 
         #
         # Merge Button
@@ -423,7 +448,8 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
           associatedLandmarkIndexes = list(cornerNameToLandmarkIndexes.values())
 
           allGridPatches.append({
-            "associated_landmark_indexes": associatedLandmarkIndexes
+            "associated_landmark_indexes": associatedLandmarkIndexes,
+            "grid_resolution": int(patch.resolution)
           })
 
         advancedSettings = {
@@ -474,9 +500,19 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         # Iterate through each patch in the template
         for patchData in data["patches"]:
           associatedLandmarks = patchData["associated_landmark_indexes"]
+          # Get the grid resolution for this patch (default to 5 if not specified for backward compatibility)
+          patchResolution = patchData.get("grid_resolution", 5)
           # First, create new grid outline
           self.onCreateGridFromPointsButton()
+          # Add landmarks from template - this will trigger grid creation
           self.logic.addLandmarksFromTemplateToGrid(associatedLandmarks, fiducialNode)
+          # Update the resolution if it differs from what was just created
+          if self.patchList:
+            currentPatch = self.patchList[-1]  # Get the patch we just created
+            if int(currentPatch.resolution) != patchResolution:
+              self.sampleRate.value = patchResolution
+              self.patch = currentPatch
+              self.onResampleGrid()
 
         numberOfLandmarks = fiducialNode.GetNumberOfControlPoints()
         # Check if number of landmarks is the same
@@ -588,6 +624,59 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
       self.patch.setLockPatch(False)
       self.sampleRate.value = self.patch.resolution
 
+    def onSceneClose(self, caller, event):
+      """
+      Called when the scene is about to be closed. Clean up all patches and reset state.
+      """
+      # Prevent GUI updates from triggering during cleanup
+      self.updatingGUI = True
+
+      # Clean up observers from all patches before clearing
+      for patch in self.patchList:
+        try:
+          if hasattr(patch, 'tagC0') and patch.cornerPoint0:
+            patch.cornerPoint0.RemoveObserver(patch.tagC0)
+          if hasattr(patch, 'tagC1') and patch.cornerPoint1:
+            patch.cornerPoint1.RemoveObserver(patch.tagC1)
+          if hasattr(patch, 'tagC2') and patch.cornerPoint2:
+            patch.cornerPoint2.RemoveObserver(patch.tagC2)
+          if hasattr(patch, 'tagC3') and patch.cornerPoint3:
+            patch.cornerPoint3.RemoveObserver(patch.tagC3)
+          if hasattr(patch, 'tag_M0') and patch.midPoint0:
+            patch.midPoint0.RemoveObserver(patch.tag_M0)
+          if hasattr(patch, 'tag_M1') and patch.midPoint1:
+            patch.midPoint1.RemoveObserver(patch.tag_M1)
+          if hasattr(patch, 'tag_M2') and patch.midPoint2:
+            patch.midPoint2.RemoveObserver(patch.tag_M2)
+          if hasattr(patch, 'tag_M3') and patch.midPoint3:
+            patch.midPoint3.RemoveObserver(patch.tag_M3)
+        except:
+          pass  # Node may already be deleted
+
+      # Clear the patch list
+      self.patchList = []
+
+      # Reset counter
+      self.patchCounter = -1
+
+      # Clear current patch reference
+      if hasattr(self, 'patch'):
+        self.patch = None
+
+      # Clear logic's active outline
+      if self.logic:
+        self.logic.activeOutline = None
+
+      # Clear the dropdown (keep only "None")
+      while self.gridSelector.count > 1:
+        self.gridSelector.removeItem(1)
+
+      # Reset to "None"
+      self.gridSelector.setCurrentIndex(0)
+
+      # Re-enable GUI updates
+      self.updatingGUI = False
+
     @vtk.calldata_type(vtk.VTK_INT)
     def deleteObservers(self, caller, event, removedItem):
       shNode = slicer.mrmlScene.GetSubjectHierarchyNode()
@@ -604,7 +693,7 @@ class PlaceLandmarkGridWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
 
     def onMergeGridButton(self):
       logic =  PlaceLandmarkGridLogic()
-      toleranceValue = self.projectionDistanceSlider.value/100
+      toleranceValue = self.mergeToleranceSlider.value
       logic.mergeGrids(self.gridView, self.markupsGridView, toleranceValue)
 
     def updateMergeGridButton(self):
@@ -1071,11 +1160,13 @@ class PlaceLandmarkGridLogic(ScriptedLoadableModuleLogic):
       return True
 
     def getGridMinResolutionSize(self, grid):
+       # Smallest spacing (in world units) between adjacent grid points,
+       # measured along the two grid directions.
        p1 = grid.GetNthControlPointPosition(0)
        p2 = grid.GetNthControlPointPosition(1)
        p3 = grid.GetNthControlPointPosition(grid.GetGridResolution()[0])
-       length = vtk.vtkMath().Distance2BetweenPoints(p1, p2)
-       width = vtk.vtkMath().Distance2BetweenPoints(p1, p3)
+       length = math.sqrt(vtk.vtkMath().Distance2BetweenPoints(p1, p2))
+       width = math.sqrt(vtk.vtkMath().Distance2BetweenPoints(p1, p3))
        return(min(length, width))
 
     def mergePointsAndGrids(self, gridList, markupList, mergedNode, tolerance):
@@ -1096,7 +1187,7 @@ class PlaceLandmarkGridLogic(ScriptedLoadableModuleLogic):
           closestPointIndex = mergedNode.GetClosestControlPointIndexToPositionWorld(currentPoint)
           if closestPointIndex>=0:
             closestPoint = mergedNode.GetNthControlPointPosition(closestPointIndex)
-            distance = vtk.vtkMath().Distance2BetweenPoints(currentPoint, closestPoint)
+            distance = math.sqrt(vtk.vtkMath().Distance2BetweenPoints(currentPoint, closestPoint))
             if distance > resolution * tolerance:
               mergedNode.AddControlPoint(currentPoint)
               currentPointIndex = mergedNode.GetNumberOfControlPoints()-1
@@ -1109,7 +1200,7 @@ class PlaceLandmarkGridLogic(ScriptedLoadableModuleLogic):
           closestPointIndex = mergedNode.GetClosestControlPointIndexToPositionWorld(currentPoint)
           if closestPointIndex>=0:
             closestPoint = mergedNode.GetNthControlPointPosition(closestPointIndex)
-            distance = vtk.vtkMath().Distance2BetweenPoints(currentPoint, closestPoint)
+            distance = math.sqrt(vtk.vtkMath().Distance2BetweenPoints(currentPoint, closestPoint))
             if distance < overallSpatialConstraint:
               if mergedNode.GetNthControlPointDescription(closestPointIndex) != "Fixed":
                 mergedNode.RemoveNthControlPoint(closestPointIndex)

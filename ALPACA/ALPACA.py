@@ -2,10 +2,21 @@
 import os
 import unittest
 import logging
+# Force-reload the Templates mixin submodules so Slicer's Reload button picks
+# up edits to widget_mixin.py / logic_mixin.py (otherwise only ALPACA.py is
+# re-executed and stale class definitions persist).
+import importlib
+import Templates.widget_mixin as _twm
+import Templates.logic_mixin as _tlm
+importlib.reload(_twm)
+importlib.reload(_tlm)
+from Templates.widget_mixin import _ALPACATemplatesWidget
+from Templates.logic_mixin import _ALPACATemplatesLogic
 import copy
 import json
 import subprocess
 import vtk, qt, ctk, slicer
+import slicer.packaging
 from slicer.ScriptedLoadableModule import *
 import glob
 import vtk.util.numpy_support as vtk_np
@@ -40,9 +51,7 @@ class ALPACA(ScriptedLoadableModule):
       <p>For more information see the <a href="https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/ALPACA">online documentation.</a>.</p>
       """
         self.parent.acknowledgementText = """
-      This module was developed by Arthur Porto, Sara Rolfe, and Murat Maga for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections"
-      awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839).
-      https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
+      This module was developed by Arthur Porto, Sara Rolfe, and Murat Maga for SlicerMorph. Development of SlicerMorph is supported by NSF grants 1759883 and 2301405 to Murat Maga.
       """
 
         # Define custom layouts for multi-templates selection tab in slicer global namespace
@@ -89,7 +98,7 @@ class ALPACA(ScriptedLoadableModule):
 #
 
 
-class ALPACAWidget(ScriptedLoadableModuleWidget):
+class ALPACAWidget(_ALPACATemplatesWidget, ScriptedLoadableModuleWidget):
     """Uses ScriptedLoadableModuleWidget base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
@@ -99,69 +108,6 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
 
     def setup(self):
         ScriptedLoadableModuleWidget.setup(self)
-        needInstall = False
-
-        try:
-            from itk import Fpfh
-            import cpdalp
-        except ModuleNotFoundError:
-            needInstall = True
-
-        if needInstall:
-            progressDialog = slicer.util.createProgressDialog(
-                windowTitle="Installing...",
-                labelText="Installing ALPACA Python packages. This may take a minute...",
-                maximum=0,
-            )
-            slicer.app.processEvents()
-            try:
-                slicer.util.pip_install(["itk~=5.4.0"])
-                slicer.util.pip_install(["scikit-learn"])
-                slicer.util.pip_install(["itk-fpfh~=0.2.0"])
-                slicer.util.pip_install(["itk-ransac~=0.2.1"])
-                slicer.util.pip_install(f"cpdalp")
-            except:
-                slicer.util.infoDisplay("Issue while installing the ITK Python packages")
-                progressDialog.close()
-            import itk
-
-            fpfh = itk.Fpfh.PointFeature.MF3MF3.New()
-            progressDialog.close()
-
-        try:
-            import cpdalp
-            import itk
-            from itk import Fpfh
-            from itk import Ransac
-        except ModuleNotFoundError as e:
-            print("Module Not found. Please restart Slicer to load packages.")
-
-        progressDialog = slicer.util.createProgressDialog(
-            windowTitle="Importing...",
-            labelText="Importing ALPACA Python packages. This may take few seconds...",
-            maximum=0,
-        )
-        slicer.app.processEvents()
-        with slicer.util.WaitCursor():
-            fpfh = itk.Fpfh.PointFeature.MF3MF3.New()
-        progressDialog.close()
-
-        # Import pandas if needed
-        try:
-          import pandas
-        except:
-          progressDialog = slicer.util.createProgressDialog(
-              windowTitle="Installing...",
-              labelText="Installing Pandas Python package...",
-              maximum=0,
-          )
-          slicer.app.processEvents()
-          try:
-            slicer.util.pip_install(["pandas"])
-            progressDialog.close()
-          except:
-            slicer.util.infoDisplay("Issue while installing Pandas Python package. Please install manually.")
-            progressDialog.close()
 
         # Load widget from .ui file (created by Qt Designer).
         uiWidget = slicer.util.loadUI(self.resourcePath("UI/ALPACA.ui"))
@@ -265,9 +211,18 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
         )
         self.ui.accelerationCheckBox.connect("toggled(bool)", self.onChangeCPD)
         self.ui.accelerationCheckBox.connect("toggled(bool)", self.onChangeAdvanced)
+        self.ui.accelerationCheckBox.connect(
+            "toggled(bool)", self.onAccelerationToggled
+        )
         self.ui.BCPDFolder.connect("validInputChanged(bool)", self.onChangeAdvanced)
         self.ui.BCPDFolder.connect("validInputChanged(bool)", self.onChangeCPD)
-        self.ui.BCPDFolder.currentPath = ALPACALogic().getBCPDPath()
+        # Restore persisted BCPD path and acceleration state from QSettings.
+        _logic = ALPACALogic()
+        _savedBCPDPath = _logic.getBCPDPath()
+        self.ui.BCPDFolder.currentPath = _savedBCPDPath
+        if _savedBCPDPath and _logic.getAccelerationEnabled():
+            self.ui.accelerationCheckBox.checked = True
+            self.ui.BCPDFolder.enabled = True
 
         # Batch Processing connections
         self.ui.methodBatchWidget.connect(
@@ -291,9 +246,6 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
         self.ui.replicateAnalysisCheckBox.connect(
             "toggled(bool)", self.onSelectReplicateAnalysis
         )
-        self.ui.meshQCCheckBox.connect(
-            "toggled(bool)", self.onSelectMultiProcess
-        )
         self.ui.applyLandmarkMultiButton.connect(
             "clicked(bool)", self.onApplyLandmarkMulti
         )
@@ -306,7 +258,23 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
             "validInputChanged(bool)", self.onSelectKmeans
         )
         self.ui.selectRefCheckBox.connect("toggled(bool)", self.onSelectKmeans)
+        def _onSmoothReferenceToggled(checked):
+            self.ui.smoothReferenceIterations.setEnabled(checked)
+            self.ui.smoothReferencePassBand.setEnabled(checked)
+            self.ui.smoothReferencePassBandLabel.setEnabled(checked)
+        self.ui.smoothReferenceCheckBox.connect("toggled(bool)", _onSmoothReferenceToggled)
+        _onSmoothReferenceToggled(self.ui.smoothReferenceCheckBox.isChecked())
         self.ui.downReferenceButton.connect("clicked(bool)", self.onDownReferenceButton)
+        self.ui.useExistingAtlasCheckBox.connect("toggled(bool)", self.onUseExistingAtlasToggled)
+        self.ui.existingAtlasSelector.connect("validInputChanged(bool)", self.onSelectKmeans)
+        # Hide existing-atlas row by default (shown only when checkbox is checked).
+        self.ui.existingAtlasSelectorLabel.setVisible(False)
+        self.ui.existingAtlasSelector.setVisible(False)
+        # Bypass: load previously generated matched point clouds and skip Steps 1/2.
+        self.ui.useExistingPCDsCheckBox.connect("toggled(bool)", self.onUseExistingPCDsToggled)
+        self.ui.existingPCDsSelector.connect("currentPathChanged(QString)", lambda _p: self.onSelectKmeans())
+        self.ui.existingPCDsSelectorLabel.setVisible(False)
+        self.ui.existingPCDsSelector.setVisible(False)
         self.ui.matchingPointsButton.connect(
             "clicked(bool)", self.onMatchingPointsButton
         )
@@ -314,6 +282,12 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
         self.ui.resetTableButton.connect("clicked(bool)", self.onRestTableButton)
         self.ui.kmeansTemplatesButton.connect(
             "clicked(bool)", self.onkmeansTemplatesButton
+        )
+        self.ui.buildConsensusAtlasButton.connect(
+            "clicked(bool)", self.onBuildConsensusAtlasButton
+        )
+        self.ui.previewDensityButton.connect(
+            "clicked(bool)", self.onPreviewDensity
         )
 
         # RMSE Table initialization
@@ -441,6 +415,23 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
             self.ui.replicateAnalysisCheckBox.isChecked()
         )
 
+    def _ensureDependencies(self):
+        """Install ALPACA's Python dependencies if missing.
+
+        Returns True if dependencies are now available, False if the user
+        declined installation. Call from any entry point that runs ALPACA.
+        """
+        try:
+            reqs = slicer.packaging.load_requirements(self.resourcePath("requirements_ALPACA.txt"))
+            slicer.packaging.pip_ensure(reqs, requester="ALPACA")
+        except RuntimeError:
+            slicer.util.messageBox(
+                "ALPACA requires its Python packages (itk, scikit-learn, itk-fpfh, "
+                "itk-ransac, cpdalp, pandas) to run."
+            )
+            return False
+        return True
+
     def transform_numpy_points(self, points_np, transform):
         import itk
 
@@ -456,6 +447,8 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
         return points_tranformed
 
     def onSubsampleButton(self):
+        if not self._ensureDependencies():
+            return
         try:
             if self.targetCloudNodeTest is not None:
                 slicer.mrmlScene.RemoveNode(self.targetCloudNodeTest)
@@ -541,6 +534,8 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
 
     # Run all button for Single Alignment ALPACA
     def onRunALPACAButton(self):
+        if not self._ensureDependencies():
+            return
         run_counter = (
             self.runALPACACounter()
         )  # the counter for executing this function in str format
@@ -954,6 +949,8 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
         print(message)
 
     def onApplyLandmarkMulti(self):
+        if not self._ensureDependencies():
+            return
         # Clear previous progress messages
         if hasattr(self.ui, 'batchProgressInfo'):
             self.ui.batchProgressInfo.clear()
@@ -988,7 +985,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
             )
         else:
             for i in range(0, self.ui.replicationNumberSpinBox.value):
-                self.updateBatchProgress(f"Starting ALPACA replication run {i+1}/{self.ui.replicationNumberSpinBox.value}")
+                print("ALPACA replication run ", i)
                 dateTimeStamp = datetime.now().strftime("%Y-%m-%d_%H_%M_%S")
                 datedOutputFolder = os.path.join(
                     self.ui.landmarkOutputSelector.currentPath, dateTimeStamp
@@ -1006,382 +1003,12 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
                         self.parameterDictionary,
                     )
                 except:
-                    self.updateBatchProgress(f"ERROR: Could not access output folder for replication {i+1}")
                     logging.debug(
                         "Result directory failed: Could not access output folder"
                     )
-
-    ###Connecting function for kmeans templates selection
-    def onSelectKmeans(self):
-        self.ui.downReferenceButton.enabled = bool(
-            self.ui.modelsMultiSelector.currentPath
-            and self.ui.kmeansOutputSelector.currentPath
-        )
-        self.ui.referenceSelector.enabled = self.ui.selectRefCheckBox.isChecked()
-
-    def onDownReferenceButton(self):
-        logic = ALPACALogic()
-        if bool(self.ui.referenceSelector.currentPath):
-            referencePath = self.ui.referenceSelector.currentPath
-        else:
-            referenceList = [
-                f
-                for f in os.listdir(self.ui.modelsMultiSelector.currentPath)
-                if f.endswith((".ply", ".stl", ".obj", ".vtk", ".vtp"))
-            ]
-            referenceFile = referenceList[0]
-            referencePath = os.path.join(
-                self.ui.modelsMultiSelector.currentPath, referenceFile
-            )
-        self.sparseTemplate, template_density, self.referenceNode = logic.downReference(
-            referencePath, self.ui.spacingFactorSlider.value
-        )
-        self.refName = os.path.basename(referencePath)
-        self.refName = os.path.splitext(self.refName)[0]
-        self.ui.subsampleInfo2.clear()
-        self.ui.subsampleInfo2.insertPlainText(f"The reference is {self.refName} \n")
-        self.ui.subsampleInfo2.insertPlainText(
-            f"The number of points in the downsampled reference pointcloud is {template_density}"
-        )
-        self.ui.matchingPointsButton.enabled = True
-
-    def onMatchingPointsButton(self):
-        # Set up folders for matching point cloud output and kmeans selected templates under self.ui.kmeansOutputSelector.currentPath
-        dateTimeStamp = datetime.now().strftime("%Y-%m-%d_%H_%M_%S")
-        self.kmeansOutputFolder = os.path.join(
-            self.ui.kmeansOutputSelector.currentPath, dateTimeStamp
-        )
-        self.pcdOutputFolder = os.path.join(
-            self.kmeansOutputFolder, "matching_point_clouds"
-        )
-        try:
-            os.makedirs(self.kmeansOutputFolder)
-            os.makedirs(self.pcdOutputFolder)
-        except:
-            logging.debug("Result directory failed: Could not access output folder")
-            print("Error creating result directory")
-        # Execute functions for generating point clouds matched to the reference
-        logic = ALPACALogic()
-        template_density, matchedPoints, indices, files = logic.matchingPCD(
-            self.ui.modelsMultiSelector.currentPath,
-            self.sparseTemplate,
-            self.referenceNode,
-            self.pcdOutputFolder,
-            self.ui.spacingFactorSlider.value,
-            self.ui.JSONFileFormatSelector.checked,
-            self.parameterDictionary,
-        )
-        # Print results
-        correspondent_threshold = 0.01
-        self.ui.subsampleInfo2.clear()
-        self.ui.subsampleInfo2.insertPlainText(f"The reference is {self.refName} \n")
-        self.ui.subsampleInfo2.insertPlainText(
-            "The number of points in the downsampled reference pointcloud is {}. The error threshold for finding correspondent points is {}% \n".format(
-                template_density, correspondent_threshold * 100
-            )
-        )
-        if len(indices) > 0:
-            self.ui.subsampleInfo2.insertPlainText(
-                f"There are {len(indices)} files have points repeatedly matched with the same point(s) template, these are: \n"
-            )
-            for i in indices:
-                self.ui.subsampleInfo2.insertPlainText(
-                    f"{files[i]}: {matchedPoints[i]} unique points are sampled to match the template pointcloud \n"
-                )
-            indices_error = [
-                i
-                for i in indices
-                if (template_density - matchedPoints[i])
-                > template_density * correspondent_threshold
-            ]
-            if len(indices_error) > 0:
-                self.ui.subsampleInfo2.insertPlainText(
-                    "The specimens with sampling error larger than the threshold are: \n"
-                )
-                for i in indices_error:
-                    self.ui.subsampleInfo2.insertPlainText(
-                        f"{files[i]}: {matchedPoints[i]} unique points are sampled. \n"
-                    )
-                    self.ui.subsampleInfo2.insertPlainText(
-                        "It is recommended to check the alignment of these specimens with the template or experimenting with a higher spacing factor \n"
-                    )
-            else:
-                self.ui.subsampleInfo2.insertPlainText(
-                    "All error rates smaller than the threshold \n"
-                )
-        else:
-            self.ui.subsampleInfo2.insertPlainText(
-                "{} unique points are sampled from each model to match the template pointcloud \n"
-            )
-        # Enable buttons for kmeans
-        self.ui.noGroupInput.enabled = True
-        self.ui.multiGroupInput.enabled = True
-        self.ui.kmeansTemplatesButton.enabled = True
-        self.ui.matchingPointsButton.enabled = False
-
-    # If select multiple group input radiobutton, execute enterFactors function
-    def onToggleGroupInput(self):
-        if self.ui.multiGroupInput.isChecked():
-            self.enterFactors()
-            self.ui.resetTableButton.enabled = True
-
-    # Reset input button
-    def onRestTableButton(self):
-        self.resetFactors()
-
-    # Add table for entering user-defined catalogs/groups for each specimen
-    def enterFactors(self):
-        # If has table node, remove table node and build a new one
-        if hasattr(self, "factorTableNode") == False:
-            files = [
-                os.path.splitext(file)[0] for file in os.listdir(self.pcdOutputFolder)
-            ]
-            sortedArray = np.zeros(
-                len(files),
-                dtype={"names": ("filename", "procdist"), "formats": ("U50", "f8")},
-            )
-            sortedArray["filename"] = files
-            self.factorTableNode = slicer.mrmlScene.AddNewNodeByClass(
-                "vtkMRMLTableNode", "Groups Table"
-            )
-            col1 = self.factorTableNode.AddColumn()
-            col1.SetName("ID")
-            for i in range(len(files)):
-                self.factorTableNode.AddEmptyRow()
-                self.factorTableNode.SetCellText(i, 0, sortedArray["filename"][i])
-            col2 = self.factorTableNode.AddColumn()
-            col2.SetName("Group")
-            # add table to new layout
-            slicer.app.layoutManager().setLayout(503)
-            slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveTableID(
-                self.factorTableNode.GetID()
-            )
-            slicer.app.applicationLogic().PropagateTableSelection()
-            self.factorTableNode.GetTable().Modified()
-
-    def resetFactors(self):
-        if hasattr(self, "factorTableNode"):
-            slicer.mrmlScene.RemoveNode(self.factorTableNode)
-        files = [os.path.splitext(file)[0] for file in os.listdir(self.pcdOutputFolder)]
-        sortedArray = np.zeros(
-            len(files),
-            dtype={"names": ("filename", "procdist"), "formats": ("U50", "f8")},
-        )
-        sortedArray["filename"] = files
-        self.factorTableNode = slicer.mrmlScene.AddNewNodeByClass(
-            "vtkMRMLTableNode", "Groups Table"
-        )
-        col1 = self.factorTableNode.AddColumn()
-        col1.SetName("ID")
-        for i in range(len(files)):
-            self.factorTableNode.AddEmptyRow()
-            self.factorTableNode.SetCellText(i, 0, sortedArray["filename"][i])
-        col2 = self.factorTableNode.AddColumn()
-        col2.SetName("Group")
-        slicer.app.layoutManager().setLayout(503)
-        slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveTableID(
-            self.factorTableNode.GetID()
-        )
-        slicer.app.applicationLogic().PropagateTableSelection()
-        self.factorTableNode.GetTable().Modified()
-
-    # Generate templates based on kmeans and catalog
-    def onkmeansTemplatesButton(self):
-        start = time.time()
-        logic = ALPACALogic()
-        PCDFiles = os.listdir(self.pcdOutputFolder)
-        if len(PCDFiles) < 1:
-            logging.error(f"No point cloud files read from {self.pcdOutputFolder}\n")
-            return
-        pcdFilePaths = [os.path.join(self.pcdOutputFolder, file) for file in PCDFiles]
-        # GPA for all specimens
-        self.scores, self.LM = logic.pcdGPA(pcdFilePaths)
-        files = [os.path.splitext(file)[0] for file in PCDFiles]
-        # Set up a seed for numpy for random results
-        if self.ui.setSeedCheckBox.isChecked():
-            np.random.seed(1000)
-        if self.ui.noGroupInput.isChecked():
-            # Generate folder for storing selected templates within the self.ui.kmeansOutputSelector.currentPath
-            self.templatesOutputFolder = os.path.join(
-                self.kmeansOutputFolder, "kmeans_selected_templates"
-            )
-            if os.path.isdir(self.templatesOutputFolder):
-                pass
-            else:
-                try:
-                    os.makedirs(self.templatesOutputFolder)
-                except:
-                    logging.debug(
-                        "Result directory failed: Could not access templates output folder"
-                    )
                     print("Error creating result directory")
-            #
-            templates, clusterID, templatesIndices = logic.templatesSelection(
-                self.ui.modelsMultiSelector.currentPath,
-                self.scores,
-                pcdFilePaths,
-                self.templatesOutputFolder,
-                self.ui.templatesNumber.value,
-                self.ui.kmeansIterations.value,
-            )
-            clusterID = [str(x) for x in clusterID]
-            print(f"kmeans cluster ID is: {clusterID}")
-            print(f"templates indices are: {templatesIndices}")
-            self.ui.templatesInfo.clear()
-            self.ui.templatesInfo.insertPlainText(
-                f"One pooled group for all specimens. The {int(self.ui.templatesNumber.value)} selected templates are: \n"
-            )
-            for file in templates:
-                self.ui.templatesInfo.insertPlainText(file + "\n")
-            # Add cluster ID from kmeans to the table
-            self.plotClusters(files, templatesIndices)
-            print(f"Time: {time.time() - start}")
-        # multiClusterCheckbox is checked
-        else:
-            if hasattr(self, "factorTableNode"):
-                self.ui.templatesInfo.clear()
-                factorCol = self.factorTableNode.GetTable().GetColumn(1)
-                groupFactorArray = []
-                for i in range(factorCol.GetNumberOfTuples()):
-                    temp = factorCol.GetValue(i).rstrip()
-                    temp = str(temp).upper()
-                    groupFactorArray.append(temp)
-                print(groupFactorArray)
-                # Count the number of non-null enties in the table
-                countInput = 0
-                for i in range(len(groupFactorArray)):
-                    if groupFactorArray[i] != "":
-                        countInput += 1
-                if countInput == len(
-                    PCDFiles
-                ):  # check if group information is input for all specimens
-                    uniqueFactors = list(set(groupFactorArray))
-                    groupNumber = len(uniqueFactors)
-                    self.ui.templatesInfo.insertPlainText(
-                        f"The sample is divided into {groupNumber} groups. The templates for each group are: \n"
-                    )
-                    groupClusterIDs = [None] * len(files)
-                    templatesIndices = []
-                    # Generate folder for storing selected templates within the self.ui.kmeansOutputSelector.currentPath
-                    self.templatesOutputFolder_multi = os.path.join(
-                        self.kmeansOutputFolder, "kmeans_selected_templates_multiGroups"
-                    )
-                    if os.path.isdir(self.templatesOutputFolder_multi):
-                        pass
-                    else:
-                        try:
-                            os.makedirs(self.templatesOutputFolder_multi)
-                        except:
-                            logging.debug(
-                                "Result directory failed: Could not access templates output folder"
-                            )
-                            print("Error creating result directory")
-                    for i in range(groupNumber):
-                        factorName = uniqueFactors[i]
-                        # Get indices for the ith cluster
-                        indices = [
-                            i for i, x in enumerate(groupFactorArray) if x == factorName
-                        ]
-                        print("indices for " + factorName + " is:")
-                        print(indices)
-                        key = factorName
-                        paths = []
-                        for i in range(len(indices)):
-                            path = pcdFilePaths[indices[i]]
-                            paths.append(path)
-                        # PC scores of specimens belong to a specific group
-                        tempScores = self.scores[indices, :]
-                        #
-                        templates, clusterID, tempIndices = logic.templatesSelection(
-                            self.ui.modelsMultiSelector.currentPath,
-                            tempScores,
-                            paths,
-                            self.templatesOutputFolder_multi,
-                            self.ui.templatesNumber.value,
-                            self.ui.kmeansIterations.value,
-                        )
-                        print("Kmeans-cluster IDs for " + factorName + " are:")
-                        print(clusterID)
-                        templatesIndices = templatesIndices + [
-                            indices[i] for i in tempIndices
-                        ]
-                        self.ui.templatesInfo.insertPlainText(
-                            "Group " + factorName + "\n"
-                        )
-                        for file in templates:
-                            self.ui.templatesInfo.insertPlainText(file + "\n")
-                        # Prepare cluster ID for each group
-                        uniqueClusterID = list(set(clusterID))
-                        for i in range(len(uniqueClusterID)):
-                            for j in range(len(clusterID)):
-                                if clusterID[j] == uniqueClusterID[i]:
-                                    index = indices[j]
-                                    groupClusterIDs[index] = factorName + str(i + 1)
-                                    print(groupClusterIDs[index])
-                    # Plot PC1 and PC 2 based on kmeans clusters
-                    print(f"group cluster ID are {groupClusterIDs}")
-                    print(f"Templates indices are: {templatesIndices}")
-                    self.plotClustersWithFactors(
-                        files, groupFactorArray, templatesIndices
-                    )
-                    print(f"Time: {time.time() - start}")
-                else:  # if the user input a factor requiring more than 3 groups, do not use factor
-                    qt.QMessageBox.critical(
-                        slicer.util.mainWindow(),
-                        "Error",
-                        "Please enter group information for every specimen",
-                    )
-            else:
-                qt.QMessageBox.critical(
-                    slicer.util.mainWindow(),
-                    "Error",
-                    "Please select Multiple groups within the sample option and enter group information for each specimen",
-                )
 
-    def plotClustersWithFactors(self, files, groupFactors, templatesIndices):
-        logic = ALPACALogic()
-        import Support.gpa_lib as gpa_lib
-
-        # Set up scatter plot
-        pcNumber = 2
-        shape = self.LM.lm.shape
-        scatterDataAll = np.zeros(shape=(shape[2], pcNumber))
-        for i in range(pcNumber):
-            data = gpa_lib.plotTanProj(self.LM.lm, self.LM.sortedEig, i, 1)
-            scatterDataAll[:, i] = data[:, 0]
-        factorNP = np.array(groupFactors)
-        # import GPA
-        logic.makeScatterPlotWithFactors(
-            scatterDataAll,
-            files,
-            factorNP,
-            "PCA Scatter Plots",
-            "PC1",
-            "PC2",
-            pcNumber,
-            templatesIndices,
-        )
-
-    def plotClusters(self, files, templatesIndices):
-        logic = ALPACALogic()
-        import Support.gpa_lib as gpa_lib
-
-        # Set up scatter plot
-        pcNumber = 2
-        shape = self.LM.lm.shape
-        scatterDataAll = np.zeros(shape=(shape[2], pcNumber))
-        for i in range(pcNumber):
-            data = gpa_lib.plotTanProj(self.LM.lm, self.LM.sortedEig, i, 1)
-            scatterDataAll[:, i] = data[:, 0]
-        logic.makeScatterPlot(
-            scatterDataAll,
-            files,
-            "PCA Scatter Plots",
-            "PC1",
-            "PC2",
-            pcNumber,
-            templatesIndices,
-        )
+    # Templates-tab widget handlers inherited from _ALPACATemplatesWidget.
 
     def updateLayout(self):
         layoutManager = slicer.app.layoutManager()
@@ -1414,6 +1041,10 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
                 "*.json *.mrk.json *.fcsv"
             ]
             self.ui.sourceFiducialMultiSelector.toolTip = "Select the source landmarks"
+
+    def onAccelerationToggled(self, checked):
+        """Persist acceleration checkbox state across reloads/sessions."""
+        ALPACALogic().saveAccelerationEnabled(bool(checked))
 
     def onChangeCPD(self):
         ALPACALogic().saveBCPDPath(self.ui.BCPDFolder.currentPath)
@@ -1488,7 +1119,7 @@ class ALPACAWidget(ScriptedLoadableModuleWidget):
 #
 
 
-class ALPACALogic(ScriptedLoadableModuleLogic):
+class ALPACALogic(_ALPACATemplatesLogic, ScriptedLoadableModuleLogic):
     """This class should implement all the actual
     computation done by your module.  The interface
     should be such that other python code can import
@@ -1498,9 +1129,75 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
 
-    def __init__(self):
-        super().__init__()
-        self.progressCallback = None
+    def validateSourceFilesMatch(self, sourceModelList, sourceLMList, sourceModelPath, sourceLandmarkPath):
+        """
+        Validate that source models and landmarks match in count and naming.
+        Returns: (is_valid, error_message)
+        """
+        # Get base names (without extensions) for models and landmarks
+        modelBaseNames = set()
+        for modelPath in sourceModelList:
+            # Handle both full paths and filenames
+            fileName = os.path.basename(modelPath) if os.path.sep in modelPath else modelPath
+            baseName = os.path.splitext(fileName)[0]
+            modelBaseNames.add(baseName)
+
+        landmarkBaseNames = set()
+        for lmPath in sourceLMList:
+            # Handle both full paths and filenames
+            fileName = os.path.basename(lmPath) if os.path.sep in lmPath else lmPath
+            # Remove .mrk.json or .fcsv extensions
+            if fileName.endswith('.mrk.json'):
+                baseName = fileName[:-9]  # Remove .mrk.json
+            elif fileName.endswith('.fcsv'):
+                baseName = fileName[:-5]  # Remove .fcsv
+            elif fileName.endswith('.json'):
+                baseName = fileName[:-5]  # Remove .json
+            else:
+                baseName = os.path.splitext(fileName)[0]
+            landmarkBaseNames.add(baseName)
+
+        # Check if counts match
+        if len(modelBaseNames) != len(landmarkBaseNames):
+            error_msg = f"\n🛑 ERROR: Mismatch in file counts!\n"
+            error_msg += f"   Source models directory: {sourceModelPath}\n"
+            error_msg += f"   Source landmarks directory: {sourceLandmarkPath}\n"
+            error_msg += f"   Number of source models: {len(modelBaseNames)}\n"
+            error_msg += f"   Number of source landmarks: {len(landmarkBaseNames)}\n"
+            error_msg += f"\n   The number of source model files and landmark files must match.\n"
+            return False, error_msg
+
+        # Check if all models have corresponding landmarks
+        models_without_landmarks = modelBaseNames - landmarkBaseNames
+        landmarks_without_models = landmarkBaseNames - modelBaseNames
+
+        if models_without_landmarks or landmarks_without_models:
+            error_msg = f"\n🛑 ERROR: File name mismatch detected!\n"
+            error_msg += f"   Source models directory: {sourceModelPath}\n"
+            error_msg += f"   Source landmarks directory: {sourceLandmarkPath}\n\n"
+
+            if models_without_landmarks:
+                error_msg += f"   Source models WITHOUT matching landmarks ({len(models_without_landmarks)}):  \n"
+                for name in sorted(models_without_landmarks):
+                    error_msg += f"      - {name}\n"
+                error_msg += "\n"
+
+            if landmarks_without_models:
+                error_msg += f"   Source landmarks WITHOUT matching models ({len(landmarks_without_models)}):\n"
+                for name in sorted(landmarks_without_models):
+                    error_msg += f"      - {name}\n"
+                error_msg += "\n"
+
+            error_msg += "   Please ensure that each source model has a corresponding landmark file\n"
+            error_msg += "   with the same base name (excluding file extensions).\n"
+            error_msg += "\n   Example: 'specimen_01.ply' should match with 'specimen_01.fcsv' or 'specimen_01.mrk.json'\n"
+            return False, error_msg
+
+        return True, ""
+
+    # Set per run by the widget (see setProgressCallback); a class attribute rather
+    # than an __init__ so the mixin/base-class construction chain is left alone.
+    progressCallback = None
 
     def setProgressCallback(self, callback):
         """Set callback function for progress updates"""
@@ -1568,40 +1265,40 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
 
         # Check source model(s)
         if os.path.isdir(sourceModelPath):
-            sourceFiles = [f for f in os.listdir(sourceModelPath) if f.endswith((".ply", ".obj", ".vtk"))]
+            sourceFiles = [f for f in os.listdir(sourceModelPath) if f.endswith((".ply", ".obj", ".vtk", ".vtp"))]
             for sourceFile in sourceFiles:
                 sourcePath = os.path.join(sourceModelPath, sourceFile)
                 is_valid, error_msg = self.performMeshQC(sourcePath)
                 if not is_valid:
                     qc_failed_models.append(f"SOURCE: {error_msg}")
-                    self.updateProgress(f"  ⚠️  QC FAILED - SOURCE: {error_msg}")
+                    self.updateProgress(f"  !! QC FAILED - SOURCE: {error_msg}")
         else:
             is_valid, error_msg = self.performMeshQC(sourceModelPath)
             if not is_valid:
                 qc_failed_models.append(f"SOURCE: {error_msg}")
-                self.updateProgress(f"  ⚠️  QC FAILED - SOURCE: {error_msg}")
+                self.updateProgress(f"  !! QC FAILED - SOURCE: {error_msg}")
 
         # Check target models
-        targetModelFiles = [f for f in os.listdir(targetModelDirectory) if f.endswith((".ply", ".obj", ".vtk"))]
+        targetModelFiles = [f for f in os.listdir(targetModelDirectory) if f.endswith((".ply", ".obj", ".vtk", ".vtp"))]
         for targetFile in targetModelFiles:
             targetPath = os.path.join(targetModelDirectory, targetFile)
             is_valid, error_msg = self.performMeshQC(targetPath)
             if not is_valid:
                 qc_failed_models.append(f"TARGET: {error_msg}")
-                self.updateProgress(f"  ⚠️  QC FAILED - TARGET: {error_msg}")
+                self.updateProgress(f"  !! QC FAILED - TARGET: {error_msg}")
 
         if qc_failed_models:
             self.updateProgress(f"")
-            self.updateProgress(f"🛑 BATCH PROCESSING STOPPED: {len(qc_failed_models)} mesh(es) failed QC checks")
+            self.updateProgress(f"BATCH PROCESSING STOPPED: {len(qc_failed_models)} mesh(es) failed QC checks")
             self.updateProgress(f"Please fix the following issues before proceeding:")
             for failed_model in qc_failed_models:
                 self.updateProgress(f"  - {failed_model}")
             self.updateProgress(f"")
-            self.updateProgress(f"💡 Tip: You can disable mesh QC to proceed anyway (not recommended)")
+            self.updateProgress(f"Tip: You can disable mesh QC to proceed anyway (not recommended)")
             return False
         else:
-            num_source_models = len([f for f in os.listdir(sourceModelPath) if f.endswith((".ply", ".obj", ".vtk"))]) if os.path.isdir(sourceModelPath) else 1
-            self.updateProgress(f"✅ All {len(targetModelFiles) + num_source_models} meshes passed QC checks")
+            num_source_models = len([f for f in os.listdir(sourceModelPath) if f.endswith((".ply", ".obj", ".vtk", ".vtp"))]) if os.path.isdir(sourceModelPath) else 1
+            self.updateProgress(f"OK: All {len(targetModelFiles) + num_source_models} meshes passed QC checks")
             self.updateProgress(f"")
             return True
 
@@ -1673,7 +1370,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             os.makedirs(specimenOutput, exist_ok=True)
             os.makedirs(medianOutput, exist_ok=True)
             for file in os.listdir(sourceModelPath):
-                if file.endswith((".ply", ".obj", ".vtk")):
+                if file.endswith((".ply", ".obj", ".vtk", ".vtp")):
                     sourceFilePath = os.path.join(sourceModelPath, file)
                     sourceModelList.append(sourceFilePath)
         else:
@@ -1686,105 +1383,104 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         else:
             sourceLMList.append(sourceLandmarkPath)
 
-        # Get total count of target models for progress tracking
-        targetModelFiles = [f for f in os.listdir(targetModelDirectory) if f.endswith((".ply", ".obj", ".vtk"))]
-        totalTargetModels = len(targetModelFiles)
-        currentModelIndex = 0
-
-        self.updateProgress(f"Starting batch processing of {totalTargetModels} target models...")
-        self.updateProgress("-----------------------------------------------------------")
+        # Validate that source models and landmarks match (only for multi-template mode)
+        if os.path.isdir(sourceModelPath) and os.path.isdir(sourceLandmarkPath):
+            is_valid, error_message = self.validateSourceFilesMatch(
+                sourceModelList, sourceLMList, sourceModelPath, sourceLandmarkPath
+            )
+            if not is_valid:
+                print(error_message)
+                qt.QMessageBox.critical(
+                    slicer.util.mainWindow(),
+                    "Source Files Mismatch",
+                    error_message
+                )
+                return  # Stop processing
 
         # Iterate through target models
-        for targetFileName in targetModelFiles:
-            currentModelIndex += 1
-            targetFilePath = os.path.join(targetModelDirectory, targetFileName)
-            TargetModelList.append(targetFilePath)
-            rootName = os.path.splitext(targetFileName)[0]
-
-            # Display progress message
-            self.updateProgress(f"Now processing {targetFileName}, {currentModelIndex}/{totalTargetModels}")
-
-            landmarkList = []
-            if os.path.isdir(sourceModelPath):
-                outputMedianPath = os.path.join(
-                    medianOutput, f"{rootName}_median" + extensionLM
-                )
-                if not os.path.exists(outputMedianPath):
-                    totalSourceModels = len(sourceModelList)
-                    currentSourceIndex = 0
-                    self.updateProgress(f"Multi-template mode: Processing {totalSourceModels} templates for {targetFileName}")
-                    for file in sourceModelList:
-                        currentSourceIndex += 1
-                        self.updateProgress(f"    Using template {currentSourceIndex}/{totalSourceModels}: {os.path.basename(file)}")
-                        sourceFilePath = os.path.join(sourceModelPath, file)
-                        (baseName, ext) = os.path.splitext(os.path.basename(file))
-                        sourceLandmarkFile = None
-                        for lmFile in sourceLMList:
-                            if baseName in lmFile:
-                                sourceLandmarkFile = os.path.join(
-                                    sourceLandmarkPath, lmFile
-                                )
-                        if sourceLandmarkFile is None:
-                            print(
-                                "::::Could not find the file corresponding to ",
-                                file,
-                            )
-                            next
-                        outputFilePath = os.path.join(
-                            specimenOutput, f"{rootName}_{baseName}" + extensionLM
-                        )
-
-                        # Display progress for multi-template mode
-                        self.updateProgress(f"  Processing template {os.path.basename(file)} for target {targetFileName}, template {currentSourceIndex}/{totalSourceModels}")
-
-                        array = self.pairwiseAlignment(
-                            sourceFilePath,
-                            sourceLandmarkFile,
-                            targetFilePath,
-                            outputFilePath,
-                            scalingOption,
-                            projectionFactor,
-                            parameters,
-                        )
-                        landmarkList.append(array)
-                    self.updateProgress(f"Computing median landmarks for {targetFileName}...")
-                    medianLandmark = np.median(landmarkList, axis=0)
-                    outputMedianNode = self.exportPointCloud(
-                        medianLandmark, "Median Predicted Landmarks"
-                    )
-                    slicer.util.saveNode(outputMedianNode, outputMedianPath)
-                    slicer.mrmlScene.RemoveNode(outputMedianNode)
-
-                    # Calculate geometric median
-                    self.updateProgress(f"Computing geometric median landmarks for {targetFileName}...")
-                    geomedianLandmark = self.calculateGeometricMedian(landmarkList)
-                    outputGeoMedianPath = os.path.join(
-                        medianOutput, f"{rootName}_geomedian" + extensionLM
-                    )
-                    outputGeoMedianNode = self.exportPointCloud(
-                        geomedianLandmark, "Geometric Median Predicted Landmarks"
-                    )
-                    slicer.util.saveNode(outputGeoMedianNode, outputGeoMedianPath)
-                    slicer.mrmlScene.RemoveNode(outputGeoMedianNode)
-                    self.updateProgress(f"  Completed processing {targetFileName}")
-            elif os.path.isfile(sourceModelPath):
-                self.updateProgress(f"Single template mode: Processing {targetFileName}")
+        for targetFileName in os.listdir(targetModelDirectory):
+            if targetFileName.endswith((".ply", ".obj", ".vtk", ".vtp")):
+                targetFilePath = os.path.join(targetModelDirectory, targetFileName)
+                TargetModelList.append(targetFilePath)
                 rootName = os.path.splitext(targetFileName)[0]
-                outputFilePath = os.path.join(
-                    outputDirectory, rootName + extensionLM
-                )
-                array = self.pairwiseAlignment(
-                    sourceModelPath,
-                    sourceLandmarkPath,
-                    targetFilePath,
-                    outputFilePath,
-                    scalingOption,
-                    projectionFactor,
-                    parameters,
-                )
-                self.updateProgress(f"  Completed processing {targetFileName}")
-            else:
-                self.updateProgress(f"ERROR: Could not find the file or directory for {targetFileName}")
+                landmarkList = []
+                if os.path.isdir(sourceModelPath):
+                    outputMedianPath = os.path.join(
+                        medianOutput, f"{rootName}_median" + extensionLM
+                    )
+                    if not os.path.exists(outputMedianPath):
+                        for sourceFilePath in sourceModelList:
+                            # sourceFilePath is already a full path from sourceModelList
+                            (baseName, ext) = os.path.splitext(os.path.basename(sourceFilePath))
+                            sourceLandmarkFile = None
+                            # Find matching landmark file by exact basename match
+                            for lmFilePath in sourceLMList:
+                                lmFileName = os.path.basename(lmFilePath)
+                                # Extract base name from landmark file (handling .mrk.json)
+                                if lmFileName.endswith('.mrk.json'):
+                                    lmBaseName = lmFileName[:-9]
+                                elif lmFileName.endswith('.fcsv'):
+                                    lmBaseName = lmFileName[:-5]
+                                elif lmFileName.endswith('.json'):
+                                    lmBaseName = lmFileName[:-5]
+                                else:
+                                    lmBaseName = os.path.splitext(lmFileName)[0]
+
+                                if baseName == lmBaseName:  # Exact match
+                                    sourceLandmarkFile = lmFilePath  # Already full path
+                                    break
+
+                            if sourceLandmarkFile is None:
+                                error_msg = f"ERROR: Could not find matching landmark file for model: {os.path.basename(sourceFilePath)} (basename: {baseName})"
+                                print(error_msg)
+                                continue
+                            outputFilePath = os.path.join(
+                                specimenOutput, f"{rootName}_{baseName}" + extensionLM
+                            )
+                            array = self.pairwiseAlignment(
+                                sourceFilePath,
+                                sourceLandmarkFile,
+                                targetFilePath,
+                                outputFilePath,
+                                scalingOption,
+                                projectionFactor,
+                                parameters,
+                            )
+                            landmarkList.append(array)
+                        medianLandmark = np.median(landmarkList, axis=0)
+                        outputMedianNode = self.exportPointCloud(
+                            medianLandmark, "Median Predicted Landmarks"
+                        )
+                        slicer.util.saveNode(outputMedianNode, outputMedianPath)
+                        slicer.mrmlScene.RemoveNode(outputMedianNode)
+
+                        # Calculate geometric median
+                        self.updateProgress(f"Computing geometric median landmarks for {targetFileName}...")
+                        geomedianLandmark = self.calculateGeometricMedian(landmarkList)
+                        outputGeoMedianPath = os.path.join(
+                            medianOutput, f"{rootName}_geomedian" + extensionLM
+                        )
+                        outputGeoMedianNode = self.exportPointCloud(
+                            geomedianLandmark, "Geometric Median Predicted Landmarks"
+                        )
+                        slicer.util.saveNode(outputGeoMedianNode, outputGeoMedianPath)
+                        slicer.mrmlScene.RemoveNode(outputGeoMedianNode)
+                elif os.path.isfile(sourceModelPath):
+                    rootName = os.path.splitext(targetFileName)[0]
+                    outputFilePath = os.path.join(
+                        outputDirectory, rootName + extensionLM
+                    )
+                    array = self.pairwiseAlignment(
+                        sourceModelPath,
+                        sourceLandmarkPath,
+                        targetFilePath,
+                        outputFilePath,
+                        scalingOption,
+                        projectionFactor,
+                        parameters,
+                    )
+                else:
+                    print("::::Could not find the file or directory in question")
         extras = {
             "Source": sourceModelList,
             "SourceLandmarks": sourceLMList,
@@ -1807,16 +1503,10 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         parameters,
         usePoisson=False,
     ):
-        # Extract filename for progress display
-        targetFileName = os.path.basename(targetFilePath)
-
-        self.updateProgress(f"  Loading models for {targetFileName}...")
         targetModelNode = slicer.util.loadModel(targetFilePath)
         targetModelNode.GetDisplayNode().SetVisibility(False)
         sourceModelNode = slicer.util.loadModel(sourceFilePath)
         sourceModelNode.GetDisplayNode().SetVisibility(False)
-
-        self.updateProgress(f"  Running subsampling for {targetFileName}...")
         (
             sourcePoints,
             targetPoints,
@@ -1827,8 +1517,6 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         ) = self.runSubsample(
             sourceModelNode, targetModelNode, scalingOption, parameters, usePoisson
         )
-
-        self.updateProgress(f"  Estimating rigid transformation for {targetFileName}...")
         SimilarityTransform, similarityFlag = self.estimateTransform(
             sourcePoints,
             targetPoints,
@@ -1838,7 +1526,6 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             scalingOption,
             parameters,
         )
-
         # Rigid
         sourceLandmarks, sourceLMNode = self.loadAndScaleFiducials(
             sourceLandmarkFile, scalingFactor
@@ -1852,7 +1539,6 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         )
 
         # Deformable
-        self.updateProgress(f"  Running CPD registration for {targetFileName}...")
         registeredSourceLM = self.runCPDRegistration(
             sourceLandmarks, sourcePoints, targetPoints, parameters
         )
@@ -1860,7 +1546,6 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             registeredSourceLM, "Initial Predicted Landmarks"
         )
         if projectionFactor == 0:
-            self.updateProgress(f"  Saving landmarks for {targetFileName} (no projection)")
             self.propagateLandmarkTypes(sourceLMNode, outputPoints)
             slicer.util.saveNode(outputPoints, outputFilePath)
             slicer.mrmlScene.RemoveNode(outputPoints)
@@ -1869,7 +1554,6 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             slicer.mrmlScene.RemoveNode(sourceLMNode)
             return registeredSourceLM
         else:
-            self.updateProgress(f"  Projecting landmarks to surface for {targetFileName}...")
             inputPoints = self.exportPointCloud(sourceLandmarks, "Original Landmarks")
             inputPoints_vtk = self.getFiducialPoints(inputPoints)
             outputPoints_vtk = self.getFiducialPoints(outputPoints)
@@ -1902,8 +1586,6 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             self.propagateLandmarkTypes(sourceLMNode, projectedLMNode)
             projectedLMNode.SetLocked(True)
             projectedLMNode.SetFixedNumberOfControlPoints(True)
-
-            self.updateProgress(f"  Saving projected landmarks for {targetFileName}")
             slicer.util.saveNode(projectedLMNode, outputFilePath)
             slicer.mrmlScene.RemoveNode(projectedLMNode)
             slicer.mrmlScene.RemoveNode(outputPoints)
@@ -1973,10 +1655,11 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
             path = os.path.join(parameters["BCPDFolder"], "bcpd")
             cmd = f'"{path}" -x "{targetPath}" -y "{sourcePath}" -l{parameters["alpha"]} -b{parameters["beta"]} -g0.1 -K140 -J500 -c1e-6 -p -d7 -e0.3 -f0.3 -ux -N1'
             cp = subprocess.run(
-                cmd, shell=True, check=True, text=True, capture_output=True
+                cmd, shell=True, check=True, text=True, capture_output=True,
+                cwd=slicer.app.cachePath,
             )
-            deformed_array = np.loadtxt("output_y.txt")
-            for fl in glob.glob("output*.txt"):
+            deformed_array = np.loadtxt(os.path.join(slicer.app.cachePath, "output_y.txt"))
+            for fl in glob.glob(os.path.join(slicer.app.cachePath, "output*.txt")):
                 os.remove(fl)
             os.remove(targetPath)
             os.remove(sourcePath)
@@ -3344,476 +3027,7 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
         stopTime = time.time()
         logging.info(f"Processing completed in {stopTime-startTime:.2f} seconds")
 
-    ###Functions for select templates based on kmeans
-    def downReference(self, referenceFilePath, spacingFactor):
-        targetModelNode = slicer.util.loadModel(referenceFilePath)
-        targetModelNode.GetDisplayNode().SetVisibility(False)
-        templatePolydata = targetModelNode.GetPolyData()
-        sparseTemplate = self.DownsampleTemplate(templatePolydata, spacingFactor)
-        template_density = sparseTemplate.GetNumberOfPoints()
-        return sparseTemplate, template_density, targetModelNode
-
-    def matchingPCD(
-        self,
-        modelsDir,
-        sparseTemplate,
-        targetModelNode,
-        pcdOutputDir,
-        spacingFactor,
-        useJSONFormat,
-        parameterDictionary,
-        usePoisson=False,
-    ):
-        if useJSONFormat:
-            extensionLM = ".mrk.json"
-        else:
-            extensionLM = ".fcsv"
-        template_density = sparseTemplate.GetNumberOfPoints()
-        ID_list = list()
-        logic = ALPACALogic()
-
-        # Alignment and matching points
-        referenceFileList = [
-            f
-            for f in os.listdir(modelsDir)
-            if f.endswith((".ply", ".stl", ".obj", ".vtk", ".vtp"))
-        ]
-        for file in referenceFileList:
-            sourceFilePath = os.path.join(modelsDir, file)
-            sourceModelNode = slicer.util.loadModel(sourceFilePath)
-            sourceModelNode.GetDisplayNode().SetVisibility(False)
-            rootName = os.path.splitext(file)[0]
-            scalingOption = True
-            (
-                sourcePoints,
-                targetPoints,
-                sourceFeatures,
-                targetFeatures,
-                voxelSize,
-                scalingFactor,
-            ) = self.runSubsample(
-                sourceModelNode,
-                targetModelNode,
-                scalingOption,
-                parameterDictionary,
-                usePoisson,
-            )
-            ICPTransform_similarity, similarityFlag = self.estimateTransform(
-                sourcePoints,
-                targetPoints,
-                sourceFeatures,
-                targetFeatures,
-                voxelSize,
-                scalingOption,
-                parameterDictionary,
-            )
-
-            vtkSimilarityTransform = self.itkToVTKTransform(
-                ICPTransform_similarity, similarityFlag
-            )
-            ICPTransformNode = self.convertMatrixToTransformNode(
-                vtkSimilarityTransform, "Rigid Transformation Matrix"
-            )
-
-            sourceModelNode.SetAndObserveTransformNodeID(ICPTransformNode.GetID())
-            slicer.vtkSlicerTransformLogic().hardenTransform(sourceModelNode)
-
-            alignedSubjectPolydata = sourceModelNode.GetPolyData()
-            ID, correspondingSubjectPoints = self.GetCorrespondingPoints(
-                sparseTemplate, alignedSubjectPolydata
-            )
-            ID_list.append(ID)
-            subjectFiducial = slicer.vtkMRMLMarkupsFiducialNode()
-            for i in range(correspondingSubjectPoints.GetNumberOfPoints()):
-                subjectFiducial.AddControlPoint(correspondingSubjectPoints.GetPoint(i))
-            slicer.mrmlScene.AddNode(subjectFiducial)
-            subjectFiducial.SetFixedNumberOfControlPoints(True)
-
-            ICPTransformNode.Inverse()
-            subjectFiducial.SetAndObserveTransformNodeID(ICPTransformNode.GetID())
-            slicer.vtkSlicerTransformLogic().hardenTransform(subjectFiducial)
-
-            sourceArray = np.zeros(shape=(correspondingSubjectPoints.GetNumberOfPoints(), 3))
-            point = [0, 0, 0]
-            for i in range(subjectFiducial.GetNumberOfControlPoints()):
-              subjectFiducial.GetNthControlPointPosition(i, point)
-              sourceArray[i, :] = point
-              subjectFiducial.SetNthControlPointLocked(i, 1)
-
-            sourceArray = sourceArray * (1/scalingFactor)
-
-            slicer.util.updateMarkupsControlPointsFromArray(subjectFiducial, sourceArray)
-
-            slicer.util.saveNode(
-                subjectFiducial, os.path.join(pcdOutputDir, f"{rootName}" + extensionLM)
-            )
-            slicer.mrmlScene.RemoveNode(sourceModelNode)
-            slicer.mrmlScene.RemoveNode(ICPTransformNode)
-            slicer.mrmlScene.RemoveNode(subjectFiducial)
-        # Remove template node
-        slicer.mrmlScene.RemoveNode(targetModelNode)
-        # Printing results of points matching
-        matchedPoints = [len(set(x)) for x in ID_list]
-        indices = [i for i, x in enumerate(matchedPoints) if x < template_density]
-        files = [os.path.splitext(file)[0] for file in referenceFileList]
-        return template_density, matchedPoints, indices, files
-
-    # inputFilePaths: file paths of pcd files
-    def pcdGPA(self, inputFilePaths):
-        basename, extension = os.path.splitext(inputFilePaths[0])
-        import GPA
-
-        GPAlogic = GPA.GPALogic()
-        LM = GPA.LMData()
-        LMExclusionList = []
-        LM.lmOrig, landmarkTypeArray = GPAlogic.loadLandmarks(
-            inputFilePaths, LMExclusionList, extension
-        )
-        shape = LM.lmOrig.shape
-        scalingOption = True
-        try:
-            LM.doGpa(scalingOption)
-        except ValueError:
-            print(
-                "Point clouds may not have been generated correctly. Please re-run the point cloud generation step."
-            )
-        LM.calcEigen()
-        import Support.gpa_lib as gpa_lib
-
-        twoDcoors = gpa_lib.makeTwoDim(LM.lmOrig)
-        scores = np.dot(np.transpose(twoDcoors), LM.vec)
-        scores = np.real(scores)
-        size = scores.shape[0] - 1
-        scores = scores[:, 0:size]
-        return scores, LM
-
-    def templatesSelection(
-        self,
-        modelsDir,
-        scores,
-        inputFilePaths,
-        templatesOutputDir,
-        templatesNumber,
-        iterations,
-    ):
-        templatesNumber = int(templatesNumber)
-        iterations = int(iterations)
-        basename, extension = os.path.splitext(inputFilePaths[0])
-        files = [os.path.basename(path).split(".")[0] for path in inputFilePaths]
-        from numpy import array
-        from scipy.cluster.vq import vq, kmeans
-
-        # np.random.seed(1000) #Set numpy random seed to ensure consistent Kmeans result
-        centers, distortion = kmeans(scores, templatesNumber, thresh=0, iter=iterations)
-        # clusterID returns the cluster allocation of each specimen
-        clusterID, min_dists = vq(scores, centers)
-        # distances between specimens to centers
-        templatesIndices = []
-        from scipy.spatial import distance_matrix
-
-        for i in range(templatesNumber):
-            indices_i = [index for index, x in enumerate(clusterID) if x == i]
-            dists = [min_dists[index] for index in indices_i]
-            index = dists.index(min(dists))
-            templateIndex = indices_i[index]
-            templatesIndices.append(templateIndex)
-        templates = [files[x] for x in templatesIndices]
-        # Store templates in a new folder
-        for file in templates:
-            modelFile = file + ".ply"
-            temp_model = slicer.util.loadModel(os.path.join(modelsDir, modelFile))
-            slicer.util.saveNode(
-                temp_model, os.path.join(templatesOutputDir, modelFile)
-            )
-            slicer.mrmlScene.RemoveNode(temp_model)
-        return templates, clusterID, templatesIndices
-
-    def DownsampleTemplate(self, templatePolyData, spacingPercentage):
-        import vtk
-
-        filter = vtk.vtkCleanPolyData()
-        filter.SetToleranceIsAbsolute(False)
-        filter.SetTolerance(spacingPercentage)
-        filter.SetInputData(templatePolyData)
-        filter.Update()
-        return filter.GetOutput()
-
-    def GetCorrespondingPoints(self, templatePolyData, subjectPolydata):
-        import vtk
-
-        print(templatePolyData.GetNumberOfPoints())
-        print(subjectPolydata.GetNumberOfPoints())
-        templatePoints = templatePolyData.GetPoints()
-        correspondingPoints = vtk.vtkPoints()
-        correspondingPoint = [0, 0, 0]
-        subjectPointLocator = vtk.vtkPointLocator()
-        subjectPointLocator.SetDataSet(subjectPolydata)
-        subjectPointLocator.BuildLocator()
-        ID = list()
-        # Index = list()
-        for index in range(templatePoints.GetNumberOfPoints()):
-            templatePoint = templatePoints.GetPoint(index)
-            closestPointId = subjectPointLocator.FindClosestPoint(templatePoint)
-            correspondingPoint = subjectPolydata.GetPoint(closestPointId)
-            correspondingPoints.InsertNextPoint(correspondingPoint)
-            ID.append(closestPointId)
-            # Index.append(index)
-        return ID, correspondingPoints
-
-    def makeScatterPlotWithFactors(
-        self, data, files, factors, title, xAxis, yAxis, pcNumber, templatesIndices
-    ):
-        # create two tables for the first two factors and then check for a third
-        # check if there is a table node has been created
-        numPoints = len(data)
-        uniqueFactors, factorCounts = np.unique(factors, return_counts=True)
-        factorNumber = len(uniqueFactors)
-
-        # Set up chart
-        plotChartNode = slicer.mrmlScene.GetFirstNodeByName(
-            "Chart_PCA_cov_with_groups" + xAxis + "v" + yAxis
-        )
-        if plotChartNode is None:
-            plotChartNode = slicer.mrmlScene.AddNewNodeByClass(
-                "vtkMRMLPlotChartNode",
-                "Chart_PCA_cov_with_groups" + xAxis + "v" + yAxis,
-            )
-        else:
-            plotChartNode.RemoveAllPlotSeriesNodeIDs()
-
-        # Plot all series
-        for factorIndex in range(len(uniqueFactors)):
-            factor = uniqueFactors[factorIndex]
-            tableNode = slicer.mrmlScene.GetFirstNodeByName(
-                "PCA Scatter Plot Table Group " + factor
-            )
-            if tableNode is None:
-                tableNode = slicer.mrmlScene.AddNewNodeByClass(
-                    "vtkMRMLTableNode", "PCA Scatter Plot Table Group " + factor
-                )
-            else:
-                tableNode.RemoveAllColumns()  # clear previous data from columns
-
-            # Set up columns for X,Y, and labels
-            labels = tableNode.AddColumn()
-            labels.SetName("Subject ID")
-            tableNode.SetColumnType("Subject ID", vtk.VTK_STRING)
-
-            for i in range(pcNumber):
-                pc = tableNode.AddColumn()
-                colName = "PC" + str(i + 1)
-                pc.SetName(colName)
-                tableNode.SetColumnType(colName, vtk.VTK_FLOAT)
-
-            factorCounter = 0
-            table = tableNode.GetTable()
-            table.SetNumberOfRows(factorCounts[factorIndex])
-            for i in range(numPoints):
-                if factors[i] == factor:
-                    table.SetValue(factorCounter, 0, files[i])
-                    for j in range(pcNumber):
-                        table.SetValue(factorCounter, j + 1, data[i, j])
-                    factorCounter += 1
-
-            plotSeriesNode = slicer.mrmlScene.GetFirstNodeByName(factor)
-            if plotSeriesNode is None:
-                plotSeriesNode = slicer.mrmlScene.AddNewNodeByClass(
-                    "vtkMRMLPlotSeriesNode", factor
-                )
-                # GPANodeCollection.AddItem(plotSeriesNode)
-            # Create data series from table
-            plotSeriesNode.SetAndObserveTableNodeID(tableNode.GetID())
-            plotSeriesNode.SetXColumnName(xAxis)
-            plotSeriesNode.SetYColumnName(yAxis)
-            plotSeriesNode.SetLabelColumnName("Subject ID")
-            plotSeriesNode.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeScatter)
-            plotSeriesNode.SetLineStyle(slicer.vtkMRMLPlotSeriesNode.LineStyleNone)
-            plotSeriesNode.SetMarkerStyle(
-                slicer.vtkMRMLPlotSeriesNode.MarkerStyleSquare
-            )
-            plotSeriesNode.SetUniqueColor()
-            # Add data series to chart
-            plotChartNode.AddAndObservePlotSeriesNodeID(plotSeriesNode.GetID())
-
-        # Set up plotSeriesNode for templates
-        tableNode = slicer.mrmlScene.GetFirstNodeByName(
-            "PCA Scatter Plot Table Templates with group input"
-        )
-        if tableNode is None:
-            tableNode = slicer.mrmlScene.AddNewNodeByClass(
-                "vtkMRMLTableNode", "PCA Scatter Plot Table Templates with group input"
-            )
-        else:
-            tableNode.RemoveAllColumns()  # clear previous data from columns
-
-        labels = tableNode.AddColumn()
-        labels.SetName("Subject ID")
-        tableNode.SetColumnType("Subject ID", vtk.VTK_STRING)
-
-        for i in range(pcNumber):
-            pc = tableNode.AddColumn()
-            colName = "PC" + str(i + 1)
-            pc.SetName(colName)
-            tableNode.SetColumnType(colName, vtk.VTK_FLOAT)
-
-        table = tableNode.GetTable()
-        table.SetNumberOfRows(len(templatesIndices))
-        for i in range(len(templatesIndices)):
-            tempIndex = templatesIndices[i]
-            table.SetValue(i, 0, files[tempIndex])
-            for j in range(pcNumber):
-                table.SetValue(i, j + 1, data[tempIndex, j])
-
-        plotSeriesNode = slicer.mrmlScene.GetFirstNodeByName(
-            "Templates_with_group_input"
-        )
-        if plotSeriesNode is None:
-            plotSeriesNode = slicer.mrmlScene.AddNewNodeByClass(
-                "vtkMRMLPlotSeriesNode", "Templates_with_group_input"
-            )
-        plotSeriesNode.SetAndObserveTableNodeID(tableNode.GetID())
-        plotSeriesNode.SetXColumnName(xAxis)
-        plotSeriesNode.SetYColumnName(yAxis)
-        plotSeriesNode.SetLabelColumnName("Subject ID")
-        plotSeriesNode.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeScatter)
-        plotSeriesNode.SetLineStyle(slicer.vtkMRMLPlotSeriesNode.LineStyleNone)
-        plotSeriesNode.SetMarkerStyle(slicer.vtkMRMLPlotSeriesNode.MarkerStyleDiamond)
-        plotSeriesNode.SetUniqueColor()
-        # Add data series to chart
-        plotChartNode.AddAndObservePlotSeriesNodeID(plotSeriesNode.GetID())
-
-        # Set up view options for chart
-        plotChartNode.SetTitle("PCA Scatter Plot with kmeans clusters")
-        plotChartNode.SetXAxisTitle(xAxis)
-        plotChartNode.SetYAxisTitle(yAxis)
-
-        # Switch to a Slicer layout that contains a plot view for plotwidget
-        layoutManager = slicer.app.layoutManager()
-        layoutManager.setLayout(503)
-
-        plotWidget = layoutManager.plotWidget(0)
-        plotViewNode = plotWidget.mrmlPlotViewNode()
-        plotViewNode.SetPlotChartNodeID(plotChartNode.GetID())
-
-    def makeScatterPlot(
-        self, data, files, title, xAxis, yAxis, pcNumber, templatesIndices
-    ):
-        numPoints = len(data)
-        # Scatter plot for all specimens with no group input
-        plotChartNode = slicer.mrmlScene.GetFirstNodeByName(
-            "Chart_PCA_cov" + xAxis + "v" + yAxis
-        )
-        if plotChartNode is None:
-            plotChartNode = slicer.mrmlScene.AddNewNodeByClass(
-                "vtkMRMLPlotChartNode", "Chart_PCA_cov" + xAxis + "v" + yAxis
-            )
-        else:
-            plotChartNode.RemoveAllPlotSeriesNodeIDs()
-
-        tableNode = slicer.mrmlScene.GetFirstNodeByName(
-            "PCA Scatter Plot Table without group input"
-        )
-        if tableNode is None:
-            tableNode = slicer.mrmlScene.AddNewNodeByClass(
-                "vtkMRMLTableNode", "PCA Scatter Plot Table without group input"
-            )
-        else:
-            tableNode.RemoveAllColumns()  # clear previous data from columns
-
-        labels = tableNode.AddColumn()
-        labels.SetName("Subject ID")
-        tableNode.SetColumnType("Subject ID", vtk.VTK_STRING)
-
-        for i in range(pcNumber):
-            pc = tableNode.AddColumn()
-            colName = "PC" + str(i + 1)
-            pc.SetName(colName)
-            tableNode.SetColumnType(colName, vtk.VTK_FLOAT)
-
-        table = tableNode.GetTable()
-        table.SetNumberOfRows(numPoints)
-        for i in range(len(files)):
-            table.SetValue(i, 0, files[i])
-            for j in range(pcNumber):
-                table.SetValue(i, j + 1, data[i, j])
-
-        plotSeriesNode1 = slicer.mrmlScene.GetFirstNodeByName(
-            "Specimens_no_group_input"
-        )
-        if plotSeriesNode1 is None:
-            plotSeriesNode1 = slicer.mrmlScene.AddNewNodeByClass(
-                "vtkMRMLPlotSeriesNode", "Specimens_no_group_input"
-            )
-
-        plotSeriesNode1.SetAndObserveTableNodeID(tableNode.GetID())
-        plotSeriesNode1.SetXColumnName(xAxis)
-        plotSeriesNode1.SetYColumnName(yAxis)
-        plotSeriesNode1.SetLabelColumnName("Subject ID")
-        plotSeriesNode1.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeScatter)
-        plotSeriesNode1.SetLineStyle(slicer.vtkMRMLPlotSeriesNode.LineStyleNone)
-        plotSeriesNode1.SetMarkerStyle(slicer.vtkMRMLPlotSeriesNode.MarkerStyleSquare)
-        plotSeriesNode1.SetUniqueColor()
-        plotChartNode.AddAndObservePlotSeriesNodeID(plotSeriesNode1.GetID())
-
-        # Set up plotSeriesNode for templates
-        tableNode = slicer.mrmlScene.GetFirstNodeByName(
-            "PCA_Scatter_Plot_Table_Templates_no_group"
-        )
-        if tableNode is None:
-            tableNode = slicer.mrmlScene.AddNewNodeByClass(
-                "vtkMRMLTableNode", "PCA_Scatter_Plot_Table_Templates_no_group"
-            )
-        else:
-            tableNode.RemoveAllColumns()  # clear previous data from columns
-
-        labels = tableNode.AddColumn()
-        labels.SetName("Subject ID")
-        tableNode.SetColumnType("Subject ID", vtk.VTK_STRING)
-
-        for i in range(pcNumber):
-            pc = tableNode.AddColumn()
-            colName = "PC" + str(i + 1)
-            pc.SetName(colName)
-            tableNode.SetColumnType(colName, vtk.VTK_FLOAT)
-
-        table = tableNode.GetTable()
-        table.SetNumberOfRows(len(templatesIndices))
-        for i in range(len(templatesIndices)):
-            tempIndex = templatesIndices[i]
-            table.SetValue(i, 0, files[tempIndex])
-            for j in range(pcNumber):
-                table.SetValue(i, j + 1, data[tempIndex, j])
-
-        plotSeriesNode1 = slicer.mrmlScene.GetFirstNodeByName(
-            "Templates_no_group_input"
-        )
-        if plotSeriesNode1 is None:
-            plotSeriesNode1 = slicer.mrmlScene.AddNewNodeByClass(
-                "vtkMRMLPlotSeriesNode", "Templates_no_group_input"
-            )
-        plotSeriesNode1.SetAndObserveTableNodeID(tableNode.GetID())
-        plotSeriesNode1.SetXColumnName(xAxis)
-        plotSeriesNode1.SetYColumnName(yAxis)
-        plotSeriesNode1.SetLabelColumnName("Subject ID")
-        plotSeriesNode1.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeScatter)
-        plotSeriesNode1.SetLineStyle(slicer.vtkMRMLPlotSeriesNode.LineStyleNone)
-        plotSeriesNode1.SetMarkerStyle(slicer.vtkMRMLPlotSeriesNode.MarkerStyleDiamond)
-        plotSeriesNode1.SetUniqueColor()
-        # Add data series to chart
-        plotChartNode.AddAndObservePlotSeriesNodeID(plotSeriesNode1.GetID())
-
-        plotChartNode.SetTitle("PCA Scatter Plot with templates")
-        plotChartNode.SetXAxisTitle(xAxis)
-        plotChartNode.SetYAxisTitle(yAxis)
-
-        # Switch to a Slicer layout that contains a plot view for plotwidget
-        layoutManager = slicer.app.layoutManager()
-        layoutManager.setLayout(503)
-
-        # Select chart in plot view
-        plotWidget = layoutManager.plotWidget(0)
-        plotViewNode = plotWidget.mrmlPlotViewNode()
-        plotViewNode.SetPlotChartNodeID(plotChartNode.GetID())
+    # Templates-tab logic methods inherited from _ALPACATemplatesLogic.
 
     def saveBCPDPath(self, BCPDPath):
         # don't save if identical to saved
@@ -3835,6 +3049,18 @@ class ALPACALogic(ScriptedLoadableModuleLogic):
                 return BCPDPath
         else:
             return ""
+
+    def saveAccelerationEnabled(self, enabled):
+        """Persist whether the acceleration (BCPD) checkbox is enabled."""
+        qt.QSettings().setValue("Developer/ALPACAAcceleration",
+                                "true" if enabled else "false")
+
+    def getAccelerationEnabled(self):
+        """Return persisted acceleration checkbox state (default False)."""
+        settings = qt.QSettings()
+        if settings.contains("Developer/ALPACAAcceleration"):
+            return str(settings.value("Developer/ALPACAAcceleration")).lower() == "true"
+        return False
 
     def isValidBCPDPath(self, BCPDPath):
         if not os.path.isdir(BCPDPath):
@@ -3876,32 +3102,120 @@ class ALPACATest(ScriptedLoadableModuleTest):
         self.test_ALPACA1()
 
     def test_ALPACA1(self):
-        """Ideally you should have several levels of tests.  At the lowest level
-        tests should exercise the functionality of the logic with different inputs
-        (both valid and invalid).  At higher levels your tests should emulate the
-        way the user would interact with your code and confirm that it still works
-        the way you intended.
-        One of the most important features of the tests is that it should alert other
-        developers when their changes will have an impact on the behavior of your
-        module.  For example, if a developer removes a feature that you depend on,
-        your test should break so they know that the feature is needed.
+        """Download the FVB_NJ and A_J mouse skull models + landmarks from
+        SlicerMorph/Mouse_Models, load them into the scene, populate the
+        ALPACA widget's source / source-landmarks / target selectors, and
+        run the interactive single-alignment pipeline with default
+        parameters. After the run, compute RMSE between the predicted A_J
+        landmarks and the published ground-truth A_J landmarks.
         """
+        import os
+        import numpy as np
+        import SampleData
+        import slicer.packaging
 
-        self.delayDisplay("Starting the test")
-        # Test the module logic
+        self.delayDisplay("Starting ALPACA self-test (FVB_NJ -> A_J)")
 
-        logic = ALPACALogic()
+        # 1. Ensure ALPACA's Python dependencies are installed.
+        modulePath = slicer.util.modulePath("ALPACA")
+        moduleDir  = os.path.dirname(modulePath)
+        reqsFile   = os.path.join(moduleDir, "Resources", "requirements_ALPACA.txt")
+        reqs = slicer.packaging.load_requirements(reqsFile)
+        slicer.packaging.pip_ensure(reqs, requester="ALPACA")
 
-        # Test algorithm with non-inverted threshold
-        logic.process(inputVolume, outputVolume, threshold, True)
-        outputScalarRange = outputVolume.GetImageData().GetScalarRange()
-        self.assertEqual(outputScalarRange[0], inputScalarRange[0])
-        self.assertEqual(outputScalarRange[1], threshold)
+        # 2. Download the four test assets into Slicer's cache (idempotent).
+        base = "https://raw.githubusercontent.com/SlicerMorph/Mouse_Models/main"
+        files = {
+            "FVB_NJ.ply":      f"{base}/Models/FVB_NJ.ply",
+            "A_J.ply":         f"{base}/Models/A_J.ply",
+            "FVB_NJ.mrk.json": f"{base}/LMs/FVB_NJ.mrk.json",
+            "A_J.mrk.json":    f"{base}/LMs/A_J.mrk.json",
+        }
+        cacheDir = slicer.app.cachePath
+        sampleData = SampleData.SampleDataLogic()
+        paths = {}
+        for fname, url in files.items():
+            self.delayDisplay(f"Downloading {fname}")
+            paths[fname] = sampleData.downloadFile(url, cacheDir, fname)
+            self.assertTrue(os.path.isfile(paths[fname]),
+                            f"Failed to download {fname}")
 
-        # Test algorithm with inverted threshold
-        logic.process(inputVolume, outputVolume, threshold, False)
-        outputScalarRange = outputVolume.GetImageData().GetScalarRange()
-        self.assertEqual(outputScalarRange[0], inputScalarRange[0])
-        self.assertEqual(outputScalarRange[1], inputScalarRange[1])
+        # 3. Load all four into the scene so the user sees them in the 3D view
+        #    and Data tree while the pipeline runs.
+        sourceModelNode    = slicer.util.loadModel(paths["FVB_NJ.ply"])
+        sourceLandmarkNode = slicer.util.loadMarkups(paths["FVB_NJ.mrk.json"])
+        targetModelNode    = slicer.util.loadModel(paths["A_J.ply"])
+        groundTruthLMNode  = slicer.util.loadMarkups(paths["A_J.mrk.json"])
+        sourceModelNode.SetName("FVB_NJ_source")
+        sourceLandmarkNode.SetName("FVB_NJ_landmarks")
+        targetModelNode.SetName("A_J_target")
+        groundTruthLMNode.SetName("A_J_groundTruth")
+        sourceModelNode.GetDisplayNode().SetColor(1.0, 0.4, 0.4)     # source: red
+        targetModelNode.GetDisplayNode().SetColor(0.4, 0.6, 1.0)     # target: blue
+        groundTruthLMNode.GetDisplayNode().SetSelectedColor(0, 1, 0) # GT: green
+        slicer.app.processEvents()
+
+        # 4. Switch to the ALPACA module, populate the three selectors, and
+        #    fire the interactive single-alignment button programmatically.
+        slicer.util.selectModule("ALPACA")
+        slicer.app.processEvents()
+        widget = slicer.modules.alpaca.widgetRepresentation().self()
+        widget.ui.sourceModelSelector.setCurrentNode(sourceModelNode)
+        widget.ui.sourceLandmarkSetSelector.setCurrentNode(sourceLandmarkNode)
+        widget.ui.targetModelSelector.setCurrentNode(targetModelNode)
+        # Wire the ground-truth A_J landmarks into the target-landmark selector
+        # so ALPACA computes its own RMSE table in addition to the assertion
+        # below.
+        widget.ui.targetLandmarkSetSelector.setCurrentNode(groundTruthLMNode)
+        slicer.app.processEvents()
+        self.delayDisplay(
+            "Running ALPACA single alignment (default parameters): subsample, "
+            "FPFH+RANSAC+ICP, CPD non-rigid, TPS projection. Expect ~1-3 minutes; "
+            "Slicer will be unresponsive while CPD iterates.",
+            msec=2500,
+        )
+        widget.onRunALPACAButton()
+        slicer.app.processEvents()
+
+        # 5. Locate the predicted landmark node. Projection is enabled in the
+        #    UI by default, so widget.projectedLandmarks holds the final
+        #    estimate; otherwise widget.outputPoints is the CPD-only estimate.
+        predictedNode = getattr(widget, "projectedLandmarks", None) \
+                        or getattr(widget, "outputPoints", None)
+        self.assertIsNotNone(predictedNode,
+                             "ALPACA produced no predicted landmark node")
+
+        # 6. RMSE between predicted and ground-truth A_J landmarks.
+        def _node_to_array(node):
+            n = node.GetNumberOfControlPoints()
+            arr = np.empty((n, 3), dtype=float)
+            for i in range(n):
+                p = [0.0, 0.0, 0.0]
+                node.GetNthControlPointPosition(i, p)
+                arr[i] = p
+            return arr
+
+        predicted   = _node_to_array(predictedNode)
+        groundTruth = _node_to_array(groundTruthLMNode)
+        self.assertEqual(predicted.shape, groundTruth.shape,
+                         "Predicted and ground-truth landmark count differ")
+
+        per_lm = np.sqrt(((predicted - groundTruth) ** 2).sum(axis=1))
+        rmse   = float(np.sqrt((per_lm ** 2).mean()))
+        print(f"[ALPACATest] N landmarks: {len(predicted)}")
+        print(f"[ALPACATest] RMSE: {rmse:.4f} mm")
+        print(f"[ALPACATest] Per-landmark distance: "
+              f"min={per_lm.min():.4f}  "
+              f"median={float(np.median(per_lm)):.4f}  "
+              f"max={per_lm.max():.4f} mm")
+        self.delayDisplay(f"RMSE (predicted vs ground truth A_J): {rmse:.4f} mm",
+                          msec=3000)
+
+        # Sanity bound: a default-parameter ALPACA run between two adult
+        # mouse skulls should land well under 5 mm RMSE on a ~150 mm CS
+        # specimen. Catastrophic failures (bad RANSAC seed, crashed CPD)
+        # will blow past this.
+        self.assertLess(rmse, 5.0,
+                        f"ALPACA RMSE unexpectedly large: {rmse:.4f} mm")
 
         self.delayDisplay("Test passed")

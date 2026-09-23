@@ -16,7 +16,7 @@ class ImportSurfaceToSegment(ScriptedLoadableModule):
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "ImportSurfaceToSegment" # TODO make this more human readable by adding spaces
-    self.parent.categories = ["SlicerMorph.SlicerMorph Utilities"]
+    self.parent.categories = ["SlicerMorph.Utilities"]
     self.parent.dependencies = []
     self.parent.contributors = ["Sara Rolfe (UW), Murat Maga (UW)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """
@@ -25,9 +25,7 @@ please see the Segmentations module Export to Files tab to set advanced settings
 """
     self.parent.helpText += self.getDefaultModuleDocumentationLink()
     self.parent.acknowledgementText = """
-      This module was developed by Sara Rolfe for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections"
-      awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839).
-      https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
+      This module was developed by Sara Rolfe for SlicerMorph. Development of SlicerMorph is supported by NSF grants 1759883 and 2301405 to Murat Maga.
 """ # replace with organization, grant and thanks.
 
     # Additional initialization step after application startup is complete

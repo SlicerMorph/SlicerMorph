@@ -13,12 +13,8 @@ import concurrent.futures
 import ctk
 import qt
 import slicer
+import slicer.packaging
 from slicer.ScriptedLoadableModule import *
-
-try:
-    from importlib.metadata import version
-except ImportError:
-    from importlib_metadata import version
 
 warnings.filterwarnings("ignore", "DataFrame.applymap has been deprecated")
 
@@ -26,15 +22,17 @@ warnings.filterwarnings("ignore", "DataFrame.applymap has been deprecated")
 # MorphoSourceImport
 #
 
-morphosourceVersion = "1.1.0"
 
-
-def is_correct_version_installed(package, desired_version):
-    try:
-        installed_version = version(package)
-        return installed_version == desired_version
-    except Exception:
-        return False
+def _ensure_morphosource_dependencies():
+    """Install pandas + morphosource (at the version pinned in requirements.txt) if missing."""
+    from slicer.util import modulePath
+    requirementsPath = os.path.join(
+        os.path.dirname(modulePath("MorphoSourceImport")),
+        "Resources",
+        "requirements_MorphoSourceImport.txt",
+    )
+    reqs = slicer.packaging.load_requirements(requirementsPath)
+    slicer.packaging.pip_ensure(reqs, requester="MorphoSourceImport")
 
 
 def unlist_cell(cell):
@@ -156,47 +154,12 @@ class ClickableLabel(qt.QLabel):
 class MSQuery:
     def __init__(self, query: str, media_type: str, taxonomy_gbif: str,
                  openDownloadsOnly: bool, media_tag: str = None, per_page: int = 20):
-        # Attempt to import pandas, and install if not present
-        try:
-            import pandas as pd
-        except ImportError:
-            slicer.util.pip_install('pandas')
-            import pandas as pd
-
-        # Attempt to import morphosource, and install if not present
-        try:
-            import morphosource as ms
-            from morphosource import search_media, get_media, DownloadVisibility
-            from morphosource.search import SearchResults
-            from morphosource.exceptions import MetadataMissingError
-
-            # Check if MorphoSource is installed and at the correct version
-            if is_correct_version_installed('morphosource', '1.1.0'):
-                print("MorphoSource is already installed and at the correct version.")
-            else:
-                raise ImportError("MorphoSource is not installed or not the correct version.")
-        except ImportError:
-            # Show a dialog indicating that installation is in progress
-            dependencyDialog = slicer.util.createProgressDialog(
-                windowTitle="Installing...",
-                labelText="Installing and Loading Required Python packages and Restarting Slicer",
-                maximum=0,
-            )
-            slicer.app.processEvents()
-
-            # Install the required packages
-            slicer.util.pip_install('morphosource==' + morphosourceVersion)
-
-            import morphosource as ms
-            from morphosource import search_media, get_media, DownloadVisibility
-            from morphosource.search import SearchResults
-            from morphosource.exceptions import MetadataMissingError
-
-            # Close the installation dialog
-            dependencyDialog.close()
-
-            # Restart 3D Slicer
-            slicer.util.restart()
+        _ensure_morphosource_dependencies()
+        import pandas as pd
+        import morphosource as ms
+        from morphosource import search_media, get_media, DownloadVisibility
+        from morphosource.search import SearchResults
+        from morphosource.exceptions import MetadataMissingError
 
         self.MetadataMissingError = MetadataMissingError
         self.pd = pd
@@ -319,7 +282,7 @@ class MSQuery:
         search_results_data = [item.data for item in self.current_results.items]
 
         # Converting the list of dictionaries to a pandas DataFrame
-        search_results_df = self.pd.DataFrame(search_results_data).applymap(unlist_cell)
+        search_results_df = self.pd.DataFrame(search_results_data).map(unlist_cell)
 
         search_results_df = self.revise_df(search_results_df, 1)
 
@@ -360,13 +323,11 @@ class MSQuery:
         if self.current_results is None:
             raise ValueError("No current results to extract. Run a search first.")
 
-        # Calculate the start index for the current page
-        # Assuming page_number is the current page you're interested in
-        # Get all 'num_records' values up to the current page
-        num_records_values = [self.pages[i]['num_records'] for i in range(1, page_number)]
-
-        # Sum up the values and add 1 to get the start_index
-        start_index = sum(num_records_values)
+        # Calculate the start index for the current page.
+        # Use per_page rather than summing num_records of prior pages so that
+        # jumping directly to an arbitrary page (without fetching intermediate
+        # pages first) does not raise a KeyError.
+        start_index = (page_number - 1) * self.per_page
 
         # Extracting the 'data' dictionaries from each item in search_results
         search_results_data = [item.data for item in self.current_results.items]
@@ -378,7 +339,7 @@ class MSQuery:
         search_results_df.index = range(start_index, start_index + len(search_results_df))
 
         # Apply the unlist_cell function to each cell in the DataFrame
-        search_results_df = search_results_df.applymap(unlist_cell)
+        search_results_df = search_results_df.map(unlist_cell)
 
         search_results_df = self.revise_df(search_results_df, page_number)
 
@@ -426,6 +387,9 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
         self.total_downloads = None
         self.completed_downloads = None
         self.progressBar = None
+        self.cancelDownloadButton = None
+        self.downloadCancelled = False
+        self.downloadProcess = None
         self.selectDownloadFolderButton = None
         self.downloadFolderPathInput = None
         self.downloadButton = None
@@ -664,11 +628,20 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
         self.downloadButton.setEnabled(False)  # Initially disabled
         self.layout.addWidget(self.downloadButton)
 
-        # Create the progress bar
+        # Create the progress bar with a cancel button alongside it
+        progressLayout = qt.QHBoxLayout()
         self.progressBar = qt.QProgressBar()
         self.progressBar.setRange(0, 100)  # Assuming 0-100% progress
         self.progressBar.setVisible(False)  # Initially hidden
-        self.layout.addWidget(self.progressBar)
+        progressLayout.addWidget(self.progressBar)
+
+        self.cancelDownloadButton = qt.QPushButton("Cancel")
+        self.cancelDownloadButton.setToolTip("Cancel the in-progress download.")
+        self.cancelDownloadButton.setVisible(False)  # Only visible while downloading
+        self.cancelDownloadButton.clicked.connect(self.onCancelDownloadClicked)
+        progressLayout.addWidget(self.cancelDownloadButton)
+
+        self.layout.addLayout(progressLayout)
 
         self.layout.addStretch(1)
         self.onQueryStringChanged()
@@ -1040,7 +1013,17 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
 
     def onPageNumberChanged(self):
         if self.logic.msq:
-            current_page = int(self.pageNumberEdit.text.split('/')[0].strip())
+            try:
+                requested_page = int(self.pageNumberEdit.text.split('/')[0].strip())
+            except ValueError:
+                return
+            total_pages = self.logic.msq.total_pages or 1
+            # Clamp to valid range
+            current_page = max(1, min(requested_page, total_pages))
+            if current_page == self.logic.msq.current_page:
+                # Restore the "page / total" display in case the user edited it
+                self.pageNumberEdit.setText(f"{current_page} / {total_pages}")
+                return
             self.updateResultsForPage(current_page)
 
     def checkPageButtonsState(self):
@@ -1217,6 +1200,24 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
             return 'skip'
 
     def downloadCheckedItems(self):
+        # Verify the download folder exists; offer to create it if not.
+        downloadFolder = self.downloadFolderPathInput.text
+        if downloadFolder and not os.path.isdir(downloadFolder):
+            if slicer.util.confirmYesNoDisplay(
+                f"Specified download folder \"{downloadFolder}\" does not exist. "
+                "Do you want to create it?",
+                windowTitle="Download folder does not exist"):
+                try:
+                    os.makedirs(downloadFolder, exist_ok=True)
+                except OSError as e:
+                    slicer.util.errorDisplay(
+                        f"Could not create download folder \"{downloadFolder}\":\n{e}",
+                        windowTitle="Failed to create folder")
+                    return
+            else:
+                # User declined; abort the download without taking any action.
+                return
+
         _config_dict = self.prepareDownloadConfig()
 
         # Disable buttons
@@ -1238,11 +1239,14 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
         args = [scriptPath, config_json_dict]
 
         self.startDownload()
+        self.downloadCancelled = False
         # Start the download process
         self.downloadProcess.start(command, args)
 
-        # Show progress bar and update UI
+        # Show progress bar (and cancel button) and update UI
         self.progressBar.setVisible(True)
+        self.cancelDownloadButton.setEnabled(True)
+        self.cancelDownloadButton.setVisible(True)
 
     def disableButtons(self):
         # Disable buttons during download
@@ -1304,64 +1308,49 @@ class MorphoSourceImportWidget(ScriptedLoadableModuleWidget):
     def onDownloadFinished(self, exitCode):
         # Handle completion of the download process
         self.progressBar.setVisible(False)
+        self.cancelDownloadButton.setVisible(False)
         self.enableButtons()
         self.downloadInProgress = False
-        print(f"Download process finished with exit code {exitCode}")
+        if getattr(self, 'downloadCancelled', False):
+            print(f"Download cancelled by user (exit code {exitCode}).")
+            slicer.util.infoDisplay(
+                "Download cancelled. Any partially downloaded files were left in place "
+                "and can be resumed by re-running the download.",
+                windowTitle="Download cancelled")
+        else:
+            print(f"Download process finished with exit code {exitCode}")
 
     def startDownload(self):
         # Call this method when the download starts
         self.downloadInProgress = True
 
+    def onCancelDownloadClicked(self):
+        if not self.downloadInProgress or self.downloadProcess is None:
+            return
+        if not slicer.util.confirmYesNoDisplay(
+                "Cancel the in-progress download?\n\n"
+                "Files already completed will be kept; partially downloaded "
+                "files can be resumed later by re-running the download.",
+                windowTitle="Cancel download"):
+            return
+        self.cancelDownloadButton.setEnabled(False)
+        self.terminateDownload()
+
     def terminateDownload(self):
         # Implement this method to terminate the download
+        self.downloadCancelled = True
         self.downloadInProgress = False
+        if self.downloadProcess is None:
+            return
+        # Try a graceful terminate first; if the process is still running
+        # after a short grace period, force-kill it.
         self.downloadProcess.terminate()
+        if not self.downloadProcess.waitForFinished(2000):
+            self.downloadProcess.kill()
+            self.downloadProcess.waitForFinished(2000)
 
     def load_dependencies(self):
-        # Attempt to import pandas, and install if not present
-        try:
-            import pandas as pd
-        except ImportError:
-            slicer.util.pip_install('pandas')
-            import pandas as pd
-
-        # Attempt to import morphosource, and install if not present
-        try:
-            from morphosource import search_media, get_media, DownloadVisibility
-            from morphosource.search import SearchResults
-
-            # Check if MorphoSource is installed and at the correct version
-            if is_correct_version_installed('morphosource', '1.1.0'):
-                print("MorphoSource is already installed and at the correct version.")
-            else:
-                raise ImportError("MorphoSource is not installed or not the correct version.")
-        except ImportError:
-            # Show a dialog indicating that installation is in progress
-            dependencyDialog = slicer.util.createProgressDialog(
-                windowTitle="Installing...",
-                labelText="Installing and Loading Required Python packages",
-                maximum=0,
-            )
-            slicer.app.processEvents()
-
-            # Install the required packages
-            # we install the contourpy to support installation of pygbif package, it is temporary until transition to manylinux 2.27 is completed.
-            slicer.util.pip_install("contourpy==1.3.2")
-            slicer.util.pip_install('morphosource==' + morphosourceVersion)
-
-            from morphosource import search_media, get_media, DownloadVisibility
-            from morphosource.search import SearchResults
-
-            # Close the installation dialog
-            dependencyDialog.close()
-
-            # Ask user to restart 3D Slicer
-            restart = slicer.util.confirmYesNoDisplay(
-                "MorphoSourceImport has been installed. To apply changes, a restart of 3D Slicer is necessary. "
-                "Would you like to restart now? Click 'YES' to restart immediately or 'NO' if you wish to save your work first and restart manually later.")
-
-            if restart:
-                slicer.util.restart()
+        _ensure_morphosource_dependencies()
 
 
 #

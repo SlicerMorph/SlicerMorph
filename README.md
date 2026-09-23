@@ -1,5 +1,7 @@
 <img src="https://raw.githubusercontent.com/SlicerMorph/Images/main/husky_small.png" alt="SlicerMorph logo">
 
+[![Slicer smoke test](https://github.com/SlicerMorph/SlicerMorph/actions/workflows/slicer-smoke.yml/badge.svg)](https://github.com/SlicerMorph/SlicerMorph/actions/workflows/slicer-smoke.yml)
+
 This is the official repository for SlicerMorph project.
 
 Our project aims to enhance the open-source 3D Slicer platform with cutting-edge tools to assist biologists, anthropologists, and morphologists in analyzing 3D data from research imaging modalities. Our ultimate goal is to foster a collaborative community within the 3D Slicer ecosystem to facilitate seamless data exchange and promote the advancement of open science.

@@ -1,6 +1,7 @@
 import os
 import unittest
 import vtk, qt, ctk, slicer
+import slicer.packaging
 from slicer.ScriptedLoadableModule import *
 import logging
 import fnmatch
@@ -21,7 +22,7 @@ class MergeMarkups(ScriptedLoadableModule):
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "MergeMarkups" # TODO make this more human readable by adding spaces
-    self.parent.categories = ["SlicerMorph.SlicerMorph Utilities"]
+    self.parent.categories = ["SlicerMorph.Utilities"]
     self.parent.dependencies = []
     self.parent.contributors = ["Sara Rolfe (UW), Murat Maga (UW)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """
@@ -30,9 +31,7 @@ class MergeMarkups(ScriptedLoadableModule):
       """
     #self.parent.helpText += self.getDefaultModuleDocumentationLink()
     self.parent.acknowledgementText = """
-      This module was developed by Sara Rolfe, and Murat Maga for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections"
-      awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839).
-      https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
+      This module was developed by Sara Rolfe, and Murat Maga for SlicerMorph. Development of SlicerMorph is supported by NSF grants 1759883 and 2301405 to Murat Maga.
       """ # replace with organization, grant and thanks.
 
     # Additional initialization step after application startup is complete
@@ -96,14 +95,14 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     #
     # markups view
     #
-    self.markupsCurveView = slicer.qMRMLSubjectHierarchyTreeView()
-    self.markupsCurveView.setMRMLScene(slicer.mrmlScene)
-    self.markupsCurveView.setMultiSelection(True)
-    self.markupsCurveView.setAlternatingRowColors(True)
-    self.markupsCurveView.setDragDropMode(qt.QAbstractItemView().DragDrop)
-    self.markupsCurveView.setColumnHidden(self.markupsCurveView.model().transformColumn, True)
-    self.markupsCurveView.sortFilterProxyModel().setNodeTypes(["vtkMRMLMarkupsCurveNode"])
-    parametersCurveFormLayout.addRow(self.markupsCurveView)
+    self.markupsView = slicer.qMRMLSubjectHierarchyTreeView()
+    self.markupsView.setMRMLScene(slicer.mrmlScene)
+    self.markupsView.setMultiSelection(True)
+    self.markupsView.setAlternatingRowColors(True)
+    self.markupsView.setDragDropMode(qt.QAbstractItemView().DragDrop)
+    self.markupsView.setColumnHidden(self.markupsView.model().transformColumn, True)
+    self.markupsView.sortFilterProxyModel().setNodeTypes(["vtkMRMLMarkupsCurveNode"])
+    parametersCurveFormLayout.addRow(self.markupsView)
 
     #
     # Merge Button
@@ -115,7 +114,7 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
 
     # connections
     self.mergeButton.connect('clicked(bool)', self.onMergeButton)
-    self.markupsCurveView.selectionModel().selectionChanged.connect(self.updateMergeButton)
+    self.markupsView.connect('currentItemChanged(vtkIdType)', self.updateMergeButton)
 
     ################ Landmark Set Tab
     #
@@ -136,7 +135,7 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     self.markupsFiducialView.setMultiSelection(True)
     self.markupsFiducialView.setAlternatingRowColors(True)
     self.markupsFiducialView.setDragDropMode(qt.QAbstractItemView().DragDrop)
-    self.markupsFiducialView.setColumnHidden(self.markupsFiducialView.model().transformColumn, True)
+    self.markupsFiducialView.setColumnHidden(self.markupsView.model().transformColumn, True)
     self.markupsFiducialView.sortFilterProxyModel().setNodeTypes(["vtkMRMLMarkupsFiducialNode"])
     parametersLMFormLayout.addWidget(self.markupsFiducialView,0,0,1,3)
 
@@ -168,7 +167,7 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     # connections
     self.mergeLMButton.connect('clicked(bool)', self.onMergeLMButton)
     self.ApplyLMButton.connect('clicked(bool)', self.onApplyLMButton)
-    self.markupsFiducialView.selectionModel().selectionChanged.connect(self.updateMergeLMButton)
+    self.markupsFiducialView.connect('currentItemChanged(vtkIdType)', self.updateMergeLMButton)
     self.LandmarkTypeSelection.connect('currentIndexChanged(int)', self.updateApplyLMButton)
 
     ################ All Markups Tab
@@ -205,7 +204,7 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
 
     # connections
     self.mergeAllButton.connect('clicked(bool)', self.onMergeAllButton)
-    self.markupsView.selectionModel().selectionChanged.connect(self.updateMergeAllButton)
+    self.markupsView.connect('currentItemChanged(vtkIdType)', self.updateMergeAllButton)
 
     ################ Batch Run LM Merge Tab
     #
@@ -297,6 +296,10 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
     self.batchMergeButton.connect('clicked(bool)', self.onBatchMergeButton)
     self.clearButton.connect('clicked(bool)', self.onClearButton)
 
+    # Initialize file path lists
+    self.fixedFilePaths = []
+    self.semiFilePaths = []
+
     # Add vertical spacer
     self.layout.addStretch(1)
 
@@ -305,10 +308,10 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
 
   def onMergeButton(self):
     logic = MergeMarkupsLogic()
-    logic.runCurves(self.markupsCurveView, self.continuousCurvesCheckBox.checked)
+    logic.runCurves(self.markupsView, self.continuousCurvesCheckBox.checked)
 
   def updateMergeButton(self):
-    nodes=self.markupsCurveView.selectedIndexes()
+    nodes=self.markupsView.selectedIndexes()
     self.mergeButton.enabled = bool(nodes)
 
   def updateMergeLMButton(self):
@@ -359,19 +362,45 @@ class MergeMarkupsWidget(ScriptedLoadableModuleWidget):
 
   def onBatchMergeButton(self):
     logic = MergeMarkupsLogic()
-    if len(self.fixedFilePaths) == 0 or len(self.semiFilePaths)==0:
+
+    # Read file paths from the text widgets (allows manual editing)
+    fixedFilePaths = [p.strip() for p in self.fixedFileTable.plainText.split('\n') if p.strip()]
+    semiFilePaths = [p.strip() for p in self.semiFileTable.plainText.split('\n') if p.strip()]
+
+    if len(fixedFilePaths) == 0 or len(semiFilePaths)==0:
       warning = "Error: There are 0 files selected to merge."
       logging.debug(warning)
       slicer.util.messageBox(warning)
       return False
-    if len(self.fixedFilePaths) != len(self.semiFilePaths):
-      warning = "Error: The number of files in the fixed and semi-landmark selection boxes needs to be equal."
+
+    # Ensure dataset-matcher is installed before using it to match files.
+    try:
+      reqs = slicer.packaging.load_requirements(self.resourcePath("requirements_MergeMarkups.txt"))
+      slicer.packaging.pip_ensure(reqs, requester="MergeMarkups")
+    except RuntimeError:
+      slicer.util.messageBox(
+        "MergeMarkups requires the 'dataset-matcher' Python package to batch-match files."
+      )
+      return False
+    from dataset_matcher import match_datasets, DatasetError
+
+    # Use dataset_matcher to match files by basename
+    try:
+      # Match semi-landmark files to fixed landmark files by basename
+      matchedSemiFilePaths = match_datasets(
+        fixedFilePaths,
+        semiFilePaths,
+        name="semi-landmarks"
+      )
+    except DatasetError as e:
+      warning = f"Error matching files: {e}"
       logging.debug(warning)
       slicer.util.messageBox(warning)
       return False
-    for index in range(len(self.fixedFilePaths)):
-      fixed =  slicer.util.loadMarkups(self.fixedFilePaths[index])
-      semi =  slicer.util.loadMarkups(self.semiFilePaths[index])
+
+    for index in range(len(fixedFilePaths)):
+      fixed =  slicer.util.loadMarkups(fixedFilePaths[index])
+      semi =  slicer.util.loadMarkups(matchedSemiFilePaths[index])
       tempNode = logic.mergeLMNodes(fixed, semi)
       tempNode.SetName(fixed.GetName()+'_merged')
       outputFilePath = os.path.join(self.outputDirectorySelector.currentPath, tempNode.GetName() + ".mrk.json")
@@ -406,25 +435,33 @@ class MergeMarkupsLogic(ScriptedLoadableModuleLogic):
     # if there are no landmark descriptions, these will be set according to the
     # fixed/semiLM box they were entered in
     mergedNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode')
-    for index in range(fixedLM.GetNumberOfControlPoints()):
-      pt = fixedLM.GetNthControlPointPositionVector(index)
-      fiducialLabel = fixedLM.GetNthControlPointLabel(index)
-      fiducialDescription = fixedLM.GetNthControlPointDescription(index)
-      if fiducialDescription == "":
-        fiducialDescription = "Fixed"
-      mergedNode.AddControlPoint(pt,fiducialLabel)
-      mergedNode.SetNthControlPointDescription(index,"Fixed")
+    # The node is in the scene with a display node, so each AddControlPoint would
+    # otherwise fire an event that rebuilds every glyph, making the loop O(n^2).
+    # StartModify/EndModify batches the additions into a single rebuild; try/finally
+    # guarantees events are re-enabled even if the loop raises.
+    wasModifying = mergedNode.StartModify()
+    try:
+      for index in range(fixedLM.GetNumberOfControlPoints()):
+        pt = fixedLM.GetNthControlPointPositionVector(index)
+        fiducialLabel = fixedLM.GetNthControlPointLabel(index)
+        fiducialDescription = fixedLM.GetNthControlPointDescription(index)
+        if fiducialDescription == "":
+          fiducialDescription = "Fixed"
+        mergedNode.AddControlPoint(pt,fiducialLabel)
+        mergedNode.SetNthControlPointDescription(index,"Fixed")
 
-    for index in range(semiLM.GetNumberOfControlPoints()):
-      pt = semiLM.GetNthControlPointPositionVector(index)
-      fiducialLabel = semiLM.GetNthControlPointLabel(index)
-      fiducialDescription = semiLM.GetNthControlPointDescription(index)
-      mergedNode.AddControlPoint(pt,fiducialLabel)
-      mergedIndex = mergedNode.GetNumberOfControlPoints()-1
-      if fiducialDescription == "":
-        mergedNode.SetNthControlPointDescription(mergedIndex,"Semi")
-      else:
-        mergedNode.SetNthControlPointDescription(mergedIndex,fiducialDescription)
+      for index in range(semiLM.GetNumberOfControlPoints()):
+        pt = semiLM.GetNthControlPointPositionVector(index)
+        fiducialLabel = semiLM.GetNthControlPointLabel(index)
+        fiducialDescription = semiLM.GetNthControlPointDescription(index)
+        mergedNode.AddControlPoint(pt,fiducialLabel)
+        mergedIndex = mergedNode.GetNumberOfControlPoints()-1
+        if fiducialDescription == "":
+          mergedNode.SetNthControlPointDescription(mergedIndex,"Semi")
+        else:
+          mergedNode.SetNthControlPointDescription(mergedIndex,fiducialDescription)
+    finally:
+      mergedNode.EndModify(wasModifying)
     return mergedNode
 
   def runApplyLandmarksType(self, markupsTreeView, label):

@@ -20,7 +20,7 @@ class ImportFromURL(ScriptedLoadableModule):
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "ImportFromURL" # TODO make this more human readable by adding spaces
-    self.parent.categories = ["SlicerMorph.SlicerMorph Utilities"]
+    self.parent.categories = ["SlicerMorph.Utilities"]
     self.parent.dependencies = []
     self.parent.contributors = ["Sara Rolfe (UW), Murat Maga (UW)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """

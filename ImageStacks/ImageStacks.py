@@ -1,12 +1,59 @@
 import os
+import re
 import unittest
 import math
 import numpy
 import vtk, qt, ctk, slicer
+import slicer.packaging
 import SimpleITK as sitk
 from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 import logging
+
+
+def naturalSortKey(path):
+  """Sort key that orders filenames by their trailing numeric token before the
+  extension (with full natural-sort as a tiebreaker), so that ``slice_2.tif``
+  comes before ``slice_10.tif`` regardless of zero-padding. Used at every entry
+  point that builds a slice list, so order is deterministic across OSes and
+  irrespective of how the dialog or drag-drop happened to return paths."""
+  name = os.path.basename(path)
+  stem, _ = os.path.splitext(name)
+  match = re.search(r'(\d+)(?!.*\d)', stem)
+  trailing = int(match.group(1)) if match else -1
+  fullSplit = [int(token) if token.isdigit() else token.lower()
+               for token in re.split(r'(\d+)', name)]
+  return (trailing, fullSplit)
+
+
+def imageStackSanityReport(filePaths):
+  """Compare the collected slice list against the contents of its source
+  folder(s). Returns a (status, message) tuple where status is one of
+  'ok', 'mismatch', 'multifolder', 'empty'. The message is a short
+  human-readable string suitable for a status label."""
+  if not filePaths:
+    return ('empty', '')
+  parentDirs = {os.path.dirname(p) for p in filePaths}
+  if len(parentDirs) > 1:
+    return ('multifolder', f"Detected {len(filePaths)} files from {len(parentDirs)} folders")
+  parent = next(iter(parentDirs))
+  ext = os.path.splitext(filePaths[0])[1].lower()
+  if not ext or not parent or not os.path.isdir(parent):
+    return ('ok', f"Detected {len(filePaths)} files")
+  try:
+    siblings = [entry.name for entry in os.scandir(parent)
+                if entry.is_file() and os.path.splitext(entry.name)[1].lower() == ext]
+  except OSError:
+    return ('ok', f"Detected {len(filePaths)} files")
+  if len(filePaths) == len(siblings):
+    return ('ok', f"Detected {len(filePaths)} / {len(siblings)} {ext} files in folder")
+  loadedNames = {os.path.basename(p) for p in filePaths}
+  missing = sorted(name for name in siblings if name not in loadedNames)
+  preview = ', '.join(missing[:5])
+  more = '' if len(missing) <= 5 else f", +{len(missing)-5} more"
+  message = (f"Detected {len(filePaths)} / {len(siblings)} {ext} files in folder "
+             f"⚠  (not included: {preview}{more})")
+  return ('mismatch', message)
 
 #
 # ImageStacks
@@ -45,9 +92,7 @@ For more information see the <a href="https://github.com/SlicerMorph/SlicerMorph
 """
     #self.parent.helpText += self.getDefaultModuleDocumentationLink()
     self.parent.acknowledgementText = """
-This module was developed by Steve Pieper, Sara Rolfe and Murat Maga, through a NSF ABI Development grant, "An Integrated Platform for Retrieval, Visualization and Analysis of
-3D Morphology From Digital Biological Collections" (Award Numbers: 1759883 (Murat Maga), 1759637 (Adam Summers), 1759839 (Douglas Boyer)).
-https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
+This module was developed by Steve Pieper, Sara Rolfe and Murat Maga for SlicerMorph. Development of SlicerMorph is supported by NSF grants 1759883 and 2301405 to Murat Maga.
 """ # replace with organization, grant and thanks.
 
 #
@@ -108,6 +153,11 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     # disable wrapping
     self.fileTable.setLineWrapMode(qt.QTextBrowser.NoWrap)
     fileListLayout.addWidget(self.fileTable)
+
+    self.fileStatusLabel = qt.QLabel()
+    self.fileStatusLabel.setWordWrap(True)
+    self.fileStatusLabel.setTextInteractionFlags(qt.Qt.TextSelectableByMouse)
+    fileListLayout.addWidget(self.fileStatusLabel)
 
     fileListGroupBox.collapsed = True
 
@@ -252,12 +302,6 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.outputSpacingWidget.toolTip = "Slice spacing of the volume that will be loaded"
     outputFormLayout.addRow("Output spacing: ", self.outputSpacingWidget)
 
-    # 8-bit conversion section (uses VTK AutoRange for optimal thresholds)
-    self.convert8bitCheckBox = qt.QCheckBox()
-    self.convert8bitCheckBox.checked = False
-    self.convert8bitCheckBox.toolTip = "Convert output volume to grayscale (8bit) using percentile-based intensity rescaling"
-    outputFormLayout.addRow("8-bit intensity: ", self.convert8bitCheckBox)
-
     self.loadButton = qt.QPushButton("Load files")
     self.loadButton.toolTip = "Load files as a 3D volume"
     self.loadButton.enabled = False
@@ -344,6 +388,8 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
   def onClear(self):
     self.fileTable.clear()
+    self.fileStatusLabel.setText("")
+    self.fileStatusLabel.setStyleSheet("")
     self.outputSelector.currentNodeID = ""
     self.logic.filePaths = []
     self.updateWidgetFromLogic()
@@ -354,8 +400,19 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     self.setFilePaths(filePaths)
 
   def setFilePaths(self, filePaths):
+    # Order from QFileDialog, drag-drop, or directory enumeration is not
+    # guaranteed to be slice order — natural-sort here so every entry point
+    # ends up with the same deterministic ordering.
+    filePaths = sorted(filePaths, key=naturalSortKey)
     self.fileTable.plainText = '\n'.join(filePaths)
     self.logic.filePaths = filePaths
+
+    status, message = imageStackSanityReport(filePaths)
+    self.fileStatusLabel.setText(message)
+    if status == 'mismatch':
+      self.fileStatusLabel.setStyleSheet("QLabel { color: #b35900; }")
+    else:
+      self.fileStatusLabel.setStyleSheet("")
 
     self.updateWidgetFromLogic()
 
@@ -467,12 +524,6 @@ class ImageStacksWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       slicer.app.pauseRender()
       outputNode = self.logic.loadVolume(self.currentNode(), progressCallback=self.onProgress)
       self.setCurrentNode(outputNode)
-
-      # Apply 8-bit conversion if requested
-      if self.convert8bitCheckBox.checked:
-        outputNode = self.logic.convertTo8Bit(outputNode, progressCallback=self.onProgress)
-        self.setCurrentNode(outputNode)
-
       qt.QApplication.restoreOverrideCursor()
     except Exception as e:
       qt.QApplication.restoreOverrideCursor()
@@ -572,7 +623,9 @@ class ImageStacksFileDialog:
         if pathInfo.isDir(): # if it is a directory we add the files to the dialog
           directory = qt.QDir(localPath)
           nameFilters = ['*.'+ext for ext in acceptedFileExtensions]
-          filenamesInFolder = directory.entryList(nameFilters, qt.QDir.Files, qt.QDir.Name)
+          # Enumerate unsorted; setFilePaths applies natural sort. Qt's QDir.Name
+          # is locale-aware and lex-only, so it mis-orders mixed-width numeric names.
+          filenamesInFolder = directory.entryList(nameFilters, qt.QDir.Files, qt.QDir.Unsorted)
           for filenameInFolder in filenamesInFolder:
             filesToAdd.append(directory.absoluteFilePath(filenameInFolder))
         else:
@@ -638,6 +691,10 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
     # but image coordinate system in files is always LPS, therefore we invert the
     # sign of the first two axes when we compute image extents.
     self.outputVolumeBounds = None
+    # True when the file list is a single multi-page TIFF whose pages are the Z
+    # slices of a 3D volume. Read page-by-page via tifffile to keep the
+    # streaming memory profile of the regular per-file slice loop.
+    self.isMultiFrameTiff = False
 
   @staticmethod
   def humanizeByteCount(byteCount):
@@ -670,17 +727,18 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
     self._filePaths = filePaths
     self.originalVolumeDimensions = [0, 0, 0]
     self.originalVolumeRecommendedSpacing = [0.0, 0.0, 0.0]
+    self.isMultiFrameTiff = False
 
     if not self._filePaths:
       return
 
-    reader = sitk.ImageFileReader()
     filePath = self._filePaths[0]
-    reader.SetFileName(filePath)
-
     fileName, fileExtension = os.path.splitext(filePath)
-    if fileExtension.lower() == ".nhdr" or fileExtension.lower() == ".nrrd":
-        self._filePaths[0]
+    extLower = fileExtension.lower()
+
+    if extLower == ".nhdr" or extLower == ".nrrd":
+        reader = sitk.ImageFileReader()
+        reader.SetFileName(filePath)
         reader.ReadImageInformation()
 
         self.originalVolumeDimensions = reader.GetSize()
@@ -689,17 +747,143 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
         pixelType=reader.GetPixelID()
         self.originalVolumeVoxelDataType = sitk.GetArrayFromImage(sitk.Image(1,1,1,pixelType)).dtype
         self.originalVolumeRecommendedSpacing = reader.GetSpacing()
+        return
 
+    if len(self._filePaths) == 1 and extLower in (".tif", ".tiff"):
+      if self._tryReadMultiPageTiffMetadata(filePath):
+        return
+
+    reader = sitk.ImageFileReader()
+    reader.SetFileName(filePath)
+    image = reader.Execute()
+    sliceArray = sitk.GetArrayFromImage(image)
+
+    self.originalVolumeDimensions = [sliceArray.shape[1], sliceArray.shape[0], len(filePaths)]
+    self.originalVolumeNumberOfScalarComponents = sliceArray.shape[2] if len(sliceArray.shape) == 3 else 1
+    self.originalVolumeVoxelDataType = numpy.dtype(sliceArray.dtype)
+
+    firstSliceSpacing = image.GetSpacing()
+    self.originalVolumeRecommendedSpacing = [firstSliceSpacing[1], firstSliceSpacing[0], 0.0]
+
+  def _ensureTifffile(self):
+    """Ensure tifffile is importable; installs from the module's requirements file if needed.
+    Returns the imported tifffile module."""
+    requirementsPath = os.path.join(
+      os.path.dirname(slicer.util.modulePath("ImageStacks")),
+      "Resources", "requirements_ImageStacks.txt")
+    reqs = slicer.packaging.load_requirements(requirementsPath)
+    slicer.packaging.pip_ensure(reqs, requester="ImageStacks")
+    import tifffile
+    return tifffile
+
+  def _tryReadMultiPageTiffMetadata(self, filePath):
+    """Inspect a single TIFF file using tifffile and, if it is a multi-page
+    TIFF whose pages are Z slices, populate originalVolume* fields and set
+    isMultiFrameTiff. Returns True if the file was handled as multi-page."""
+    try:
+      tifffile = self._ensureTifffile()
+    except Exception as e:
+      logging.warning(f"ImageStacks: tifffile unavailable, falling back to SimpleITK path ({e})")
+      return False
+
+    try:
+      tif = tifffile.TiffFile(filePath)
+    except Exception as e:
+      logging.warning(f"ImageStacks: tifffile could not open {filePath}: {e}")
+      return False
+
+    with tif:
+      pages = tif.pages
+      pageCount = len(pages)
+      if pageCount < 2:
+        # Single-page TIFF; let the regular SimpleITK path handle it.
+        return False
+
+      page0 = pages[0]
+      # page0.shape is (H, W) for scalar pages, (H, W, C) for multi-sample pages.
+      shape = page0.shape
+      if len(shape) < 2:
+        return False
+      height, width = shape[0], shape[1]
+      samples = shape[2] if len(shape) == 3 else 1
+
+      self.isMultiFrameTiff = True
+      self.originalVolumeDimensions = [width, height, pageCount]
+      self.originalVolumeNumberOfScalarComponents = samples
+      self.originalVolumeVoxelDataType = numpy.dtype(page0.dtype)
+
+      sx, sy = self._readTiffXYSpacing(page0)
+      sz = self._readTiffZSpacing(page0, tif)
+      self.originalVolumeRecommendedSpacing = [sx, sy, sz]
+
+    return True
+
+  @staticmethod
+  def _rationalToFloat(value):
+    """TIFF rationals can come back as a (num, denom) tuple or a numpy scalar
+    depending on tifffile version. Return a float or 0.0 if not convertible."""
+    try:
+      if isinstance(value, tuple) and len(value) == 2:
+        num, denom = value
+        return float(num) / float(denom) if float(denom) != 0.0 else 0.0
+      return float(value)
+    except (TypeError, ValueError, ZeroDivisionError):
+      return 0.0
+
+  @classmethod
+  def _readTiffXYSpacing(cls, page):
+    """Derive X/Y spacing in millimeters from a TIFF page's resolution tags.
+    Returns (sx, sy); each is 0.0 if not determinable."""
+    tags = page.tags
+
+    def tagValue(name):
+      if name in tags:
+        return tags[name].value
+      return None
+
+    xres = cls._rationalToFloat(tagValue("XResolution"))
+    yres = cls._rationalToFloat(tagValue("YResolution"))
+    unit = tagValue("ResolutionUnit")
+    # ResolutionUnit: 1 = no unit (treat as undefined), 2 = inch, 3 = centimeter.
+    if unit == 2:
+      unitToMm = 25.4
+    elif unit == 3:
+      unitToMm = 10.0
     else:
-        image = reader.Execute()
-        sliceArray = sitk.GetArrayFromImage(image)
+      # Without a unit we cannot convert to mm reliably. Fall back to 0 so the
+      # user is prompted to set spacing manually.
+      return 0.0, 0.0
+    sx = unitToMm / xres if xres > 0 else 0.0
+    sy = unitToMm / yres if yres > 0 else 0.0
+    return sx, sy
 
-        self.originalVolumeDimensions = [sliceArray.shape[1], sliceArray.shape[0], len(filePaths)]
-        self.originalVolumeNumberOfScalarComponents = sliceArray.shape[2] if len(sliceArray.shape) == 3 else 1
-        self.originalVolumeVoxelDataType = numpy.dtype(sliceArray.dtype)
+  @classmethod
+  def _readTiffZSpacing(cls, page, tif):
+    """Try to read Z spacing from common multi-page TIFF conventions
+    (ImageJ hyperstack ImageDescription, OME-TIFF). Returns 0.0 if unknown."""
+    # ImageJ writes a `spacing=` token in ImageDescription on the first page.
+    desc = None
+    if "ImageDescription" in page.tags:
+      desc = page.tags["ImageDescription"].value
+      if isinstance(desc, bytes):
+        try:
+          desc = desc.decode("utf-8", errors="replace")
+        except Exception:
+          desc = None
+    if desc:
+      match = re.search(r"(?im)^\s*spacing\s*=\s*([0-9.+eE-]+)", desc)
+      if match:
+        try:
+          return float(match.group(1))
+        except ValueError:
+          pass
+      # ImageJ also sometimes writes `unit=micron` etc. — leave that to the user
+      # for now; the magnitude alone is what most micro-CT exports need.
 
-        firstSliceSpacing = image.GetSpacing()
-        self.originalVolumeRecommendedSpacing = [firstSliceSpacing[1], firstSliceSpacing[0], 0.0]
+    # OME-TIFF carries PhysicalSizeZ in tif.ome_metadata as XML. tifffile exposes
+    # parsed series spacings via tif.series[0].axes / .shape, but the spacing
+    # itself needs OME XML parsing which we skip in this prototype.
+    return 0.0
 
   def setOriginalVolumeSpacing(self, spacing):
     # Volume is in LPS, therefore we invert the first two axes
@@ -769,76 +953,114 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
     filePath = self._filePaths[0]
     fileExtension = os.path.splitext(filePath)[1]
     isNrrd = fileExtension.lower() == ".nhdr" or fileExtension.lower() == ".nrrd"
-    if isNrrd:
-      paths = ([filePath] * self.originalVolumeDimensions[2])
-    else:
-      paths = self._filePaths
+    isMultiFrameTiff = self.isMultiFrameTiff
 
-    # Keep every stepSize[2]'th slice
-    paths = paths[::stepSize[2]]
+    # Open the multi-page TIFF once and reuse its file handle across slices, so
+    # tifffile decodes only the requested page on each .asarray() call.
+    tiffHandle = None
+    if isMultiFrameTiff:
+      tifffile = self._ensureTifffile()
+      tiffHandle = tifffile.TiffFile(filePath)
 
-    if self.reverseSliceOrder:
-      paths.reverse()
-
-    volumeArray = None
-    sliceIndex = 0
-    firstArrayFullShape = None
-
-    for inputSliceIndex, path in enumerate(paths):
-
-      if progressCallback:
-        toContinue = progressCallback(inputSliceIndex/len(paths))
-        if not toContinue:
-          raise ValueError("User requested cancel")
-
-      if inputSliceIndex < extent[4] or inputSliceIndex > extent[5]:
-        # out of selected bounds
-        continue
-
-      if isNrrd:
-        sliceArray = self.loadNrrdSlice(path, inputSliceIndex * stepSize[2])
+    try:
+      if isNrrd or isMultiFrameTiff:
+        paths = ([filePath] * self.originalVolumeDimensions[2])
       else:
-        reader = sitk.ImageFileReader()
-        reader.SetFileName(path)
-        image = reader.Execute()
+        paths = self._filePaths
 
-        sliceArray = sitk.GetArrayFromImage(image)
+      # Keep every stepSize[2]'th slice
+      paths = paths[::stepSize[2]]
 
-      if len(sliceArray.shape) == 3 and self.outputGrayscale:
-        # We convert to grayscale by simply taking the first component, which is appropriate for cases when grayscale image is stored as R=G=B,
-        # but to convert real RGB images it could better to compute the mean or luminance.
-        sliceArray = sliceArray[:,:,0]
-      currentArrayFullShape = sliceArray.shape
-      if firstArrayFullShape is None:
-        firstArrayFullShape = currentArrayFullShape
-      if volumeArray is None:
-        shape = [extent[5]-extent[4]+1, extent[3]-extent[2]+1, extent[1]-extent[0]+1]
+      # For multi-page TIFF the path list is identical strings, so we need an
+      # explicit page index for each position. Mirror the same stride/reverse
+      # transform applied to `paths` so the two stay in lockstep.
+      tiffPageIndices = None
+      if isMultiFrameTiff:
+        tiffPageIndices = list(range(0, self.originalVolumeDimensions[2], stepSize[2]))
+
+      if self.reverseSliceOrder:
+        paths.reverse()
+        if tiffPageIndices is not None:
+          tiffPageIndices.reverse()
+
+      volumeArray = None
+      sliceIndex = 0
+      firstArrayFullShape = None
+
+      for inputSliceIndex, path in enumerate(paths):
+
+        if progressCallback:
+          toContinue = progressCallback(inputSliceIndex/len(paths))
+          if not toContinue:
+            raise ValueError("User requested cancel")
+
+        if inputSliceIndex < extent[4] or inputSliceIndex > extent[5]:
+          # out of selected bounds
+          continue
+
+        if isNrrd:
+          sliceArray = self.loadNrrdSlice(path, inputSliceIndex * stepSize[2])
+        elif isMultiFrameTiff:
+          try:
+            sliceArray = tiffHandle.pages[tiffPageIndices[inputSliceIndex]].asarray()
+          except (ImportError, ValueError) as e:
+            # tifffile delegates JPEG/JPEG2000/WebP decode to the optional
+            # imagecodecs package. Surface an actionable message instead of
+            # the raw exception so the user can opt in to that dependency
+            # manually (we keep it out of the default requirements because
+            # its wheels can drag in a numpy ABI change).
+            if "imagecodecs" in str(e).lower():
+              raise ValueError(
+                "This TIFF uses a compression that requires the optional "
+                "'imagecodecs' package. Install it from the Slicer Python "
+                "console with:\n    slicer.util.pip_install('imagecodecs')"
+              ) from e
+            raise
+        else:
+          reader = sitk.ImageFileReader()
+          reader.SetFileName(path)
+          image = reader.Execute()
+
+          sliceArray = sitk.GetArrayFromImage(image)
+
+        if len(sliceArray.shape) == 3 and self.outputGrayscale:
+          # We convert to grayscale by simply taking the first component, which is appropriate for cases when grayscale image is stored as R=G=B,
+          # but to convert real RGB images it could better to compute the mean or luminance.
+          sliceArray = sliceArray[:,:,0]
+        currentArrayFullShape = sliceArray.shape
+        if firstArrayFullShape is None:
+          firstArrayFullShape = currentArrayFullShape
+        if volumeArray is None:
+          shape = [extent[5]-extent[4]+1, extent[3]-extent[2]+1, extent[1]-extent[0]+1]
+          if len(sliceArray.shape) == 3:
+            shape.append(sliceArray.shape[2])
+          volumeArray = numpy.zeros(shape, dtype=sliceArray.dtype)
         if len(sliceArray.shape) == 3:
-          shape.append(sliceArray.shape[2])
-        volumeArray = numpy.zeros(shape, dtype=sliceArray.dtype)
-      if len(sliceArray.shape) == 3:
-        # vector volume
-        sliceArray = sliceArray[
-          extent[2]*stepSize[1]:(extent[3]+1)*stepSize[1]:stepSize[1],
-          extent[0]*stepSize[0]:(extent[1]+1)*stepSize[0]:stepSize[0], :]
-      else:
-        # grayscale volume
-        sliceArray = sliceArray[
-                     extent[2] * stepSize[1]:(extent[3] + 1) * stepSize[1]:stepSize[1],
-                     extent[0] * stepSize[0]:(extent[1] + 1) * stepSize[0]:stepSize[0]]
+          # vector volume
+          sliceArray = sliceArray[
+            extent[2]*stepSize[1]:(extent[3]+1)*stepSize[1]:stepSize[1],
+            extent[0]*stepSize[0]:(extent[1]+1)*stepSize[0]:stepSize[0], :]
+        else:
+          # grayscale volume
+          sliceArray = sliceArray[
+                       extent[2] * stepSize[1]:(extent[3] + 1) * stepSize[1]:stepSize[1],
+                       extent[0] * stepSize[0]:(extent[1] + 1) * stepSize[0]:stepSize[0]]
 
-      if (sliceIndex > 0) and (volumeArray[sliceIndex].shape != sliceArray.shape):
-        logging.debug("After downsampling, {} size is {} x {}\n\n{} size is {} x {} ({} scalar components)".format(
-          paths[0], volumeArray[0].shape[0], volumeArray[0].shape[1],
-          path, sliceArray.shape[0], sliceArray.shape[1],
-          sliceArray.shape[2] if len(sliceArray.shape)==3 else 1))
-        message = "There are multiple datasets in the folder. Please select a single file as a sample or specify a pattern.\nDetails:\n"
-        message += f"{paths[0]} size is {firstArrayFullShape[0]} x {firstArrayFullShape[1]} ({firstArrayFullShape[2] if len(firstArrayFullShape)==3 else 1} scalar components)\n\n"
-        message += f"{path} size is {currentArrayFullShape[0]} x {currentArrayFullShape[1]} ({currentArrayFullShape[2] if len(currentArrayFullShape)==3 else 1} scalar components)"
-        raise ValueError(message)
+        if (sliceIndex > 0) and (volumeArray[sliceIndex].shape != sliceArray.shape):
+          logging.debug("After downsampling, {} size is {} x {}\n\n{} size is {} x {} ({} scalar components)".format(
+            paths[0], volumeArray[0].shape[0], volumeArray[0].shape[1],
+            path, sliceArray.shape[0], sliceArray.shape[1],
+            sliceArray.shape[2] if len(sliceArray.shape)==3 else 1))
+          message = "There are multiple datasets in the folder. Please select a single file as a sample or specify a pattern.\nDetails:\n"
+          message += f"{paths[0]} size is {firstArrayFullShape[0]} x {firstArrayFullShape[1]} ({firstArrayFullShape[2] if len(firstArrayFullShape)==3 else 1} scalar components)\n\n"
+          message += f"{path} size is {currentArrayFullShape[0]} x {currentArrayFullShape[1]} ({currentArrayFullShape[2] if len(currentArrayFullShape)==3 else 1} scalar components)"
+          raise ValueError(message)
 
-      volumeArray[sliceIndex] = sliceArray
-      sliceIndex += 1
+        volumeArray[sliceIndex] = sliceArray
+        sliceIndex += 1
+    finally:
+      if tiffHandle is not None:
+        tiffHandle.close()
 
     newVolume = False
     if not outputNode:
@@ -877,25 +1099,23 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
 
   def loadNrrdSlice(self, filename, sliceIndex):
 
-    try:
-      import nrrd
-    except ImportError:
-      slicer.util.pip_install("pynrrd")
-      import nrrd
+    requirementsPath = os.path.join(
+      os.path.dirname(slicer.util.modulePath("ImageStacks")),
+      "Resources", "requirements_ImageStacks.txt")
+    reqs = slicer.packaging.load_requirements(requirementsPath)
+    slicer.packaging.pip_ensure(reqs, requester="ImageStacks")
+    import nrrd
 
-    from nrrd.types import IndexOrder, NRRDFieldMap, NRRDFieldType, NRRDHeader
-    from typing import Optional, IO, List
-    import nptyping as npt
+    from typing import Optional, IO
     from nrrd import NRRDError
     from nrrd.reader import _NRRD_REQUIRED_FIELDS, _determine_datatype, _READ_CHUNKSIZE
     import zlib
     import numpy as np
-    import os
     import io
     import bz2
 
-    def read_data(header: NRRDHeader, fh: Optional[IO] = None, filename: Optional[str] = None,
-                  index_order: IndexOrder = 'F', extract_slice_range: Optional[list[int]] = None) -> npt.NDArray:
+    def read_data(header: dict, fh: Optional[IO] = None, filename: Optional[str] = None,
+                  index_order: str = 'F', extract_slice_range: Optional[list] = None) -> np.ndarray:
         """Read data from file into :class:`numpy.ndarray`
 
         The two parameters :obj:`fh` and :obj:`filename` are optional depending on the parameters but it never hurts to
@@ -1102,89 +1322,6 @@ class ImageStacksLogic(ScriptedLoadableModuleLogic):
         sliceArray = sliceArray.squeeze()
 
     return sliceArray
-
-  def convertTo8Bit(self, volumeNode, progressCallback=None):
-    """
-    Convert a volume to 8-bit unsigned char using VTK's optimized intensity rescaling.
-    This method operates on the output volume created by loadVolume().
-
-    Parameters
-    ----------
-    volumeNode : vtkMRMLScalarVolumeNode
-        The volume node to convert
-    progressCallback : callable, optional
-        Callback function for progress updates
-
-    Returns
-    -------
-    vtkMRMLScalarVolumeNode
-        The converted 8-bit volume node
-    """
-
-    if progressCallback:
-      progressCallback(0.0)
-
-    # Check if volume is multi-component (e.g., RGB)
-    if volumeNode.IsA("vtkMRMLVectorVolumeNode"):
-      raise ValueError("8-bit conversion is not supported for multi-component (RGB/RGBA) volumes")
-
-    # Get the volume array
-    volumeArray = slicer.util.arrayFromVolume(volumeNode)
-
-    # Check if already 8-bit
-    if volumeArray.dtype == numpy.uint8:
-      logging.info("Volume is already 8-bit, no conversion needed")
-      return volumeNode
-
-    if progressCallback:
-      progressCallback(0.1)
-
-    # Use vtkImageHistogramStatistics for optimal intensity thresholds
-    # This avoids saturation and provides robust threshold values automatically
-    histogramStatistics = vtk.vtkImageHistogramStatistics()
-    histogramStatistics.SetInputData(volumeNode.GetImageData())
-    histogramStatistics.Update()
-
-    # Get optimal threshold values using VTK's AutoRange
-    lowerValue = histogramStatistics.GetAutoRange()[0]
-    upperValue = histogramStatistics.GetAutoRange()[1]
-
-    if progressCallback:
-      progressCallback(0.3)
-
-    # Rescale intensities to 0-255 range
-    volumeArray = numpy.clip(volumeArray, lowerValue, upperValue)
-
-    # Prevent division by zero if lowerValue == upperValue (e.g., constant image)
-    if numpy.isclose(upperValue, lowerValue):
-      volumeArray = numpy.zeros_like(volumeArray)
-    else:
-      volumeArray = ((volumeArray - lowerValue) / (upperValue - lowerValue) * 255.0)
-
-    if progressCallback:
-      progressCallback(0.6)
-
-    # Cast to 8-bit unsigned char
-    volumeArray = volumeArray.astype(numpy.uint8)
-
-    if progressCallback:
-      progressCallback(0.8)
-
-    # Update the volume node with converted data
-    slicer.util.updateVolumeFromArray(volumeNode, volumeArray)
-
-    # Update display node to reflect the new scalar range
-    displayNode = volumeNode.GetDisplayNode()
-    if displayNode:
-      displayNode.AutoWindowLevelOff()
-      displayNode.SetWindowLevel(255, 127.5)
-
-    if progressCallback:
-      progressCallback(1.0)
-
-    logging.info(f"Volume converted to 8-bit using VTK AutoRange: intensity range [{lowerValue:.2f}, {upperValue:.2f}] mapped to [0, 255]")
-
-    return volumeNode
 
 
 class ImageStacksTest(ScriptedLoadableModuleTest):

@@ -1,0 +1,5 @@
+itk~=5.4.0
+scikit-learn
+itk-fpfh~=0.2.0
+itk-ransac~=0.2.1
+cpdalp

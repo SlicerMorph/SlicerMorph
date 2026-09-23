@@ -1,0 +1,208 @@
+name: Run a script in 3D Slicer
+description: >
+  Install a released 3D Slicer on a Linux, macOS or Windows runner, then run a
+  Python script inside it with this extension's modules loaded from the checkout.
+  Fails the step if the script's checks fail.
+
+inputs:
+  stability:
+    description: Which Slicer build to install - "release" (the current stable) or "preview".
+    required: false
+    default: release
+  script:
+    description: Python script to run inside Slicer, relative to the checkout root.
+    required: true
+  module-paths:
+    description: >
+      Module directories to load, one per line, relative to the checkout root.
+      Each becomes an --additional-module-paths argument.
+    required: true
+  main-window:
+    description: >
+      "true" to start Slicer with its main window, "false" for --no-main-window.
+      Modules that touch the layout manager or the main window in setup() need it:
+      without one, slicer.app.layoutManager() is None and their setup() raises,
+      which looks like a broken module but is only a missing window.
+    required: false
+    default: "false"
+  timeout-seconds:
+    description: Kill Slicer if the script has not finished by then.
+    required: false
+    default: "1800"
+
+runs:
+  using: composite
+  steps:
+    # Slicer's download service names the platforms differently from GitHub's runners.
+    - name: Resolve download URL
+      shell: bash
+      env:
+        STABILITY: ${{ inputs.stability }}
+      run: |
+        case "$RUNNER_OS" in
+          Linux)   slicer_os=linux   ;;
+          macOS)   slicer_os=macosx  ;;
+          Windows) slicer_os=win     ;;
+          *) echo "unsupported runner: $RUNNER_OS" >&2; exit 1 ;;
+        esac
+        # The application calls its daily build "Preview", but the download service only
+        # accepts "nightly" for it -- "stability=preview" is answered with an HTTP 400
+        # and an HTML error page, which then fails much later as a corrupt archive.
+        case "$STABILITY" in
+          release)          stability=release ;;
+          preview|nightly)  stability=nightly ;;
+          *) echo "unknown stability: $STABILITY (expected release or preview)" >&2; exit 1 ;;
+        esac
+        echo "SLICER_URL=https://download.slicer.org/download?os=${slicer_os}&stability=${stability}" >> "$GITHUB_ENV"
+        # Everything the script prints is mirrored here.  On Windows the app's
+        # console output never reaches the shell, so the log is the only copy.
+        echo "SLICER_CI_LOG=${RUNNER_TEMP}/slicer-ci.log" >> "$GITHUB_ENV"
+
+    # ------------------------------------------------------------------ Linux
+    - name: Install Slicer (Linux)
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update -qq
+        # Runtime libraries the Slicer package expects but the runner image does not ship.
+        # Pinned to the ubuntu-24.04 package names (libasound2t64 was libasound2 before).
+        sudo apt-get install -y -qq --no-install-recommends xvfb libsm6 libxt6 libpulse-mainloop-glib0 \
+          libxcb-icccm4 libxdamage1 libnss3 libqt5gui5 libxcomposite1 libxrandr2 libxcursor1 libxi6 \
+          libasound2t64 libgssapi-krb5-2 libgomp1 libglu1-mesa
+        # --fail: without it curl saves an HTTP error page as slicer.tar.gz and the job
+        # fails later, and confusingly, inside tar instead of here.
+        curl -sSL --fail --retry 3 -o slicer.tar.gz "$SLICER_URL"
+        mkdir -p "$HOME/slicer"
+        tar xzf slicer.tar.gz -C "$HOME/slicer" --strip-components=1
+        echo "SLICER_BIN=$HOME/slicer/Slicer" >> "$GITHUB_ENV"
+
+    # ------------------------------------------------------------------ macOS
+    - name: Install Slicer (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        # Slicer ships an x86_64 build only; the Apple-silicon runners need Rosetta for it.
+        if [ "$(uname -m)" = "arm64" ]; then
+          sudo softwareupdate --install-rosetta --agree-to-license || true
+        fi
+        curl -sSL --fail --retry 3 -o slicer.dmg "$SLICER_URL"   # --fail: see the Linux step
+        hdiutil attach -nobrowse -quiet -mountpoint /Volumes/SlicerCI slicer.dmg
+        # The bundle is named after the version in preview builds, so find it rather than assume it.
+        app="$(find /Volumes/SlicerCI -maxdepth 1 -name '*.app' -print -quit)"
+        [ -n "$app" ] || { echo "no .app found in the disk image" >&2; exit 1; }
+        mkdir -p "$HOME/slicer"
+        cp -R "$app" "$HOME/slicer/"
+        hdiutil detach -quiet /Volumes/SlicerCI
+        echo "SLICER_BIN=$HOME/slicer/$(basename "$app")/Contents/MacOS/Slicer" >> "$GITHUB_ENV"
+
+    # ---------------------------------------------------------------- Windows
+    - name: Install Slicer (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        Invoke-WebRequest -Uri $env:SLICER_URL -OutFile slicer-installer.exe
+        # NSIS silent install; /D must come last and must not be quoted.
+        Start-Process -Wait -FilePath .\slicer-installer.exe -ArgumentList '/S', '/D=C:\Slicer'
+        if (-not (Test-Path 'C:\Slicer\Slicer.exe')) {
+          Get-ChildItem C:\Slicer
+          throw "Slicer.exe not found after the installer ran"
+        }
+        "SLICER_BIN=C:\Slicer\Slicer.exe" >> $env:GITHUB_ENV
+
+    # -------------------------------------------------------------- run (all)
+    - name: Run ${{ inputs.script }} in Slicer (${{ inputs.stability }})
+      if: runner.os != 'Windows'
+      shell: bash
+      env:
+        MODULE_PATHS: ${{ inputs.module-paths }}
+        SCRIPT: ${{ inputs.script }}
+        TIMEOUT_SECONDS: ${{ inputs.timeout-seconds }}
+        MAIN_WINDOW: ${{ inputs.main-window }}
+      run: |
+        args=()
+        if [ "$MAIN_WINDOW" != "true" ]; then
+          args+=( --no-main-window )
+        fi
+        while IFS= read -r path; do
+          [ -n "$path" ] || continue
+          args+=( --additional-module-paths "$GITHUB_WORKSPACE/$path" )
+        done <<< "$MODULE_PATHS"
+
+        # xvfb on Linux only; the macOS runners have a real window server.
+        launcher=()
+        if [ "$RUNNER_OS" = "Linux" ]; then
+          launcher=( xvfb-run -a )
+        fi
+        # `timeout` is coreutils: present on Linux, not in a stock macOS.  The job's
+        # timeout-minutes is the backstop when it is missing.
+        if command -v timeout >/dev/null 2>&1; then
+          launcher+=( timeout "$TIMEOUT_SECONDS" )
+        fi
+
+        # --testing makes the app take the non-interactive branch of any confirmation
+        # prompt instead of waiting forever for a click.
+        set +e
+        "${launcher[@]}" \
+          "$SLICER_BIN" --no-splash --testing \
+          "${args[@]}" --python-script "$GITHUB_WORKSPACE/$SCRIPT"
+        appStatus=$?
+        set -e
+        echo "Slicer exit code: $appStatus"
+        "$GITHUB_ACTION_PATH/verdict.sh" "$SLICER_CI_LOG"
+
+    - name: Run ${{ inputs.script }} in Slicer (${{ inputs.stability }})
+      if: runner.os == 'Windows'
+      shell: pwsh
+      env:
+        MODULE_PATHS: ${{ inputs.module-paths }}
+        SCRIPT: ${{ inputs.script }}
+        TIMEOUT_SECONDS: ${{ inputs.timeout-seconds }}
+        MAIN_WINDOW: ${{ inputs.main-window }}
+      run: |
+        # NB: not $args -- that is an automatic PowerShell variable.
+        $slicerArgs = @('--launcher-no-splash', '--no-splash', '--testing')
+        if ($env:MAIN_WINDOW -ne 'true') { $slicerArgs += '--no-main-window' }
+        foreach ($path in ($env:MODULE_PATHS -split "`n")) {
+          $path = $path.Trim()
+          if ($path) {
+            $slicerArgs += @('--additional-module-paths', (Join-Path $env:GITHUB_WORKSPACE $path))
+          }
+        }
+        $slicerArgs += @('--python-script', (Join-Path $env:GITHUB_WORKSPACE $env:SCRIPT))
+
+        # Slicer.exe is a GUI-subsystem launcher: it returns immediately and its console
+        # output never reaches this shell, so wait for it explicitly and read the log.
+        #
+        # Do not wait for a CLEAN exit, though.  With a main window on a runner with no
+        # real GPU, Slicer can finish the script and then hang in OpenGL teardown
+        # ("composeAndFlush: makeCurrent() failed"), which costs the job its entire
+        # timeout for a run that already passed.  The verdict line is what decides the
+        # result, so once it appears the app has done everything we need: allow a short
+        # grace period for it to quit on its own, then stop waiting and kill it.
+        $process = Start-Process -PassThru -NoNewWindow -FilePath $env:SLICER_BIN -ArgumentList $slicerArgs
+        $deadline = (Get-Date).AddSeconds([int]$env:TIMEOUT_SECONDS)
+        $graceUntil = $null
+        while (-not $process.HasExited) {
+          $now = Get-Date
+          if ($now -gt $deadline) {
+            Write-Host "Slicer exceeded $env:TIMEOUT_SECONDS s; stopping it."
+            break
+          }
+          if (-not $graceUntil -and (Test-Path $env:SLICER_CI_LOG) -and
+              (Select-String -Path $env:SLICER_CI_LOG -Pattern '\[ci\] VERDICT:' -Quiet)) {
+            $graceUntil = $now.AddSeconds(60)
+            Write-Host "Script finished; waiting up to 60s for Slicer to exit."
+          }
+          if ($graceUntil -and $now -gt $graceUntil) {
+            Write-Host "Slicer did not exit after reporting its verdict; stopping it."
+            break
+          }
+          Start-Sleep -Seconds 2
+        }
+        if (-not $process.HasExited) {
+          try { Stop-Process -Id $process.Id -Force -ErrorAction Stop } catch { Write-Host $_ }
+        } else {
+          Write-Host "launcher exit code: $($process.ExitCode)"
+        }
+        bash "$env:GITHUB_ACTION_PATH/verdict.sh" "$env:SLICER_CI_LOG"
+        exit $LASTEXITCODE

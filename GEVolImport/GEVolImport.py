@@ -23,9 +23,7 @@ class GEVolImport(ScriptedLoadableModule):
 This module imports VOL files output by the GE tome microCT scanner into 3D Slicer. It parses the PCR file to obtain the 3D image dimensions, voxel spacing, data format and other relevant metadata about the VOL file and generate a NHDR file to load the VOL file into Slicer.
 """
     self.parent.acknowledgementText = """
-This module was developed by Chi Zhang and Murat Maga, through a NSF ABI Development grant, "An Integrated Platform for Retrieval, Visualization and Analysis of
-3D Morphology From Digital Biological Collections" (Award Numbers: 1759883 (Murat Maga), 1759637 (Adam Summers), 1759839 (Douglas Boyer)).
-https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
+This module was developed by Chi Zhang and Murat Maga for SlicerMorph. Development of SlicerMorph is supported by NSF grants 1759883 and 2301405 to Murat Maga.
 """
 
 class GEVolImportWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
