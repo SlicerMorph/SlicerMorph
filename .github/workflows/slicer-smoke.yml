@@ -22,7 +22,7 @@ name: Slicer smoke test
 on:
   pull_request:
   push:
-    branches: [geomorphTab, stable-5.10]
+    branches: [master, stable-5.10]
   workflow_dispatch:
 
 concurrency:

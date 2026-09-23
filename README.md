@@ -1,6 +1,6 @@
 <img src="https://raw.githubusercontent.com/SlicerMorph/Images/main/husky_small.png" alt="SlicerMorph logo">
 
-[![Slicer smoke test](https://github.com/SlicerMorph/SlicerMorph/actions/workflows/slicer-smoke.yml/badge.svg?branch=geomorphTab)](https://github.com/SlicerMorph/SlicerMorph/actions/workflows/slicer-smoke.yml)
+[![Slicer smoke test](https://github.com/SlicerMorph/SlicerMorph/actions/workflows/slicer-smoke.yml/badge.svg)](https://github.com/SlicerMorph/SlicerMorph/actions/workflows/slicer-smoke.yml)
 
 This is the official repository for SlicerMorph project.
 
