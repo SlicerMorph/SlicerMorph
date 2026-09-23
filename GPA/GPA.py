@@ -552,18 +552,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
           except Exception: pass
     except Exception:
       pass
-    # LR controller: dispose the warp engine + drop the LR transform node
-    # it owned, so the next instance does not contend with a stale node.
-    try:
-      lr = getattr(self, "lr", None) or getattr(self, "geomorphLR", None)
-      if lr is not None:
-        eng = getattr(lr, "_warp_engine", None)
-        if eng is not None:
-          try: eng.dispose()
-          except Exception as e: print(f"[GPA teardown] engine.dispose: {e}")
-          lr._warp_engine = None
-    except Exception as e:
-      print(f"[GPA teardown] LR engine: {e}")
 
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)

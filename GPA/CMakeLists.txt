@@ -19,6 +19,7 @@ set(MODULE_PYTHON_RESOURCES
   Resources/UI/GPA_ExploreDataResults.ui
   Resources/UI/GPA_Interactive3D.ui
   Resources/UI/GPA_GeomorphLR.ui
+  Resources/Schema/GPALog-schema-v1.0.0.json
   Resources/requirements_GPA.txt
 )
 #-----------------------------------------------------------------------------
