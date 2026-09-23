@@ -171,10 +171,38 @@ runs:
         $slicerArgs += @('--python-script', (Join-Path $env:GITHUB_WORKSPACE $env:SCRIPT))
 
         # Slicer.exe is a GUI-subsystem launcher: it returns immediately and its console
-        # output never reaches this shell.  Wait for it explicitly, then print the log the
-        # script wrote, and report the launcher's exit code (which is the app's).
-        # There is no per-process timeout here; the job's timeout-minutes is the backstop.
-        $process = Start-Process -Wait -PassThru -NoNewWindow -FilePath $env:SLICER_BIN -ArgumentList $slicerArgs
-        Write-Host "launcher exit code: $($process.ExitCode)"
+        # output never reaches this shell, so wait for it explicitly and read the log.
+        #
+        # Do not wait for a CLEAN exit, though.  With a main window on a runner with no
+        # real GPU, Slicer can finish the script and then hang in OpenGL teardown
+        # ("composeAndFlush: makeCurrent() failed"), which costs the job its entire
+        # timeout for a run that already passed.  The verdict line is what decides the
+        # result, so once it appears the app has done everything we need: allow a short
+        # grace period for it to quit on its own, then stop waiting and kill it.
+        $process = Start-Process -PassThru -NoNewWindow -FilePath $env:SLICER_BIN -ArgumentList $slicerArgs
+        $deadline = (Get-Date).AddSeconds([int]$env:TIMEOUT_SECONDS)
+        $graceUntil = $null
+        while (-not $process.HasExited) {
+          $now = Get-Date
+          if ($now -gt $deadline) {
+            Write-Host "Slicer exceeded $env:TIMEOUT_SECONDS s; stopping it."
+            break
+          }
+          if (-not $graceUntil -and (Test-Path $env:SLICER_CI_LOG) -and
+              (Select-String -Path $env:SLICER_CI_LOG -Pattern '\[ci\] VERDICT:' -Quiet)) {
+            $graceUntil = $now.AddSeconds(60)
+            Write-Host "Script finished; waiting up to 60s for Slicer to exit."
+          }
+          if ($graceUntil -and $now -gt $graceUntil) {
+            Write-Host "Slicer did not exit after reporting its verdict; stopping it."
+            break
+          }
+          Start-Sleep -Seconds 2
+        }
+        if (-not $process.HasExited) {
+          try { Stop-Process -Id $process.Id -Force -ErrorAction Stop } catch { Write-Host $_ }
+        } else {
+          Write-Host "launcher exit code: $($process.ExitCode)"
+        }
         bash "$env:GITHUB_ACTION_PATH/verdict.sh" "$env:SLICER_CI_LOG"
         exit $LASTEXITCODE
