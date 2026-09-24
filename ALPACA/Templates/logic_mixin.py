@@ -230,13 +230,20 @@ class _ALPACATemplatesLogic:
         GPAlogic = _GPA.GPALogic()
         LM = _GPA.LMData()
         LMExclusionList = []
-        LM.lmOrig, landmarkTypeArray = GPAlogic.loadLandmarks(
+        loadResult = GPAlogic.loadLandmarks(
             inputFilePaths, LMExclusionList, extension
         )
-        shape = LM.lmOrig.shape
-        scalingOption = True
+        if loadResult is None:
+            raise ValueError(
+                "Could not load the matched point clouds. Please re-run the point cloud generation step."
+            )
+        LM.lmOrig, landmarkTypeArray, _ = loadResult
+        # doGpa's argument is BoasOption: False = full Procrustes (scaled to unit
+        # centroid size), True = Boas coordinates (size kept). Templates are chosen
+        # on shape, so scale.
+        BoasOption = False
         try:
-            LM.doGpa(scalingOption)
+            LM.doGpa(BoasOption)
         except ValueError:
             print(
                 "Point clouds may not have been generated correctly. Please re-run the point cloud generation step."
@@ -244,7 +251,8 @@ class _ALPACATemplatesLogic:
         LM.calcEigen()
         import Support.gpa_lib as gpa_lib
 
-        twoDcoors = gpa_lib.makeTwoDim(LM.lmOrig)
+        # PC scores of the Procrustes-aligned coordinates, as in GPA.py.
+        twoDcoors = gpa_lib.makeTwoDim(LM.lm)
         scores = np.dot(np.transpose(twoDcoors), LM.vec)
         scores = np.real(scores)
         size = scores.shape[0] - 1
