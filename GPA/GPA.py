@@ -504,6 +504,14 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self._gpaTeardown()
     except Exception as e:
       print(f"[GPA] teardown warning: {e}")
+    # Reload re-executes this file, which replaces GPANodeCollection with an
+    # empty collection. Remove the tracked scene nodes now, while the old
+    # collection still holds them; otherwise they are orphaned in the scene
+    # (e.g. a second 'Warped Model' appears after Reload + Test).
+    try:
+      self.nodeCleanUp()
+    except Exception as e:
+      print(f"[GPA] node cleanup warning: {e}")
     import importlib, sys
     for name in list(sys.modules):
       if name == "Support" or name.startswith("Support."):
@@ -3740,6 +3748,18 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     if(temporaryNode):
       GPANodeCollection.RemoveItem(temporaryNode)
       slicer.mrmlScene.RemoveNode(temporaryNode)
+
+    # Remove the mean-warped model and its 'Warped Model' clone from a previous
+    # Apply, so pressing Apply again replaces them instead of stacking copies.
+    for attr in ("cloneModelNode", "modelNode"):
+      node = getattr(self, attr, None)
+      if node is not None:
+        GPANodeCollection.RemoveItem(node)
+        if slicer.mrmlScene.IsNodePresent(node):
+          slicer.mrmlScene.RemoveNode(node)
+      setattr(self, attr, None)
+    self.modelDisplayNode = None
+    self.cloneModelDisplayNode = None
 
   def _setAnalysisTabsEnabled(self, enabled: bool):
     """Enable/disable the post-GPA tabs (everything except Setup Analysis).
