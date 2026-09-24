@@ -243,7 +243,7 @@ class _ALPACATemplatesWidget:
                 )
         else:
             self.ui.subsampleInfo2.insertPlainText(
-                "{} unique points are sampled from each model to match the template pointcloud \n"
+                f"{template_density} unique points are sampled from each model to match the template pointcloud \n"
             )
         # Save the reference/template's own point cloud so the output folder
         # contains all specimens including the reference itself.
@@ -278,45 +278,30 @@ class _ALPACATemplatesWidget:
     def onRestTableButton(self):
         self.resetFactors()
 
+    def _listPCDFiles(self):
+        """Matched point-cloud files in the PCD folder, sorted, landmark files
+        only (skips .DS_Store and other stray files)."""
+        return sorted(
+            f for f in os.listdir(self.pcdOutputFolder)
+            if f.lower().endswith((".mrk.json", ".fcsv"))
+        )
+
     # Add table for entering user-defined catalogs/groups for each specimen
     def enterFactors(self):
         # If has table node, remove table node and build a new one
         if hasattr(self, "factorTableNode") == False:
-            files = [
-                os.path.splitext(file)[0] for file in os.listdir(self.pcdOutputFolder)
-            ]
-            sortedArray = np.zeros(
-                len(files),
-                dtype={"names": ("filename", "procdist"), "formats": ("U50", "f8")},
-            )
-            sortedArray["filename"] = files
-            self.factorTableNode = slicer.mrmlScene.AddNewNodeByClass(
-                "vtkMRMLTableNode", "Groups Table"
-            )
-            col1 = self.factorTableNode.AddColumn()
-            col1.SetName("ID")
-            for i in range(len(files)):
-                self.factorTableNode.AddEmptyRow()
-                self.factorTableNode.SetCellText(i, 0, sortedArray["filename"][i])
-            col2 = self.factorTableNode.AddColumn()
-            col2.SetName("Group")
-            # add table to new layout
-            slicer.app.layoutManager().setLayout(503)
-            slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveTableID(
-                self.factorTableNode.GetID()
-            )
-            slicer.app.applicationLogic().PropagateTableSelection()
-            self.factorTableNode.GetTable().Modified()
+            self._buildFactorTable()
 
     def resetFactors(self):
         if hasattr(self, "factorTableNode"):
             slicer.mrmlScene.RemoveNode(self.factorTableNode)
-        files = [os.path.splitext(file)[0] for file in os.listdir(self.pcdOutputFolder)]
-        sortedArray = np.zeros(
-            len(files),
-            dtype={"names": ("filename", "procdist"), "formats": ("U50", "f8")},
-        )
-        sortedArray["filename"] = files
+        self._buildFactorTable()
+
+    def _buildFactorTable(self):
+        # IDs use the same naming as onkmeansTemplatesButton; groups are matched
+        # to specimens by ID, so the atlas row may stay empty unless the atlas
+        # is included in the analysis.
+        files = [file.split(".")[0] for file in self._listPCDFiles()]
         self.factorTableNode = slicer.mrmlScene.AddNewNodeByClass(
             "vtkMRMLTableNode", "Groups Table"
         )
@@ -324,9 +309,10 @@ class _ALPACATemplatesWidget:
         col1.SetName("ID")
         for i in range(len(files)):
             self.factorTableNode.AddEmptyRow()
-            self.factorTableNode.SetCellText(i, 0, sortedArray["filename"][i])
+            self.factorTableNode.SetCellText(i, 0, files[i])
         col2 = self.factorTableNode.AddColumn()
         col2.SetName("Group")
+        # add table to new layout
         slicer.app.layoutManager().setLayout(503)
         slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveTableID(
             self.factorTableNode.GetID()
@@ -338,7 +324,7 @@ class _ALPACATemplatesWidget:
     def onkmeansTemplatesButton(self):
         start = time.time()
         logic = _logic()
-        PCDFiles = os.listdir(self.pcdOutputFolder)
+        PCDFiles = self._listPCDFiles()
         if len(PCDFiles) < 1:
             logging.error(f"No point cloud files read from {self.pcdOutputFolder}\n")
             return
@@ -383,12 +369,15 @@ class _ALPACATemplatesWidget:
         else:
             if hasattr(self, "factorTableNode"):
                 self.ui.templatesInfo.clear()
-                factorCol = self.factorTableNode.GetTable().GetColumn(1)
-                groupFactorArray = []
-                for i in range(factorCol.GetNumberOfTuples()):
-                    temp = factorCol.GetValue(i).rstrip()
-                    temp = str(temp).upper()
-                    groupFactorArray.append(temp)
+                # Match groups to specimens by ID, not by row position: the
+                # table can hold rows (e.g. the atlas) that are not analyzed.
+                table = self.factorTableNode.GetTable()
+                groupByID = {}
+                for i in range(table.GetNumberOfRows()):
+                    groupByID[table.GetValue(i, 0).ToString().strip()] = (
+                        table.GetValue(i, 1).ToString().strip().upper()
+                    )
+                groupFactorArray = [groupByID.get(f, "") for f in files]
                 print(groupFactorArray)
                 # Count the number of non-null enties in the table
                 countInput = 0
