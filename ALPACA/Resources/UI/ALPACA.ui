@@ -1643,7 +1643,24 @@
             </property>
            </widget>
           </item>
-          <item row="7" column="0" colspan="2">
+          <item row="7" column="0">
+           <widget class="QLabel" name="boasKmeansLabel">
+            <property name="text">
+             <string>Use Boas coordinates:</string>
+            </property>
+           </widget>
+          </item>
+          <item row="7" column="1">
+           <widget class="QCheckBox" name="boasKmeansCheckBox">
+            <property name="toolTip">
+             <string>Run the GPA without scaling (Boas coordinates), so that K-means clusters on shape and size together (form space). Unchecked (default, as in the GPA module): specimens are scaled to unit centroid size and K-means clusters on shape only.</string>
+            </property>
+            <property name="checked">
+             <bool>false</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="8" column="0" colspan="2">
            <widget class="QPushButton" name="kmeansTemplatesButton">
             <property name="enabled">
              <bool>false</bool>
@@ -1656,7 +1673,7 @@
             </property>
            </widget>
           </item>
-          <item row="8" column="0" colspan="2">
+          <item row="9" column="0" colspan="2">
            <widget class="QPlainTextEdit" name="templatesInfo">
             <property name="sizePolicy">
              <sizepolicy hsizetype="Preferred" vsizetype="MinimumExpanding">

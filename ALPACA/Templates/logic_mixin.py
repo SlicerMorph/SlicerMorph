@@ -232,7 +232,7 @@ class _ALPACATemplatesLogic:
         return _GPA
 
     # inputFilePaths: file paths of pcd files
-    def pcdGPA(self, inputFilePaths):
+    def pcdGPA(self, inputFilePaths, BoasOption=False):
         basename, extension = os.path.splitext(inputFilePaths[0])
         # Load GPA's logic classes directly from its source file, bypassing
         # Slicer's scripted-module activation (which can pop modal dialogs).
@@ -250,9 +250,8 @@ class _ALPACATemplatesLogic:
             )
         LM.lmOrig, landmarkTypeArray, _ = loadResult
         # doGpa's argument is BoasOption: False = full Procrustes (scaled to unit
-        # centroid size), True = Boas coordinates (size kept). Templates are chosen
-        # on shape, so scale.
-        BoasOption = False
+        # centroid size, shape space; GPA module default), True = Boas
+        # coordinates (size kept, form space).
         try:
             LM.doGpa(BoasOption)
         except ValueError:

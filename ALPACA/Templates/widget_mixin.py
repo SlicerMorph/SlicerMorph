@@ -340,7 +340,9 @@ class _ALPACATemplatesWidget:
 
         pcdFilePaths = [os.path.join(self.pcdOutputFolder, file) for file in PCDFiles]
         # GPA for all specimens
-        self.scores, self.LM = logic.pcdGPA(pcdFilePaths)
+        self.scores, self.LM = logic.pcdGPA(
+            pcdFilePaths, BoasOption=self.ui.boasKmeansCheckBox.isChecked()
+        )
         files = [pcdSpecimenID(f) for f in PCDFiles]
         # Set up a seed for numpy for random results
         if self.ui.setSeedCheckBox.isChecked():
