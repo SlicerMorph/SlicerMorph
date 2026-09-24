@@ -17,6 +17,17 @@ import vtk
 import slicer
 
 
+def pcdSpecimenID(fileName):
+    """Specimen ID of a matched point-cloud file: the file name without its
+    landmark extension (.mrk.json, .json or .fcsv). Other dots in the name
+    are kept, e.g. 'Specimen.v2.mrk.json' -> 'Specimen.v2'."""
+    name = os.path.basename(fileName)
+    for ext in (".mrk.json", ".json", ".fcsv"):
+        if name.lower().endswith(ext):
+            return name[: -len(ext)]
+    return os.path.splitext(name)[0]
+
+
 class _ALPACATemplatesLogic:
     """Templates-tab computation methods, extracted from ALPACALogic."""
 
@@ -221,7 +232,7 @@ class _ALPACATemplatesLogic:
         return _GPA
 
     # inputFilePaths: file paths of pcd files
-    def pcdGPA(self, inputFilePaths):
+    def pcdGPA(self, inputFilePaths, BoasOption=False):
         basename, extension = os.path.splitext(inputFilePaths[0])
         # Load GPA's logic classes directly from its source file, bypassing
         # Slicer's scripted-module activation (which can pop modal dialogs).
@@ -230,13 +241,19 @@ class _ALPACATemplatesLogic:
         GPAlogic = _GPA.GPALogic()
         LM = _GPA.LMData()
         LMExclusionList = []
-        LM.lmOrig, landmarkTypeArray = GPAlogic.loadLandmarks(
+        loadResult = GPAlogic.loadLandmarks(
             inputFilePaths, LMExclusionList, extension
         )
-        shape = LM.lmOrig.shape
-        scalingOption = True
+        if loadResult is None:
+            raise ValueError(
+                "Could not load the matched point clouds. Please re-run the point cloud generation step."
+            )
+        LM.lmOrig, landmarkTypeArray, _ = loadResult
+        # doGpa's argument is BoasOption: False = full Procrustes (scaled to unit
+        # centroid size, shape space; GPA module default), True = Boas
+        # coordinates (size kept, form space).
         try:
-            LM.doGpa(scalingOption)
+            LM.doGpa(BoasOption)
         except ValueError:
             print(
                 "Point clouds may not have been generated correctly. Please re-run the point cloud generation step."
@@ -244,7 +261,8 @@ class _ALPACATemplatesLogic:
         LM.calcEigen()
         import Support.gpa_lib as gpa_lib
 
-        twoDcoors = gpa_lib.makeTwoDim(LM.lmOrig)
+        # PC scores of the Procrustes-aligned coordinates, as in GPA.py.
+        twoDcoors = gpa_lib.makeTwoDim(LM.lm)
         scores = np.dot(np.transpose(twoDcoors), LM.vec)
         scores = np.real(scores)
         size = scores.shape[0] - 1
@@ -267,7 +285,7 @@ class _ALPACATemplatesLogic:
         """
         templatesNumber = int(templatesNumber)
         iterations = int(iterations)
-        files = [os.path.basename(path).split(".")[0] for path in inputFilePaths]
+        files = [pcdSpecimenID(path) for path in inputFilePaths]
         from scipy.cluster.vq import vq, kmeans
 
         # np.random.seed(1000) #Set numpy random seed to ensure consistent Kmeans result
