@@ -120,6 +120,33 @@ This module was developed by Sara Rolfe and Murat Maga for SlicerMorph. Developm
       loadFileType='ZipFile',
       customDownloader=self.downloadSampleDataInFolder,
     )
+    # GPA tutorial set: landmarks, reference model, and an illustrative covariate table.
+    # Pinned to fixed commits so the tutorial screenshots stay reproducible.
+    SampleData.SampleDataLogic.registerCustomSampleDataSource(
+      sampleName='Mouse Skull GPA Tutorial Set',
+      category='SlicerMorph',
+      uris=['https://raw.githubusercontent.com/SlicerMorph/SampleData/e9e401633d06bab651a51fdad9af1d2a4d2f022f/converted_LMs.zip',
+            'https://raw.githubusercontent.com/SlicerMorph/SampleData/79cd5bb1081b8a46f71ad257881d749c395da181/809-3.obj.zip',
+            'https://raw.githubusercontent.com/SlicerMorph/SampleData/5e2cbc9728cde922ffbc68687a0c857e153941e0/matched_metadata.csv'],
+      checksums=[None, None, None],
+      loadFiles=[False, False, False],
+      fileNames=['converted_LMs.zip', '809-3.obj.zip', 'matched_metadata.csv'],
+      thumbnailFileName=os.path.join(iconsPath, 'pointcloud.png'),
+      loadFileType=['ZipFile', 'ZipFile', 'TableFile'],
+      customDownloader=self.downloadSampleDataInFolder,
+    )
+    # GPA sliding tutorial set: 200 synthetic mouse skulls (51 Fixed + 500 Semi landmarks) and the mean model.
+    SampleData.SampleDataLogic.registerCustomSampleDataSource(
+      sampleName='Mouse Skull GPA Sliding Tutorial Set',
+      category='SlicerMorph',
+      uris='https://raw.githubusercontent.com/SlicerMorph/SampleData/9e5edcd20a0227c6becf175d04d900e0515ff97e/GPA_sliding_tutorial.zip',
+      checksums=None,
+      loadFiles=False,
+      fileNames='GPA_sliding_tutorial.zip',
+      thumbnailFileName=os.path.join(iconsPath, 'pointcloud.png'),
+      loadFileType='ZipFile',
+      customDownloader=self.downloadSampleDataInFolder,
+    )
 
   def downloadSampleDataInFolder(self, source):
     sampleDataLogic = slicer.modules.sampledata.widgetRepresentation().self().logic
