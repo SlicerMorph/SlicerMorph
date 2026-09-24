@@ -17,6 +17,17 @@ import vtk
 import slicer
 
 
+def pcdSpecimenID(fileName):
+    """Specimen ID of a matched point-cloud file: the file name without its
+    landmark extension (.mrk.json, .json or .fcsv). Other dots in the name
+    are kept, e.g. 'Specimen.v2.mrk.json' -> 'Specimen.v2'."""
+    name = os.path.basename(fileName)
+    for ext in (".mrk.json", ".json", ".fcsv"):
+        if name.lower().endswith(ext):
+            return name[: -len(ext)]
+    return os.path.splitext(name)[0]
+
+
 class _ALPACATemplatesLogic:
     """Templates-tab computation methods, extracted from ALPACALogic."""
 
@@ -275,7 +286,7 @@ class _ALPACATemplatesLogic:
         """
         templatesNumber = int(templatesNumber)
         iterations = int(iterations)
-        files = [os.path.basename(path).split(".")[0] for path in inputFilePaths]
+        files = [pcdSpecimenID(path) for path in inputFilePaths]
         from scipy.cluster.vq import vq, kmeans
 
         # np.random.seed(1000) #Set numpy random seed to ensure consistent Kmeans result
