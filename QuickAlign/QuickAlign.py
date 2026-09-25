@@ -460,6 +460,11 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         except Exception as e:
           logging.error(f"Failed to switch to two-view layout: {e}")
 
+        # Show object 2 through camera 1 right away. Linked views only copy the camera
+        # on the next mouse interaction, so until then view 2 would show the realigned
+        # object 2 through its old camera, i.e. from the wrong direction.
+        self.copyCamera(camera1, camera2)
+
         # Restrict display nodes to just their primary views (remove side views during sync)
         node1 = self.ui.inputSelector1.currentNode()
         node2 = self.ui.inputSelector2.currentNode()
@@ -799,6 +804,56 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         #translate all nodes to origin
         self.centerNodes(node1, node2)
+
+        # Zoom all four views to fit the larger object, so that small specimens are not
+        # specks. The same zoom in all views keeps the objects at their true relative
+        # size: Start Sync scales object 2 by the ratio of the two views' zoom levels,
+        # so it only rescales if the user zooms one view on purpose.
+        radius = max(self.boundingRadius(node1), self.boundingRadius(node2))
+        self.frameViews([self.viewNode1, self.viewNode2, self.viewNode3, self.viewNode4], radius)
+
+    def copyCamera(self, sourceCamNode, targetCamNode):
+        """Make the target camera look at the scene exactly as the source camera does."""
+        targetCamNode.SetPosition(sourceCamNode.GetPosition())
+        targetCamNode.SetFocalPoint(sourceCamNode.GetFocalPoint())
+        targetCamNode.SetViewUp(sourceCamNode.GetViewUp())
+        targetCamNode.SetViewAngle(sourceCamNode.GetViewAngle())
+        targetCamNode.SetParallelScale(sourceCamNode.GetParallelScale())
+        # In orthographic views the zoom is the view node's field of view (see frameViews)
+        sourceViewNode = slicer.mrmlScene.GetSingletonNode(sourceCamNode.GetLayoutName(), "vtkMRMLViewNode")
+        targetViewNode = slicer.mrmlScene.GetSingletonNode(targetCamNode.GetLayoutName(), "vtkMRMLViewNode")
+        if sourceViewNode and targetViewNode:
+            targetViewNode.SetFieldOfView(sourceViewNode.GetFieldOfView())
+        targetCamNode.ResetClippingRange()
+
+    @staticmethod
+    def boundingRadius(node):
+        """Radius of the sphere around the node's bounding box, in world coordinates."""
+        bounds = [0, 0, 0, 0, 0, 0]
+        node.GetRASBounds(bounds)
+        return 0.5 * np.linalg.norm([bounds[1]-bounds[0], bounds[3]-bounds[2], bounds[5]-bounds[4]])
+
+    def frameViews(self, viewNodes, radius):
+        """Zoom the given views to show a sphere of the given radius, keeping the view direction."""
+        if not radius > 0:
+            return
+        for viewNode in viewNodes:
+            camNode = slicer.modules.cameras.logic().GetViewActiveCameraNode(viewNode)
+            if not camNode:
+                continue
+            # Orthographic zoom: Slicer resets the parallel scale to the view node's field
+            # of view whenever the view node changes (e.g. when the views are linked), so
+            # the field of view has to be set, not only the camera.
+            viewNode.SetFieldOfView(radius)
+            camNode.SetParallelScale(radius)
+            # Perspective zoom: move the camera so the sphere fits
+            focalPoint = np.array(camNode.GetFocalPoint())
+            direction = np.array(camNode.GetPosition()) - focalPoint
+            norm = np.linalg.norm(direction)
+            if norm > 1e-6:
+                distance = radius / np.sin(np.radians(camNode.GetViewAngle()) / 2.0)
+                camNode.SetPosition(*(focalPoint + direction / norm * distance))
+            camNode.ResetClippingRange()
 
     def setCameraOrientation(self, viewNode, viewUp, position):
         """Set camera orientation for a specific view"""
