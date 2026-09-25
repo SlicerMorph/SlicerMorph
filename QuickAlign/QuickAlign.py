@@ -460,11 +460,6 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         except Exception as e:
           logging.error(f"Failed to switch to two-view layout: {e}")
 
-        # Show object 2 through camera 1 right away. Linked views only copy the camera
-        # on the next mouse interaction, so until then view 2 would show the realigned
-        # object 2 through its old camera, i.e. from the wrong direction.
-        self.copyCamera(camera1, camera2)
-
         # Restrict display nodes to just their primary views (remove side views during sync)
         node1 = self.ui.inputSelector1.currentNode()
         node2 = self.ui.inputSelector2.currentNode()
@@ -492,6 +487,12 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.updateLandmarkDisplay()
 
         self.update3DViews()
+
+        # Show object 2 through camera 1 right away. Linked views only copy the camera
+        # on the next mouse interaction, so until then view 2 would show the realigned
+        # object 2 through its old camera, i.e. from the wrong direction. Done after
+        # update3DViews(), which re-centers each view's focal point on its own contents.
+        self.copyCamera(self.viewNode1, self.viewNode2)
 
         # Update joint editing availability after landmarks are applied, then start
         # it if it applies. The check box stays live during the sync: landmarks can
@@ -812,18 +813,19 @@ class QuickAlignWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         radius = max(self.boundingRadius(node1), self.boundingRadius(node2))
         self.frameViews([self.viewNode1, self.viewNode2, self.viewNode3, self.viewNode4], radius)
 
-    def copyCamera(self, sourceCamNode, targetCamNode):
-        """Make the target camera look at the scene exactly as the source camera does."""
+    def copyCamera(self, sourceViewNode, targetViewNode):
+        """Make the target view look at the scene exactly as the source view does."""
+        sourceCamNode = slicer.modules.cameras.logic().GetViewActiveCameraNode(sourceViewNode)
+        targetCamNode = slicer.modules.cameras.logic().GetViewActiveCameraNode(targetViewNode)
+        if not (sourceCamNode and targetCamNode):
+            return
         targetCamNode.SetPosition(sourceCamNode.GetPosition())
         targetCamNode.SetFocalPoint(sourceCamNode.GetFocalPoint())
         targetCamNode.SetViewUp(sourceCamNode.GetViewUp())
         targetCamNode.SetViewAngle(sourceCamNode.GetViewAngle())
         targetCamNode.SetParallelScale(sourceCamNode.GetParallelScale())
         # In orthographic views the zoom is the view node's field of view (see frameViews)
-        sourceViewNode = slicer.mrmlScene.GetSingletonNode(sourceCamNode.GetLayoutName(), "vtkMRMLViewNode")
-        targetViewNode = slicer.mrmlScene.GetSingletonNode(targetCamNode.GetLayoutName(), "vtkMRMLViewNode")
-        if sourceViewNode and targetViewNode:
-            targetViewNode.SetFieldOfView(sourceViewNode.GetFieldOfView())
+        targetViewNode.SetFieldOfView(sourceViewNode.GetFieldOfView())
         targetCamNode.ResetClippingRange()
 
     @staticmethod
