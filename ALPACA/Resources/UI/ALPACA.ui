@@ -806,7 +806,7 @@
           <item row="3" column="1">
            <widget class="ctkDoubleSpinBox" name="maxRANSAC" native="true">
             <property name="toolTip">
-             <string>Maximum number of iterations of the RANSAC algorithm</string>
+             <string>Maximum number of iterations of the RANSAC search for the initial alignment. The search runs in rounds of 10,000 iterations and stops early when two rounds in a row do not improve the alignment, so this is an upper limit.</string>
             </property>
             <property name="decimals" stdset="0">
              <number>0</number>
