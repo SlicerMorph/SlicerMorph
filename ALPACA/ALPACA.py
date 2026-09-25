@@ -1306,47 +1306,39 @@ class ALPACALogic(_ALPACATemplatesLogic, ScriptedLoadableModuleLogic):
             self.updateProgress(f"")
             return True
 
-    def calculateGeometricMedian(self, landmarkList):
-        """Calculate geometric median of landmark arrays using scipy optimization"""
-        try:
-            from scipy.optimize import minimize
-        except ImportError:
-            self.updateProgress("Warning: scipy not available, falling back to arithmetic median")
-            return np.median(landmarkList, axis=0)
+    def calculateGeometricMedian(self, landmarkList, maxIterations=1000, tolerance=1e-9):
+        """Geometric median of the template estimates, landmark by landmark.
 
-        # Convert list to numpy array for easier handling
-        landmarks = np.array(landmarkList)  # Shape: (n_templates, n_landmarks, 3)
-        n_templates, n_landmarks, n_dims = landmarks.shape
+        For each landmark, finds the point with the smallest summed Euclidean
+        distance to that landmark's estimates from all templates, using the
+        Weiszfeld iteration, started from the coordinate-wise median.
 
-        # Initialize result with arithmetic median
-        result = np.median(landmarks, axis=0)
-
-        # Objective function: sum of Euclidean distances to all points
-        def objective(x, points):
-            x_reshaped = x.reshape(-1, n_dims)
-            distances = np.sqrt(np.sum((points - x_reshaped[np.newaxis, :, :])**2, axis=2))
-            return np.sum(distances)
-
-        # Optimize for each landmark separately for better convergence
-        for i in range(n_landmarks):
-            landmark_coords = landmarks[:, i, :]  # Shape: (n_templates, 3)
-
-            # Initial guess is the arithmetic median for this landmark
-            x0 = result[i, :].flatten()
-
-            # Minimize sum of distances
-            try:
-                res = minimize(objective, x0, args=(landmark_coords,), method='BFGS')
-                if res.success:
-                    result[i, :] = res.x
-                else:
-                    # If optimization fails, keep arithmetic median
-                    self.updateProgress(f"Warning: Geometric median optimization failed for landmark {i+1}, using arithmetic median")
-            except Exception as e:
-                self.updateProgress(f"Warning: Error in geometric median calculation for landmark {i+1}: {str(e)}")
-                # Keep arithmetic median for this landmark
-                pass
-
+        The estimates are converted to float64 first: with float32 input (as
+        returned by pairwiseAlignment) the previous scipy BFGS approach saw a
+        flat objective and returned the starting point, so the "geometric
+        median" silently equaled the arithmetic median.
+        """
+        points = np.asarray(landmarkList, dtype=np.float64)  # (templates, landmarks, 3)
+        result = np.median(points, axis=0)  # starting point, (landmarks, 3)
+        if points.shape[0] < 3:
+            # With one or two estimates every point between them is a geometric median.
+            return result
+        # Stop when no landmark moves more than tolerance x the spread of the estimates.
+        scale = max(float(np.ptp(points.reshape(-1, points.shape[-1]), axis=0).max()), 1.0)
+        for _ in range(int(maxIterations)):
+            distances = np.linalg.norm(points - result[np.newaxis, :, :], axis=2)  # (templates, landmarks)
+            # A template estimate that coincides with the current point would
+            # divide by zero; keep it from dominating with a small floor.
+            weights = 1.0 / np.maximum(distances, 1e-12 * scale)
+            updated = (weights[:, :, np.newaxis] * points).sum(axis=0) / weights.sum(axis=0)[:, np.newaxis]
+            shift = float(np.linalg.norm(updated - result, axis=1).max())
+            result = updated
+            if shift < tolerance * scale:
+                break
+        else:
+            self.updateProgress(
+                "Warning: geometric median did not fully converge; using the last estimate"
+            )
         return result
 
     def runLandmarkMultiprocess(
