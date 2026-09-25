@@ -1346,6 +1346,15 @@ class AnimatorWidget(ScriptedLoadableModuleWidget):
       frameCount = sequenceNode.GetNumberOfDataNodes()
       tempDir = qt.QTemporaryDir()
 
+      # Put the scene in its first-frame state before capturing. The actions
+      # are applied from the browser's Modified event, which does not fire
+      # if the browser is already at item 0 (e.g. after previewing with the
+      # snapshot editor's scrubber, which does not move the browser). The
+      # first captured frame then showed whatever state the scene was in.
+      sequenceBrowserNode.SetSelectedItemNumber(0)
+      self.logic.act(animationNode, float(sequenceNode.GetNthIndexValue(0)))
+      slicer.app.processEvents()
+
       # perform the screen capture and video creation
       videoFormatIndex = self.videoFormatWidget.currentIndex
       videoFormat = logic.videoFormatPresets[videoFormatIndex]
