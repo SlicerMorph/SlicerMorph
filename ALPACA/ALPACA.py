@@ -1840,7 +1840,9 @@ class ALPACALogic(_ALPACATemplatesLogic, ScriptedLoadableModuleLogic):
                 fitness = fitness + 1
                 inlier_rmse = inlier_rmse + distance
 
-        return fitness / movingPointSet.GetNumberOfPoints(), inlier_rmse / fitness
+        # No inliers: report an infinite mean distance instead of dividing by zero.
+        rmse = inlier_rmse / fitness if fitness else np.inf
+        return fitness / movingPointSet.GetNumberOfPoints(), rmse
 
     # RANSAC using package
     def ransac_using_package(
@@ -2400,7 +2402,7 @@ class ALPACALogic(_ALPACATemplatesLogic, ScriptedLoadableModuleLogic):
         """
         import itk
 
-        maxIterations = int(maxIterations)
+        maxIterations = max(1, int(maxIterations))  # always run at least one round
         best = None
         bestFitness = -1.0
         bestRMSE = np.inf
