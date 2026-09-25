@@ -335,6 +335,7 @@ class ALPACAWidget(_ALPACATemplatesWidget, ScriptedLoadableModuleWidget):
             "CPDTolerance": self.ui.CPDToleranceSlider.value,
             "Acceleration": self.ui.accelerationCheckBox.checked,
             "BCPDFolder": self.ui.BCPDFolder.currentPath,
+            "poissonSubsample": self.ui.poissonSubsampleCheckBox.checked,
         }
 
     def cleanup(self):
@@ -1112,6 +1113,9 @@ class ALPACAWidget(_ALPACATemplatesWidget, ScriptedLoadableModuleWidget):
                 "Acceleration"
             ] = self.ui.accelerationCheckBox.checked
             self.parameterDictionary["BCPDFolder"] = self.ui.BCPDFolder.currentPath
+            self.parameterDictionary[
+                "poissonSubsample"
+            ] = self.ui.poissonSubsampleCheckBox.checked
 
 
 #
@@ -1501,7 +1505,7 @@ class ALPACALogic(_ALPACATemplatesLogic, ScriptedLoadableModuleLogic):
         scalingOption,
         projectionFactor,
         parameters,
-        usePoisson=False,
+        usePoisson=None,
     ):
         targetModelNode = slicer.util.loadModel(targetFilePath)
         targetModelNode.GetDisplayNode().SetVisibility(False)
@@ -2689,8 +2693,12 @@ class ALPACALogic(_ALPACATemplatesLogic, ScriptedLoadableModuleLogic):
         targetModel,
         scalingOption,
         parameters,
-        usePoissonSubsample=False,
+        usePoissonSubsample=None,
     ):
+        # None = follow the "Poisson Point Subsample" setting in parameters,
+        # so batch/MALPACA and Templates honor it like Single Alignment does.
+        if usePoissonSubsample is None:
+            usePoissonSubsample = bool(parameters.get("poissonSubsample", False))
         print("parameters are ", parameters)
         print(":: Loading point clouds and downsampling")
 

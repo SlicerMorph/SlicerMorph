@@ -49,7 +49,7 @@ class _ALPACATemplatesLogic:
         spacingFactor,
         useJSONFormat,
         parameterDictionary,
-        usePoisson=False,
+        usePoisson=None,
     ):
         if useJSONFormat:
             extensionLM = ".mrk.json"
@@ -848,7 +848,7 @@ class _ALPACATemplatesLogic:
                     atlasNode,
                     True,            # scaling on
                     parameterDictionary,
-                    False,           # poisson off
+                    False,           # poisson off: the atlas method is validated with voxel-grid sampling
                 )
                 ICPTransform_similarity, similarityFlag = self.estimateTransform(
                     sourcePoints, targetPoints, sourceFeatures, targetFeatures,
