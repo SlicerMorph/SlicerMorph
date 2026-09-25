@@ -543,8 +543,10 @@ class SkyscanReconImportLogic(ScriptedLoadableModuleLogic):
             scalarVolumeNode.SetSpacing(spacing)
             scalarVolumeNode.SetName(imageLogFile.Prefix)
 
-        # Set export type to NRRD
-        if scalarVolumeNode.GetStorageNode().GetClassName() != 'vtkMRMLNRRDStorageNode':
+        # Set export type to NRRD. A volume converted from RGB images above is a
+        # new node without a storage node yet.
+        storageNode = scalarVolumeNode.GetStorageNode()
+        if storageNode is None or storageNode.GetClassName() != 'vtkMRMLNRRDStorageNode':
           NRRDStorageNode = slicer.vtkMRMLNRRDStorageNode()
           NRRDStorageNode.SetWriteFileFormat('nrrd')
           slicer.mrmlScene.AddNode(NRRDStorageNode)
