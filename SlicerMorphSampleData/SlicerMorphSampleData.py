@@ -77,7 +77,7 @@ This module was developed by Sara Rolfe and Murat Maga for SlicerMorph. Developm
       customDownloader=self.downloadSampleDataInFolder,
 )
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
-      sampleName='Bruker/Sykscan mCT Recon sample',
+      sampleName='Bruker/Skyscan mCT Recon sample',
       category='SlicerMorph',
       uris='https://github.com/SlicerMorph/SampleData/blob/master/sample_Skyscan_mCT_reconstruction.zip?raw=true',
       checksums=None,
