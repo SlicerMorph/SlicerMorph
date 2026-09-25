@@ -428,8 +428,9 @@ class SnapshotTimelineWidget(qt.QWidget):
         self.explodeMagnitudeSpin.value = 2.0
         self.explodeMagnitudeSpin.setToolTip(
             "How far each model travels outward from the folder's "
-            "center of gravity at full explosion (1.0 = no movement, "
-            "2.0 = doubles its distance from center).")
+            "center at full explosion, as a multiple of its distance "
+            "from that center (1.0 = doubles its distance, 2.0 = "
+            "triples it).")
         self.explodeMagnitudeSpin.connect(
             'valueChanged(double)', self._onExplodeMagnitudeChanged)
         self.explodeMagnitudeLabel = qt.QLabel("Explode magnitude")
