@@ -1840,7 +1840,9 @@ class ALPACALogic(_ALPACATemplatesLogic, ScriptedLoadableModuleLogic):
                 fitness = fitness + 1
                 inlier_rmse = inlier_rmse + distance
 
-        return fitness / movingPointSet.GetNumberOfPoints(), inlier_rmse / fitness
+        # No inliers: report an infinite mean distance instead of dividing by zero.
+        rmse = inlier_rmse / fitness if fitness else np.inf
+        return fitness / movingPointSet.GetNumberOfPoints(), rmse
 
     # RANSAC using package
     def ransac_using_package(
@@ -2370,6 +2372,83 @@ class ALPACALogic(_ALPACATemplatesLogic, ScriptedLoadableModuleLogic):
         points_tranformed = np.reshape(points_tranformed, [-1, 3])
         return points_tranformed
 
+    def ransacUntilNoGain(
+        self,
+        sourcePoints,
+        targetPoints,
+        movingFeaturePoints,
+        fixedFeaturePoints,
+        maxIterations,
+        inlier_value,
+        scalingOption,
+        check_edge_length,
+        correspondence_distance,
+        number_of_ransac_points=3,
+        roundIterations=10000,
+        patience=2,
+    ):
+        """Run RANSAC in rounds and stop when the alignment stops improving.
+
+        ITK's RANSAC always runs all of its iterations: its adaptive stopping
+        (desiredProbabilityForNoOutliers) is not implemented. Here the search
+        runs in rounds of ``roundIterations``. After each round the round's
+        best transform is scored on the full point clouds with get_fitness
+        (fraction of source points within ``inlier_value`` of the target, and
+        their mean distance), as estimateTransform already does. The search
+        stops after ``patience`` consecutive rounds without improvement, or
+        when ``maxIterations`` (Maximum RANSAC iterations) is reached.
+
+        Returns (transform_matrix, fitness, rmse) of the best round.
+        """
+        import itk
+
+        maxIterations = max(1, int(maxIterations))  # always run at least one round
+        best = None
+        bestFitness = -1.0
+        bestRMSE = np.inf
+        roundsWithoutGain = 0
+        done = 0
+        rounds = 0
+        while done < maxIterations:
+            n = min(int(roundIterations), maxIterations - done)
+            transform_matrix, _, _ = self.ransac_using_package(
+                movingMeshPoints=sourcePoints,
+                fixedMeshPoints=targetPoints,
+                movingMeshFeaturePoints=movingFeaturePoints,
+                fixedMeshFeaturePoints=fixedFeaturePoints,
+                number_of_iterations=n,
+                number_of_ransac_points=number_of_ransac_points,
+                inlier_value=inlier_value,
+                scalingOption=scalingOption,
+                check_edge_length=check_edge_length,
+                correspondence_distance=correspondence_distance,
+            )
+            done += n
+            rounds += 1
+            fitness, rmse = self.get_fitness(
+                sourcePoints,
+                targetPoints,
+                inlier_value,
+                itk.transform_from_dict(transform_matrix),
+            )
+            # A gain is more inliers, or (about) as many inliers with a
+            # clearly smaller mean distance; tiny changes do not count.
+            gain = best is None or fitness > bestFitness + 1e-3 or (
+                fitness >= bestFitness - 1e-3 and rmse < bestRMSE * 0.99
+            )
+            if gain:
+                best, bestFitness, bestRMSE = transform_matrix, fitness, rmse
+                roundsWithoutGain = 0
+            else:
+                roundsWithoutGain += 1
+                if roundsWithoutGain >= patience:
+                    break
+        print(
+            f"RANSAC stopped after {done} of {maxIterations} iterations "
+            f"({rounds} rounds): fitness {bestFitness:.4f}, RMSE {bestRMSE:.4f}"
+        )
+        return best, bestFitness, bestRMSE
+
     def estimateTransform(
         self,
         sourcePoints,
@@ -2417,25 +2496,16 @@ class ALPACALogic(_ALPACATemplatesLogic, ScriptedLoadableModuleLogic):
         best_rmse = np.inf
         while attempt < maxAttempts:
             # Perform Initial alignment using Ransac parallel iterations with no scaling
-            transform_matrix, fitness, rmse = self.ransac_using_package(
-                movingMeshPoints=sourcePoints,
-                fixedMeshPoints=targetPoints,
-                movingMeshFeaturePoints=moving_corr.T,
-                fixedMeshFeaturePoints=fixed_corr.T,
-                number_of_iterations=parameters["maxRANSAC"],
-                number_of_ransac_points=3,
+            transform_matrix, fitness_forward, rmse_forward = self.ransacUntilNoGain(
+                sourcePoints,
+                targetPoints,
+                moving_corr.T,
+                fixed_corr.T,
+                maxIterations=parameters["maxRANSAC"],
                 inlier_value=float(parameters["distanceThreshold"]) * voxelSize,
                 scalingOption=False,
                 check_edge_length=True,
                 correspondence_distance=0.9,
-            )
-
-            transform = itk.transform_from_dict(transform_matrix)
-            fitness_forward, rmse_forward = self.get_fitness(
-                sourcePoints,
-                targetPoints,
-                float(parameters["distanceThreshold"]) * voxelSize,
-                transform,
             )
 
             mean_fitness = fitness_forward
@@ -2477,25 +2547,17 @@ class ALPACALogic(_ALPACATemplatesLogic, ScriptedLoadableModuleLogic):
             ransac_iterations = int(parameters["maxRANSAC"])
 
             while mean_fitness < 0.99 and attempt < maxAttempts:
-                transform_matrix, fitness, rmse = self.ransac_using_package(
-                    movingMeshPoints=sourcePoints,
-                    fixedMeshPoints=targetPoints,
-                    movingMeshFeaturePoints=moving_corr.T,
-                    fixedMeshFeaturePoints=fixed_corr.T,
-                    number_of_iterations=ransac_iterations,
-                    number_of_ransac_points=ransac_points,
+                transform_matrix, fitness_forward, rmse_forward = self.ransacUntilNoGain(
+                    sourcePoints,
+                    targetPoints,
+                    moving_corr.T,
+                    fixed_corr.T,
+                    maxIterations=ransac_iterations,
                     inlier_value=float(parameters["distanceThreshold"]) * voxelSize,
                     scalingOption=True,
                     check_edge_length=False,
                     correspondence_distance=correspondence_distance,
-                )
-
-                transform = itk.transform_from_dict(transform_matrix)
-                fitness_forward, rmse_forward = self.get_fitness(
-                    sourcePoints,
-                    targetPoints,
-                    float(parameters["distanceThreshold"]) * voxelSize,
-                    transform,
+                    number_of_ransac_points=ransac_points,
                 )
 
                 mean_fitness = fitness_forward
