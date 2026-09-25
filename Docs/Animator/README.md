@@ -1,38 +1,55 @@
 ## Animator
-**Summary:** This module enables simple keyframe-based animation of 3D volumes. It supports interpolation of ROI, rotations, and transfer functions for volume rendering. Individual time-tracks can be set to each of these actions. While each volume rendering action support only a pair of transfer functions (Start and End), a number volume rendering tracks can be daisy-chained to create complex volume rendering animations. Output can be either as an image sequence of frames or can be compiled into mp4 format. _Animator uses the [Screen Capture module](https://www.slicer.org/wiki/Documentation/4.10/Modules/ScreenCapture) to make mp4 movies, so ensure that ffmpeg is installed and configured before making movies with Animator._
 
-### USAGE
-Start with loading the 3D volume to be rendered into Slicer, and [enable the Volume Rendering for it](https://raw.githubusercontent.com/SlicerMorph/S_2020/master/Day_1/ImageStacks/Data_Volume_Rendering.png). Adjust the initial volume property (Scalar Opacity Map, Scalar Color Map) in whichever way you want the specimen to appear initially.
+**Summary:** Animator makes keyframe animations of the 3D view and exports them as video (MP4) or animated GIF. You set up the scene at a few moments in time and capture each as a *snapshot*. Animator interpolates between the snapshots and records every frame. It uses the Sequences and Screen Capture modules, and the viewer-size controls of the HiResScreenCapture module (part of SlicerMorph).
 
-#### Limitations
+A snapshot records:
 
-- Only one ROI and CameraRotation action per animation is currently allowed.
-- Start and End Volume Properties must have identical number of control points in their Scalar Opacity and Color Maps, eitherwise interpolation will fail. As long as there are identical number of control points in across different volume property sets, their position, values and colors can be arbitrarily set.
+- the camera (position, focal point, view-up, view angle or parallel scale);
+- the volume rendering property (opacity and color transfer functions);
+- the cropping ROI of the volume rendering;
+- the visibility and opacity of models, segmentations, markups, volume renderings and folders.
 
-#### ANIMATION PARAMETERS
+### Requirements
 
-- **New Animation Duration:** Default is 5 sec, can be overwritten by user (must be set before creating animation node)\
-- **Animation Node:** Default blank, choose to create _New Animation_
+Video export needs **ffmpeg**. On Windows, Slicer offers to download it on the first export. On macOS and Linux, install it (e.g. `brew install ffmpeg`, `sudo apt install ffmpeg`) and set its path in **Screen Capture → Advanced → ffmpeg executable**. See [Setting up ffmpeg](https://slicer.readthedocs.io/en/latest/user_guide/modules/screencapture.html#setting-up-ffmpeg).
 
-#### ACTIONS
+### Panels
 
-**Add Action:** There are currently three possibilities:
+#### Output Viewer Setup
 
-- **CameraRotationAction:** User needs to choose the rotation speed (degrees per second), and the axis of rotation (yaw, pitch or roll). Default rotation speed is 90 degrees per second, and can be edited by the user.
-- **ROIAction:** User needs to define and starting and ending ROI and the Animator will interpolate shown region of interest.  Open the Inputs section in Volume Rendering to access the active ROI selector.  Use the Data module to control visibility of the ROIs. Adjust start/end ROIs as desired.  It is important to set the ROI node of the volume to be rendered to the Value shown in in the "Animated ROI" prior to starting the animation since that is the one that will change as a function of time.
-- **VolumePropertyAction:** User needs to define and starting and ending Volume Property fields and the Animator will interpolate volume property of the selected volume based on these (See the limitations above). It is important to set the Volume Property node of the volume to be rendered to the Value shown in in the "Animated Volume Property" prior to starting the animation (in the Edit dialog for the action). If the user adds multiple VolumePropertyActions, Animator will split the timeline between the last VolumePropertyAction track and the newly created one. If smooth transition between multiple VolumeProperty is required, it is important to set the End Volume Property of the previous one as the Start Volume Property of the next one and uncheck "Clamp" option for both of them.  That is, the "clamp" option at the start tells the effect to use the Start Volume Property for all frames before the startTime, and at the end it means to use the End Volume Property for all frames after the endTime.  Be careful that only the first VolumePropertyAction in a sequence has the start clamp enabled and only the last has the end clamp enabled.
+What is shown in the 3D viewer is what gets recorded, so the viewer is set to the output size before the animation is built.
 
-Any number of these actions can be added as separate time-tracks.
+- **3D Viewer**, **Undock 3D Viewer** / **Redock 3D Viewer:** move the chosen 3D view into its own window and back. Redocking releases the size lock.
+- **Viewer Size:** typing a width or height locks the window at exactly that size (use even numbers). **↺** unlocks it.
+- **Snap to codec-safe size:** after resizing the undocked window by dragging, proposes the nearest size with both dimensions a multiple of 16 (preferred by H.264), shows the aspect-ratio change, and locks the window on confirmation.
 
-#### EXPORT
+#### Animation Parameters
 
-- **Animation Size:** Choose one of the rendering size presets, 160x120, 320x240, 640x480, 1920x1024, 1920x1080, and 3840x2160\
-- **Animation Format:** Can be either mp4 or an animated GIF.\
-- **Output File:** Specify the location of the output file.
+- **Animation Node:** create or select an animation. An animation and its snapshots are saved with the scene.
+- **Create Snapshot Timeline:** adds the Scene Snapshot action to the animation and opens its editor. The editor is non-modal, so the 3D view and other modules stay usable. Reopen it with **Edit** under **Actions**.
 
-### KNOWN ISSUES
-Animator module needs the FFMPEG library to produce mp4 output. Slicer will automatically download the binaries for Windows. For Mac & Linux [See instructions here](https://slicer.readthedocs.io/en/latest/user_guide/modules/screencapture.html#setting-up-ffmpeg).
+#### Snapshot editor
 
-### TUTORIAL
-Please see https://github.com/SlicerMorph/Tutorials/tree/main/Animator
-[Animator video tutorial:](https://www.youtube.com/watch?v=9GBekYcJR4E)
+- **Timeline span:** length of the animation in seconds (default 5 s).
+- **Timeline:** one thumbnail per keyframe. Drag a thumbnail to change its time; right-click to copy, paste or delete a keyframe.
+- **Time:** scrubs through the animation and shows the scene at that time.
+- **Capture current state → new keyframe:** snapshots the scene. The first keyframe is placed at 0 s, the second at the end of the timeline, later ones halfway between the last keyframe and the end.
+- **Replace selected from current state:** re-captures the selected keyframe and keeps its time, label and settings.
+- For the selected keyframe:
+  - **Label**, **Time**.
+  - **After this:** what happens until the next keyframe. **Interpolate to next** (default) blends the camera, volume property, ROI and opacities. **Hold until next** keeps the state. **Explode models to next** / **Implode models to next** move the models in **Models folder** away from (or back to) their common center, by **Explode magnitude** times their distance from it, with ease-in/ease-out.
+  - **Camera path:** **Orbit** rotates around the focal point (spherical interpolation); **Linear** moves the camera along a straight line.
+- **Advanced (camera / volume property):** the camera and volume property node that are animated. They are selected automatically from the 3D view and the volume rendering.
+
+To animate a crop, enable **Crop** in the Volume Rendering module and adjust its ROI before capturing. If the volume rendering has no ROI, Animator creates one sized to the volume on the first capture.
+
+#### Export
+
+- **Animation size:** the locked viewer size.
+- **Video format:** H.264, H.264 (high-quality), MPEG-4, MPEG-4 (high-quality), Animated GIF, Animated GIF (grayscale).
+- **Output file:** the file name; the extension is added from the format.
+- **Export:** captures every frame (60 frames per second of animation) and encodes the video with ffmpeg.
+
+### Tutorial
+
+See the [Animator tutorial](https://github.com/SlicerMorph/Tutorials/tree/main/Animator).
