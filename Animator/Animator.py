@@ -1328,6 +1328,17 @@ class AnimatorWidget(ScriptedLoadableModuleWidget):
         pass
       return
 
+    # Captured frames are temporary PNGs that ffmpeg re-encodes, so write them
+    # uncompressed. With the default zlib compression, PNG encoding dominates
+    # the per-frame capture time for large views (~3x slower).
+    createDefaultImageWriter = logic.createImageWriter
+    def createUncompressedImageWriter(filename):
+      writer = createDefaultImageWriter(filename)
+      if isinstance(writer, vtk.vtkPNGWriter):
+        writer.SetCompressionLevel(0)
+      return writer
+    logic.createImageWriter = createUncompressedImageWriter
+
     # Hide the 3D controller bar so it doesn't appear in the recording, and
     # confirm the widget is at the locked dimensions.
     width, height = locked
