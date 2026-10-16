@@ -9,6 +9,38 @@ from slicer.ScriptedLoadableModule import *
 import logging
 
 #
+# video export presets
+#
+
+# Higher-quality H.264 presets than Screen Capture's own (CRF 18 with default
+# 4:2:0 conversion), which smear the fine texture and saturated color edges of
+# volume renderings. The 4:4:4 variant keeps full color resolution but is not
+# supported by some players (e.g. PowerPoint, QuickTime).
+_MAX_QUALITY_H264_OPTIONS = (
+  "-codec libx264 -preset slower -crf 10"
+  " -vf scale=out_color_matrix=bt709:flags=lanczos+accurate_rnd+full_chroma_int"
+  " -pix_fmt {pixelFormat} -colorspace bt709 -color_primaries bt709 -color_trc bt709 -movflags +faststart")
+ANIMATOR_VIDEO_FORMAT_PRESETS = [
+  {"name": "H.264 (max quality, 4:2:0)", "fileExtension": "mp4",
+   "extraVideoOptions": _MAX_QUALITY_H264_OPTIONS.format(pixelFormat="yuv420p")},
+  {"name": "H.264 (max quality, 4:4:4)", "fileExtension": "mp4",
+   "extraVideoOptions": _MAX_QUALITY_H264_OPTIONS.format(pixelFormat="yuv444p")},
+]
+
+def createAnimatorScreenCaptureLogic():
+  """Return a ScreenCaptureLogic with Animator's video presets appended.
+
+  Both the export format selector and the export itself must use this, so that
+  preset indices match.
+  """
+  from ScreenCapture import ScreenCaptureLogic
+  logic = ScreenCaptureLogic()
+  existingNames = {preset["name"] for preset in logic.videoFormatPresets}
+  logic.videoFormatPresets = logic.videoFormatPresets + [
+    preset for preset in ANIMATOR_VIDEO_FORMAT_PRESETS if preset["name"] not in existingNames]
+  return logic
+
+#
 # action classes
 #
 class AnimatorAction:
@@ -1090,8 +1122,7 @@ class AnimatorWidget(ScriptedLoadableModuleWidget):
     self.exportSizeLabel = qt.QLabel("Animation size: <i>lock viewer above first</i>")
     self.exportFormLayout.addRow(self.exportSizeLabel)
 
-    from ScreenCapture import ScreenCaptureLogic
-    logic = ScreenCaptureLogic()
+    logic = createAnimatorScreenCaptureLogic()
     self.videoFormatWidget = qt.QComboBox()
     self.videoFormatWidget.setSizePolicy(qt.QSizePolicy.Expanding, qt.QSizePolicy.Preferred)
     for videoFormatPreset in logic.videoFormatPresets:
@@ -1307,8 +1338,7 @@ class AnimatorWidget(ScriptedLoadableModuleWidget):
 
     # Pre-flight: ffmpeg must be installed and configured. Otherwise the
     # whole frame-capture pass runs for nothing and createVideo dies.
-    from ScreenCapture import ScreenCaptureLogic
-    logic = ScreenCaptureLogic()
+    logic = createAnimatorScreenCaptureLogic()
     if not logic.isFfmpegPathValid():
       configured_path = logic.getFfmpegPath() or "<not set>"
       slicer.util.errorDisplay(
@@ -1327,6 +1357,17 @@ class AnimatorWidget(ScriptedLoadableModuleWidget):
       except Exception:
         pass
       return
+
+    # Captured frames are temporary PNGs that ffmpeg re-encodes, so write them
+    # uncompressed. With the default zlib compression, PNG encoding dominates
+    # the per-frame capture time for large views (~3x slower).
+    createDefaultImageWriter = logic.createImageWriter
+    def createUncompressedImageWriter(filename):
+      writer = createDefaultImageWriter(filename)
+      if isinstance(writer, vtk.vtkPNGWriter):
+        writer.SetCompressionLevel(0)
+      return writer
+    logic.createImageWriter = createUncompressedImageWriter
 
     # Hide the 3D controller bar so it doesn't appear in the recording, and
     # confirm the widget is at the locked dimensions.
