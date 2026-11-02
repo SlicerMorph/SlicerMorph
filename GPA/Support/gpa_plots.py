@@ -216,6 +216,15 @@ class PCAScatterPlot:
         # Drive cursor: an animated artist, redrawn by blitting while dragging.
         self.cursor, = ax.plot([0.0], [0.0], marker="+", markersize=22, markeredgewidth=2,
                                color="black", animated=True, visible=False, zorder=11)
+        # The cursor is a screen aid. Matplotlib draws animated artists into
+        # saved files, so leave it out explicitly while saving.
+        drawCursor = self.cursor.draw
+
+        def drawCursorOnScreen(renderer):
+            if not self.figure.canvas.is_saving():
+                drawCursor(renderer)
+
+        self.cursor.draw = drawCursorOnScreen
         self.cursorXY = (0.0, 0.0)
         self._background = None
         self._driveCallback = None
