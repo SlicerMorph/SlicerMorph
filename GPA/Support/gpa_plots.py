@@ -208,7 +208,8 @@ class PCAScatterPlot:
         ax.set_ylabel(_pcLabel(yIndex, variancePercent))
         ax.set_xlim(-self.limit, self.limit)
         ax.set_ylim(-self.limit, self.limit)
-        ax.set_aspect("equal", adjustable="datalim")
+        # Square axes box: equal scale while keeping the symmetric limits above.
+        ax.set_aspect("equal", adjustable="box")
         ax.grid(True, alpha=0.3)
 
         self.hover = _HoverLabel(ax)
