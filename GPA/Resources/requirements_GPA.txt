@@ -1,3 +1,4 @@
 pyRserve
 pandas
 patsy
+matplotlib>=3.10

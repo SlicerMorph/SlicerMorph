@@ -21,34 +21,11 @@ import scipy.linalg as sp
 from vtk.util import numpy_support
 
 
-class _PCAPlotMouseFilter(qt.QObject):
-  """Qt event filter installed on every child widget of the qMRMLPlotView.
-  We install on children because the qMRMLPlotView itself does not receive
-  mouse events directly — they reach the inner QVTKOpenGLNativeWidget.
-  """
-
-  def __init__(self, owner):
-    qt.QObject.__init__(self)
-    self._owner = owner
-
-  def eventFilter(self, obj, event):
-    owner = self._owner
-    if owner is None or not getattr(owner, "_plotDriveActive", False):
-      return False
-    et = event.type()
-    if et == qt.QEvent.MouseButtonPress and event.button() == qt.Qt.LeftButton:
-      owner._plotDriveDragging = True
-      owner._handleQtMouseEvent(event, obj)
-      return True
-    if et == qt.QEvent.MouseMove and owner._plotDriveDragging:
-      owner._handleQtMouseEvent(event, obj)
-      return True
-    if et == qt.QEvent.MouseButtonRelease and event.button() == qt.Qt.LeftButton:
-      if owner._plotDriveDragging:
-        owner._handleQtMouseEvent(event, obj)
-        owner._plotDriveDragging = False
-        return True
-    return False
+def _gpaPlots():
+  """Import the matplotlib plot helpers on first use, so that GPA (and ALPACA,
+  which loads GPA's logic from source) loads without matplotlib."""
+  import Support.gpa_plots as gpa_plots
+  return gpa_plots
 
 def _ensure_pyRserve_early() -> bool:
   """
@@ -145,9 +122,7 @@ This module performs standard Generalized Procrustes Analysis (GPA) based on Dry
           </view>
          </item>
            <item splitSize=\"600\">
-            <view class=\"vtkMRMLPlotViewNode\" singletontag=\"PlotViewerWindow_1\">
-             <property name=\"viewlabel\" action=\"default\">1</property>
-            </view>
+            <gpaplotview></gpaplotview>
            </item>
          <item splitSize=\"400\">
           <view class=\"vtkMRMLTableViewNode\" singletontag=\"TableViewerWindow_1\">"
@@ -172,9 +147,7 @@ This module performs standard Generalized Procrustes Analysis (GPA) based on Dry
     slicer.customLayoutPlotOnly = """
       <layout type=\"horizontal\" >
        <item>
-        <view class=\"vtkMRMLPlotViewNode\" singletontag=\"PlotViewerWindow_1\">
-         <property name=\"viewlabel\" action=\"default\">1</property>
-        </view>"
+        <gpaplotview></gpaplotview>
        </item>"
       </layout>
   """
@@ -534,32 +507,19 @@ class GPAWidget(ScriptedLoadableModuleWidget):
 
   def _gpaTeardown(self):
     """Idempotent teardown of all session-scoped state that survives Reload
-    if not explicitly torn down (Qt event filters, mouse-tracking flags on
-    plot view children, MRML observers, and engine-owned transform nodes)."""
-    # Plot-drive event filter + mouseTracking on plot view children.
+    if not explicitly torn down (plot-drive callbacks, MRML observers, and
+    engine-owned transform nodes)."""
+    # Plot-drive callbacks on the matplotlib canvas.
     try:
-      if getattr(self, "_plotDriveFilteredWidgets", None):
-        self._detachPlotMouseFilter()
+      self._detachPlotDrive()
     except Exception as e:
-      print(f"[GPA teardown] plot mouse filter: {e}")
+      print(f"[GPA teardown] plot drive: {e}")
     # Remove the persistent status-bar PCA cursor label so reloads do not
     # leave stale widgets in Slicer's main status bar.
     try:
       self._removeStatusBarPCALabel()
     except Exception as e:
       print(f"[GPA teardown] status-bar label: {e}")
-    # Reset mouseTracking on any plot view child we may have touched, even
-    # if the filter list got out of sync (e.g. from a previous reload).
-    try:
-      pv = self._plotView() if hasattr(self, "_plotView") else None
-      if pv is not None:
-        try: pv.setMouseTracking(False)
-        except Exception: pass
-        for child in pv.findChildren(qt.QWidget):
-          try: child.setMouseTracking(False)
-          except Exception: pass
-    except Exception:
-      pass
 
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
@@ -571,6 +531,17 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       slicer.packaging.pip_ensure("pandas", requester="GPA")
     except Exception:
       slicer.util.infoDisplay("Issue while installing Pandas Python package. Please install manually.")
+
+    # Plots are drawn with matplotlib in a layout view provided by the
+    # InteractiveMatplotlib module (Sandbox extension). The view must be
+    # registered before switching to a GPA layout that contains it.
+    try:
+      _gpaPlots().ensureMatplotlib()
+      _gpaPlots().registerView()
+    except Exception as e:
+      logging.error(f"GPA plot view setup failed: {e}")
+      slicer.util.infoDisplay("Issue while setting up GPA plots. Make sure the Sandbox extension is installed "
+                              f"and matplotlib can be installed.\n\n{e}")
 
     # ---- Assemble split UI tabs into one QTabWidget ----
     tab = qt.QTabWidget()
@@ -786,12 +757,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     self.ui.spinMagnification.setValue(1.0)
     # ---- Plot-driving (2-PC drag) state ----
     self._plotDriveActive = False
-    self._plotDriveDragging = False
-    self._plotDriveFilter = None
-    self._plotDriveFilteredWidgets = []   # list of QWidget we installed on
     self._plotDrivePCs = (None, None)  # (xPC, yPC) currently bound to gridX, gridY
-    self._plotDriveCursorSeries = None
-    self._plotDriveCursorTable = None
     self._plotDriveDispCache = {}      # {(pc_index, magnification): np.ndarray (D,D,D,3)}
     self._plotDriveFusedImage = None   # vtkImageData reused across updates
     self._plotDriveFusedArray = None   # numpy view (flat) into the displacement scalars
@@ -1306,25 +1272,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       tableNode.SetCellText(i,0,sortedArray['filename'][i])
       tableNode.SetCellText(i,1,str(sortedArray['procdist'][i]))
 
-    barPlot = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLPlotSeriesNode', 'Distances')
-    GPANodeCollection.AddItem(barPlot)
-    barPlot.SetAndObserveTableNodeID(tableNode.GetID())
-    barPlot.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeBar)
-    barPlot.SetLabelColumnName('ID') #displayed when hovering mouse
-    barPlot.SetYColumnName('Procrustes Distance') # for bar plots, index is the x-value
-    chartNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLPlotChartNode', 'Procrustes Distance Chart')
-    GPANodeCollection.AddItem(chartNode)
-    chartNode.SetTitle('Procrustes Distances')
-    chartNode.SetLegendVisibility(False)
-    chartNode.SetYAxisTitle('Distance')
-    chartNode.SetXAxisTitle('Subjects')
-    chartNode.AddAndObservePlotSeriesNodeID(barPlot.GetID())
-    layoutManager = slicer.app.layoutManager()
     self.assignLayoutDescription()
-    #set up custom layout
-    plotWidget = layoutManager.plotWidget(0)
-    plotViewNode = plotWidget.mrmlPlotViewNode()
-    plotViewNode.SetPlotChartNodeID(chartNode.GetID())
+    _gpaPlots().ProcrustesDistancePlot(sortedArray['filename'], sortedArray['procdist'])
     #add table to new layout
     slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveTableID(tableNode.GetID())
     slicer.app.applicationLogic().PropagateTableSelection()
@@ -1391,15 +1340,16 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         self.ui.drivePCAPlotCheckBox.setChecked(False)
     except Exception:
       pass
-    self._detachPlotMouseFilter()
+    self._detachPlotDrive()
     self._plotDriveActive = False
-    self._plotDriveDragging = False
     self._plotDriveDispCache = {}
     self._plotDriveFusedImage = None
     self._plotDriveFusedArray = None
-    self._plotDriveCursorSeries = None
-    self._plotDriveCursorTable = None
     self._plotDrivePCs = (None, None)
+    try:
+      _gpaPlots().clear()
+    except Exception:
+      pass
     self.nodeCleanUp()
 
   def nodeCleanUp(self):
@@ -2520,6 +2470,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     xValue=self.ui.XcomboBox.currentIndex
     yValue=self.ui.YcomboBox.currentIndex
     shape = self.LM.lm.shape
+    variancePercent = getattr(self, "_pcVariancePercent", None)
 
     if (self.ui.selectFactor.currentIndex > 0) and getattr(self, 'factorTableNode', None):
       factorName = self.ui.selectFactor.currentText
@@ -2529,13 +2480,16 @@ class GPAWidget(ScriptedLoadableModuleWidget):
         factorArray.append(factorCol.GetValue(i).rstrip())
       factorArrayNP = np.array(factorArray)
       if(len(np.unique(factorArrayNP))>1 ): #check values of factors for scatter plot
-        logic.makeScatterPlotWithFactors(self.scatterDataAll,self.files,factorArrayNP,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1),self.pcNumber)
+        logic.makeScatterPlotWithFactors(self.scatterDataAll,self.files,factorArrayNP,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1),self.pcNumber,
+                                         variancePercent=variancePercent, factorName=factorName)
       else:   #if the user input a factor requiring more than 3 groups, do not use factor
         qt.QMessageBox.critical(slicer.util.mainWindow(),
         'Error', 'Please use more than one unique factor')
-        logic.makeScatterPlot(self.scatterDataAll,self.files,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1),self.pcNumber)
+        logic.makeScatterPlot(self.scatterDataAll,self.files,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1),self.pcNumber,
+                              variancePercent=variancePercent)
     else:
-      logic.makeScatterPlot(self.scatterDataAll,self.files,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1),self.pcNumber)
+      logic.makeScatterPlot(self.scatterDataAll,self.files,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1),self.pcNumber,
+                            variancePercent=variancePercent)
 
     # If the user has the plot-drive mode enabled, (re)attach event filter and
     # rebuild the crosshair cursor series on the new chart.
@@ -2560,58 +2514,14 @@ class GPAWidget(ScriptedLoadableModuleWidget):
   # Plot-driven 2-PC model warping
   # --------------------------------------------------------------------------
 
-  def _plotWidget(self):
-    """Return the qMRMLPlotWidget for plot view 0, or None."""
+  def _currentPCAPlot(self):
+    """Return the PCA scatter plot shown in the GPA plot view, or None."""
     try:
-      lm = slicer.app.layoutManager()
-      return lm.plotWidget(0) if lm else None
+      gpa_plots = _gpaPlots()
+      plot = gpa_plots.currentPlot()
     except Exception:
       return None
-
-  def _plotView(self):
-    """Return the qMRMLPlotView showing the PCA scatter chart, or None."""
-    pw = self._plotWidget()
-    try:
-      return pw.plotView() if pw else None
-    except Exception:
-      return None
-
-  def _currentPlotChartNode(self):
-    """Return the chart node currently attached to plot view 0, or None."""
-    pw = self._plotWidget()
-    if pw is None:
-      return None
-    try:
-      pvn = pw.mrmlPlotViewNode()
-    except Exception:
-      pvn = None
-    if pvn is None:
-      return None
-    chart_id = pvn.GetPlotChartNodeID() or ""
-    return slicer.mrmlScene.GetNodeByID(chart_id) if chart_id else None
-
-  def _currentChartXY(self):
-    """Return the underlying vtkChartXY in the plot view's scene, or None."""
-    pv = self._plotView()
-    if pv is None:
-      return None
-    # qMRMLPlotView exposes chart() and scene() directly in Slicer 5.x.
-    try:
-      ch = pv.chart()
-      if ch is not None:
-        return ch
-    except Exception:
-      pass
-    try:
-      scene = pv.scene()
-      if scene is not None:
-        for i in range(scene.GetNumberOfItems()):
-          item = scene.GetItem(i)
-          if item and item.IsA("vtkChartXY"):
-            return item
-    except Exception:
-      pass
-    return None
+    return plot if isinstance(plot, gpa_plots.PCAScatterPlot) else None
 
   def onTogglePlotDriving(self, checked):
     self._plotDriveActive = bool(checked)
@@ -2621,57 +2531,26 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       except Exception:
         pass
       self._setStatusBarPCACursor(None)
-      self._detachPlotMouseFilter()
+      self._detachPlotDrive()
       return
-    # Attach + ensure cursor + sanity check.
-    # Auto-create a default PC1-vs-PC2 plot if the current plot view does
-    # NOT show a PCA scatter (it may be empty, or showing an unrelated
-    # chart like the Procrustes Distances plot from the Results tab).
-    if not self._isPCAChartActive():
+    # Auto-create a default PC1-vs-PC2 plot if the plot view does NOT show a
+    # PCA scatter (it may be empty, or showing an unrelated chart like the
+    # Procrustes Distances plot from the Results tab).
+    if self._currentPCAPlot() is None:
       if not self._autoCreateDefaultPCAPlot():
         # Failure path already set status + unchecked the box.
         return
     self._refreshPlotDriving(forceLog=True)
 
-  def _isPCAChartActive(self):
-    """True iff plot view 0 currently shows a PCA scatter chart created
-    by self.plot() (makeScatterPlot / makeScatterPlotWithFactors). We
-    identify by the chart title which both helpers set to a string
-    starting with 'PCA Scatter Plot'."""
-    chart = self._currentPlotChartNode()
-    if chart is None:
-      return False
-    try:
-      title = chart.GetTitle() or ""
-    except Exception:
-      return False
-    return title.startswith("PCA Scatter Plot")
-
   def _autoCreateDefaultPCAPlot(self):
     """Convenience: when the user toggles 'Drive 3D from PCA scatter plot'
     without having clicked the Explore tab's 'Plot' button, build a default
-    PC1-vs-PC2 scatter and bind it to plot view 0. Returns True on success."""
+    PC1-vs-PC2 scatter in the GPA plot view. Returns True on success."""
     # Prerequisite: GPA results must exist.
     if (getattr(self, "LM", None) is None
         or getattr(self, "scatterDataAll", None) is None
         or self.scatterDataAll.size == 0):
       self._setPlotDriveStatus("Status: load data and run GPA first")
-      try: self.ui.drivePCAPlotCheckBox.setChecked(False)
-      except Exception: pass
-      self._plotDriveActive = False
-      return False
-
-    # If the current layout has no plot view, switch to the GPA custom
-    # layout (id 500) which contains one. Avoids the surprise of clicking
-    # 'on' and seeing nothing happen because plot view 0 doesn't exist.
-    if self._plotWidget() is None:
-      try:
-        slicer.app.layoutManager().setLayout(500)
-      except Exception as e:
-        print(f"[GPA plot-drive] could not switch to layout 500: {e}",
-              flush=True)
-    if self._plotWidget() is None:
-      self._setPlotDriveStatus("Status: no plot view available in current layout")
       try: self.ui.drivePCAPlotCheckBox.setChecked(False)
       except Exception: pass
       self._plotDriveActive = False
@@ -2690,7 +2569,8 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       print(f"[GPA plot-drive] could not set PC1/PC2 combos: {e}",
             flush=True)
 
-    # Build the chart via the same code path the 'Plot' button uses.
+    # Build the chart via the same code path the 'Plot' button uses. It
+    # switches to the GPA layout if the plot view is not in the current one.
     try:
       self.plot()
     except Exception as e:
@@ -2700,7 +2580,7 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self._plotDriveActive = False
       return False
 
-    if self._currentPlotChartNode() is None:
+    if self._currentPCAPlot() is None:
       self._setPlotDriveStatus("Status: plot creation failed")
       try: self.ui.drivePCAPlotCheckBox.setChecked(False)
       except Exception: pass
@@ -2709,186 +2589,37 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     return True
 
   def _refreshPlotDriving(self, forceLog=False):
-    """Wire the event filter and ensure a crosshair series exists.
+    """Bind dragging on the PCA scatter plot to the 3D warp.
     Safe to call multiple times (idempotent)."""
     if not getattr(self, "_plotDriveActive", False):
       return
-    chart = self._currentPlotChartNode()
-    if chart is None:
-      msg = "Status: click 'Plot' on Explore Data tab first"
-      self._setPlotDriveStatus(msg)
+    plot = self._currentPCAPlot()
+    if plot is None:
+      self._setPlotDriveStatus("Status: click 'Plot' on Explore Data tab first")
       return
     if not self._ensureTwoPCDisplacement():
       return
-    self._attachPlotMouseFilter()
-    self._ensurePCACursorSeries(chart)
-    self._claimChartLeftButton()
+    plot.enableDrive(self._onPlotDrag)
     pcX, pcY = self._plotDrivePCs
     self._setPlotDriveStatus(f"Status: ON  (X=PC{pcX}, Y=PC{pcY}) — drag on plot; Shift=H-lock, Ctrl/Cmd=V-lock")
     if forceLog:
       print(f"[GPA] Plot-drive ON: X=PC{pcX}, Y=PC{pcY}", flush=True)
 
-  def _claimChartLeftButton(self):
-    """Disable the chart's built-in pan/zoom on left-mouse-button so our
-    scene observers receive press/move/release events."""
-    chart = self._currentChartXY()
-    if chart is None:
-      return
-    try:
-      # vtkChart action constants: PAN=0, ZOOM=1, SELECT=2, ZOOM_AXIS=3,
-      # SELECT_POLYGON=4, CLICK_AND_DRAG=5, NOTIFY=6
-      # Button constants (from vtkContextMouseEvent): NO_BUTTON=0,
-      # LEFT_BUTTON=1, MIDDLE_BUTTON=2, RIGHT_BUTTON=4.
-      LEFT_BUTTON = 1
-      NO_BUTTON = 0
-      # Move all left-button actions off so our observers see the events.
-      for action in (vtk.vtkChart.PAN, vtk.vtkChart.ZOOM,
-                     vtk.vtkChart.SELECT, vtk.vtkChart.CLICK_AND_DRAG):
-        try:
-          chart.SetActionToButton(action, NO_BUTTON)
-        except Exception:
-          pass
-      # Re-bind pan to middle-button so users still have a pan affordance.
-      try:
-        chart.SetActionToButton(vtk.vtkChart.PAN, 2)
-      except Exception:
-        pass
-    except Exception as e:
-      print(f"[GPA plot-drive] could not reassign chart actions: {e}",
-            flush=True)
+  def _onPlotDrag(self, scoreX, scoreY):
+    """Called by the PCA scatter plot with the PC scores under the mouse."""
+    self._applyPlotScores(scoreX, scoreY)
+    self._updatePCACursor(scoreX, scoreY)
+
+  def _detachPlotDrive(self):
+    plot = self._currentPCAPlot()
+    if plot is not None:
+      plot.disableDrive()
 
   def _setPlotDriveStatus(self, text):
     try:
       self.ui.drivePCAPlotStatus.setText(text)
     except Exception:
       pass
-
-  def _attachPlotMouseFilter(self):
-    pv = self._plotView()
-    if pv is None:
-      return
-    if self._plotDriveFilteredWidgets:
-      return  # already installed
-    if self._plotDriveFilter is None:
-      self._plotDriveFilter = _PCAPlotMouseFilter(self)
-    # qMRMLPlotView is a container; the child QVTKOpenGLNativeWidget is what
-    # receives mouse events. Install on it (and on the view itself, harmless).
-    targets = [pv]
-    try:
-      for child in pv.findChildren(qt.QWidget):
-        targets.append(child)
-    except Exception:
-      pass
-    for w in targets:
-      try:
-        w.installEventFilter(self._plotDriveFilter)
-        w.setMouseTracking(True)
-        self._plotDriveFilteredWidgets.append(w)
-      except Exception:
-        pass
-    print(f"[GPA plot-drive] installed event filter on {len(self._plotDriveFilteredWidgets)} widgets",
-          flush=True)
-    # Force the plot view interaction mode to something that does NOT consume
-    # left-click for pan/zoom: 'select points' (= 1).
-    self._setPlotInteractionMode(1)
-
-  def _detachPlotMouseFilter(self):
-    if not getattr(self, "_plotDriveFilteredWidgets", None):
-      return
-    for w in self._plotDriveFilteredWidgets:
-      try:
-        w.removeEventFilter(self._plotDriveFilter)
-      except Exception:
-        pass
-    self._plotDriveFilteredWidgets = []
-    self._plotDriveDragging = False
-    # Restore default 'pan view' (= 0) interaction.
-    self._setPlotInteractionMode(0)
-
-  def _setPlotInteractionMode(self, mode):
-    """Set the qMRMLPlotView interaction mode by stamping the underlying
-    vtkMRMLPlotViewNode. 0=pan, 1=select points, 2=freehand select, 3=move.
-    """
-    pw = self._plotWidget()
-    if pw is None:
-      return
-    try:
-      pvn = pw.mrmlPlotViewNode()
-      if pvn is not None:
-        pvn.SetInteractionMode(int(mode))
-    except Exception as e:
-      print(f"[GPA plot-drive] could not set interaction mode: {e}",
-            flush=True)
-
-  def _handleQtMouseEvent(self, event, widget):
-    """Convert a Qt mouse event on `widget` to PC scores via current chart axes.
-    """
-    chart = self._currentChartXY()
-    if chart is None or widget is None:
-      print(f"[GPA plot-drive] no chart or widget (chart={chart})",
-            flush=True)
-      return
-    bx = chart.GetAxis(vtk.vtkAxis.BOTTOM)
-    ly = chart.GetAxis(vtk.vtkAxis.LEFT)
-    if bx is None or ly is None:
-      return
-    bx_p1 = bx.GetPoint1(); bx_p2 = bx.GetPoint2()
-    ly_p1 = ly.GetPoint1(); ly_p2 = ly.GetPoint2()
-    if abs(bx_p2[0] - bx_p1[0]) < 1e-6 or abs(ly_p2[1] - ly_p1[1]) < 1e-6:
-      return
-    # Qt y is top-down, VTK chart axis points are bottom-up.
-    # On HiDPI displays (Retina) Qt reports widget coordinates in logical
-    # pixels but VTK's chart scene works in physical (render-window) pixels —
-    # without scaling, the cursor lands at half the offset on macOS.
-    try:
-      dpr = float(widget.devicePixelRatioF())
-    except Exception:
-      try:
-        dpr = float(widget.devicePixelRatio())
-      except Exception:
-        dpr = 1.0
-    if dpr <= 0:
-      dpr = 1.0
-    h = float(widget.height) * dpr
-    px = float(event.x()) * dpr
-    py = h - float(event.y()) * dpr
-    fx = (px - bx_p1[0]) / (bx_p2[0] - bx_p1[0])
-    fy = (py - ly_p1[1]) / (ly_p2[1] - ly_p1[1])
-    fx = max(0.0, min(1.0, fx))
-    fy = max(0.0, min(1.0, fy))
-    dx = bx.GetMinimum() + fx * (bx.GetMaximum() - bx.GetMinimum())
-    dy = ly.GetMinimum() + fy * (ly.GetMaximum() - ly.GetMinimum())
-    mods = event.modifiers()
-    if (mods & qt.Qt.ShiftModifier) and self._plotDriveCursorTable is not None:
-      dy = self._plotDriveCursorTable.GetTable().GetValue(0, 1).ToFloat()
-    if (mods & qt.Qt.ControlModifier) and self._plotDriveCursorTable is not None:
-      dx = self._plotDriveCursorTable.GetTable().GetValue(0, 0).ToFloat()
-    self._applyPlotScores(dx, dy)
-    self._updatePCACursor(dx, dy)
-
-  def _detachPlotMouseFilter(self):
-    for interactor, tag in getattr(self, "_plotDriveObserverIDs", []):
-      try:
-        interactor.RemoveObserver(tag)
-      except Exception:
-        pass
-    self._plotDriveObserverIDs = []
-    self._plotDriveDragging = False
-
-  def _onVTKMousePress(self, caller, eventName):
-    pass  # legacy no-op
-  def _onVTKMouseMove(self, caller, eventName):
-    pass
-  def _onVTKMouseRelease(self, caller, eventName):
-    pass
-  def _onSceneMousePress(self, caller, eventName):
-    pass
-  def _onSceneMouseMove(self, caller, eventName):
-    pass
-  def _onSceneMouseRelease(self, caller, eventName):
-    pass
-  def _sceneMousePos(self, scene):
-    return (0.0, 0.0)
 
   # ---- Geometry: build per-PC displacement arrays sharing one grid ----
   def _ensureTwoPCDisplacement(self):
@@ -3081,62 +2812,11 @@ class GPAWidget(ScriptedLoadableModuleWidget):
       self.gridTransformNode.GetTransformFromParent().Modified()
       self.gridTransformNode.Modified()
 
-  # ---- Crosshair series on the chart ----
-  def _ensurePCACursorSeries(self, chartNode):
-    """Add (once) a single '+' marker series tracking (scoreX, scoreY)."""
-    if chartNode is None:
-      return
-    if self._plotDriveCursorTable is None:
-      tableNode = slicer.mrmlScene.GetFirstNodeByName('PCA Cursor Table')
-      if tableNode is None:
-        tableNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", 'PCA Cursor Table')
-        GPANodeCollection.AddItem(tableNode)
-      tbl = tableNode.GetTable()
-      tbl.RemoveAllColumns()
-      colX = vtk.vtkFloatArray(); colX.SetName("X")
-      colY = vtk.vtkFloatArray(); colY.SetName("Y")
-      tbl.AddColumn(colX); tbl.AddColumn(colY)
-      # VTK's chart scene logs 'Attempted to paint a line with <2 points'
-      # for any series that has fewer than 2 rows, even when LineStyleNone is
-      # set. Stamp two identical rows so VTK draws a zero-length line and
-      # stays quiet; both rows render as the same crosshair marker.
-      tbl.SetNumberOfRows(2)
-      tbl.SetValue(0, 0, 0.0)
-      tbl.SetValue(0, 1, 0.0)
-      tbl.SetValue(1, 0, 0.0)
-      tbl.SetValue(1, 1, 0.0)
-      self._plotDriveCursorTable = tableNode
-    if self._plotDriveCursorSeries is None:
-      seriesNode = slicer.mrmlScene.GetFirstNodeByName('PCA Cursor')
-      if seriesNode is None:
-        seriesNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", 'PCA Cursor')
-        GPANodeCollection.AddItem(seriesNode)
-      seriesNode.SetAndObserveTableNodeID(self._plotDriveCursorTable.GetID())
-      seriesNode.SetXColumnName("X")
-      seriesNode.SetYColumnName("Y")
-      seriesNode.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeScatter)
-      seriesNode.SetLineStyle(slicer.vtkMRMLPlotSeriesNode.LineStyleNone)
-      try:
-        seriesNode.SetMarkerStyle(slicer.vtkMRMLPlotSeriesNode.MarkerStylePlus)
-      except Exception:
-        seriesNode.SetMarkerStyle(slicer.vtkMRMLPlotSeriesNode.MarkerStyleCross)
-      seriesNode.SetMarkerSize(28)
-      seriesNode.SetColor(0.0, 0.0, 0.0)
-      self._plotDriveCursorSeries = seriesNode
-    if not chartNode.HasPlotSeriesNodeID(self._plotDriveCursorSeries.GetID()):
-      chartNode.AddAndObservePlotSeriesNodeID(self._plotDriveCursorSeries.GetID())
-
+  # ---- Drive cursor on the plot ----
   def _updatePCACursor(self, scoreX, scoreY):
-    if self._plotDriveCursorTable is None:
-      return
-    tbl = self._plotDriveCursorTable.GetTable()
-    tbl.SetValue(0, 0, float(scoreX))
-    tbl.SetValue(0, 1, float(scoreY))
-    # Mirror to the second row so the renderer has ≥2 points and stays quiet.
-    if tbl.GetNumberOfRows() >= 2:
-      tbl.SetValue(1, 0, float(scoreX))
-      tbl.SetValue(1, 1, float(scoreY))
-    self._plotDriveCursorTable.Modified()
+    plot = self._currentPCAPlot()
+    if plot is not None:
+      plot.setCursor(scoreX, scoreY)
     # Mirror to Slicer's main status bar (bottom-right) so the user can read
     # the cursor coordinate without squinting at the plot symbol.
     if getattr(self, "_plotDriveActive", False):
@@ -3202,13 +2882,6 @@ class GPAWidget(ScriptedLoadableModuleWidget):
     except Exception:
       pass
     self._plotDriveStatusBarLabel = None
-
-  # ---- Mouse → data coordinate conversion + dispatch ----
-  def _handleVTKMouseEvent(self, interactor):
-    pass  # legacy no-op
-
-  def _handleScenePos(self, pos, shift=False, ctrl=False):
-    pass  # legacy no-op
 
   def toggleMeanPlot(self):
     node = self._node('meanLandmarkNode')
@@ -4068,22 +3741,13 @@ class GPALogic(ScriptedLoadableModuleLogic):
 
   #plotting functions
 
-  def makeScatterPlotWithFactors(self, data, files, factors,title,xAxis,yAxis,pcNumber):
-    #create two tables for the first two factors and then check for a third
-    #check if there is a table node has been created
+  def makeScatterPlotWithFactors(self, data, files, factors,title,xAxis,yAxis,pcNumber,variancePercent=None,factorName=None):
+    #create one table per factor level, then plot all levels in one chart
     numPoints = len(data)
     uniqueFactors, factorCounts = np.unique(factors, return_counts=True)
     factorNumber = len(uniqueFactors)
+    groupColors = []
 
-    #Set up chart
-    plotChartNode=slicer.mrmlScene.GetFirstNodeByName("Chart_PCA_cov" + xAxis + "v" +yAxis)
-    if plotChartNode is None:
-      plotChartNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotChartNode", "Chart_PCA_cov" + xAxis + "v" +yAxis)
-      GPANodeCollection.AddItem(plotChartNode)
-    else:
-      plotChartNode.RemoveAllPlotSeriesNodeIDs()
-
-    # Plot all series
     for factorIndex in range(len(uniqueFactors)):
       factor = uniqueFactors[factorIndex]
       tableNode=slicer.mrmlScene.GetFirstNodeByName('PCA Scatter Plot Table Factor ' + factor)
@@ -4114,18 +3778,6 @@ class GPALogic(ScriptedLoadableModuleLogic):
             table.SetValue(factorCounter, j+1, data[i,j])
           factorCounter+=1
 
-      plotSeriesNode=slicer.mrmlScene.GetFirstNodeByName("Series_PCA_" + factor + "_" + xAxis + "v" +yAxis)
-      if plotSeriesNode is None:
-        plotSeriesNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", factor)
-        GPANodeCollection.AddItem(plotSeriesNode)
-      # Create data series from table
-      plotSeriesNode.SetAndObserveTableNodeID(tableNode.GetID())
-      plotSeriesNode.SetXColumnName(xAxis)
-      plotSeriesNode.SetYColumnName(yAxis)
-      plotSeriesNode.SetLabelColumnName('Subject ID')
-      plotSeriesNode.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeScatter)
-      plotSeriesNode.SetLineStyle(slicer.vtkMRMLPlotSeriesNode.LineStyleNone)
-      plotSeriesNode.SetMarkerStyle(slicer.vtkMRMLPlotSeriesNode.MarkerStyleSquare)
       # Set color determined by series index
       seriesColor=[0,0,0,0]
       if(factorIndex<8):
@@ -4134,51 +3786,17 @@ class GPALogic(ScriptedLoadableModuleLogic):
       else:
         randomColorTable = slicer.util.getFirstNodeByName('Random')
         randomColorTable.GetColor(factorIndex-7,seriesColor)
+      groupColors.append(tuple(seriesColor[0:3]))
 
-      plotSeriesNode.SetColor(seriesColor[0:3])
-      # Add data series to chart
-      plotChartNode.AddAndObservePlotSeriesNodeID(plotSeriesNode.GetID())
+    _gpaPlots().PCAScatterPlot(data, files, self._pcIndex(xAxis), self._pcIndex(yAxis),
+                               variancePercent=variancePercent, groups=factors,
+                               groupColors=groupColors, groupTitle=factorName)
 
-    # Set up view options for chart
-    plotChartNode.SetTitle('PCA Scatter Plot with factors')
-    plotChartNode.SetXAxisTitle(xAxis)
-    plotChartNode.SetYAxisTitle(yAxis)
-    self._applyEqualSymmetricRange(plotChartNode, data, xAxis, yAxis)
-    layoutManager = slicer.app.layoutManager()
+  def _pcIndex(self, axisName):
+    """'PCk' -> column k-1 of the PC score array."""
+    return int(str(axisName)[2:]) - 1
 
-    plotWidget = layoutManager.plotWidget(0)
-    plotViewNode = plotWidget.mrmlPlotViewNode()
-    plotViewNode.SetPlotChartNodeID(plotChartNode.GetID())
-
-  def _applyEqualSymmetricRange(self, plotChartNode, data, xAxis, yAxis, pad=1.05):
-    """Force the PCA scatter chart to use a symmetric, equal range on both
-    axes so (0,0) sits at the chart center and one PC unit on X spans the
-    same numerical extent as one PC unit on Y. The displayed pair is
-    parsed from the axis titles ('PCk' -> column k-1 in `data`).
-
-    VTK's chart can't enforce equal physical units per pixel by itself, but
-    matching the numerical ranges removes the most common misreading: 'PC2
-    looks more variable because the box is taller'. Pair this with a square
-    plot widget on the Qt side for true equal-aspect viewing.
-    """
-    try:
-      ix = int(str(xAxis)[2:]) - 1
-      iy = int(str(yAxis)[2:]) - 1
-      arr = np.asarray(data)
-      if arr.ndim != 2 or ix < 0 or iy < 0 or max(ix, iy) >= arr.shape[1]:
-        return
-      r = float(np.max(np.abs(arr[:, [ix, iy]])))
-      if not np.isfinite(r) or r <= 0.0:
-        return
-      r *= float(pad)
-      plotChartNode.SetXAxisRangeAuto(False)
-      plotChartNode.SetYAxisRangeAuto(False)
-      plotChartNode.SetXAxisRange(-r, r)
-      plotChartNode.SetYAxisRange(-r, r)
-    except Exception:
-      pass
-
-  def makeScatterPlot(self, data, files, title,xAxis,yAxis,pcNumber):
+  def makeScatterPlot(self, data, files, title,xAxis,yAxis,pcNumber,variancePercent=None):
     numPoints = len(data)
     #check if there is a table node has been created
     tableNode=slicer.mrmlScene.GetFirstNodeByName('PCA Scatter Plot Table')
@@ -4204,39 +3822,8 @@ class GPALogic(ScriptedLoadableModuleLogic):
         for j in range(pcNumber):
             table.SetValue(i, j+1, data[i,j])
 
-    plotSeriesNode1=slicer.mrmlScene.GetFirstNodeByName("Series_PCA" + xAxis + "v" +yAxis)
-    if plotSeriesNode1 is None:
-      plotSeriesNode1 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", "Series_PCA" + xAxis + "v" +yAxis)
-      GPANodeCollection.AddItem(plotSeriesNode1)
-
-    plotSeriesNode1.SetAndObserveTableNodeID(tableNode.GetID())
-    plotSeriesNode1.SetXColumnName(xAxis)
-    plotSeriesNode1.SetYColumnName(yAxis)
-    plotSeriesNode1.SetLabelColumnName('Subject ID')
-    plotSeriesNode1.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeScatter)
-    plotSeriesNode1.SetLineStyle(slicer.vtkMRMLPlotSeriesNode.LineStyleNone)
-    plotSeriesNode1.SetMarkerStyle(slicer.vtkMRMLPlotSeriesNode.MarkerStyleSquare)
-    # Predictable, distinct color (deep blue) instead of SetUniqueColor()'s
-    # randomly-picked palette entry — picks a color that contrasts with the
-    # cursor crosshair (which is black).
-    plotSeriesNode1.SetColor(0.12, 0.47, 0.71)
-
-    plotChartNode=slicer.mrmlScene.GetFirstNodeByName("Chart_PCA" + xAxis + "v" +yAxis)
-    if plotChartNode is None:
-      plotChartNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotChartNode", "Chart_" + xAxis + "v" +yAxis)
-      GPANodeCollection.AddItem(plotChartNode)
-
-    plotChartNode.AddAndObservePlotSeriesNodeID(plotSeriesNode1.GetID())
-    plotChartNode.SetTitle('PCA Scatter Plot ')
-    plotChartNode.SetXAxisTitle(xAxis)
-    plotChartNode.SetYAxisTitle(yAxis)
-    self._applyEqualSymmetricRange(plotChartNode, data, xAxis, yAxis)
-
-    layoutManager = slicer.app.layoutManager()
-
-    plotWidget = layoutManager.plotWidget(0)
-    plotViewNode = plotWidget.mrmlPlotViewNode()
-    plotViewNode.SetPlotChartNodeID(plotChartNode.GetID())
+    _gpaPlots().PCAScatterPlot(data, files, self._pcIndex(xAxis), self._pcIndex(yAxis),
+                               variancePercent=variancePercent)
 
   def lollipopGraph(self, LMObj,LM, pc, scaleFactor, componentNumber, TwoDOption):
     print("lolli scale: ", scaleFactor)

@@ -8,6 +8,7 @@ set(MODULE_PYTHON_SCRIPTS
   Support/gpa_lib.py
   Support/vtk_lib.py
   Support/geomorph_lr.py
+  Support/gpa_plots.py
   )
 
 set(MODULE_PYTHON_RESOURCES
