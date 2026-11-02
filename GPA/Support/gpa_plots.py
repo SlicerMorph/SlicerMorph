@@ -294,6 +294,12 @@ class PCAScatterPlot:
         self.canvas.blit(self.figure.bbox)
 
     def _onDraw(self, event):
+        if event.canvas is not self.canvas or self.canvas.is_saving():
+            # Drawn for savefig (possibly by a PDF/SVG canvas, at another dpi):
+            # keep the cursor out of the file and drop the cached background,
+            # so the next on-screen draw caches a fresh one.
+            self._background = None
+            return
         # Cache the figure without the cursor, then draw the cursor on top.
         self._background = self.canvas.copy_from_bbox(self.figure.bbox)
         if self.cursor.get_visible():
